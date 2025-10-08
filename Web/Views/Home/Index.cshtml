@@ -60,15 +60,6 @@
                 <input id="artist" type="text" placeholder="Artist" />
             </div>
 
-            <details id="storefrontFold" class="hidden">
-                <summary>Storefront</summary>
-                <div class="spacer"></div>
-                <div class="row">
-                    <input id="storefront" type="text" placeholder="Storefront (e.g., us, gb, jp)" />
-                    <span class="muted">Default empty → your service decides.</span>
-                </div>
-            </details>
-
             <div class="row">
                 <button id="go">Go</button>
                 <span id="status" class="muted"></span>
@@ -90,15 +81,12 @@
           const isrcRow = $('isrcRow');
           const upcRow = $('upcRow');
           const titleRow = $('titleRow');
-          const storefrontFold = $('storefrontFold');
 
           function setMode(mode) {
             urlRow.classList.toggle('hidden', mode !== 'url');
             isrcRow.classList.toggle('hidden', mode !== 'isrc');
             upcRow.classList.toggle('hidden', mode !== 'upc');
             titleRow.classList.toggle('hidden', mode !== 'title');
-            storefrontFold.classList.toggle('hidden', mode === 'url');
-            if (mode !== 'url') storefrontFold.open = false;
           }
 
           modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
@@ -116,9 +104,6 @@
               let endpoint = '';
               let payload = {};
 
-              const protoStore = (document.getElementById("storefront")?.value ?? "").trim()
-              const storeFront = protoStore === "" ? "us" : protoStore;
-
               switch (mode) {
                 case 'url':
                   endpoint = '/music/lookup/urlList';
@@ -126,18 +111,17 @@
                   break;
                 case 'isrc':
                   endpoint = '/music/lookup/isrc';
-                  payload = { isrc: $('isrc').value, storefront: storeFront };
+                  payload = { isrc: $('isrc').value };
                   break;
                 case 'upc':
                   endpoint = '/music/lookup/upc';
-                  payload = { upc: $('upc').value, storefront: storeFront };
+                  payload = { upc: $('upc').value };
                   break;
                 case 'title':
                   endpoint = '/music/lookup/title';
                   payload = {
                       title: $('title').value,
-                      artist: $('artist').value,
-                      storefront: storeFront
+                      artist: $('artist').value
                   };
                   break;
               }

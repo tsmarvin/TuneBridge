@@ -11,9 +11,9 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     private readonly IMediaLinkService _svc = svc;
 
     public record UrlReq( string Uri );
-    public record IsrcReq( string Isrc, string Storefront );
-    public record UpcReq( string Upc, string Storefront );
-    public record TitleReq( string Title, string Artist, string Storefront );
+    public record IsrcReq( string Isrc );
+    public record UpcReq( string Upc );
+    public record TitleReq( string Title, string Artist );
 
     [HttpPost( "urlList" )]
     public async Task<IActionResult> ByUrlList( [FromBody] UrlReq req ) {

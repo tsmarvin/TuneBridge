@@ -1,12 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
+    <Version>0.0.1</Version>
     <StartupObject>TuneBridge.Program</StartupObject>
     <Authors>Taylor Marvin</Authors>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>dotnet-AppHostService-8dd21bbe-4dea-4010-b614-459a68144b2a</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DebugType>embedded</DebugType>
     <PublishSingleFile>true</PublishSingleFile>
@@ -19,15 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.9" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.9.0" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
-    <PackageReference Include="NetCord" Version="1.0.0-alpha.423" />
-    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.423" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Update="appsettings.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
+    <PackageReference Include="NetCord" Version="1.0.0-alpha.431" />
+    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.431" />
   </ItemGroup>
 </Project>
