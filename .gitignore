@@ -56,5 +56,13 @@ nunit-*.xml
 # Visual Studio Configuration
 .vs/*
 
+# Launch Settings
+**/Properties/launchSettings.json
+
 # Apple Private Keys
 *.[Pp]8
+
+# DocFX output
+_site/
+docs/api/
+obj/.cache/
