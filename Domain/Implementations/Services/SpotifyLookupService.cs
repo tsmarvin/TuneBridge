@@ -267,7 +267,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 }
                 return null;
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the artist list json response from apple." );
+                Logger.LogError( ex, $"An error occurred while parsing the artist list json response from spotify." );
                 Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
                 return null;
             }
@@ -329,7 +329,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from apple." );
+                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from spotify." );
                 Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
