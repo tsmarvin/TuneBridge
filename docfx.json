@@ -38,8 +38,7 @@
     "resource": [
       {
         "files": [
-          "images/**",
-          ".nojekyll"
+          "images/**"
         ],
         "src": "docs"
       }
