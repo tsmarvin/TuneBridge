@@ -4,18 +4,45 @@ using TuneBridge.Domain.Implementations.Extensions;
 namespace TuneBridge.Domain.Implementations.LinkParsers {
 
     /// <summary>
-    /// Parses Apple Music URLs and constructs API request URIs for the Apple Music API.
+    /// Utility class for parsing Apple Music URLs and constructing Apple Music API request URIs.
+    /// Handles both web player links (music.apple.com) and universal links, extracting storefronts,
+    /// entity IDs, and entity types to build appropriate MusicKit API endpoints.
     /// </summary>
+    /// <remarks>
+    /// Apple Music URLs encode the storefront (market region) and entity type (song vs album) in their structure.
+    /// This parser extracts those components and maps them to the corresponding MusicKit API endpoints.
+    /// Supports both direct song links and album links with ?i= query parameters indicating specific tracks.
+    /// </remarks>
     internal static partial class AppleMusicLinkParser {
 
         /// <summary>
-        /// Attempts to parse an Apple Music URL to extract the API request URI, storefront, and entity type.
+        /// Parses an Apple Music web URL to extract the API request URI, market storefront, and content type.
+        /// This method handles both album and song URLs, including album URLs with track-specific query parameters.
         /// </summary>
-        /// <param name="link">The Apple Music URL to parse.</param>
-        /// <param name="requestUri">The constructed API request URI for the Apple Music API.</param>
-        /// <param name="storefront">The market region/storefront (e.g., "us").</param>
-        /// <param name="isAlbum">True if the link is for an album, false if it's for a song.</param>
-        /// <returns>True if the URL was successfully parsed, false otherwise.</returns>
+        /// <param name="link">
+        /// Apple Music URL (e.g., "https://music.apple.com/us/album/1440857781?i=1440857907").
+        /// Supports both /album/ and /song/ paths, with or without storefront prefixes.
+        /// </param>
+        /// <param name="requestUri">
+        /// Output: The constructed MusicKit API endpoint path for fetching entity details
+        /// (e.g., "us/songs/1440857907" or "us/albums/1440857781").
+        /// </param>
+        /// <param name="storefront">
+        /// Output: The ISO 3166-1 alpha-2 country code extracted from the URL (e.g., "us", "gb", "jp").
+        /// Used for market-specific catalog queries.
+        /// </param>
+        /// <param name="isAlbum">
+        /// Output: True if the URL points to an album, false if it points to a song/track.
+        /// Determined by the path structure and presence of track-specific query parameters.
+        /// </param>
+        /// <returns>
+        /// True if the URL was successfully parsed and recognized as a valid Apple Music URL.
+        /// False if the URL doesn't match known Apple Music patterns or is malformed.
+        /// </returns>
+        /// <remarks>
+        /// When an album URL includes "?i=songId", the parser prioritizes the song over the album.
+        /// This matches user expectations when sharing specific tracks from album pages.
+        /// </remarks>
         public static bool TryParseUri(
             string link,
             out string requestUri,

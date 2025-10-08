@@ -5,17 +5,41 @@ using TuneBridge.Domain.Types.Enums;
 namespace TuneBridge.Domain.Implementations.LinkParsers {
 
     /// <summary>
-    /// Parses Spotify URLs and constructs API request URIs for the Spotify API.
+    /// Utility class for parsing Spotify URLs and constructing Spotify Web API request URIs.
+    /// Extracts entity types (track, album, artist, playlist) and IDs from open.spotify.com URLs,
+    /// then maps them to the corresponding API v1 endpoints for metadata retrieval.
     /// </summary>
+    /// <remarks>
+    /// Spotify uses a consistent URL structure: open.spotify.com/{type}/{id} where {type} is
+    /// "track", "album", "artist", or "playlist", and {id} is a Base62-encoded identifier.
+    /// This parser validates the URL structure and extracts both components for API calls.
+    /// </remarks>
     internal static partial class SpotifyLinkParser {
 
         /// <summary>
-        /// Attempts to parse a Spotify URL to extract the entity type and ID.
+        /// Parses a Spotify web URL to extract the entity type and Spotify ID. Validates URL structure
+        /// and determines whether the link points to a track, album, artist, or playlist.
         /// </summary>
-        /// <param name="link">The Spotify URL to parse.</param>
-        /// <param name="kind">The type of entity (Track, Album, etc.).</param>
-        /// <param name="id">The Spotify ID of the entity.</param>
-        /// <returns>True if the URL was successfully parsed, false otherwise.</returns>
+        /// <param name="link">
+        /// Spotify URL (e.g., "https://open.spotify.com/track/0cqRj7pUJDkTCEsJkx8snD").
+        /// Must follow the open.spotify.com/{type}/{id} pattern. Query parameters are ignored.
+        /// </param>
+        /// <param name="kind">
+        /// Output: The entity type extracted from the URL, mapped to <see cref="SpotifyEntity"/> enum.
+        /// Set to <see cref="SpotifyEntity.Unknown"/> if the URL doesn't match known patterns.
+        /// </param>
+        /// <param name="id">
+        /// Output: The Spotify ID (Base62 alphanumeric string, typically 22 characters).
+        /// This ID can be used directly in Spotify Web API v1 endpoints. Empty string if parsing fails.
+        /// </param>
+        /// <returns>
+        /// True if the URL was successfully parsed and recognized as a supported Spotify entity type.
+        /// False if the URL is malformed, doesn't match Spotify patterns, or refers to an unsupported entity.
+        /// </returns>
+        /// <remarks>
+        /// Only track and album URLs are currently utilized for music lookup. Artist and playlist URLs
+        /// are parsed but may not be fully supported by all downstream operations.
+        /// </remarks>
         public static bool TryParseUri(
             string link,
             out SpotifyEntity kind,
