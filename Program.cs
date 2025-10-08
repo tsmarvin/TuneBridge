@@ -1,7 +1,14 @@
 ﻿using TuneBridge.Configuration;
 
 namespace TuneBridge {
+    /// <summary>
+    /// The main program class that configures and runs the TuneBridge web application.
+    /// </summary>
     public class Program {
+        /// <summary>
+        /// The application entry point.
+        /// </summary>
+        /// <param name="args">Command line arguments.</param>
         public static void Main( string[] args ) {
 
             WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions() {

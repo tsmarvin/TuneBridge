@@ -10,10 +10,6 @@ namespace TuneBridge.Domain.Implementations.Auth {
     /// See <seealso href="https://developer.apple.com/help/account/configure-app-capabilities/create-a-media-identifier-and-private-key/">this doc</seealso>
     /// for more information on configuring the media identifier and generating a private key.
     /// </summary>
-    /// <description>See <seealso href="https://developer.apple.com/help/account/configure-app-capabilities/create-a-media-identifier-and-private-key/">this doc</seealso></description>
-    /// <param name="teamId">The apple teamId associated with the media identifier and private key.</param>
-    /// <param name="keyId"></param>
-    /// <param name="keyContents"></param>
     public class AppleJwtHandler {
 
         /// <summary>
@@ -40,6 +36,11 @@ namespace TuneBridge.Domain.Implementations.Auth {
         private readonly JsonWebTokenHandler _handler = new();
         private readonly SigningCredentials _signingCreds;
 
+        /// <summary>
+        /// Creates a new Bearer authentication header with a JWT token for Apple Music API requests.
+        /// The token is valid for 24 hours.
+        /// </summary>
+        /// <returns>An authentication header with Bearer scheme and JWT token.</returns>
         public AuthenticationHeaderValue NewAuthenticationHeader( ) {
             string token = _handler.CreateToken(new SecurityTokenDescriptor {
                 Issuer = _teamId,

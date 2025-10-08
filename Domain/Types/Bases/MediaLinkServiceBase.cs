@@ -7,6 +7,12 @@ using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Types.Bases {
 
+    /// <summary>
+    /// Base class for media link services that aggregate music information across multiple providers.
+    /// </summary>
+    /// <param name="enabledProvidersCollection">Dictionary of enabled music lookup services by provider.</param>
+    /// <param name="logger">Logger for recording errors and diagnostic information.</param>
+    /// <param name="serializerOptions">JSON serialization options for logging.</param>
     public abstract partial class MediaLinkServiceBase(
         Dictionary<SupportedProviders, IMusicLookupService> enabledProvidersCollection,
         ILogger<MediaLinkServiceBase> logger,
