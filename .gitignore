@@ -58,3 +58,8 @@ nunit-*.xml
 
 # Apple Private Keys
 *.[Pp]8
+
+# DocFX output
+_site/
+docs/api/
+obj/.cache/
