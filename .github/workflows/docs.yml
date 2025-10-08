@@ -27,14 +27,11 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
-      - name: Restore tools
-        run: dotnet tool restore
+      - name: Install DocFX
+        run: dotnet tool install -g docfx
 
-      - name: Build documentation metadata
-        run: dotnet docfx metadata docfx.json
-
-      - name: Build documentation site
-        run: dotnet docfx build docfx.json
+      - name: Build documentation
+        run: docfx docfx.json
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
