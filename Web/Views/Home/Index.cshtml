@@ -1,0 +1,164 @@
+﻿@{
+    ViewData["Title"] = "Music Lookup";
+    Layout = null; // remove this if you want to use your _Layout.cshtml
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>@ViewData["Title"] - TuneBridge</title>
+    <style>
+        :root { font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; }
+        body { margin: 2rem; }
+        .card { max-width: 800px; padding: 1.25rem; border: 1px solid #e5e7eb; border-radius: 12px; }
+        .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+        .stack { display: grid; gap: .5rem; }
+        .muted { color: #6b7280; font-size: .9rem; }
+        input[type="text"] { padding: .6rem .7rem; border: 1px solid #cbd5e1; border-radius: 8px; min-width: 260px; }
+        button { padding: .6rem 1rem; border-radius: 8px; border: 1px solid #0ea5e9; background: #0ea5e9; color: white; cursor: pointer; }
+        button:disabled{ opacity:.6; cursor:default; }
+        fieldset { border: none; padding: 0; margin: 0; }
+        legend { font-weight: 600; margin-bottom: .25rem; }
+        details { margin-top: .25rem; }
+        pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: 10px; overflow: auto; }
+        .hidden { display: none; }
+        .spacer { height: .5rem; }
+        label { display: inline-flex; align-items: center; gap: .35rem; }
+    </style>
+</head>
+<body>
+    <div class="card stack">
+        <h2>Music Lookup</h2>
+
+        <fieldset class="stack">
+            <legend>Mode</legend>
+            <div class="row">
+                <label><input type="radio" name="mode" value="url" checked /> URL</label>
+                <label><input type="radio" name="mode" value="isrc" /> ISRC</label>
+                <label><input type="radio" name="mode" value="upc" /> UPC</label>
+                <label><input type="radio" name="mode" value="title" /> Title</label>
+            </div>
+        </fieldset>
+
+        <div class="stack" id="inputs">
+            <div id="urlRow" class="row">
+                <input id="url" type="text" placeholder="Url" />
+            </div>
+
+            <div id="isrcRow" class="row hidden">
+                <input id="isrc" type="text" placeholder="ISRC (e.g., USVI20000123)" />
+            </div>
+
+            <div id="upcRow" class="row hidden">
+                <input id="upc" type="text" placeholder="UPC (12–14 digits)" />
+            </div>
+
+            <div id="titleRow" class="row hidden">
+                <input id="title" type="text" placeholder="Title" />
+                <input id="artist" type="text" placeholder="Artist" />
+            </div>
+
+            <details id="storefrontFold" class="hidden">
+                <summary>Storefront</summary>
+                <div class="spacer"></div>
+                <div class="row">
+                    <input id="storefront" type="text" placeholder="Storefront (e.g., us, gb, jp)" />
+                    <span class="muted">Default empty → your service decides.</span>
+                </div>
+            </details>
+
+            <div class="row">
+                <button id="go">Go</button>
+                <span id="status" class="muted"></span>
+            </div>
+        </div>
+
+        <div class="stack">
+            <h3>Result</h3>
+            <pre id="result" aria-live="polite">{}</pre>
+        </div>
+    </div>
+
+    <script>
+        (() => {
+          const $ = (id) => document.getElementById(id);
+          const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
+
+          const urlRow = $('urlRow');
+          const isrcRow = $('isrcRow');
+          const upcRow = $('upcRow');
+          const titleRow = $('titleRow');
+          const storefrontFold = $('storefrontFold');
+
+          function setMode(mode) {
+            urlRow.classList.toggle('hidden', mode !== 'url');
+            isrcRow.classList.toggle('hidden', mode !== 'isrc');
+            upcRow.classList.toggle('hidden', mode !== 'upc');
+            titleRow.classList.toggle('hidden', mode !== 'title');
+            storefrontFold.classList.toggle('hidden', mode === 'url');
+            if (mode !== 'url') storefrontFold.open = false;
+          }
+
+          modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
+          setMode('url');
+
+          $('go').addEventListener('click', async () => {
+            const mode = (modeRadios.find(r => r.checked) || {}).value;
+            const status = $('status');
+            const result = $('result');
+            status.textContent = 'Working...';
+            $('go').disabled = true;
+            result.textContent = '{}';
+
+            try {
+              let endpoint = '';
+              let payload = {};
+
+              const protoStore = (document.getElementById("storefront")?.value ?? "").trim()
+              const storeFront = protoStore === "" ? "us" : protoStore;
+
+              switch (mode) {
+                case 'url':
+                  endpoint = '/music/lookup/urlList';
+                  payload = { uri: $('url').value };
+                  break;
+                case 'isrc':
+                  endpoint = '/music/lookup/isrc';
+                  payload = { isrc: $('isrc').value, storefront: storeFront };
+                  break;
+                case 'upc':
+                  endpoint = '/music/lookup/upc';
+                  payload = { upc: $('upc').value, storefront: storeFront };
+                  break;
+                case 'title':
+                  endpoint = '/music/lookup/title';
+                  payload = {
+                      title: $('title').value,
+                      artist: $('artist').value,
+                      storefront: storeFront
+                  };
+                  break;
+              }
+
+              const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+
+              const data = await res.json();
+              result.textContent = JSON.stringify(data, null, 2);
+              status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+            } catch (err) {
+              status.textContent = 'Error';
+              result.textContent = JSON.stringify({ error: String(err) }, null, 2);
+            } finally {
+              $('go').disabled = false;
+            }
+          });
+        })();
+    </script>
+</body>
+</html>
