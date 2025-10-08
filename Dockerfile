@@ -10,15 +10,15 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["TuneBridge.csproj", "TuneBridge/"]
-RUN dotnet restore "./TuneBridge.csproj"
-COPY . .
+RUN dotnet restore "TuneBridge/TuneBridge.csproj"
+COPY . TuneBridge/
 WORKDIR "/src/TuneBridge"
 RUN dotnet build "./TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false -r "linux-arm64"
+RUN dotnet publish "./TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/publish -r "linux-arm64"
 
 # Add startup script
 COPY ./entrypoint.sh /app/publish/entrypoint.sh

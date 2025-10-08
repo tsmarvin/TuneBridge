@@ -7,6 +7,25 @@ using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Types.Bases {
 
+    /// <summary>
+    /// Abstract base class providing shared infrastructure for media link aggregation services.
+    /// Implements common patterns for querying multiple music provider APIs in parallel, deduplicating
+    /// results based on external IDs (ISRC/UPC), and merging metadata from different sources into unified
+    /// <see cref="MediaLinkResult"/> objects.
+    /// </summary>
+    /// <param name="enabledProvidersCollection">
+    /// Dictionary mapping <see cref="SupportedProviders"/> to their respective API service implementations.
+    /// Allows runtime configuration of which providers are active (e.g., only Spotify, only Apple Music, or both).
+    /// </param>
+    /// <param name="logger">Logger for tracking API failures, cross-platform matching issues, and performance metrics.</param>
+    /// <param name="serializerOptions">
+    /// JSON serialization settings used when logging complex API responses for debugging. Typically configured
+    /// with indentation enabled to improve readability in log files.
+    /// </param>
+    /// <remarks>
+    /// Derived classes must implement the four core lookup methods. The base class provides helper methods for
+    /// parallel provider queries, URL extraction, and result deduplication.
+    /// </remarks>
     public abstract partial class MediaLinkServiceBase(
         Dictionary<SupportedProviders, IMusicLookupService> enabledProvidersCollection,
         ILogger<MediaLinkServiceBase> logger,
