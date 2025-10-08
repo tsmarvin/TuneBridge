@@ -6,22 +6,37 @@ using Microsoft.IdentityModel.Tokens;
 namespace TuneBridge.Domain.Implementations.Auth {
 
     /// <summary>
-    /// Converts the private key to the signing credentials used to create a new JWT token for Apple Music API requests. <para/>
-    /// See <seealso href="https://developer.apple.com/help/account/configure-app-capabilities/create-a-media-identifier-and-private-key/">this doc</seealso>
-    /// for more information on configuring the media identifier and generating a private key.
+    /// Generates and signs JSON Web Tokens (JWT) for authenticating with Apple's MusicKit API. Converts
+    /// ES256 private keys (.p8 files) into signing credentials and creates short-lived tokens on demand.
+    /// Unlike OAuth, Apple MusicKit uses stateless JWT authentication where tokens are created client-side.
     /// </summary>
-    /// <description>See <seealso href="https://developer.apple.com/help/account/configure-app-capabilities/create-a-media-identifier-and-private-key/">this doc</seealso></description>
-    /// <param name="teamId">The apple teamId associated with the media identifier and private key.</param>
-    /// <param name="keyId"></param>
-    /// <param name="keyContents"></param>
+    /// <remarks>
+    /// Setup requires a private key (.p8 file) generated in the Apple Developer portal along with the
+    /// Team ID and Key ID. Tokens are valid for 24 hours but are generated fresh for each request rather
+    /// than cached, which simplifies implementation at minimal performance cost.
+    /// See: https://developer.apple.com/documentation/applemusicapi/generating_developer_tokens
+    /// </remarks>
     public class AppleJwtHandler {
 
         /// <summary>
-        /// Creates a new instance of the <see cref="AppleJwtHandler"/> class, which can generate JWT tokens for Apple Music API requests.
+        /// Initializes the JWT handler with Apple MusicKit credentials and prepares the ES256 signing
+        /// infrastructure. The private key is imported and kept in memory for generating tokens on demand.
         /// </summary>
-        /// <param name="teamId">The apple teamId associated with the media identifier and private key.</param>
-        /// <param name="keyId">The id associated with the private key file.</param>
-        /// <param name="keyContents">The text contents of the private key file.</param>
+        /// <param name="teamId">
+        /// Your Apple Developer Team ID (10-character alphanumeric). Found in the Apple Developer portal
+        /// under Membership details. Acts as the JWT issuer claim.
+        /// </param>
+        /// <param name="keyId">
+        /// The 10-character identifier for your MusicKit private key. Displayed when creating the key
+        /// in the Apple Developer portal. Embedded in the JWT header as the "kid" (key ID) claim.
+        /// </param>
+        /// <param name="keyContents">
+        /// The complete text content of the .p8 private key file, including the BEGIN/END PRIVATE KEY
+        /// markers. The key uses ES256 (ECDSA with P-256 curve and SHA-256) and must match the keyId.
+        /// </param>
+        /// <exception cref="CryptographicException">
+        /// Thrown if the keyContents cannot be parsed as a valid PEM-encoded ECDSA private key.
+        /// </exception>
         public AppleJwtHandler(
             string teamId,
             string keyId,
@@ -40,6 +55,20 @@ namespace TuneBridge.Domain.Implementations.Auth {
         private readonly JsonWebTokenHandler _handler = new();
         private readonly SigningCredentials _signingCreds;
 
+        /// <summary>
+        /// Generates a new signed JWT token for MusicKit API authentication and returns it in a Bearer
+        /// authorization header. Each call creates a fresh token valid for 24 hours. Apple recommends
+        /// creating tokens on demand rather than caching them.
+        /// </summary>
+        /// <returns>
+        /// An <see cref="AuthenticationHeaderValue"/> ready to be assigned to HttpClient authorization.
+        /// The token includes the Team ID as issuer, current timestamp, and 24-hour expiration.
+        /// </returns>
+        /// <remarks>
+        /// Token structure follows Apple's MusicKit requirements: ES256 algorithm, team ID as issuer,
+        /// key ID in header. No audience or subject claims needed. Tokens are stateless and can't be
+        /// revoked before expiration.
+        /// </remarks>
         public AuthenticationHeaderValue NewAuthenticationHeader( ) {
             string token = _handler.CreateToken(new SecurityTokenDescriptor {
                 Issuer = _teamId,
