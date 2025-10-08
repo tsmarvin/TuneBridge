@@ -115,7 +115,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 } else if (kind == SpotifyEntity.Track) {
                     return ParseSpotifyResponse(
                         await NewMusicApiRequest( $"tracks/{id}", SongLookupKey ),
-                        AlbumLookupKey,
+                        SongLookupKey,
                         kind,
                         true
                     );

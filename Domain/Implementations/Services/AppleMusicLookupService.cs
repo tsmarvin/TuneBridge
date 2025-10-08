@@ -113,7 +113,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         private List<(string id, string artistName)>? ParseAppleMusicArtistList( string? body ) {
             if (body == null) { return null; }
 
-            List<(string id, string artistName)>? results = [];
+            List<(string id, string artistName)> results = [];
             try {
                 using JsonDocument jsonDoc = JsonDocument.Parse(body);
                 JsonElement root = jsonDoc.RootElement;
