@@ -11,10 +11,8 @@ namespace TuneBridge.Domain.Implementations.Auth {
     /// <param name="factory">HTTP client factory configured with the Spotify auth endpoint (accounts.spotify.com).</param>
     /// <param name="logger">Logger for diagnostics, particularly useful for debugging token refresh issues.</param>
     /// <remarks>
-    /// The handler implements token caching to avoid unnecessary OAuth requests. Tokens are cached until
-    /// 30 seconds before expiration, at which point a new token is automatically requested on the next call.
-    /// Thread-safe for concurrent requests - if multiple requests need a token while one is being fetched,
-    /// they'll wait for the same token rather than making duplicate requests.
+    /// Tokens are cached until 30 seconds before expiration, at which point a new token is automatically
+    /// requested on the next call to avoid using expired tokens during API requests.
     /// </remarks>
     public sealed class SpotifyTokenHandler(
         SpotifyCredentials auth,

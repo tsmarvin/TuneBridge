@@ -24,7 +24,7 @@ namespace TuneBridge.Domain.Types.Bases {
     /// </param>
     /// <remarks>
     /// Derived classes must implement the four core lookup methods. The base class provides helper methods for
-    /// parallel provider queries, URL extraction, and result deduplication. Thread-safe for concurrent requests.
+    /// parallel provider queries, URL extraction, and result deduplication.
     /// </remarks>
     public abstract partial class MediaLinkServiceBase(
         Dictionary<SupportedProviders, IMusicLookupService> enabledProvidersCollection,

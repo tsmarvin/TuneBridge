@@ -21,8 +21,8 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// and determines whether the link points to a track, album, artist, or playlist.
         /// </summary>
         /// <param name="link">
-        /// Spotify URL (e.g., "https://open.spotify.com/track/0cqRj7pUJDkTCEsJkx8snD").
-        /// Must follow the open.spotify.com/{type}/{id} pattern. Query parameters are ignored.
+        /// Spotify URL in the format "https://open.spotify.com/{type}/{id}".
+        /// Must follow the open.spotify.com pattern. Query parameters are ignored.
         /// </param>
         /// <param name="kind">
         /// Output: The entity type extracted from the URL, mapped to <see cref="SpotifyEntity"/> enum.

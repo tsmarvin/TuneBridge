@@ -16,9 +16,6 @@
         /// The primary artist name as returned by the music provider's API. For tracks, this is typically
         /// the first/main artist even if multiple artists are credited. For albums, this is the album artist.
         /// </summary>
-        /// <example>
-        /// "Taylor Swift", "The Beatles", "Daft Punk"
-        /// </example>
         public string Artist { get; set; } = string.Empty;
 
         /// <summary>
@@ -26,9 +23,6 @@
         /// additional descriptors like "(Deluxe Edition)", "(Remastered)", or "- Single" depending on
         /// how the provider formats their metadata.
         /// </summary>
-        /// <example>
-        /// "Shake It Off", "Abbey Road (Remastered)", "Random Access Memories (Deluxe Edition)"
-        /// </example>
         public string Title { get; set; } = string.Empty;
 
         /// <summary>
@@ -36,10 +30,6 @@
         /// (International Standard Recording Code). For albums, this is the UPC (Universal Product Code).
         /// These IDs enable reliable cross-platform matching since they're consistent across all providers.
         /// </summary>
-        /// <example>
-        /// ISRC: "USRC17607839" (for tracks)
-        /// UPC: "00602537518357" (for albums)
-        /// </example>
         /// <remarks>
         /// Empty string if the provider didn't return an external ID. Some older or regional catalog
         /// items may lack standardized identifiers.
@@ -47,14 +37,9 @@
         public string ExternalId { get; set; } = string.Empty;
 
         /// <summary>
-        /// Direct web link to the track or album on the provider's platform (e.g., Apple Music web player,
-        /// Spotify web player). These URLs are shareable and will open in the respective service's app
-        /// if installed on the user's device.
+        /// Direct web link to the track or album on the provider's platform. These URLs are shareable
+        /// and will open in the respective service's app if installed on the user's device.
         /// </summary>
-        /// <example>
-        /// "https://music.apple.com/us/album/1440857781?i=1440857907"
-        /// "https://open.spotify.com/track/0cqRj7pUJDkTCEsJkx8snD"
-        /// </example>
         public string URL { get; set; } = string.Empty;
 
         /// <summary>
@@ -62,22 +47,15 @@
         /// the main album cover. Image sizes vary by provider but are typically at least 640x640 pixels.
         /// Empty string if no artwork is available.
         /// </summary>
-        /// <example>
-        /// "https://is1-ssl.mzstatic.com/image/thumb/Music/v4/..."
-        /// "https://i.scdn.co/image/ab67616d0000b273..."
-        /// </example>
         public string ArtUrl { get; set; } = string.Empty;
 
         /// <summary>
-        /// The market/storefront code indicating which regional catalog this result came from. Different
-        /// markets may have different availability, pricing, and even different versions of the same content.
-        /// Uses ISO 3166-1 alpha-2 country codes.
+        /// The market/storefront code indicating which regional catalog this result came from. Uses
+        /// ISO 3166-1 alpha-2 country codes. Defaults to "us" if not specified.
         /// </summary>
-        /// <example>
-        /// "us" (United States), "gb" (United Kingdom), "jp" (Japan)
-        /// </example>
         /// <remarks>
-        /// Defaults to "us" if not specified. This affects which catalog is searched and which URLs are returned.
+        /// For Apple Music, this determines which catalog is queried when searching by URI.
+        /// Different markets may have different availability and versions of content.
         /// </remarks>
         public string MarketRegion { get; set; } = "us";
 

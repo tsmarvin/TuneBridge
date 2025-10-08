@@ -17,18 +17,17 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
 
         /// <summary>
         /// Parses an Apple Music web URL to extract the API request URI, market storefront, and content type.
-        /// This method handles both album and song URLs, including album URLs with track-specific query parameters.
+        /// Handles both album and song URLs, including album URLs with track-specific query parameters.
         /// </summary>
         /// <param name="link">
-        /// Apple Music URL (e.g., "https://music.apple.com/us/album/1440857781?i=1440857907").
+        /// Apple Music URL in the format "https://music.apple.com/{storefront}/{type}/{id}".
         /// Supports both /album/ and /song/ paths, with or without storefront prefixes.
         /// </param>
         /// <param name="requestUri">
-        /// Output: The constructed MusicKit API endpoint path for fetching entity details
-        /// (e.g., "us/songs/1440857907" or "us/albums/1440857781").
+        /// Output: The constructed MusicKit API endpoint path for fetching entity details.
         /// </param>
         /// <param name="storefront">
-        /// Output: The ISO 3166-1 alpha-2 country code extracted from the URL (e.g., "us", "gb", "jp").
+        /// Output: The ISO 3166-1 alpha-2 country code extracted from the URL.
         /// Used for market-specific catalog queries.
         /// </param>
         /// <param name="isAlbum">

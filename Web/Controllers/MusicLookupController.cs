@@ -57,19 +57,14 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
 
     /// <summary>
     /// Streaming endpoint: Parses music URLs and yields results progressively as they're discovered.
-    /// Better for real-time applications or when processing large amounts of content, as it starts
-    /// returning data immediately without waiting for all lookups to complete.
+    /// Better for real-time applications or when processing large amounts of content.
     /// </summary>
     /// <param name="req">Request body with text containing music URLs to extract and process.</param>
     /// <returns>
-    /// Server-Sent Events stream of <see cref="MediaLinkResult"/> objects. Each result is yielded
+    /// Async enumerable of <see cref="MediaLinkResult"/> objects. Each result is yielded
     /// as soon as it's available, enabling progressive UI updates. Stream completes when all URLs
     /// have been processed.
     /// </returns>
-    /// <remarks>
-    /// Clients should use streaming JSON parsers or SSE libraries to consume this endpoint efficiently.
-    /// The response uses chunked transfer encoding.
-    /// </remarks>
     [HttpPost( "url" )]
     public async IAsyncEnumerable<MediaLinkResult> ByUrl( [FromBody] UrlReq req ) {
         await foreach (MediaLinkResult result in _svc.GetInfoAsync( req.Uri )) {
@@ -89,10 +84,6 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Lookup completed (result may be null if ISRC not found).</response>
     /// <response code="400">Invalid ISRC format in request body.</response>
-    /// <example>
-    /// POST /music/lookup/isrc
-    /// { "isrc": "USRC17607839" }
-    /// </example>
     [HttpPost( "isrc" )]
     public async Task<IActionResult> ByIsrc( [FromBody] IsrcReq req )
         => Ok( await _svc.GetInfoByISRCAsync( req.Isrc ) );
@@ -109,17 +100,12 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Lookup completed (result may be null if UPC not found).</response>
     /// <response code="400">Invalid UPC format in request body.</response>
-    /// <example>
-    /// POST /music/lookup/upc
-    /// { "upc": "00602537518357" }
-    /// </example>
     [HttpPost( "upc" )]
     public async Task<IActionResult> ByUpc( [FromBody] UpcReq req )
         => Ok( await _svc.GetInfoByUPCAsync( req.Upc ) );
 
     /// <summary>
     /// Searches for tracks or albums by title and artist name across all configured providers.
-    /// Uses fuzzy matching to handle common title variations, typos, and formatting differences.
     /// May return no results if the search is too broad or the content isn't available on configured platforms.
     /// </summary>
     /// <param name="req">Request containing the title and artist to search for.</param>
@@ -129,14 +115,6 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Search completed (result may be null if no matches found).</response>
     /// <response code="400">Missing or invalid title/artist in request body.</response>
-    /// <remarks>
-    /// For best results, provide the primary artist name and official title. The search handles common
-    /// variations like "(Deluxe)", "- Single", "Remastered", etc. automatically.
-    /// </remarks>
-    /// <example>
-    /// POST /music/lookup/title
-    /// { "title": "Shake It Off", "artist": "Taylor Swift" }
-    /// </example>
     [HttpPost( "title" )]
     public async Task<IActionResult> ByTitle( [FromBody] TitleReq req )
         => Ok( await _svc.GetInfoAsync( req.Title, req.Artist ) );

@@ -13,10 +13,9 @@ namespace TuneBridge.Domain.Interfaces {
     public interface IMediaLinkService {
         /// <summary>
         /// Searches for a track or album by title and artist name across all configured music providers.
-        /// The search uses fuzzy matching and handles common title variations (e.g., "Single", "Radio Edit").
         /// Results are deduplicated when the same content is found on multiple platforms.
         /// </summary>
-        /// <param name="title">The track or album title. Supports partial matches and common variations.</param>
+        /// <param name="title">The track or album title to search for.</param>
         /// <param name="artist">The primary artist name. Should match the main credited artist for best results.</param>
         /// <returns>
         /// A <see cref="MediaLinkResult"/> containing URLs for each provider where the content was found,
@@ -31,7 +30,7 @@ namespace TuneBridge.Domain.Interfaces {
         /// tracks across platforms as ISRCs are standardized and consistent.
         /// </summary>
         /// <param name="isrc">
-        /// The 12-character ISRC code (format: CC-XXX-YY-NNNNN). Example: "USRC17607839".
+        /// The 12-character ISRC code (format: CC-XXX-YY-NNNNN).
         /// Hyphens are optional and will be handled automatically.
         /// </param>
         /// <returns>
@@ -46,7 +45,7 @@ namespace TuneBridge.Domain.Interfaces {
         /// with special editions, deluxe versions, or international releases.
         /// </summary>
         /// <param name="upc">
-        /// The UPC barcode number (typically 12-13 digits). Example: "00602537518357".
+        /// The UPC barcode number (typically 12-13 digits).
         /// Leading zeros should be preserved for accurate matching.
         /// </param>
         /// <returns>
