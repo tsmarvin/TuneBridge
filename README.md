@@ -13,9 +13,9 @@
 
 ## What It Does
 
-TuneBridge acts as a universal translator for music streaming services. When you share a music link (song, album, or playlist) from Apple Music or Spotify, TuneBridge automatically finds the equivalent content on the other platform. This is particularly useful in Discord servers where users may prefer different streaming services.
+TuneBridge acts as a universal translator for music streaming services. When you share a music link (song or album) from Apple Music or Spotify, TuneBridge automatically finds the equivalent content on the other platform.
 
-The application uses official APIs from both services to ensure accurate matching through standardized identifiers (ISRC for tracks, UPC for albums) and metadata matching.
+The application uses official APIs from both services to ensure accurate matching through standardized identifiers (ISRC for tracks, UPC for albums). When matches cannot be found via external IDs, the application performs fuzzy matching using metadata to find the equivalent content.
 
 ## Configuration
 
@@ -61,7 +61,7 @@ TuneBridge requires API credentials for both Apple Music and Spotify, plus a Dis
 1. Visit the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Follow the [Getting Started Guide](https://discord.com/developers/docs/quick-start/getting-started)
 3. Create a bot and copy its token
-4. Invite the bot to your server with appropriate permissions (Read Messages, Send Messages, Embed Links)
+4. Invite the bot to your server with appropriate permissions (Read Messages, Send Messages, Embed Links, Manage Messages)
 
 ## Running the Application
 
@@ -215,7 +215,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Author
 
 Taylor Marvin
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
