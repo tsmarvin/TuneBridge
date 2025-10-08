@@ -54,7 +54,8 @@
         /// ISO 3166-1 alpha-2 country codes. Defaults to "us" if not specified.
         /// </summary>
         /// <remarks>
-        /// For Apple Music, this determines which catalog is queried when searching by URI.
+        /// This is used as the default storefront for ISRC, UPC, and title/artist searches.
+        /// For URI-based searches, the storefront is determined automatically from the URL.
         /// Different markets may have different availability and versions of content.
         /// </remarks>
         public string MarketRegion { get; set; } = "us";

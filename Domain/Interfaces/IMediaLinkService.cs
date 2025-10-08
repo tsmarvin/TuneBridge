@@ -30,8 +30,7 @@ namespace TuneBridge.Domain.Interfaces {
         /// tracks across platforms as ISRCs are standardized and consistent.
         /// </summary>
         /// <param name="isrc">
-        /// The 12-character ISRC code (format: CC-XXX-YY-NNNNN).
-        /// Hyphens are optional and will be handled automatically.
+        /// The 12-character ISRC code. Hyphens are optional and will be handled automatically.
         /// </param>
         /// <returns>
         /// A <see cref="MediaLinkResult"/> with URLs from providers that have this specific recording,
