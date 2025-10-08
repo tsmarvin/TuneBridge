@@ -63,9 +63,6 @@ namespace TuneBridge.Domain.Implementations.Auth {
         /// <summary>
         /// Represents the JSON response from the Spotify token endpoint.
         /// </summary>
-        /// <summary>
-        /// Represents the JSON response from the Spotify token endpoint.
-        /// </summary>
         private sealed class TokenResponse {
 #pragma warning disable IDE1006 // Naming Styles - these match the json values returned by spotify.
             /// <summary>The token type (e.g., "Bearer").</summary>
