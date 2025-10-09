@@ -5,11 +5,8 @@
     /// and how to process the returned metadata.
     /// </summary>
     /// <remarks>
-    /// The enum values use bit flags to allow for future combination scenarios, though current
-    /// implementation treats them as discrete types. Track and Album are the primary types used
-    /// for cross-platform music matching.
+    /// Track and Album are the primary types used for cross-platform music matching.
     /// </remarks>
-    [Flags]
     public enum SpotifyEntity {
         /// <summary>
         /// Unrecognized or unsupported Spotify URL format. Indicates parsing failure or an entity type
