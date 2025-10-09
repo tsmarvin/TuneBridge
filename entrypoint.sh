@@ -26,6 +26,13 @@ escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 # 2) Create new appsettings.json
 cat > /app/appsettings.json <<EOF
 {
+  "Kestrel": {
+    "Endpoints": {
+      "Http": {
+        "Url": "http://0.0.0.0:10000"
+      }
+    }
+  },
   "TuneBridge": {
     "NodeNumber": $NODE_NUMBER,
     "AppleTeamId": "$APPLE_TEAM_ID",
