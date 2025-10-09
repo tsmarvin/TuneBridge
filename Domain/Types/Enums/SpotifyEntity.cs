@@ -4,9 +4,6 @@
     /// Used by URL parsers and API clients to determine which Spotify Web API endpoints to call
     /// and how to process the returned metadata.
     /// </summary>
-    /// <remarks>
-    /// Track and Album are the primary types used for cross-platform music matching.
-    /// </remarks>
     public enum SpotifyEntity {
         /// <summary>
         /// Unrecognized or unsupported Spotify URL format. Indicates parsing failure or an entity type
