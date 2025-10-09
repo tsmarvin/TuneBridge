@@ -8,7 +8,17 @@ using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Implementations.Extensions {
 
+    /// <summary>
+    /// Extension methods for application-specific functionality.
+    /// </summary>
     internal static class AppExtensions {
+        /// <summary>
+        /// Extracts all values of a named group from regex matches.
+        /// </summary>
+        /// <param name="regex">The regex to match against.</param>
+        /// <param name="input">The input string to search.</param>
+        /// <param name="groupName">The name of the group to extract.</param>
+        /// <returns>An enumerable of all group values found.</returns>
         public static IEnumerable<string> GetGroupValues( this Regex regex, string input, string groupName ) {
             foreach (Match match in regex.Matches( input )) {
                 if (match.Groups.ContainsKey( groupName )) {
@@ -19,6 +29,12 @@ namespace TuneBridge.Domain.Implementations.Extensions {
 
         #region ToDiscordMessageProperties
 
+        /// <summary>
+        /// Converts a media link result to Discord message properties for display in Discord.
+        /// </summary>
+        /// <param name="result">The media link result to convert.</param>
+        /// <param name="userId">The Discord user ID who shared the link.</param>
+        /// <returns>Discord message properties with formatted embeds.</returns>
         public static MessageProperties ToDiscordMessageProperties( this MediaLinkResult result, ulong userId ) {
             string title = string.Empty;
             string image = string.Empty;
@@ -70,6 +86,13 @@ namespace TuneBridge.Domain.Implementations.Extensions {
             return NewMessageProperties( title, image, desc, embedColor, fieldProps, userId );
         }
 
+        /// <summary>
+        /// Gets the description attribute value from an enum, or returns the enum's string representation if no description exists.
+        /// </summary>
+        /// <typeparam name="T">The enum type.</typeparam>
+        /// <param name="enumValue">The enum value.</param>
+        /// <returns>The description attribute value or the enum's string representation.</returns>
+        /// <exception cref="ArgumentException">Thrown if T is not an enum type.</exception>
         public static string GetDescription<T>( this T enumValue )
             where T : struct {
             Type type = enumValue.GetType();
