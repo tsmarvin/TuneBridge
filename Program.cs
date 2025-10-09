@@ -20,6 +20,11 @@ namespace TuneBridge {
                 WebRootPath = "Web/wwwroot"
             });
 
+            // Configure the web server to listen on port 10000
+            builder.WebHost.ConfigureKestrel(serverOptions => {
+                serverOptions.ListenAnyIP(10000);
+            });
+
             _ = builder
                 .Configuration
                 .ConfigureAppSettings( args );

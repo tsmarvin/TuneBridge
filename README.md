@@ -17,4 +17,4 @@ docker run -d \
   tunebridge
 ```
 
-**Important:** The `APPLE_KEY_PATH` environment variable must be set to the container path (`/app/key.p8`), not the host path.
+**Important:** The `APPLE_KEY_PATH` environment variable must match the container mount path. In the example above, both are set to `/app/key.p8`.

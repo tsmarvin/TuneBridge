@@ -155,7 +155,7 @@ namespace TuneBridge.Domain.Types.Bases {
                 result.Results.Add( provider, lookup );
 
                 foreach ((SupportedProviders alternateProvider, IEnumerable<MusicLookupResultDto> altProviderResults) in resultsByProvider) {
-                    if ((int)alternateProvider == (int)provider) { continue; }
+                    if (alternateProvider == provider) { continue; }
                     MusicLookupResultDto? altProviderMatch = altProviderResults
                                                                 .FirstOrDefault( a => a.ExternalId == lookup.ExternalId )
                                                            ?? altProviderResults
