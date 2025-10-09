@@ -24,6 +24,9 @@ namespace TuneBridge.Domain.Implementations.Services {
         JsonSerializerOptions serializerOptions
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
 
+        /// <summary>
+        /// The default market region/storefront used for Apple Music API requests.
+        /// </summary>
         public const string DefaultStorefront = "us";
 
         public override SupportedProviders Provider => SupportedProviders.AppleMusic;

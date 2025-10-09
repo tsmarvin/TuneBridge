@@ -1,7 +1,17 @@
 ﻿using TuneBridge.Configuration;
 
 namespace TuneBridge {
+    /// <summary>
+    /// Main entry point for the TuneBridge web application. Configures ASP.NET Core services, middleware,
+    /// and routing for the web UI and REST API endpoints. Sets up music provider integrations
+    /// (Apple Music, Spotify) and optional Discord bot functionality.
+    /// </summary>
     public class Program {
+        /// <summary>
+        /// Application entry point. Initializes the ASP.NET Core host, configures services, and starts
+        /// the web server. Also initializes Discord bot if token is configured.
+        /// </summary>
+        /// <param name="args">Command-line arguments for configuration overrides.</param>
         public static void Main( string[] args ) {
 
             WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions() {

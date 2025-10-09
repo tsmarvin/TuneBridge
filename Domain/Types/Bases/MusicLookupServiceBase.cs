@@ -6,6 +6,11 @@ using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Types.Bases {
+    /// <summary>
+    /// Base class for music lookup services that query a specific music provider's API.
+    /// </summary>
+    /// <param name="logger">Logger for recording errors and diagnostic information.</param>
+    /// <param name="serializerOptions">JSON serialization options for logging API responses.</param>
     public abstract partial class MusicLookupServiceBase(
         ILogger<MusicLookupServiceBase> logger,
         JsonSerializerOptions serializerOptions
@@ -28,6 +33,10 @@ namespace TuneBridge.Domain.Types.Bases {
 
         #endregion IMusicLookupService Implementation
 
+        /// <summary>
+        /// Creates an authenticated HTTP client for the music provider's API.
+        /// </summary>
+        /// <returns>An HTTP client with authentication headers configured.</returns>
         private protected abstract Task<HttpClient> CreateAuthenticatedClientAsync( );
 
 
