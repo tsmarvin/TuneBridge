@@ -71,7 +71,7 @@ TuneBridge requires API credentials for both Apple Music and Spotify, plus a Dis
 ```bash
 export APPLE_TEAM_ID="your_team_id"
 export APPLE_KEY_ID="your_key_id"
-export APPLE_KEY_PATH="/path/to/AuthKey.p8"
+export APPLE_KEY_PATH="/app/key.p8"
 export SPOTIFY_CLIENT_ID="your_client_id"
 export SPOTIFY_CLIENT_SECRET="your_client_secret"
 export DISCORD_TOKEN="your_bot_token"
@@ -87,9 +87,11 @@ docker run -p 10000:10000 \
   -e SPOTIFY_CLIENT_ID \
   -e SPOTIFY_CLIENT_SECRET \
   -e DISCORD_TOKEN \
-  -v /path/to/your/key.p8:/app/key.p8 \
+  -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
   tunebridge
 ```
+
+**Important:** The `APPLE_KEY_PATH` environment variable must match the container mount path (`/app/key.p8` in this example).
 
 The application will be available at `http://localhost:10000`
 
