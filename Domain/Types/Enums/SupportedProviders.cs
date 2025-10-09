@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using TuneBridge.Domain.Interfaces;
 
 namespace TuneBridge.Domain.Types.Enums {
     /// <summary>
