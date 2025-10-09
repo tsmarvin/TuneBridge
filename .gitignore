@@ -65,4 +65,5 @@ nunit-*.xml
 # DocFX output
 _site/
 docs/api/
+docs/index.md
 obj/.cache/
