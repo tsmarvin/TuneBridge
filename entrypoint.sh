@@ -2,7 +2,8 @@
 set -eu
 
 # ---- Validate required env vars ----
-required_vars="APPLE_TEAM_ID APPLE_KEY_ID APPLE_KEY_PATH SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET DISCORD_TOKEN"
+# Note: At least one music provider must be configured (Apple Music, Spotify, or Tidal)
+required_vars="DISCORD_TOKEN"
 for v in $required_vars; do
   val="$(printenv "$v" 2>/dev/null || true)"
   if [ -z "$val" ]; then
@@ -16,6 +17,15 @@ NODE_NUMBER="${NODE_NUMBER:-0}"
 ALLOWED_HOSTS="${ALLOWED_HOSTS:-*}"
 DEFAULT_LOGLEVEL="${DEFAULT_LOGLEVEL:-Information}"
 HOSTING_DEFAULT_LOGLEVEL="${HOSTING_DEFAULT_LOGLEVEL:-Information}"
+
+# Optional music provider credentials
+APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
+APPLE_KEY_ID="${APPLE_KEY_ID:-}"
+APPLE_KEY_PATH="${APPLE_KEY_PATH:-}"
+SPOTIFY_CLIENT_ID="${SPOTIFY_CLIENT_ID:-}"
+SPOTIFY_CLIENT_SECRET="${SPOTIFY_CLIENT_SECRET:-}"
+TIDAL_CLIENT_ID="${TIDAL_CLIENT_ID:-}"
+TIDAL_CLIENT_SECRET="${TIDAL_CLIENT_SECRET:-}"
 
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
@@ -40,6 +50,8 @@ cat > /app/appsettings.json <<EOF
     "AppleKeyPath": "$(escape_bs "$APPLE_KEY_PATH")",
     "SpotifyClientId": "$SPOTIFY_CLIENT_ID",
     "SpotifyClientSecret": "$SPOTIFY_CLIENT_SECRET",
+    "TidalClientId": "$TIDAL_CLIENT_ID",
+    "TidalClientSecret": "$TIDAL_CLIENT_SECRET",
     "DiscordToken": "$DISCORD_TOKEN"
   },
   "Logging": {

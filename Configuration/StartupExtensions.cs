@@ -99,6 +99,27 @@ namespace TuneBridge.Configuration {
                 Console.WriteLine( "TuneBridge: Music lookup service for Spotify disabled due to invalid input credentials." );
             }
 
+            // Register Tidal if credentials are present.
+            if (string.IsNullOrWhiteSpace( settings.TidalClientId ) == false &&
+                string.IsNullOrWhiteSpace( settings.TidalClientSecret ) == false
+            ) {
+                _ = services.AddHttpClient( "tidal-auth", c => {
+                    c.BaseAddress = new Uri( "https://auth.tidal.com/" );
+                } ).AddStandardResilience( );
+
+                _ = services.AddHttpClient( "tidal-api", c => {
+                    c.BaseAddress = new Uri( "https://openapi.tidal.com/v1/" );
+                } ).AddStandardResilience( );
+
+                _ = services.AddSingleton( new TidalCredentials( settings.TidalClientId, settings.TidalClientSecret ) );
+                _ = services.AddTransient<TidalTokenHandler>( );
+                _ = services.AddTransient<TidalLookupService>( );
+
+                _ = enabledProviders.Add( SupportedProviders.Tidal );
+            } else {
+                Console.WriteLine( "TuneBridge: Music lookup service for Tidal disabled due to invalid input credentials." );
+            }
+
             // Validate that at least one provider is enabled.
             if (enabledProviders.Count == 0) {
                 throw new InvalidOperationException( "Required settings are missing. Cannot add TuneBridge services if no IMusicLookupService(s) are available." );
@@ -151,6 +172,9 @@ namespace TuneBridge.Configuration {
                         break;
                     case SupportedProviders.Spotify:
                         results.Add( SupportedProviders.Spotify, serviceProvider.GetRequiredService<SpotifyLookupService>( ) );
+                        break;
+                    case SupportedProviders.Tidal:
+                        results.Add( SupportedProviders.Tidal, serviceProvider.GetRequiredService<TidalLookupService>( ) );
                         break;
                 }
             }
