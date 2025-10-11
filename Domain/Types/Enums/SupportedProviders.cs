@@ -29,5 +29,16 @@ namespace TuneBridge.Domain.Types.Enums {
         /// Credentials from: https://developer.spotify.com/dashboard
         /// </remarks>
         Spotify    = 2,
+
+        /// <summary>
+        /// SoundCloud streaming service. Requires SoundCloud app credentials (Client ID and Client Secret).
+        /// Uses OAuth 2.0 client credentials flow.
+        /// </summary>
+        /// <remarks>
+        /// API Documentation: https://developers.soundcloud.com/docs/api/guide
+        /// Credentials from: https://soundcloud.com/you/apps
+        /// </remarks>
+        [Description("SoundCloud")]
+        SoundCloud = 3,
     }
 }

@@ -99,6 +99,27 @@ namespace TuneBridge.Configuration {
                 Console.WriteLine( "TuneBridge: Music lookup service for Spotify disabled due to invalid input credentials." );
             }
 
+            // Register SoundCloud if credentials are present.
+            if (string.IsNullOrWhiteSpace( settings.SoundCloudClientId ) == false &&
+                string.IsNullOrWhiteSpace( settings.SoundCloudClientSecret ) == false
+            ) {
+                _ = services.AddHttpClient( "soundcloud-auth", c => {
+                    c.BaseAddress = new Uri( "https://api.soundcloud.com/" );
+                } ).AddStandardResilience( );
+
+                _ = services.AddHttpClient( "soundcloud-api", c => {
+                    c.BaseAddress = new Uri( "https://api-v2.soundcloud.com/" );
+                } ).AddStandardResilience( );
+
+                _ = services.AddSingleton( new SoundCloudCredentials( settings.SoundCloudClientId, settings.SoundCloudClientSecret ) );
+                _ = services.AddTransient<SoundCloudTokenHandler>( );
+                _ = services.AddTransient<SoundCloudLookupService>( );
+
+                _ = enabledProviders.Add( SupportedProviders.SoundCloud );
+            } else {
+                Console.WriteLine( "TuneBridge: Music lookup service for SoundCloud disabled due to invalid input credentials." );
+            }
+
             // Validate that at least one provider is enabled.
             if (enabledProviders.Count == 0) {
                 throw new InvalidOperationException( "Required settings are missing. Cannot add TuneBridge services if no IMusicLookupService(s) are available." );
@@ -151,6 +172,9 @@ namespace TuneBridge.Configuration {
                         break;
                     case SupportedProviders.Spotify:
                         results.Add( SupportedProviders.Spotify, serviceProvider.GetRequiredService<SpotifyLookupService>( ) );
+                        break;
+                    case SupportedProviders.SoundCloud:
+                        results.Add( SupportedProviders.SoundCloud, serviceProvider.GetRequiredService<SoundCloudLookupService>( ) );
                         break;
                 }
             }

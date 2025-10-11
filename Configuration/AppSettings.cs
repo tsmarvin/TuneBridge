@@ -3,6 +3,7 @@
     /// Represents application settings for external service integrations.<para/>
     ///
     /// Apple Music and Spotify API credentials are required for the application to function properly.
+    /// SoundCloud API credentials are optional for SoundCloud integration.
     /// A Discord bot token is required for Discord integrations.<para/>
     ///
     /// Apple Music API credentials can be obtained from the Apple Developer portal.
@@ -11,6 +12,10 @@
     ///
     /// Spotify API credentials can be obtained by creating an app in the Spotify Developer Dashboard.
     /// See <seealso href="https://developer.spotify.com/documentation/general/guides/app-settings/#register-your-app">this link</seealso>
+    /// for more details. <para/>
+    ///
+    /// SoundCloud API credentials can be obtained by registering an app in the SoundCloud Developers portal.
+    /// See <seealso href="https://soundcloud.com/you/apps">this link</seealso>
     /// for more details. <para/>
     ///
     /// A Discord bot token can be obtained by creating an app in the Discord Developer Portal.
@@ -46,6 +51,16 @@
         /// The Spotify API client secret.
         /// </summary>
         public string SpotifyClientSecret { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The SoundCloud API client ID.
+        /// </summary>
+        public string SoundCloudClientId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The SoundCloud API client secret.
+        /// </summary>
+        public string SoundCloudClientSecret { get; set; } = string.Empty;
 
         /// <summary>
         /// The Discord bot token.
