@@ -29,13 +29,11 @@ namespace TuneBridge.Domain.Implementations.Services {
 
         public override Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc ) {
             // SoundCloud API does not support ISRC lookup directly
-            Logger.LogDebug( "SoundCloud does not support ISRC lookup for: {isrc}", isrc );
             return Task.FromResult<MusicLookupResultDto?>( null );
         }
 
         public override Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc ) {
             // SoundCloud API does not support UPC lookup directly
-            Logger.LogDebug( "SoundCloud does not support UPC lookup for: {upc}", upc );
             return Task.FromResult<MusicLookupResultDto?>( null );
         }
 
