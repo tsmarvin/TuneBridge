@@ -62,13 +62,13 @@ namespace TuneBridge.Domain.Types.Bases {
                             if (lookup is not null) { linkResults.Add( lookup, (provider, link) ); }
                         } catch (Exception e) {
                             Logger.LogError( e, "Failed while getting initial media link lookup data by URL for {provider}.", provider );
-                            Logger.LogTrace( $"link: {link}" );
+                            Logger.LogTrace( "link: {link}", link );
                         }
                     }
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by URL." );
-                Logger.LogTrace( $"Content: {content}" );
+                Logger.LogTrace( "Content: {content}", content );
             }
             return linkResults;
         }
@@ -89,7 +89,7 @@ namespace TuneBridge.Domain.Types.Bases {
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
-                Logger.LogTrace( $"title: '{title}', artist: '{artist}'" );
+                Logger.LogTrace( "title: '{title}', artist: '{artist}'", title, artist );
             }
             return null;
         }
@@ -113,7 +113,7 @@ namespace TuneBridge.Domain.Types.Bases {
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
-                Logger.LogTrace( $"externalId: '{externalId}', isAlbum: {isAlbum}" );
+                Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", externalId, isAlbum );
             }
 
             return null;
