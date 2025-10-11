@@ -29,5 +29,16 @@ namespace TuneBridge.Domain.Types.Enums {
         /// Credentials from: https://developer.spotify.com/dashboard
         /// </remarks>
         Spotify    = 2,
+
+        /// <summary>
+        /// YouTube Music streaming service. Requires YouTube Data API v3 credentials (API key).
+        /// Uses simple API key authentication.
+        /// </summary>
+        /// <remarks>
+        /// API Documentation: https://developers.google.com/youtube/v3
+        /// Credentials from: https://console.cloud.google.com/apis/credentials
+        /// </remarks>
+        [Description("YouTube Music")]
+        YouTubeMusic = 3,
     }
 }
