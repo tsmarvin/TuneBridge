@@ -2,7 +2,6 @@
 set -eu
 
 # ---- Validate required env vars ----
-# Note: At least one music provider must be configured (Apple Music, Spotify, or Tidal)
 required_vars="DISCORD_TOKEN"
 for v in $required_vars; do
   val="$(printenv "$v" 2>/dev/null || true)"
