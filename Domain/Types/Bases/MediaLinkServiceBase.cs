@@ -213,8 +213,8 @@ namespace TuneBridge.Domain.Types.Bases {
         /// <returns>A sanitized string safe for logging</returns>
         private static string SanitizeForLogging( string? input ) {
             if (string.IsNullOrWhiteSpace( input )) { return string.Empty; }
-            // Replace newlines, carriage returns, and other control characters that could be used for log forging
-            return input.Replace( "\r", string.Empty ).Replace( "\n", string.Empty ).Replace( "\t", " " );
+            // Remove all ASCII control characters (0x00-0x1F, 0x7F) to prevent log injection and forging
+            return Regex.Replace(input, @"[\x00-\x1F\x7F]", string.Empty);
         }
 
         #endregion Base Class Private Implementations
