@@ -212,9 +212,9 @@ namespace TuneBridge.Domain.Types.Bases {
         /// <param name="input">The user-provided string to sanitize</param>
         /// <returns>A sanitized string safe for logging</returns>
         private static string SanitizeForLogging( string? input ) {
-            if (string.IsNullOrEmpty( input )) { return string.Empty; }
+            if (string.IsNullOrWhiteSpace( input )) { return string.Empty; }
             // Replace newlines, carriage returns, and other control characters that could be used for log forging
-            return input.Replace( "\r", "" ).Replace( "\n", "" ).Replace( "\t", " " );
+            return input.Replace( "\r", string.Empty ).Replace( "\n", string.Empty ).Replace( "\t", " " );
         }
 
         #endregion Base Class Private Implementations
