@@ -62,13 +62,13 @@ namespace TuneBridge.Domain.Types.Bases {
                             if (lookup is not null) { linkResults.Add( lookup, (provider, link) ); }
                         } catch (Exception e) {
                             Logger.LogError( e, "Failed while getting initial media link lookup data by URL for {provider}.", provider );
-                            Logger.LogTrace( "link: {link}", link );
+                            Logger.LogTrace( "link: {link}", SanitizeForLogging( link ) );
                         }
                     }
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by URL." );
-                Logger.LogTrace( "Content: {content}", content );
+                Logger.LogTrace( "Content: {content}", SanitizeForLogging( content ) );
             }
             return linkResults;
         }
@@ -89,7 +89,7 @@ namespace TuneBridge.Domain.Types.Bases {
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
-                Logger.LogTrace( "title: '{title}', artist: '{artist}'", title, artist );
+                Logger.LogTrace( "title: '{title}', artist: '{artist}'", SanitizeForLogging( title ), SanitizeForLogging( artist ) );
             }
             return null;
         }
@@ -113,7 +113,7 @@ namespace TuneBridge.Domain.Types.Bases {
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
-                Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", externalId, isAlbum );
+                Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", SanitizeForLogging( externalId ), isAlbum );
             }
 
             return null;
@@ -205,6 +205,17 @@ namespace TuneBridge.Domain.Types.Bases {
 
         [GeneratedRegex( @"[Hh][Tt]{2}[Pp][Ss]:\/\/(?<Link>\w[\w\/\=\?\.\:\-%&]*)" )]
         private protected static partial Regex ValidHttpsLink( );
+
+        /// <summary>
+        /// Sanitizes user input for safe logging by removing or replacing characters that could be used for log injection attacks.
+        /// </summary>
+        /// <param name="input">The user-provided string to sanitize</param>
+        /// <returns>A sanitized string safe for logging</returns>
+        private static string SanitizeForLogging( string? input ) {
+            if (string.IsNullOrEmpty( input )) { return string.Empty; }
+            // Replace newlines, carriage returns, and other control characters that could be used for log forging
+            return input.Replace( "\r", "" ).Replace( "\n", "" ).Replace( "\t", " " );
+        }
 
         #endregion Base Class Private Implementations
 
