@@ -21,7 +21,9 @@ To run integration and end-to-end tests, you need valid API credentials. See the
 
 ## Configuration
 
-Tests use environment variables to access API credentials and configuration. The following table shows the mapping between GitHub secrets/variables and environment variables:
+Tests use a separate `appsettings.test.json` file that gets copied to the test output as `appsettings.json`. This allows the main application's `appsettings.json` to maintain its template format for Docker container deployment while tests use a valid JSON file with values populated from environment variables.
+
+The test framework uses environment variables to access API credentials and configuration. The following table shows the mapping between GitHub secrets/variables and environment variables:
 
 | Purpose | GitHub Secret/Variable | Environment Variable | Notes |
 |---------|----------------------|---------------------|-------|
