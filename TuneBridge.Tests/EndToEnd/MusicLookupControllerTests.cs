@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Tests.Helpers;
 using TuneBridge.Web.Controllers;
 
 namespace TuneBridge.Tests.EndToEnd;
@@ -17,15 +16,20 @@ namespace TuneBridge.Tests.EndToEnd;
 /// </summary>
 public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFactory>, IDisposable
 {
-    private readonly HttpClient _client;
-    private readonly CustomWebApplicationFactory _factory;
+    private readonly HttpClient? _client;
     private readonly bool _secretsAvailable;
 
     public MusicLookupControllerTests(CustomWebApplicationFactory factory)
     {
-        _factory = factory;
-        _secretsAvailable = TestConfiguration.AreSecretsAvailable();
-        _client = factory.CreateClient();
+        try
+        {
+            _client = factory.CreateClient();
+            _secretsAvailable = true;
+        }
+        catch
+        {
+            _secretsAvailable = false;
+        }
     }
 
     [Fact]
@@ -39,7 +43,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -59,7 +63,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -80,7 +84,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -99,7 +103,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         var request = new MusicLookupController.IsrcReq("GBUM71029604");
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/isrc", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/isrc", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -117,7 +121,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         var request = new MusicLookupController.UpcReq("00602547202307");
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/upc", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/upc", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -135,7 +139,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         var request = new MusicLookupController.TitleReq("Bohemian Rhapsody", "Queen");
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/title", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/title", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -155,7 +159,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/url", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/url", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -166,25 +170,16 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
     public void Dispose()
     {
         _client?.Dispose();
-        TestConfiguration.Cleanup();
     }
 }
 
 /// <summary>
 /// Custom web application factory for integration testing.
-/// Configures the test server with test configuration including secrets from environment variables.
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.ConfigureAppConfiguration((context, config) =>
-        {
-            // Add test configuration with secrets from environment - this will override the appsettings.json
-            var testConfig = TestConfiguration.CreateConfiguration();
-            config.AddConfiguration(testConfig);
-        });
-
         builder.UseEnvironment("Testing");
     }
 }

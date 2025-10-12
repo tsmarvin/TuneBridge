@@ -49,11 +49,22 @@ echo "Building solution..."
 dotnet build --no-restore --configuration Release
 echo ""
 
-# Transform appsettings.json for tests
-echo "Transforming appsettings.json..."
-chmod +x ./transform-appsettings.sh
-./transform-appsettings.sh
-echo ""
+# Create appsettings.json for tests if credentials are available
+if [ "$HAS_SECRETS" = "true" ]; then
+    echo "Creating appsettings.json from template..."
+    sed -e "s/{NodeNumber}/${NODENUMBER:-0}/g" \
+        -e "s/\"{AppleTeamId}\"/\"${APPLETEAMID:-}\"/g" \
+        -e "s/\"{AppleKeyId}\"/\"${APPLEKEYID:-}\"/g" \
+        -e "s|\"{AppleKeyPath}\"|\"${APPLEKEYPATH:-}\"|g" \
+        -e "s/\"{SpotifyClientId}\"/\"${SPOTIFYCLIENTID:-}\"/g" \
+        -e "s/\"{SpotifyClientSecret}\"/\"${SPOTIFYCLIENTSECRET:-}\"/g" \
+        -e "s/\"{DiscordToken}\"/\"${DISCORDTOKEN:-}\"/g" \
+        -e "s/\"{Default_LogLevel}\"/\"Warning\"/g" \
+        -e "s/\"{Hosting_LogLevel}\"/\"Warning\"/g" \
+        -e "s/\"{Allowed_Hosts}\"/\"*\"/g" \
+        appsettings.transform.json > TuneBridge.Tests/bin/Release/net9.0/appsettings.json
+    echo ""
+fi
 
 # Run Unit Tests (always run, don't need secrets)
 echo "==================================="

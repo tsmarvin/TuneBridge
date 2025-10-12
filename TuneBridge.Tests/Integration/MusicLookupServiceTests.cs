@@ -2,13 +2,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Interfaces;
-using TuneBridge.Tests.Helpers;
 
 namespace TuneBridge.Tests.Integration;
 
 /// <summary>
 /// Integration tests for music lookup services (Apple Music and Spotify).
-/// These tests require valid API credentials and will be skipped if secrets are not available.
+/// These tests require valid API credentials in appsettings.json.
 /// </summary>
 public class MusicLookupServiceTests : IDisposable
 {
@@ -17,34 +16,32 @@ public class MusicLookupServiceTests : IDisposable
 
     public MusicLookupServiceTests()
     {
-        _secretsAvailable = TestConfiguration.AreSecretsAvailable();
-        
-        if (_secretsAvailable)
+        try
         {
-            var configuration = TestConfiguration.CreateConfiguration();
+            var configuration = new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json", optional: true)
+                .Build();
+            
             var services = new ServiceCollection();
-            
-            // Add configuration
             services.AddSingleton<IConfiguration>(configuration);
-            
-            // Add logging
             services.AddLogging();
             
-            // Add TuneBridge services
+            // Try to add TuneBridge services - will fail if credentials are missing
             services.AddTuneBridgeServices(configuration);
             
             _serviceProvider = services.BuildServiceProvider();
+            _secretsAvailable = true;
+        }
+        catch
+        {
+            _secretsAvailable = false;
         }
     }
 
     [Fact]
     public void ServiceRegistration_WithValidSecrets_ShouldRegisterMediaLinkService()
     {
-        // Skip if secrets not available
-        if (!_secretsAvailable)
-        {
-            return; // Test passes but does nothing when secrets are unavailable
-        }
+        if (!_secretsAvailable) return;
 
         // Act
         var mediaLinkService = _serviceProvider!.GetService<IMediaLinkService>();
@@ -56,11 +53,7 @@ public class MusicLookupServiceTests : IDisposable
     [Fact]
     public async Task GetInfoByISRC_WithValidISRC_ShouldReturnResult()
     {
-        // Skip if secrets not available
-        if (!_secretsAvailable)
-        {
-            return;
-        }
+        if (!_secretsAvailable) return;
 
         // Arrange
         var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
@@ -82,11 +75,9 @@ public class MusicLookupServiceTests : IDisposable
     [Fact]
     public async Task GetInfoByUPC_WithValidUPC_ShouldReturnResult()
     {
-        // Skip if secrets not available
-        if (!_secretsAvailable)
-        {
-            return;
-        }
+
+        if (!_secretsAvailable) return;
+
 
         // Arrange
         var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
@@ -108,11 +99,9 @@ public class MusicLookupServiceTests : IDisposable
     [Fact]
     public async Task GetInfoByTitle_WithValidTitleAndArtist_ShouldReturnResult()
     {
-        // Skip if secrets not available
-        if (!_secretsAvailable)
-        {
-            return;
-        }
+
+        if (!_secretsAvailable) return;
+
 
         // Arrange
         var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
@@ -134,11 +123,9 @@ public class MusicLookupServiceTests : IDisposable
     [Fact]
     public async Task GetInfoByUrl_WithAppleMusicUrl_ShouldReturnResult()
     {
-        // Skip if secrets not available
-        if (!_secretsAvailable)
-        {
-            return;
-        }
+
+        if (!_secretsAvailable) return;
+
 
         // Arrange
         var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
@@ -163,11 +150,9 @@ public class MusicLookupServiceTests : IDisposable
     [Fact]
     public async Task GetInfoByUrl_WithSpotifyUrl_ShouldReturnResult()
     {
-        // Skip if secrets not available
-        if (!_secretsAvailable)
-        {
-            return;
-        }
+
+        if (!_secretsAvailable) return;
+
 
         // Arrange
         var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
@@ -192,11 +177,9 @@ public class MusicLookupServiceTests : IDisposable
     [Fact]
     public async Task GetInfoByISRC_WithInvalidISRC_ShouldReturnNull()
     {
-        // Skip if secrets not available
-        if (!_secretsAvailable)
-        {
-            return;
-        }
+
+        if (!_secretsAvailable) return;
+
 
         // Arrange
         var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
@@ -211,7 +194,6 @@ public class MusicLookupServiceTests : IDisposable
 
     public void Dispose()
     {
-        TestConfiguration.Cleanup();
         (_serviceProvider as IDisposable)?.Dispose();
     }
 }

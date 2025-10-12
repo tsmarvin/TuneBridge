@@ -228,18 +228,32 @@ dotnet test --filter "FullyQualifiedName~EndToEnd"
 
 ### Configuration for Tests
 
-Tests use environment variables for API credentials. Set these before running integration/E2E tests:
+Tests read credentials from `appsettings.json`. In CI, the workflow creates this file from the `appsettings.transform.json` template using GitHub secrets.
 
-```bash
-export APPLETEAMID="your_team_id"
-export APPLEKEYID="your_key_id"
-export APPLEKEYPATH="/path/to/AuthKey.p8"  # Or use APPLEPRIVATEKEY with file contents
-export SPOTIFYCLIENTID="your_client_id"
-export SPOTIFYCLIENTSECRET="your_client_secret"
-export NODENUMBER="0"
+For local testing, create an `appsettings.json` in the test output directory with your credentials:
+
+```json
+{
+  "TuneBridge": {
+    "NodeNumber": 0,
+    "AppleTeamId": "your_team_id",
+    "AppleKeyId": "your_key_id",
+    "AppleKeyPath": "/path/to/AuthKey.p8",
+    "SpotifyClientId": "your_client_id",
+    "SpotifyClientSecret": "your_client_secret",
+    "DiscordToken": "your_bot_token"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "Microsoft.Hosting.Lifetime": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
 ```
 
-The `transform-appsettings.sh` script transforms the appsettings.json template with these environment variables before tests run (similar to how Docker's entrypoint.sh works). Run `./run-tests.sh` for a guided local test experience.
+Or use the `run-tests.sh` script which creates this file from environment variables.
 
 Tests automatically run in CI/CD pipelines when configured with appropriate GitHub secrets.
 

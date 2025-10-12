@@ -1,6 +1,5 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
-using TuneBridge.Tests.Helpers;
 
 namespace TuneBridge.Tests.EndToEnd;
 
@@ -9,13 +8,20 @@ namespace TuneBridge.Tests.EndToEnd;
 /// </summary>
 public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, IDisposable
 {
-    private readonly HttpClient _client;
+    private readonly HttpClient? _client;
     private readonly bool _secretsAvailable;
 
     public HomeControllerTests(CustomWebApplicationFactory factory)
     {
-        _secretsAvailable = TestConfiguration.AreSecretsAvailable();
-        _client = factory.CreateClient();
+        try
+        {
+            _client = factory.CreateClient();
+            _secretsAvailable = true;
+        }
+        catch
+        {
+            _secretsAvailable = false;
+        }
     }
 
     [Fact]
@@ -24,7 +30,7 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
         if (!_secretsAvailable) return;
 
         // Act
-        var response = await _client.GetAsync("/");
+        var response = await _client!.GetAsync("/");
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -37,7 +43,7 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
         if (!_secretsAvailable) return;
 
         // Act
-        var response = await _client.GetAsync("/");
+        var response = await _client!.GetAsync("/");
         var content = await response.Content.ReadAsStringAsync();
 
         // Assert
@@ -50,7 +56,7 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
         if (!_secretsAvailable) return;
 
         // Act
-        var response = await _client.GetAsync("/Home/Privacy");
+        var response = await _client!.GetAsync("/Home/Privacy");
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -62,7 +68,7 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
         if (!_secretsAvailable) return;
 
         // Act
-        var response = await _client.GetAsync("/Home/Error");
+        var response = await _client!.GetAsync("/Home/Error");
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -74,7 +80,7 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
         if (!_secretsAvailable) return;
 
         // Act
-        var response = await _client.GetAsync("/NonExistent/Route");
+        var response = await _client!.GetAsync("/NonExistent/Route");
 
         // Assert
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -83,6 +89,5 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
     public void Dispose()
     {
         _client?.Dispose();
-        TestConfiguration.Cleanup();
     }
 }

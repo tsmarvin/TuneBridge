@@ -38,51 +38,28 @@ jobs:
           echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
         if: ${{ secrets.APPLEPRIVATEKEY != '' }}
 
-      - name: Transform appsettings.json for tests
+      - name: Create appsettings.json for tests
         run: |
-          chmod +x ./transform-appsettings.sh
-          ./transform-appsettings.sh
-        env:
-          NODENUMBER: ${{ vars.NODENUMBER || '0' }}
-          APPLETEAMID: ${{ secrets.APPLETEAMID }}
-          APPLEKEYID: ${{ secrets.APPLEKEYID }}
-          APPLEKEYPATH: /tmp/test-keys/apple_key.p8
-          SPOTIFYCLIENTID: ${{ secrets.SPOTIFYCLIENTID }}
-          SPOTIFYCLIENTSECRET: ${{ secrets.SPOTIFYCLIENTSECRET }}
-          DISCORDTOKEN: ${{ secrets.DISCORDTOKEN }}
+          sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
+              -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
+              -e 's/"{AppleKeyId}"/"${{ secrets.APPLEKEYID }}"/g' \
+              -e 's|"{AppleKeyPath}"|"/tmp/test-keys/apple_key.p8"|g' \
+              -e 's/"{SpotifyClientId}"/"${{ secrets.SPOTIFYCLIENTID }}"/g' \
+              -e 's/"{SpotifyClientSecret}"/"${{ secrets.SPOTIFYCLIENTSECRET }}"/g' \
+              -e 's/"{DiscordToken}"/"${{ secrets.DISCORDTOKEN }}"/g' \
+              -e 's/"{Default_LogLevel}"/"Warning"/g' \
+              -e 's/"{Hosting_LogLevel}"/"Warning"/g' \
+              -e 's/"{Allowed_Hosts}"/"*"/g' \
+              appsettings.transform.json > TuneBridge.Tests/bin/Release/net9.0/appsettings.json
 
       - name: Run Unit Tests
         run: dotnet test TuneBridge.Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
-        env:
-          NODENUMBER: ${{ vars.NODENUMBER || '0' }}
-          APPLETEAMID: ${{ secrets.APPLETEAMID }}
-          APPLEKEYID: ${{ secrets.APPLEKEYID }}
-          APPLEKEYPATH: /tmp/test-keys/apple_key.p8
-          SPOTIFYCLIENTID: ${{ secrets.SPOTIFYCLIENTID }}
-          SPOTIFYCLIENTSECRET: ${{ secrets.SPOTIFYCLIENTSECRET }}
-          DISCORDTOKEN: ${{ secrets.DISCORDTOKEN }}
 
       - name: Run Integration Tests
         run: dotnet test TuneBridge.Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration-test-results.trx" --logger "console;verbosity=detailed"
-        env:
-          NODENUMBER: ${{ vars.NODENUMBER || '0' }}
-          APPLETEAMID: ${{ secrets.APPLETEAMID }}
-          APPLEKEYID: ${{ secrets.APPLEKEYID }}
-          APPLEKEYPATH: /tmp/test-keys/apple_key.p8
-          SPOTIFYCLIENTID: ${{ secrets.SPOTIFYCLIENTID }}
-          SPOTIFYCLIENTSECRET: ${{ secrets.SPOTIFYCLIENTSECRET }}
-          DISCORDTOKEN: ${{ secrets.DISCORDTOKEN }}
 
       - name: Run End-to-End Tests
         run: dotnet test TuneBridge.Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~EndToEnd" --logger "trx;LogFileName=e2e-test-results.trx" --logger "console;verbosity=detailed"
-        env:
-          NODENUMBER: ${{ vars.NODENUMBER || '0' }}
-          APPLETEAMID: ${{ secrets.APPLETEAMID }}
-          APPLEKEYID: ${{ secrets.APPLEKEYID }}
-          APPLEKEYPATH: /tmp/test-keys/apple_key.p8
-          SPOTIFYCLIENTID: ${{ secrets.SPOTIFYCLIENTID }}
-          SPOTIFYCLIENTSECRET: ${{ secrets.SPOTIFYCLIENTSECRET }}
-          DISCORDTOKEN: ${{ secrets.DISCORDTOKEN }}
 
       - name: Upload Test Results
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.5.0
