@@ -95,24 +95,47 @@ namespace TuneBridge.Domain.Types.Bases {
         }
 
         /// <summary>
-        /// Performs the initial external_id lookup for all services.
+        /// Performs the initial external_id lookup for all services. For providers that don't support
+        /// ISRC/UPC lookup directly (like SoundCloud), this method will first lookup the track/album
+        /// using a provider that does support it, then use the metadata (title/artist) to search in
+        /// providers with limited lookup capabilities. This provides a composable fallback mechanism.
         /// </summary>
-        /// <param name="externalId">The string content to parse for links.</param>
+        /// <param name="externalId">The ISRC or UPC code to search for.</param>
         /// <param name="isAlbum">Indicates whether to search for UPC entries (true) or ISRC entries (false).</param>
         /// <returns>A tuple containing the <see cref="MusicLookupResultDto"/> and <see cref="SupportedProviders">.</returns>
         protected async Task<(MusicLookupResultDto result, SupportedProviders provider)?> GetMusicLookupResults( string externalId, bool isAlbum ) {
             try {
                 if (string.IsNullOrWhiteSpace( externalId )) { return null; }
 
+                // First, try to find a provider that supports ISRC/UPC lookup directly
+                MusicLookupResultDto? primaryLookup = null;
+                SupportedProviders primaryProvider = default;
+
                 foreach ((SupportedProviders provider, IMusicLookupService svc) in EnabledProviders) {
                     MusicLookupResultDto? lookup = isAlbum
                                                     ? await svc.GetInfoByUPCAsync( externalId )
                                                     : await svc.GetInfoByISRCAsync( externalId );
 
-                    if (lookup is not null) { return (lookup, provider); }
+                    if (lookup is not null) {
+                        primaryLookup = lookup;
+                        primaryProvider = provider;
+                        break;
+                    }
                 }
+
+                // If we found a result, return it (SyncLookupResult will handle finding it on other providers)
+                if (primaryLookup is not null) {
+                    return (primaryLookup, primaryProvider);
+                }
+
+                // If no provider supports direct ISRC/UPC lookup, we can't proceed
+                // (There's no metadata to search with)
+                Logger.LogDebug(
+                    "No provider found supporting {lookupType} lookup for external ID. Unable to search providers with limited lookup capabilities.",
+                    isAlbum ? "UPC" : "ISRC"
+                );
             } catch (Exception ex) {
-                Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
+                Logger.LogError( ex, "Failed while getting initial media link lookup data by external ID." );
                 Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", SanitizeForLogging( externalId ), isAlbum );
             }
 
