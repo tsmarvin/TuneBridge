@@ -34,7 +34,6 @@ public class MusicLookupServiceTests
     [TestMethod]
     public void ServiceRegistration_WithValidSecrets_ShouldRegisterMediaLinkService()
     {
-
         // Act
         var mediaLinkService = _serviceProvider.GetService<IMediaLinkService>();
 
@@ -45,7 +44,6 @@ public class MusicLookupServiceTests
     [TestMethod]
     public async Task GetInfoByISRC_WithValidISRC_ShouldReturnResult()
     {
-
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         // Using a well-known ISRC for "Bohemian Rhapsody" by Queen
@@ -66,9 +64,6 @@ public class MusicLookupServiceTests
     [TestMethod]
     public async Task GetInfoByUPC_WithValidUPC_ShouldReturnResult()
     {
-
-
-
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         // Using a well-known UPC for "A Night at the Opera" by Queen
@@ -89,9 +84,6 @@ public class MusicLookupServiceTests
     [TestMethod]
     public async Task GetInfoByTitle_WithValidTitleAndArtist_ShouldReturnResult()
     {
-
-
-
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         var title = "Bohemian Rhapsody";
@@ -124,14 +116,7 @@ public class MusicLookupServiceTests
         }
 
         // Assert
-        // Note: Apple Music URL parsing may return empty results if the URL format changes
-        // or the content is not available. This is acceptable behavior.
-        if (results.Count == 0)
-        {
-            Assert.Inconclusive("Apple Music URL did not return results - this may be due to URL format changes or content availability");
-            return;
-        }
-        
+        Assert.IsTrue(results.Count > 0, "Results collection should not be empty");
         var firstResult = results[0];
         Assert.IsTrue(firstResult.Results.Count > 0, "firstResult.Results should not be empty");
         var firstLookup = firstResult.Results.First().Value;
@@ -142,9 +127,6 @@ public class MusicLookupServiceTests
     [TestMethod]
     public async Task GetInfoByUrl_WithSpotifyUrl_ShouldReturnResult()
     {
-
-
-
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         var spotifyUrl = "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv";
@@ -168,9 +150,6 @@ public class MusicLookupServiceTests
     [TestMethod]
     public async Task GetInfoByISRC_WithInvalidISRC_ShouldReturnNull()
     {
-
-
-
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         var invalidIsrc = "INVALID12345";
