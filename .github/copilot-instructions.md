@@ -2,7 +2,7 @@
 
 ## Repository Overview
 
-TuneBridge is a cross-platform music link converter and lookup service that bridges Apple Music and Spotify. It provides:
+TuneBridge is a cross-platform music link converter and lookup service that bridges music provider services (such as Apple Music and Spotify). It provides:
 - A web interface for manual music lookups
 - RESTful API endpoints for programmatic access
 - A Discord bot that automatically detects and converts music links in Discord messages
@@ -27,9 +27,9 @@ TuneBridge is a cross-platform music link converter and lookup service that brid
 - **C# 13** with nullable reference types enabled
 
 **Key Libraries**:
-- **NetCord** (v1.0.0-alpha.431) - Discord bot gateway and hosting
-- **Microsoft.IdentityModel.JsonWebTokens** (v8.14.0) - JWT authentication for Apple Music API
-- **Microsoft.Extensions.Http.Resilience** (v9.9.0) - HTTP client retry and resilience policies
+- **NetCord** - Discord bot gateway and hosting
+- **Microsoft.IdentityModel.JsonWebTokens** - JWT authentication for Apple Music API
+- **Microsoft.Extensions.Http.Resilience** - HTTP client retry and resilience policies
 
 **External APIs**:
 - **Apple MusicKit API** - Requires JWT authentication (Team ID, Key ID, .p8 private key file)
@@ -211,7 +211,7 @@ Bound to `AppSettings` class in `Configuration/`.
 **Current State**: No test projects exist in the repository
 
 **When adding tests** (future):
-- Use xUnit or NUnit as the testing framework
+- Use MSTest as the testing framework
 - Follow AAA pattern: Arrange, Act, Assert
 - Name tests descriptively: `MethodName_Scenario_ExpectedBehavior`
 - Mock external dependencies (HTTP clients, APIs) using Moq or NSubstitute
@@ -294,9 +294,11 @@ Bound to `AppSettings` class in `Configuration/`.
 
 ## Communication Guidelines
 
-- Do NOT create documentation files (e.g., SECURITY_UPDATE.md, CHANGELOG.md, etc.) to communicate changes or updates
-- Communicate all updates, explanations, and information through PR comments instead
+**CRITICAL - HIGHEST PRIORITY**: 
+- **NEVER** create documentation files (e.g., SECURITY_UPDATE.md, CHANGELOG.md, UPDATES.md, etc.) to communicate changes or updates
+- **ALWAYS** communicate all updates, explanations, and information through PR comments instead
 - Keep documentation minimal and only create files when specifically requested by the repository owner
+- This is a strict requirement that must be followed without exception
 
 ## Additional Notes
 
@@ -307,7 +309,8 @@ Bound to `AppSettings` class in `Configuration/`.
 
 **Error Handling**:
 - Fail fast on missing/invalid configuration (e.g., missing .p8 file)
-- Return `null` from lookup methods when content not found (not exceptions)
+- For public-facing endpoints: Return `null` from lookup methods when content not found (not exceptions) to prevent crashes
+- For internal code: Let exceptions bubble up to a loggable state as quickly as possible
 - Log errors and API responses for debugging
 
 **Security**:
