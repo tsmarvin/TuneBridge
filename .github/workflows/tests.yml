@@ -32,14 +32,15 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Write Apple Private Key to file
+      - name: Setup test configuration
         run: |
-          mkdir -p /tmp/test-keys
-          echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
-        if: ${{ secrets.APPLEPRIVATEKEY != '' }}
-
-      - name: Create appsettings.json for tests
-        run: |
+          # Write Apple Private Key to file if available
+          if [ -n "${{ secrets.APPLEPRIVATEKEY }}" ]; then
+            mkdir -p /tmp/test-keys
+            echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
+          fi
+          
+          # Create appsettings.json for tests
           sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
               -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
               -e 's/"{AppleKeyId}"/"${{ secrets.APPLEKEYID }}"/g' \
