@@ -48,8 +48,8 @@ jobs:
               -e 's/"{SpotifyClientId}"/"${{ secrets.SPOTIFYCLIENTID }}"/g' \
               -e 's/"{SpotifyClientSecret}"/"${{ secrets.SPOTIFYCLIENTSECRET }}"/g' \
               -e 's/"{DiscordToken}"/"${{ secrets.DISCORDTOKEN }}"/g' \
-              -e 's/"{Default_LogLevel}"/"Warning"/g' \
-              -e 's/"{Hosting_LogLevel}"/"Warning"/g' \
+              -e 's/"{Default_LogLevel}"/"Information"/g' \
+              -e 's/"{Hosting_LogLevel}"/"Information"/g' \
               -e 's/"{Allowed_Hosts}"/"*"/g' \
               appsettings.transform.json > TuneBridge.Tests/bin/Release/net9.0/appsettings.json
 

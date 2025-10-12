@@ -11,40 +11,30 @@ namespace TuneBridge.Tests.Integration;
 /// </summary>
 public class MusicLookupServiceTests : IDisposable
 {
-    private readonly IServiceProvider? _serviceProvider;
-    private readonly bool _secretsAvailable;
+    private readonly IServiceProvider _serviceProvider;
 
     public MusicLookupServiceTests()
     {
-        try
-        {
-            var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json", optional: true)
-                .Build();
-            
-            var services = new ServiceCollection();
-            services.AddSingleton<IConfiguration>(configuration);
-            services.AddLogging();
-            
-            // Try to add TuneBridge services - will fail if credentials are missing
-            services.AddTuneBridgeServices(configuration);
-            
-            _serviceProvider = services.BuildServiceProvider();
-            _secretsAvailable = true;
-        }
-        catch
-        {
-            _secretsAvailable = false;
-        }
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.json", optional: true)
+            .Build();
+        
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddLogging();
+        
+        // Add TuneBridge services - will throw if credentials are missing/invalid
+        services.AddTuneBridgeServices(configuration);
+        
+        _serviceProvider = services.BuildServiceProvider();
     }
 
     [Fact]
     public void ServiceRegistration_WithValidSecrets_ShouldRegisterMediaLinkService()
     {
-        if (!_secretsAvailable) return;
 
         // Act
-        var mediaLinkService = _serviceProvider!.GetService<IMediaLinkService>();
+        var mediaLinkService = _serviceProvider.GetService<IMediaLinkService>();
 
         // Assert
         Assert.NotNull(mediaLinkService);
@@ -53,10 +43,9 @@ public class MusicLookupServiceTests : IDisposable
     [Fact]
     public async Task GetInfoByISRC_WithValidISRC_ShouldReturnResult()
     {
-        if (!_secretsAvailable) return;
 
         // Arrange
-        var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
+        var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         // Using a well-known ISRC for "Bohemian Rhapsody" by Queen
         var isrc = "GBUM71029604";
 
@@ -76,11 +65,10 @@ public class MusicLookupServiceTests : IDisposable
     public async Task GetInfoByUPC_WithValidUPC_ShouldReturnResult()
     {
 
-        if (!_secretsAvailable) return;
 
 
         // Arrange
-        var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
+        var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         // Using a well-known UPC for "A Night at the Opera" by Queen
         var upc = "00602547202307";
 
@@ -100,11 +88,10 @@ public class MusicLookupServiceTests : IDisposable
     public async Task GetInfoByTitle_WithValidTitleAndArtist_ShouldReturnResult()
     {
 
-        if (!_secretsAvailable) return;
 
 
         // Arrange
-        var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
+        var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         var title = "Bohemian Rhapsody";
         var artist = "Queen";
 
@@ -124,11 +111,10 @@ public class MusicLookupServiceTests : IDisposable
     public async Task GetInfoByUrl_WithAppleMusicUrl_ShouldReturnResult()
     {
 
-        if (!_secretsAvailable) return;
 
 
         // Arrange
-        var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
+        var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         var appleUrl = "https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806326";
 
         // Act
@@ -151,11 +137,10 @@ public class MusicLookupServiceTests : IDisposable
     public async Task GetInfoByUrl_WithSpotifyUrl_ShouldReturnResult()
     {
 
-        if (!_secretsAvailable) return;
 
 
         // Arrange
-        var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
+        var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         var spotifyUrl = "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv";
 
         // Act
@@ -178,11 +163,10 @@ public class MusicLookupServiceTests : IDisposable
     public async Task GetInfoByISRC_WithInvalidISRC_ShouldReturnNull()
     {
 
-        if (!_secretsAvailable) return;
 
 
         // Arrange
-        var mediaLinkService = _serviceProvider!.GetRequiredService<IMediaLinkService>();
+        var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         var invalidIsrc = "INVALID12345";
 
         // Act

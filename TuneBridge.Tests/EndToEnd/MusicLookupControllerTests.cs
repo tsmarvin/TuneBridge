@@ -16,34 +16,23 @@ namespace TuneBridge.Tests.EndToEnd;
 /// </summary>
 public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFactory>, IDisposable
 {
-    private readonly HttpClient? _client;
-    private readonly bool _secretsAvailable;
+    private readonly HttpClient _client;
 
     public MusicLookupControllerTests(CustomWebApplicationFactory factory)
     {
-        try
-        {
-            _client = factory.CreateClient();
-            _secretsAvailable = true;
-        }
-        catch
-        {
-            _secretsAvailable = false;
-        }
+        _client = factory.CreateClient();
     }
 
     [Fact]
     public async Task ByUrlList_WithValidAppleMusicUrl_ReturnsOkWithResults()
     {
-        if (!_secretsAvailable) return;
-
         // Arrange
         var request = new MusicLookupController.UrlReq(
             "https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806326"
         );
 
         // Act
-        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -55,7 +44,6 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
     [Fact]
     public async Task ByUrlList_WithValidSpotifyUrl_ReturnsOkWithResults()
     {
-        if (!_secretsAvailable) return;
 
         // Arrange
         var request = new MusicLookupController.UrlReq(
@@ -63,7 +51,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -75,7 +63,6 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
     [Fact]
     public async Task ByUrlList_WithMultipleUrls_ReturnsMultipleResults()
     {
-        if (!_secretsAvailable) return;
 
         // Arrange
         var request = new MusicLookupController.UrlReq(
@@ -84,7 +71,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -97,13 +84,12 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
     [Fact]
     public async Task ByIsrc_WithValidIsrc_ReturnsOkWithResult()
     {
-        if (!_secretsAvailable) return;
 
         // Arrange
         var request = new MusicLookupController.IsrcReq("GBUM71029604");
 
         // Act
-        var response = await _client!.PostAsJsonAsync("/music/lookup/isrc", request);
+        var response = await _client.PostAsJsonAsync("/music/lookup/isrc", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -115,13 +101,12 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
     [Fact]
     public async Task ByUpc_WithValidUpc_ReturnsOkWithResult()
     {
-        if (!_secretsAvailable) return;
 
         // Arrange
         var request = new MusicLookupController.UpcReq("00602547202307");
 
         // Act
-        var response = await _client!.PostAsJsonAsync("/music/lookup/upc", request);
+        var response = await _client.PostAsJsonAsync("/music/lookup/upc", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -133,13 +118,12 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
     [Fact]
     public async Task ByTitle_WithValidTitleAndArtist_ReturnsOkWithResult()
     {
-        if (!_secretsAvailable) return;
 
         // Arrange
         var request = new MusicLookupController.TitleReq("Bohemian Rhapsody", "Queen");
 
         // Act
-        var response = await _client!.PostAsJsonAsync("/music/lookup/title", request);
+        var response = await _client.PostAsJsonAsync("/music/lookup/title", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -151,7 +135,6 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
     [Fact]
     public async Task ByUrl_StreamingEndpoint_ReturnsResults()
     {
-        if (!_secretsAvailable) return;
 
         // Arrange
         var request = new MusicLookupController.UrlReq(
@@ -159,7 +142,7 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client!.PostAsJsonAsync("/music/lookup/url", request);
+        var response = await _client.PostAsJsonAsync("/music/lookup/url", request);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

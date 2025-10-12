@@ -8,29 +8,18 @@ namespace TuneBridge.Tests.EndToEnd;
 /// </summary>
 public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, IDisposable
 {
-    private readonly HttpClient? _client;
-    private readonly bool _secretsAvailable;
+    private readonly HttpClient _client;
 
     public HomeControllerTests(CustomWebApplicationFactory factory)
     {
-        try
-        {
-            _client = factory.CreateClient();
-            _secretsAvailable = true;
-        }
-        catch
-        {
-            _secretsAvailable = false;
-        }
+        _client = factory.CreateClient();
     }
 
     [Fact]
     public async Task Index_ReturnsSuccessStatusCode()
     {
-        if (!_secretsAvailable) return;
-
         // Act
-        var response = await _client!.GetAsync("/");
+        var response = await _client.GetAsync("/");
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -40,10 +29,8 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
     [Fact]
     public async Task Index_ContainsExpectedContent()
     {
-        if (!_secretsAvailable) return;
-
         // Act
-        var response = await _client!.GetAsync("/");
+        var response = await _client.GetAsync("/");
         var content = await response.Content.ReadAsStringAsync();
 
         // Assert
@@ -53,10 +40,9 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
     [Fact]
     public async Task Privacy_ReturnsSuccessStatusCode()
     {
-        if (!_secretsAvailable) return;
 
         // Act
-        var response = await _client!.GetAsync("/Home/Privacy");
+        var response = await _client.GetAsync("/Home/Privacy");
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -65,10 +51,8 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
     [Fact]
     public async Task Error_ReturnsSuccessStatusCode()
     {
-        if (!_secretsAvailable) return;
-
         // Act
-        var response = await _client!.GetAsync("/Home/Error");
+        var response = await _client.GetAsync("/Home/Error");
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -77,10 +61,8 @@ public class HomeControllerTests : IClassFixture<CustomWebApplicationFactory>, I
     [Fact]
     public async Task NonExistentRoute_ReturnsNotFound()
     {
-        if (!_secretsAvailable) return;
-
         // Act
-        var response = await _client!.GetAsync("/NonExistent/Route");
+        var response = await _client.GetAsync("/NonExistent/Route");
 
         // Assert
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

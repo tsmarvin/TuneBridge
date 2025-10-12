@@ -253,8 +253,6 @@ For local testing, create an `appsettings.json` in the test output directory wit
 }
 ```
 
-Or use the `run-tests.sh` script which creates this file from environment variables.
-
 Tests automatically run in CI/CD pipelines when configured with appropriate GitHub secrets.
 
 ## Technology Stack
