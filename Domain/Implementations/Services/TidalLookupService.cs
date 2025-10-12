@@ -229,7 +229,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         }
 
         private static string GetAlbumArtUrl( JsonElement element ) {
-            // First, try to get images array (similar to Spotify) - provides direct URLs to different sizes
+            // Try to get images array - provides direct URLs to different sizes
             if (element.TryGetProperty( "images", out JsonElement imagesProps )) {
                 if (imagesProps.ValueKind == JsonValueKind.Array && imagesProps.GetArrayLength( ) > 0) {
                     // Find the largest image by comparing width * height
@@ -259,15 +259,8 @@ namespace TuneBridge.Domain.Implementations.Services {
                 }
             }
             
-            // Fall back to cover UUID (if images array not available)
-            if (element.TryGetProperty( "cover", out JsonElement coverProp )) {
-                string? cover = coverProp.GetString();
-                if (!string.IsNullOrEmpty(cover)) {
-                    // Tidal cover IDs need to be formatted as URLs - using 1280x1280 for highest quality
-                    return $"https://resources.tidal.com/images/{cover.Replace('-', '/')}/1280x1280.jpg";
-                }
-            } else if (element.TryGetProperty( "album", out JsonElement albumProps )) {
-                // Try images array from album object
+            // Try images array from album object
+            if (element.TryGetProperty( "album", out JsonElement albumProps )) {
                 if (albumProps.TryGetProperty( "images", out JsonElement albumImagesProps )) {
                     if (albumImagesProps.ValueKind == JsonValueKind.Array && albumImagesProps.GetArrayLength( ) > 0) {
                         // Find the largest image by comparing width * height
@@ -296,15 +289,8 @@ namespace TuneBridge.Domain.Implementations.Services {
                         }
                     }
                 }
-                
-                // Fall back to cover UUID from album object
-                if (albumProps.TryGetProperty( "cover", out JsonElement albumCoverProp )) {
-                    string? cover = albumCoverProp.GetString();
-                    if (!string.IsNullOrEmpty(cover)) {
-                        return $"https://resources.tidal.com/images/{cover.Replace('-', '/')}/1280x1280.jpg";
-                    }
-                }
             }
+            
             return string.Empty;
         }
 
