@@ -8,9 +8,10 @@ namespace TuneBridge.Tests.Unit;
 /// Unit tests for configuration validation and error handling.
 /// Tests edge cases and invalid configurations.
 /// </summary>
+[TestClass]
 public class ConfigurationValidationTests
 {
-    [Fact]
+    [TestMethod]
     public void AddTuneBridgeServices_WithMissingAppleKeyFile_ShouldThrowFileNotFoundException()
     {
         // Arrange
@@ -32,12 +33,12 @@ public class ConfigurationValidationTests
         services.AddLogging();
 
         // Act & Assert
-        var exception = Assert.Throws<FileNotFoundException>(() =>
+        var exception = Assert.ThrowsException<FileNotFoundException>(() =>
             services.AddTuneBridgeServices(configuration));
-        Assert.Contains(".p8", exception.Message);
+        Assert.IsTrue(exception.Message.Contains(".p8"));
     }
 
-    [Fact]
+    [TestMethod]
     public void AddTuneBridgeServices_WithEmptyAppleKeyFile_ShouldThrowInvalidDataException()
     {
         // Arrange
@@ -64,9 +65,9 @@ public class ConfigurationValidationTests
             services.AddLogging();
 
             // Act & Assert
-            var exception = Assert.Throws<InvalidDataException>(() =>
+            var exception = Assert.ThrowsException<InvalidDataException>(() =>
                 services.AddTuneBridgeServices(configuration));
-            Assert.Contains("missing contents", exception.Message);
+            Assert.IsTrue(exception.Message.Contains("missing contents"));
         }
         finally
         {
@@ -77,7 +78,7 @@ public class ConfigurationValidationTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void AddTuneBridgeServices_WithNoProviders_ShouldThrowInvalidOperationException()
     {
         // Arrange
@@ -100,12 +101,12 @@ public class ConfigurationValidationTests
         services.AddLogging();
 
         // Act & Assert
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
             services.AddTuneBridgeServices(configuration));
-        Assert.Contains("Required settings are missing", exception.Message);
+        Assert.IsTrue(exception.Message.Contains("Required settings are missing"));
     }
 
-    [Fact]
+    [TestMethod]
     public void AddTuneBridgeServices_WithOnlySpotifyCredentials_ShouldSucceed()
     {
         // Arrange
@@ -132,6 +133,6 @@ public class ConfigurationValidationTests
         var serviceProvider = services.BuildServiceProvider();
 
         // Assert
-        Assert.NotNull(serviceProvider);
+        Assert.IsNotNull(serviceProvider);
     }
 }

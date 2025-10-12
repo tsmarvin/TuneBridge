@@ -14,16 +14,27 @@ namespace TuneBridge.Tests.EndToEnd;
 /// End-to-end tests for the MusicLookupController API endpoints.
 /// These tests verify the full request/response cycle including routing, serialization, and service integration.
 /// </summary>
-public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFactory>, IDisposable
+[TestClass]
+public class MusicLookupControllerTests
 {
-    private readonly HttpClient _client;
+    private static WebApplicationFactory<Program>? _factory;
+    private static HttpClient? _client;
 
-    public MusicLookupControllerTests(CustomWebApplicationFactory factory)
+    [ClassInitialize]
+    public static void ClassInitialize(TestContext context)
     {
-        _client = factory.CreateClient();
+        _factory = new CustomWebApplicationFactory();
+        _client = _factory.CreateClient();
     }
 
-    [Fact]
+    [ClassCleanup]
+    public static void ClassCleanup()
+    {
+        _client?.Dispose();
+        _factory?.Dispose();
+    }
+
+    [TestMethod]
     public async Task ByUrlList_WithValidAppleMusicUrl_ReturnsOkWithResults()
     {
         // Arrange
@@ -32,16 +43,16 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>();
-        Assert.NotNull(results);
-        Assert.NotEmpty(results);
+        Assert.IsNotNull(results);
+        Assert.IsTrue(results!.Count > 0, "Results should not be empty");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ByUrlList_WithValidSpotifyUrl_ReturnsOkWithResults()
     {
 
@@ -51,16 +62,16 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>();
-        Assert.NotNull(results);
-        Assert.NotEmpty(results);
+        Assert.IsNotNull(results);
+        Assert.IsTrue(results!.Count > 0, "Results should not be empty");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ByUrlList_WithMultipleUrls_ReturnsMultipleResults()
     {
 
@@ -71,17 +82,17 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/urlList", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>();
-        Assert.NotNull(results);
+        Assert.IsNotNull(results);
         // Should have at least one result (deduplication may occur if URLs point to same content)
-        Assert.NotEmpty(results);
+        Assert.IsTrue(results!.Count > 0, "Results should not be empty");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ByIsrc_WithValidIsrc_ReturnsOkWithResult()
     {
 
@@ -89,16 +100,16 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         var request = new MusicLookupController.IsrcReq("GBUM71029604");
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/isrc", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/isrc", request);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<MediaLinkResult>();
-        Assert.NotNull(result);
-        Assert.NotEmpty(result.Results);
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Results.Count > 0, "result.Results should not be empty");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ByUpc_WithValidUpc_ReturnsOkWithResult()
     {
 
@@ -106,16 +117,16 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         var request = new MusicLookupController.UpcReq("00602547202307");
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/upc", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/upc", request);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<MediaLinkResult>();
-        Assert.NotNull(result);
-        Assert.NotEmpty(result.Results);
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Results.Count > 0, "result.Results should not be empty");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ByTitle_WithValidTitleAndArtist_ReturnsOkWithResult()
     {
 
@@ -123,16 +134,16 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         var request = new MusicLookupController.TitleReq("Bohemian Rhapsody", "Queen");
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/title", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/title", request);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<MediaLinkResult>();
-        Assert.NotNull(result);
-        Assert.NotEmpty(result.Results);
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Results.Count > 0, "result.Results should not be empty");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ByUrl_StreamingEndpoint_ReturnsResults()
     {
 
@@ -142,12 +153,12 @@ public class MusicLookupControllerTests : IClassFixture<CustomWebApplicationFact
         );
 
         // Act
-        var response = await _client.PostAsJsonAsync("/music/lookup/url", request);
+        var response = await _client!.PostAsJsonAsync("/music/lookup/url", request);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var content = await response.Content.ReadAsStringAsync();
-        Assert.NotEmpty(content);
+        Assert.IsTrue(content.Length > 0, "content should not be empty");
     }
 
     public void Dispose()

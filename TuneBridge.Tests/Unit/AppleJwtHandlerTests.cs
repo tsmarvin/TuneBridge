@@ -7,14 +7,16 @@ namespace TuneBridge.Tests.Unit;
 /// Unit tests for AppleJwtHandler to verify JWT token generation.
 /// Tests the creation and formatting of authentication tokens for Apple MusicKit API.
 /// </summary>
-public class AppleJwtHandlerTests : IDisposable
+[TestClass]
+public class AppleJwtHandlerTests
 {
     private string _testKeyPath = null!;
     private string _testKeyContents = null!;
     private const string TestTeamId = "TEST123456";
     private const string TestKeyId = "KEY1234567";
 
-    public AppleJwtHandlerTests()
+    [TestInitialize]
+    public void Initialize()
     {
         // Generate a valid ES256 (P-256) private key for testing
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -40,26 +42,26 @@ public class AppleJwtHandlerTests : IDisposable
         File.WriteAllText(_testKeyPath, _testKeyContents);
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_WithValidParameters_ShouldCreateInstance()
     {
         // Act & Assert
         var handler = new AppleJwtHandler(TestTeamId, TestKeyId, _testKeyContents);
-        Assert.NotNull(handler);
+        Assert.IsNotNull(handler);
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_WithInvalidKey_ShouldThrowException()
     {
         // Arrange
         var invalidKeyContents = "-----BEGIN PRIVATE KEY-----\nINVALID\n-----END PRIVATE KEY-----";
 
         // Act & Assert - Invalid key should throw either CryptographicException or ArgumentException
-        Assert.ThrowsAny<Exception>(() => 
+        Assert.ThrowsException<ArgumentException>(() => 
             new AppleJwtHandler(TestTeamId, TestKeyId, invalidKeyContents));
     }
 
-    [Fact]
+    [TestMethod]
     public void GetAuthHeader_ShouldReturnBearerToken()
     {
         // Arrange
@@ -69,13 +71,13 @@ public class AppleJwtHandlerTests : IDisposable
         var authHeader = handler.NewAuthenticationHeader();
 
         // Assert
-        Assert.NotNull(authHeader);
-        Assert.Equal("Bearer", authHeader.Scheme);
-        Assert.NotNull(authHeader.Parameter);
-        Assert.NotEmpty(authHeader.Parameter);
+        Assert.IsNotNull(authHeader);
+        Assert.AreEqual("Bearer", authHeader.Scheme);
+        Assert.IsNotNull(authHeader.Parameter);
+        Assert.IsTrue(authHeader.Parameter.Length > 0);
     }
 
-    [Fact]
+    [TestMethod]
     public void GetAuthHeader_ShouldReturnValidJwtStructure()
     {
         // Arrange
@@ -86,15 +88,18 @@ public class AppleJwtHandlerTests : IDisposable
         var token = authHeader.Parameter;
 
         // Assert - JWT should have 3 parts separated by dots
-        Assert.NotNull(token);
+        Assert.IsNotNull(token);
         var parts = token.Split('.');
-        Assert.Equal(3, parts.Length);
+        Assert.AreEqual(3, parts.Length);
         
         // Each part should be base64url encoded (not empty)
-        Assert.All(parts, part => Assert.NotEmpty(part));
+        foreach (var part in parts)
+        {
+            Assert.IsTrue(part.Length > 0);
+        }
     }
 
-    [Fact]
+    [TestMethod]
     public void GetAuthHeader_CalledMultipleTimes_ShouldReturnDifferentTokens()
     {
         // Arrange
@@ -106,10 +111,11 @@ public class AppleJwtHandlerTests : IDisposable
         var token2 = handler.NewAuthenticationHeader().Parameter;
 
         // Assert - Tokens should be different due to different timestamps
-        Assert.NotEqual(token1, token2);
+        Assert.AreNotEqual(token1, token2);
     }
 
-    public void Dispose()
+    [TestCleanup]
+    public void Cleanup()
     {
         if (File.Exists(_testKeyPath))
         {

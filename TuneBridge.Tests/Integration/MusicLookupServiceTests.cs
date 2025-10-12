@@ -9,11 +9,13 @@ namespace TuneBridge.Tests.Integration;
 /// Integration tests for music lookup services (Apple Music and Spotify).
 /// These tests require valid API credentials in appsettings.json.
 /// </summary>
-public class MusicLookupServiceTests : IDisposable
+[TestClass]
+public class MusicLookupServiceTests
 {
-    private readonly IServiceProvider _serviceProvider;
+    private IServiceProvider _serviceProvider = null!;
 
-    public MusicLookupServiceTests()
+    [TestInitialize]
+    public void Initialize()
     {
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
@@ -29,7 +31,7 @@ public class MusicLookupServiceTests : IDisposable
         _serviceProvider = services.BuildServiceProvider();
     }
 
-    [Fact]
+    [TestMethod]
     public void ServiceRegistration_WithValidSecrets_ShouldRegisterMediaLinkService()
     {
 
@@ -37,10 +39,10 @@ public class MusicLookupServiceTests : IDisposable
         var mediaLinkService = _serviceProvider.GetService<IMediaLinkService>();
 
         // Assert
-        Assert.NotNull(mediaLinkService);
+        Assert.IsNotNull(mediaLinkService);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetInfoByISRC_WithValidISRC_ShouldReturnResult()
     {
 
@@ -53,15 +55,15 @@ public class MusicLookupServiceTests : IDisposable
         var result = await mediaLinkService.GetInfoByISRCAsync(isrc);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.NotEmpty(result.Results);
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Results.Count > 0, "result.Results should not be empty");
         var firstResult = result.Results.First().Value;
-        Assert.False(firstResult.IsAlbum ?? true);
-        Assert.NotNull(firstResult.Title);
-        Assert.NotNull(firstResult.Artist);
+        Assert.IsFalse(firstResult.IsAlbum ?? true);
+        Assert.IsNotNull(firstResult.Title);
+        Assert.IsNotNull(firstResult.Artist);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetInfoByUPC_WithValidUPC_ShouldReturnResult()
     {
 
@@ -76,15 +78,15 @@ public class MusicLookupServiceTests : IDisposable
         var result = await mediaLinkService.GetInfoByUPCAsync(upc);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.NotEmpty(result.Results);
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Results.Count > 0, "result.Results should not be empty");
         var firstResult = result.Results.First().Value;
-        Assert.True(firstResult.IsAlbum ?? false);
-        Assert.NotNull(firstResult.Title);
-        Assert.NotNull(firstResult.Artist);
+        Assert.IsTrue(firstResult.IsAlbum ?? false);
+        Assert.IsNotNull(firstResult.Title);
+        Assert.IsNotNull(firstResult.Artist);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetInfoByTitle_WithValidTitleAndArtist_ShouldReturnResult()
     {
 
@@ -99,15 +101,15 @@ public class MusicLookupServiceTests : IDisposable
         var result = await mediaLinkService.GetInfoAsync(title, artist);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.NotEmpty(result.Results);
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Results.Count > 0, "result.Results should not be empty");
         var firstResult = result.Results.First().Value;
-        Assert.NotNull(firstResult.Title);
-        Assert.NotNull(firstResult.Artist);
-        Assert.Contains("Bohemian", firstResult.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.IsNotNull(firstResult.Title);
+        Assert.IsNotNull(firstResult.Artist);
+        Assert.IsTrue(firstResult.Title?.Contains("Bohemian", StringComparison.OrdinalIgnoreCase) == true, "Title should contain Bohemian");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetInfoByUrl_WithAppleMusicUrl_ShouldReturnResult()
     {
 
@@ -125,15 +127,15 @@ public class MusicLookupServiceTests : IDisposable
         }
 
         // Assert
-        Assert.NotEmpty(results);
+        Assert.IsTrue(results.Count > 0, "Results collection should not be empty");
         var firstResult = results[0];
-        Assert.NotEmpty(firstResult.Results);
+        Assert.IsTrue(firstResult.Results.Count > 0, "firstResult.Results should not be empty");
         var firstLookup = firstResult.Results.First().Value;
-        Assert.NotNull(firstLookup.Title);
-        Assert.NotNull(firstLookup.Artist);
+        Assert.IsNotNull(firstLookup.Title);
+        Assert.IsNotNull(firstLookup.Artist);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetInfoByUrl_WithSpotifyUrl_ShouldReturnResult()
     {
 
@@ -151,15 +153,15 @@ public class MusicLookupServiceTests : IDisposable
         }
 
         // Assert
-        Assert.NotEmpty(results);
+        Assert.IsTrue(results.Count > 0, "Results collection should not be empty");
         var firstResult = results[0];
-        Assert.NotEmpty(firstResult.Results);
+        Assert.IsTrue(firstResult.Results.Count > 0, "firstResult.Results should not be empty");
         var firstLookup = firstResult.Results.First().Value;
-        Assert.NotNull(firstLookup.Title);
-        Assert.NotNull(firstLookup.Artist);
+        Assert.IsNotNull(firstLookup.Title);
+        Assert.IsNotNull(firstLookup.Artist);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetInfoByISRC_WithInvalidISRC_ShouldReturnNull()
     {
 
@@ -173,10 +175,11 @@ public class MusicLookupServiceTests : IDisposable
         var result = await mediaLinkService.GetInfoByISRCAsync(invalidIsrc);
 
         // Assert - Should handle gracefully, either null or empty results
-        Assert.True(result == null || result.Results.Count == 0);
+        Assert.IsTrue(result == null || result.Results.Count == 0);
     }
 
-    public void Dispose()
+    [TestCleanup]
+    public void Cleanup()
     {
         (_serviceProvider as IDisposable)?.Dispose();
     }
