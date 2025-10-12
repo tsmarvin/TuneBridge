@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**TuneBridge** is a cross-platform music link converter and lookup service that bridges Apple Music and Spotify. The application provides:
+**TuneBridge** is a cross-platform music link converter and lookup service that bridges music providers (such as Apple Music and Spotify). The application provides:
 - Web-based lookup interface for music link conversion
 - RESTful API endpoints for programmatic access
 - Discord bot integration for automatic link conversion in chat messages
@@ -23,10 +23,10 @@
 - **C#** with nullable reference types enabled
 
 ### Key Libraries
-- **NetCord** (v1.0.0-alpha.431) - Discord bot library for gateway events
-- **NetCord.Hosting** (v1.0.0-alpha.431) - Discord bot hosting integration
-- **Microsoft.Extensions.Http.Resilience** (v9.9.0) - HTTP resilience with retry policies
-- **Microsoft.IdentityModel.JsonWebTokens** (v8.14.0) - JWT token handling for Apple Music API
+- **NetCord** - Discord bot library for gateway events
+- **NetCord.Hosting** - Discord bot hosting integration
+- **Microsoft.Extensions.Http.Resilience** - HTTP resilience with retry policies
+- **Microsoft.IdentityModel.JsonWebTokens** - JWT token handling for Apple Music API
 
 ### Testing Framework
 - **MSTest** - Primary testing framework
