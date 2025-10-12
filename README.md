@@ -60,11 +60,17 @@ TuneBridge requires API credentials for Apple Music and Spotify. SoundCloud cred
 
 #### SoundCloud API Credentials (Optional)
 
-1. Visit [SoundCloud for Developers](https://soundcloud.com/you/apps)
-2. Create a new app
-3. Note your Client ID and Client Secret
+**Note:** As of 2024, SoundCloud has changed their API access process. You must request access through their support system:
 
-**Note:** SoundCloud API access may be limited. The application will function without SoundCloud credentials, but SoundCloud lookup will be disabled.
+1. Visit the [SoundCloud Help Center](https://help.soundcloud.com/hc/en-us/requests/new)
+2. Contact their support chatbot to request API access (the chatbot widget may require Chrome browser to display properly)
+3. Submit a support ticket explaining your use case
+4. Wait for approval and credential provisioning
+
+**Important:** 
+- The chatbot widget may not display in all browsers (Edge, Safari, Firefox). Use Chrome if you encounter issues.
+- API access approval is not guaranteed and may take time.
+- The application will function without SoundCloud credentials, but SoundCloud lookup will be disabled.
 
 #### Discord Bot Token
 

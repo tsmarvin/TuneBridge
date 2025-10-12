@@ -14,9 +14,9 @@
     /// See <seealso href="https://developer.spotify.com/documentation/general/guides/app-settings/#register-your-app">this link</seealso>
     /// for more details. <para/>
     ///
-    /// SoundCloud API credentials can be obtained by registering an app in the SoundCloud Developers portal.
-    /// See <seealso href="https://soundcloud.com/you/apps">this link</seealso>
-    /// for more details. <para/>
+    /// SoundCloud API credentials must be requested through SoundCloud support.
+    /// See <seealso href="https://help.soundcloud.com/hc/en-us/requests/new">this link</seealso>
+    /// to submit a support ticket requesting API access. <para/>
     ///
     /// A Discord bot token can be obtained by creating an app in the Discord Developer Portal.
     /// See <seealso href="https://discord.com/developers/docs/quick-start/getting-started">this link</seealso>
