@@ -12,16 +12,17 @@ namespace TuneBridge.Tests.Helpers;
 /// - SpotifyClientId from SPOTIFYCLIENTID secret
 /// - SpotifyClientSecret from SPOTIFYCLIENTSECRET secret
 /// - DiscordToken from DISCORDTOKEN secret
+/// 
+/// Note: The appsettings.json template is transformed by the transform-appsettings.sh script
+/// before tests run, similar to how Docker's entrypoint.sh transforms it for containers.
 /// </summary>
 public static class TestConfiguration
 {
     private static string? _testAppleKeyPath;
-    private static string? _testAppSettingsPath;
 
     /// <summary>
     /// Creates a configuration for tests, prioritizing environment variables for secrets.
     /// This is designed to work both in CI/CD with GitHub secrets and locally with environment variables.
-    /// Creates a temporary appsettings.json file with values from environment variables.
     /// </summary>
     public static IConfiguration CreateConfiguration()
     {
@@ -45,31 +46,6 @@ public static class TestConfiguration
             _testAppleKeyPath = tempConfig["APPLEKEYPATH"];
         }
         
-        // Create a temporary appsettings.json file with actual values
-        // This replaces the template placeholders just like the Docker entrypoint does
-        _testAppSettingsPath = Path.Combine(Path.GetTempPath(), $"test_appsettings_{Guid.NewGuid()}.json");
-        var appSettingsContent = $$"""
-        {
-          "TuneBridge": {
-            "NodeNumber": {{tempConfig["NODENUMBER"] ?? "0"}},
-            "AppleTeamId": "{{tempConfig["APPLETEAMID"] ?? ""}}",
-            "AppleKeyId": "{{tempConfig["APPLEKEYID"] ?? ""}}",
-            "AppleKeyPath": "{{(_testAppleKeyPath ?? "").Replace("\\", "\\\\")}}",
-            "SpotifyClientId": "{{tempConfig["SPOTIFYCLIENTID"] ?? ""}}",
-            "SpotifyClientSecret": "{{tempConfig["SPOTIFYCLIENTSECRET"] ?? ""}}",
-            "DiscordToken": "{{tempConfig["DISCORDTOKEN"] ?? ""}}"
-          },
-          "Logging": {
-            "LogLevel": {
-              "Default": "Warning",
-              "Microsoft.Hosting.Lifetime": "Warning"
-            }
-          },
-          "AllowedHosts": "*"
-        }
-        """;
-        File.WriteAllText(_testAppSettingsPath, appSettingsContent);
-        
         // Create in-memory configuration with mapped values
         var inMemoryConfig = new Dictionary<string, string?>
         {
@@ -91,11 +67,6 @@ public static class TestConfiguration
     }
     
     /// <summary>
-    /// Gets the path to the temporary appsettings.json file created for testing.
-    /// </summary>
-    public static string? GetTestAppSettingsPath() => _testAppSettingsPath;
-    
-    /// <summary>
     /// Checks if all required secrets are available for running integration tests.
     /// </summary>
     public static bool AreSecretsAvailable()
@@ -115,7 +86,7 @@ public static class TestConfiguration
     }
     
     /// <summary>
-    /// Cleans up any temporary files created during testing (like the Apple key file and appsettings.json).
+    /// Cleans up any temporary files created during testing (like the Apple key file).
     /// </summary>
     public static void Cleanup()
     {
@@ -124,18 +95,6 @@ public static class TestConfiguration
             try
             {
                 File.Delete(_testAppleKeyPath);
-            }
-            catch
-            {
-                // Ignore cleanup errors
-            }
-        }
-        
-        if (!string.IsNullOrEmpty(_testAppSettingsPath) && File.Exists(_testAppSettingsPath))
-        {
-            try
-            {
-                File.Delete(_testAppSettingsPath);
             }
             catch
             {

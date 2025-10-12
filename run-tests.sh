@@ -49,6 +49,12 @@ echo "Building solution..."
 dotnet build --no-restore --configuration Release
 echo ""
 
+# Transform appsettings.json for tests
+echo "Transforming appsettings.json..."
+chmod +x ./transform-appsettings.sh
+./transform-appsettings.sh
+echo ""
+
 # Run Unit Tests (always run, don't need secrets)
 echo "==================================="
 echo "Running Unit Tests"

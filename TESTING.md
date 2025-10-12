@@ -21,7 +21,9 @@ To run integration and end-to-end tests, you need valid API credentials. See the
 
 ## Configuration
 
-Tests use a separate `appsettings.test.json` file that gets copied to the test output as `appsettings.json`. This allows the main application's `appsettings.json` to maintain its template format for Docker container deployment while tests use a valid JSON file with values populated from environment variables.
+The test suite uses the same `appsettings.json` template file as the Docker deployment. Before tests run, the `transform-appsettings.sh` script transforms the template placeholders with actual values from environment variables - the same approach used by Docker's `entrypoint.sh`.
+
+This ensures there's only one appsettings.json template in the codebase that serves both Docker deployment and test environments.
 
 The test framework uses environment variables to access API credentials and configuration. The following table shows the mapping between GitHub secrets/variables and environment variables:
 

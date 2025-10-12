@@ -25,12 +25,4 @@
     <ProjectReference Include="..\TuneBridge.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Copy test appsettings.json to output directory as appsettings.json -->
-    <None Update="appsettings.test.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <TargetPath>appsettings.json</TargetPath>
-    </None>
-  </ItemGroup>
-
 </Project>

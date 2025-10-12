@@ -38,6 +38,19 @@ jobs:
           echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
         if: ${{ secrets.APPLEPRIVATEKEY != '' }}
 
+      - name: Transform appsettings.json for tests
+        run: |
+          chmod +x ./transform-appsettings.sh
+          ./transform-appsettings.sh
+        env:
+          NODENUMBER: ${{ vars.NODENUMBER || '0' }}
+          APPLETEAMID: ${{ secrets.APPLETEAMID }}
+          APPLEKEYID: ${{ secrets.APPLEKEYID }}
+          APPLEKEYPATH: /tmp/test-keys/apple_key.p8
+          SPOTIFYCLIENTID: ${{ secrets.SPOTIFYCLIENTID }}
+          SPOTIFYCLIENTSECRET: ${{ secrets.SPOTIFYCLIENTSECRET }}
+          DISCORDTOKEN: ${{ secrets.DISCORDTOKEN }}
+
       - name: Run Unit Tests
         run: dotnet test TuneBridge.Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
         env:
