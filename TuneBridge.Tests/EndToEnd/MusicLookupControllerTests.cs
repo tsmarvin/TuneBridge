@@ -39,7 +39,7 @@ public class MusicLookupControllerTests
     {
         // Arrange
         var request = new MusicLookupController.UrlReq(
-            "https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806326"
+            "https://music.apple.com/us/album/bohemian-rhapsody/1440806041"
         );
 
         // Act
