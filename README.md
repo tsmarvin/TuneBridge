@@ -202,6 +202,28 @@ The application exposes port `10000` by default and is designed to be deployed b
 
 **Note**: Public hosting location is TBD.
 
+## Testing
+
+TuneBridge includes a comprehensive test suite with unit, integration, and end-to-end tests.
+
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test service integration with external APIs  
+- **End-to-End Tests**: Test complete application flows including API endpoints
+
+For detailed information on running tests locally and in CI, see [TESTING.md](TESTING.md).
+
+### Quick Start
+
+```bash
+# Run all tests
+dotnet test
+
+# Run only unit tests (no API credentials needed)
+dotnet test --filter "FullyQualifiedName~Unit"
+```
+
+Tests automatically run in CI/CD pipelines when configured with appropriate GitHub secrets.
+
 ## Technology Stack
 
 - **.NET 9.0** - Cross-platform framework
