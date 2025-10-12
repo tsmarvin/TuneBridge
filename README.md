@@ -30,8 +30,7 @@ TuneBridge requires API credentials for Apple Music and Spotify. SoundCloud cred
 | `APPLE_KEY_PATH` | Path to your Apple Music private key (.p8 file) | Yes |
 | `SPOTIFY_CLIENT_ID` | Your Spotify API Client ID | Yes |
 | `SPOTIFY_CLIENT_SECRET` | Your Spotify API Client Secret | Yes |
-| `SOUNDCLOUD_CLIENT_ID` | Your SoundCloud API Client ID | No |
-| `SOUNDCLOUD_CLIENT_SECRET` | Your SoundCloud API Client Secret | No |
+| `SOUNDCLOUD_CLIENT_ID` | Your SoundCloud API Client ID (used as query parameter) | No |
 | `DISCORD_TOKEN` | Your Discord bot token | No |
 
 ### Optional Environment Variables
@@ -65,11 +64,12 @@ TuneBridge requires API credentials for Apple Music and Spotify. SoundCloud cred
 1. Visit the [SoundCloud Help Center](https://help.soundcloud.com/hc/en-us/requests/new)
 2. Contact their support chatbot to request API access (the chatbot widget may require Chrome browser to display properly)
 3. Submit a support ticket explaining your use case
-4. Wait for approval and credential provisioning
+4. Wait for approval and receive your Client ID
 
 **Important:** 
 - The chatbot widget may not display in all browsers (Edge, Safari, Firefox). Use Chrome if you encounter issues.
 - API access approval is not guaranteed and may take time.
+- SoundCloud API v2 uses client_id as a query parameter (no client secret required).
 - The application will function without SoundCloud credentials, but SoundCloud lookup will be disabled.
 
 #### Discord Bot Token
@@ -91,7 +91,6 @@ export APPLE_KEY_PATH="/app/key.p8"
 export SPOTIFY_CLIENT_ID="your_client_id"
 export SPOTIFY_CLIENT_SECRET="your_client_secret"
 export SOUNDCLOUD_CLIENT_ID="your_soundcloud_client_id"
-export SOUNDCLOUD_CLIENT_SECRET="your_soundcloud_client_secret"
 export DISCORD_TOKEN="your_bot_token"
 ```
 
@@ -105,7 +104,6 @@ docker run -p 10000:10000 \
   -e SPOTIFY_CLIENT_ID \
   -e SPOTIFY_CLIENT_SECRET \
   -e SOUNDCLOUD_CLIENT_ID \
-  -e SOUNDCLOUD_CLIENT_SECRET \
   -e DISCORD_TOKEN \
   -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
   tunebridge
@@ -130,7 +128,6 @@ The application will be available at `http://localhost:10000`
     "SpotifyClientId": "your_client_id",
     "SpotifyClientSecret": "your_client_secret",
     "SoundCloudClientId": "your_soundcloud_client_id",
-    "SoundCloudClientSecret": "your_soundcloud_client_secret",
     "DiscordToken": "your_bot_token"
   }
 }

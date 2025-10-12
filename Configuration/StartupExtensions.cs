@@ -100,19 +100,12 @@ namespace TuneBridge.Configuration {
             }
 
             // Register SoundCloud if credentials are present.
-            if (string.IsNullOrWhiteSpace( settings.SoundCloudClientId ) == false &&
-                string.IsNullOrWhiteSpace( settings.SoundCloudClientSecret ) == false
-            ) {
-                _ = services.AddHttpClient( "soundcloud-auth", c => {
-                    c.BaseAddress = new Uri( "https://api.soundcloud.com/" );
-                } ).AddStandardResilience( );
-
+            if (string.IsNullOrWhiteSpace( settings.SoundCloudClientId ) == false) {
                 _ = services.AddHttpClient( "soundcloud-api", c => {
                     c.BaseAddress = new Uri( "https://api-v2.soundcloud.com/" );
                 } ).AddStandardResilience( );
 
-                _ = services.AddSingleton( new SoundCloudCredentials( settings.SoundCloudClientId, settings.SoundCloudClientSecret ) );
-                _ = services.AddTransient<SoundCloudTokenHandler>( );
+                _ = services.AddSingleton( new SoundCloudCredentials( settings.SoundCloudClientId ) );
                 _ = services.AddTransient<SoundCloudLookupService>( );
 
                 _ = enabledProviders.Add( SupportedProviders.SoundCloud );

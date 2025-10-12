@@ -1,41 +1,24 @@
-using System.Text;
-
 namespace TuneBridge.Domain.Implementations.Auth {
 
     /// <summary>
-    /// Encapsulates SoundCloud API credentials (Client ID and Client Secret) and automatically encodes them
-    /// in the Base64 format required for OAuth 2.0 Basic authentication. This class is immutable and
-    /// thread-safe, designed to be registered as a singleton in dependency injection.
+    /// Encapsulates SoundCloud API credentials. SoundCloud API v2 currently uses client_id 
+    /// as a query parameter for authentication rather than OAuth tokens.
+    /// This class is immutable and thread-safe, designed to be registered as a singleton in dependency injection.
     /// </summary>
     /// <param name="clientId">
-    /// The Client ID from your SoundCloud app. This is a public identifier safe to log
-    /// and expose in non-production environments.
-    /// </param>
-    /// <param name="clientSecret">
-    /// The Client Secret from your SoundCloud app. This is a sensitive credential that
-    /// must be kept confidential. Should be stored in environment variables or secure configuration,
-    /// never committed to source control.
+    /// The Client ID from your SoundCloud app. This is used as a query parameter in API requests.
     /// </param>
     /// <remarks>
-    /// Credentials are obtained by creating an app at: https://soundcloud.com/you/apps
-    /// The encoded credentials are used in the Authorization header when requesting OAuth tokens.
+    /// Credentials are obtained by requesting API access via SoundCloud support.
+    /// See: https://help.soundcloud.com/hc/en-us/requests/new
     /// </remarks>
     public sealed class SoundCloudCredentials(
-        string clientId,
-        string clientSecret
+        string clientId
     ) {
         /// <summary>
-        /// The Client ID for SoundCloud API requests. SoundCloud API uses client_id as a query parameter.
+        /// The Client ID for SoundCloud API requests. Used as a query parameter in API calls.
         /// </summary>
         public string ClientId { get; } = clientId;
-
-        /// <summary>
-        /// The Base64-encoded representation of "clientId:clientSecret", ready for use in HTTP Basic
-        /// authentication headers. This is the format required by the SoundCloud token endpoint per
-        /// OAuth 2.0 client credentials specification (RFC 6749, Section 2.3.1).
-        /// </summary>
-        public string Credentials { get; }
-            = Convert.ToBase64String( Encoding.UTF8.GetBytes( $"{clientId}:{clientSecret}" ) );
     }
 
 }

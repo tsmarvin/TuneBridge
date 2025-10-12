@@ -12,18 +12,16 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// <summary>
     /// An <see cref="IMusicLookupService"/> implementation for <see cref="SupportedProviders.SoundCloud"/>
     /// </summary>
-    /// <param name="handler">The <see cref="SoundCloudTokenHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
+    /// <param name="credentials">The <see cref="SoundCloudCredentials"/> containing the client_id for API authentication. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
     /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
     /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
     /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-#pragma warning disable CS9113 // Parameter 'handler' is unread - kept for future OAuth implementation
     public sealed partial class SoundCloudLookupService(
-        SoundCloudTokenHandler handler,
+        SoundCloudCredentials credentials,
         IHttpClientFactory factory,
         ILogger<SoundCloudLookupService> logger,
         JsonSerializerOptions serializerOptions
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
-#pragma warning restore CS9113
 
         public override SupportedProviders Provider => SupportedProviders.SoundCloud;
 
@@ -40,7 +38,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
             string query = $"{artist} {title}";
             string? body = await NewMusicApiRequest(
-                SoundCloudLinkParser.GetTrackSearchURI( query ),
+                AddClientIdToUri( SoundCloudLinkParser.GetTrackSearchURI( query ) ),
                 $"search for '{query}' "
             );
 
@@ -51,7 +49,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             if (SoundCloudLinkParser.TryParseUri( uri, out SoundCloudEntity kind, out string url )) {
                 if (kind == SoundCloudEntity.Track) {
                     string? body = await NewMusicApiRequest(
-                        SoundCloudLinkParser.GetResolveURI( url ),
+                        AddClientIdToUri( SoundCloudLinkParser.GetResolveURI( url ) ),
                         UriLookupKey
                     );
                     return ParseSoundCloudResponse( body, UriLookupKey, kind, true );
@@ -62,9 +60,14 @@ namespace TuneBridge.Domain.Implementations.Services {
 
         private protected override Task<HttpClient> CreateAuthenticatedClientAsync( ) {
             HttpClient client = factory.CreateClient("soundcloud-api");
-            // SoundCloud API uses client_id query parameter for authentication
-            // OAuth token is optional for public endpoints
+            // SoundCloud API v2 uses client_id query parameter for authentication
+            // All requests need to append ?client_id={ClientId} to the URL
             return Task.FromResult( client );
+        }
+
+        private string AddClientIdToUri( string uri ) {
+            string separator = uri.Contains('?') ? "&" : "?";
+            return $"{uri}{separator}client_id={credentials.ClientId}";
         }
 
         private MusicLookupResultDto? ParseSoundCloudSearchResponse(

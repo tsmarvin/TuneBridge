@@ -16,7 +16,7 @@
     ///
     /// SoundCloud API credentials must be requested through SoundCloud support.
     /// See <seealso href="https://help.soundcloud.com/hc/en-us/requests/new">this link</seealso>
-    /// to submit a support ticket requesting API access. <para/>
+    /// to submit a support ticket requesting API access. Only client_id is required for API v2. <para/>
     ///
     /// A Discord bot token can be obtained by creating an app in the Discord Developer Portal.
     /// See <seealso href="https://discord.com/developers/docs/quick-start/getting-started">this link</seealso>
@@ -53,14 +53,9 @@
         public string SpotifyClientSecret { get; set; } = string.Empty;
 
         /// <summary>
-        /// The SoundCloud API client ID.
+        /// The SoundCloud API client ID. SoundCloud API v2 uses client_id as a query parameter.
         /// </summary>
         public string SoundCloudClientId { get; set; } = string.Empty;
-
-        /// <summary>
-        /// The SoundCloud API client secret.
-        /// </summary>
-        public string SoundCloudClientSecret { get; set; } = string.Empty;
 
         /// <summary>
         /// The Discord bot token.
