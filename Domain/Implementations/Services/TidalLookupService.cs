@@ -232,14 +232,14 @@ namespace TuneBridge.Domain.Implementations.Services {
             if (element.TryGetProperty( "cover", out JsonElement coverProp )) {
                 string? cover = coverProp.GetString();
                 if (!string.IsNullOrEmpty(cover)) {
-                    // Tidal cover IDs need to be formatted as URLs
-                    return $"https://resources.tidal.com/images/{cover.Replace('-', '/')}/320x320.jpg";
+                    // Tidal cover IDs need to be formatted as URLs - using 1280x1280 for highest quality
+                    return $"https://resources.tidal.com/images/{cover.Replace('-', '/')}/1280x1280.jpg";
                 }
             } else if (element.TryGetProperty( "album", out JsonElement albumProps )) {
                 if (albumProps.TryGetProperty( "cover", out JsonElement albumCoverProp )) {
                     string? cover = albumCoverProp.GetString();
                     if (!string.IsNullOrEmpty(cover)) {
-                        return $"https://resources.tidal.com/images/{cover.Replace('-', '/')}/320x320.jpg";
+                        return $"https://resources.tidal.com/images/{cover.Replace('-', '/')}/1280x1280.jpg";
                     }
                 }
             }
