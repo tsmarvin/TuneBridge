@@ -175,5 +175,25 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        
+        // Set content root to the test output directory where appsettings.json is located
+        var testAssemblyPath = Path.GetDirectoryName(typeof(CustomWebApplicationFactory).Assembly.Location);
+        if (testAssemblyPath != null)
+        {
+            builder.UseContentRoot(testAssemblyPath);
+        }
+        
+        //Configure test-specific services (override Discord to prevent it from starting)
+        builder.ConfigureServices(services =>
+        {
+            // Remove Discord hosted service if it was registered
+            var descriptors = services.Where(d => 
+                d.ServiceType.FullName != null && 
+                d.ServiceType.FullName.Contains("Discord")).ToList();
+            foreach (var descriptor in descriptors)
+            {
+                services.Remove(descriptor);
+            }
+        });
     }
 }
