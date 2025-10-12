@@ -106,7 +106,8 @@ public class MusicLookupServiceTests
     {
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
-        var appleUrl = "https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806326";
+        // Using the same Bohemian Rhapsody track but with album-only URL format
+        var appleUrl = "https://music.apple.com/us/album/a-night-at-the-opera-deluxe-remastered-version/1440806041";
 
         // Act
         var results = new List<Domain.Contracts.DTOs.MediaLinkResult>();
