@@ -10,8 +10,17 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
     /// then maps them to the corresponding API v3 endpoints for metadata retrieval.
     /// </summary>
     /// <remarks>
-    /// YouTube Music uses URLs like music.youtube.com/watch?v={videoId} for tracks and
-    /// music.youtube.com/playlist?list={playlistId} for albums/playlists.
+    /// IMPORTANT - URL PATTERN NOTE:
+    /// YouTube Music content is often shared via regular YouTube links (youtube.com or youtu.be)
+    /// rather than music.youtube.com links. Both patterns should be supported:
+    /// 
+    /// Supported patterns:
+    /// - music.youtube.com/watch?v={videoId} (dedicated Music site)
+    /// - youtube.com/watch?v={videoId} (regular YouTube, often used for music)
+    /// - youtu.be/{videoId} (short URL format)
+    /// - music.youtube.com/playlist?list={playlistId} (Music playlists)
+    /// - youtube.com/playlist?list={playlistId} (regular YouTube playlists)
+    /// 
     /// This parser validates the URL structure and extracts IDs for API calls.
     /// </remarks>
     internal static partial class YouTubeMusicLinkParser {
@@ -29,8 +38,12 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// Parses a YouTube Music URL to extract the entity type and YouTube ID.
         /// </summary>
         /// <param name="link">
-        /// YouTube Music URL in the format "https://music.youtube.com/watch?v={id}" or 
-        /// "https://music.youtube.com/playlist?list={id}".
+        /// YouTube URL in various formats:
+        /// - "https://music.youtube.com/watch?v={id}"
+        /// - "https://youtube.com/watch?v={id}"
+        /// - "https://youtu.be/{id}"
+        /// - "https://music.youtube.com/playlist?list={id}"
+        /// - "https://youtube.com/playlist?list={id}"
         /// </param>
         /// <param name="kind">
         /// Output: The entity type extracted from the URL, mapped to <see cref="YouTubeMusicEntity"/> enum.
@@ -39,7 +52,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// Output: The YouTube video ID or playlist ID. Empty string if parsing fails.
         /// </param>
         /// <returns>
-        /// True if the URL was successfully parsed and recognized as a supported YouTube Music entity type.
+        /// True if the URL was successfully parsed and recognized as a supported YouTube entity type.
         /// </returns>
         public static bool TryParseUri(
             string link,
@@ -62,12 +75,14 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
             return kind != YouTubeMusicEntity.Unknown && !string.IsNullOrEmpty( id );
         }
 
+        // Matches both music.youtube.com and regular youtube.com/youtu.be video links
         private static readonly Regex YouTubeMusicVideoLink = YouTubeMusicVideoRegex();
-        [GeneratedRegex( @"(?:music\.youtube\.com/watch\?v=)(?<id>[A-Za-z0-9_-]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+        [GeneratedRegex( @"(?:(?:music\.)?youtube\.com/watch\?v=|youtu\.be/)(?<id>[A-Za-z0-9_-]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex YouTubeMusicVideoRegex( );
 
+        // Matches both music.youtube.com and regular youtube.com playlist links
         private static readonly Regex YouTubeMusicPlaylistLink = YouTubeMusicPlaylistRegex();
-        [GeneratedRegex( @"(?:music\.youtube\.com/playlist\?list=)(?<id>[A-Za-z0-9_-]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+        [GeneratedRegex( @"(?:(?:music\.)?youtube\.com/playlist\?list=)(?<id>[A-Za-z0-9_-]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex YouTubeMusicPlaylistRegex( );
 
         /// <summary>
