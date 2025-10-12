@@ -29,5 +29,16 @@ namespace TuneBridge.Domain.Types.Enums {
         /// Credentials from: https://developer.spotify.com/dashboard
         /// </remarks>
         Spotify    = 2,
+
+        /// <summary>
+        /// Tidal streaming service. Requires Tidal API credentials (Client ID and Client Secret).
+        /// Uses OAuth 2.0 client credentials flow.
+        /// </summary>
+        /// <remarks>
+        /// API Documentation: https://developer.tidal.com/documentation/api/api-overview
+        /// Credentials from: https://developer.tidal.com/
+        /// </remarks>
+        [Description("Tidal")]
+        Tidal      = 3,
     }
 }

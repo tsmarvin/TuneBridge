@@ -2,7 +2,7 @@
     /// <summary>
     /// Represents application settings for external service integrations.<para/>
     ///
-    /// Apple Music and Spotify API credentials are required for the application to function properly.
+    /// At least one music provider (Apple Music, Spotify, or Tidal) API credentials are required for the application to function properly.
     /// A Discord bot token is required for Discord integrations.<para/>
     ///
     /// Apple Music API credentials can be obtained from the Apple Developer portal.
@@ -11,6 +11,10 @@
     ///
     /// Spotify API credentials can be obtained by creating an app in the Spotify Developer Dashboard.
     /// See <seealso href="https://developer.spotify.com/documentation/general/guides/app-settings/#register-your-app">this link</seealso>
+    /// for more details. <para/>
+    ///
+    /// Tidal API credentials can be obtained by creating an app in the Tidal Developer Portal.
+    /// See <seealso href="https://developer.tidal.com/">this link</seealso>
     /// for more details. <para/>
     ///
     /// A Discord bot token can be obtained by creating an app in the Discord Developer Portal.
@@ -46,6 +50,16 @@
         /// The Spotify API client secret.
         /// </summary>
         public string SpotifyClientSecret { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The Tidal API client ID.
+        /// </summary>
+        public string TidalClientId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The Tidal API client secret.
+        /// </summary>
+        public string TidalClientSecret { get; set; } = string.Empty;
 
         /// <summary>
         /// The Discord bot token.
