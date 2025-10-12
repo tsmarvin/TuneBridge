@@ -210,8 +210,6 @@ TuneBridge includes a comprehensive test suite with unit, integration, and end-t
 - **Integration Tests**: Test service integration with external APIs  
 - **End-to-End Tests**: Test complete application flows including API endpoints
 
-For detailed information on running tests locally and in CI, see [TESTING.md](TESTING.md).
-
 ### Quick Start
 
 ```bash
@@ -220,7 +218,28 @@ dotnet test
 
 # Run only unit tests (no API credentials needed)
 dotnet test --filter "FullyQualifiedName~Unit"
+
+# Run integration tests
+dotnet test --filter "FullyQualifiedName~Integration"
+
+# Run end-to-end tests
+dotnet test --filter "FullyQualifiedName~EndToEnd"
 ```
+
+### Configuration for Tests
+
+Tests use environment variables for API credentials. Set these before running integration/E2E tests:
+
+```bash
+export APPLETEAMID="your_team_id"
+export APPLEKEYID="your_key_id"
+export APPLEKEYPATH="/path/to/AuthKey.p8"  # Or use APPLEPRIVATEKEY with file contents
+export SPOTIFYCLIENTID="your_client_id"
+export SPOTIFYCLIENTSECRET="your_client_secret"
+export NODENUMBER="0"
+```
+
+The `transform-appsettings.sh` script transforms the appsettings.json template with these environment variables before tests run (similar to how Docker's entrypoint.sh works). Run `./run-tests.sh` for a guided local test experience.
 
 Tests automatically run in CI/CD pipelines when configured with appropriate GitHub secrets.
 
