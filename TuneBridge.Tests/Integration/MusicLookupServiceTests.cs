@@ -130,8 +130,8 @@ public class MusicLookupServiceTests
     {
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
-        // Using Bohemian Rhapsody track URL
-        var spotifyUrl = "https://open.spotify.com/track/3z8h0TU7ReDPLIbEnYhWZb";
+        // Using Bohemian Rhapsody album URL
+        var spotifyUrl = "https://open.spotify.com/album/6i6folBtxKV28WX3msQ4FE";
 
         // Act
         var results = new List<Domain.Contracts.DTOs.MediaLinkResult>();
@@ -168,8 +168,8 @@ public class MusicLookupServiceTests
     {
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
-        // Using Bohemian Rhapsody track URL on Tidal
-        var tidalUrl = "https://tidal.com/browse/track/110827652";
+        // Using Bohemian Rhapsody album URL on Tidal
+        var tidalUrl = "https://tidal.com/album/96572652";
 
         // Act
         var results = new List<Domain.Contracts.DTOs.MediaLinkResult>();
