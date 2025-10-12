@@ -123,6 +123,7 @@ namespace TuneBridge.Domain.Implementations.Extensions {
             => provider switch {
                 SupportedProviders.AppleMusic => new( 0, 0, 255 ),
                 SupportedProviders.Spotify => new( 0, 153, 0 ),
+                SupportedProviders.YouTubeMusic => new( 255, 0, 0 ),
                 _ => new( 100, 100, 100 ),
             };
 

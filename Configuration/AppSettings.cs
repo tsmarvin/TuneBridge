@@ -13,6 +13,10 @@
     /// See <seealso href="https://developer.spotify.com/documentation/general/guides/app-settings/#register-your-app">this link</seealso>
     /// for more details. <para/>
     ///
+    /// YouTube API credentials can be obtained from the Google Cloud Console.
+    /// See <seealso href="https://developers.google.com/youtube/v3/getting-started">this link</seealso>
+    /// for more details. <para/>
+    ///
     /// A Discord bot token can be obtained by creating an app in the Discord Developer Portal.
     /// See <seealso href="https://discord.com/developers/docs/quick-start/getting-started">this link</seealso>
     /// for more details.
@@ -46,6 +50,11 @@
         /// The Spotify API client secret.
         /// </summary>
         public string SpotifyClientSecret { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The YouTube Data API v3 API key.
+        /// </summary>
+        public string YouTubeApiKey { get; set; } = string.Empty;
 
         /// <summary>
         /// The Discord bot token.

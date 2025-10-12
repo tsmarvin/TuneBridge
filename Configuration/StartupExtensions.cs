@@ -99,6 +99,26 @@ namespace TuneBridge.Configuration {
                 Console.WriteLine( "TuneBridge: Music lookup service for Spotify disabled due to invalid input credentials." );
             }
 
+            // Register YouTube Music if credentials are present.
+            if (string.IsNullOrWhiteSpace( settings.YouTubeApiKey ) == false) {
+                _ = services.AddHttpClient( "youtube-api", c => {
+                    c.BaseAddress = new Uri( "https://www.googleapis.com/youtube/v3/" );
+                } ).AddStandardResilience( );
+
+                _ = services.AddTransient<YouTubeMusicLookupService>( s =>
+                    new YouTubeMusicLookupService(
+                        settings.YouTubeApiKey,
+                        s.GetRequiredService<IHttpClientFactory>( ),
+                        s.GetRequiredService<ILogger<YouTubeMusicLookupService>>( ),
+                        s.GetRequiredService<JsonSerializerOptions>( )
+                    )
+                );
+
+                _ = enabledProviders.Add( SupportedProviders.YouTubeMusic );
+            } else {
+                Console.WriteLine( "TuneBridge: Music lookup service for YouTube Music disabled due to invalid input credentials." );
+            }
+
             // Validate that at least one provider is enabled.
             if (enabledProviders.Count == 0) {
                 throw new InvalidOperationException( "Required settings are missing. Cannot add TuneBridge services if no IMusicLookupService(s) are available." );
@@ -151,6 +171,9 @@ namespace TuneBridge.Configuration {
                         break;
                     case SupportedProviders.Spotify:
                         results.Add( SupportedProviders.Spotify, serviceProvider.GetRequiredService<SpotifyLookupService>( ) );
+                        break;
+                    case SupportedProviders.YouTubeMusic:
+                        results.Add( SupportedProviders.YouTubeMusic, serviceProvider.GetRequiredService<YouTubeMusicLookupService>( ) );
                         break;
                 }
             }

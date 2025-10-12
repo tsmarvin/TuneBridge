@@ -1,10 +1,10 @@
 # TuneBridge
 
-**TuneBridge** is a cross-platform music link converter and lookup service that bridges Apple Music and Spotify. It provides both a web interface and a Discord bot for seamless music sharing across different streaming platforms.
+**TuneBridge** is a cross-platform music link converter and lookup service that bridges Apple Music, Spotify, and YouTube Music. It provides both a web interface and a Discord bot for seamless music sharing across different streaming platforms.
 
 ## Features
 
-- 🎵 **Music Link Conversion**: Convert music links between Apple Music and Spotify
+- 🎵 **Music Link Conversion**: Convert music links between Apple Music, Spotify, and YouTube Music
 - 🔍 **Multiple Lookup Methods**: Search by URL, ISRC, UPC, or title/artist
 - 🤖 **Discord Bot Integration**: Automatically detect and convert music links in Discord messages
 - 🌐 **Web API**: RESTful API endpoints for programmatic access
@@ -13,15 +13,15 @@
 
 ## What It Does
 
-TuneBridge acts as a universal translator for music streaming services. When you share a music link (song or album) from Apple Music or Spotify, TuneBridge automatically finds the equivalent content on the other platform.
+TuneBridge acts as a universal translator for music streaming services. When you share a music link (song or album) from Apple Music, Spotify, or YouTube Music, TuneBridge automatically finds the equivalent content on the other platforms.
 
-The application uses official APIs from both services to ensure accurate matching through standardized identifiers (ISRC for tracks, UPC for albums). When matches cannot be found via external IDs, the application performs fuzzy matching using metadata to find the equivalent content.
+The application uses official APIs from all services to ensure accurate matching through standardized identifiers (ISRC for tracks, UPC for albums) where available. When matches cannot be found via external IDs, the application performs fuzzy matching using metadata to find the equivalent content.
 
 ## Configuration
 
 ### Required Environment Variables
 
-TuneBridge requires API credentials for both Apple Music and Spotify, plus a Discord bot token if using Discord integration:
+TuneBridge requires API credentials for Apple Music and Spotify. YouTube Music API credentials are optional but recommended for full cross-platform support. A Discord bot token is required if using Discord integration:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
@@ -30,7 +30,10 @@ TuneBridge requires API credentials for both Apple Music and Spotify, plus a Dis
 | `APPLE_KEY_PATH` | Path to your Apple Music private key (.p8 file) | Yes |
 | `SPOTIFY_CLIENT_ID` | Your Spotify API Client ID | Yes |
 | `SPOTIFY_CLIENT_SECRET` | Your Spotify API Client Secret | Yes |
+| `YOUTUBE_API_KEY` | Your YouTube Data API v3 API key | No* |
 | `DISCORD_TOKEN` | Your Discord bot token | Yes |
+
+\* At least one music provider (Apple Music or Spotify) must be configured. YouTube Music is optional.
 
 ### Optional Environment Variables
 
@@ -56,6 +59,17 @@ TuneBridge requires API credentials for both Apple Music and Spotify, plus a Dis
 2. Follow the guide to [Register Your App](https://developer.spotify.com/documentation/general/guides/app-settings/#register-your-app)
 3. Note your Client ID and Client Secret
 
+#### YouTube Music API Credentials (Optional)
+
+1. Visit the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
+4. Go to [Credentials](https://console.cloud.google.com/apis/credentials)
+5. Create an API key
+6. (Recommended) Restrict the API key to YouTube Data API v3 for security
+
+**Note**: YouTube Data API has a daily quota limit. See [YouTube API quota usage](https://developers.google.com/youtube/v3/getting-started#quota) for details.
+
 #### Discord Bot Token
 
 1. Visit the [Discord Developer Portal](https://discord.com/developers/applications)
@@ -74,6 +88,7 @@ export APPLE_KEY_ID="your_key_id"
 export APPLE_KEY_PATH="/app/key.p8"
 export SPOTIFY_CLIENT_ID="your_client_id"
 export SPOTIFY_CLIENT_SECRET="your_client_secret"
+export YOUTUBE_API_KEY="your_youtube_api_key"  # Optional
 export DISCORD_TOKEN="your_bot_token"
 ```
 
@@ -86,6 +101,7 @@ docker run -p 10000:10000 \
   -e APPLE_KEY_PATH \
   -e SPOTIFY_CLIENT_ID \
   -e SPOTIFY_CLIENT_SECRET \
+  -e YOUTUBE_API_KEY \
   -e DISCORD_TOKEN \
   -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
   tunebridge
@@ -109,6 +125,7 @@ The application will be available at `http://localhost:10000`
     "AppleKeyPath": "/path/to/AuthKey.p8",
     "SpotifyClientId": "your_client_id",
     "SpotifyClientSecret": "your_client_secret",
+    "YouTubeApiKey": "your_youtube_api_key",
     "DiscordToken": "your_bot_token"
   }
 }
@@ -185,9 +202,9 @@ Content-Type: application/json
 ## Discord Bot Usage
 
 Once invited to your Discord server, the bot will automatically:
-1. Monitor messages for Apple Music and Spotify links
-2. Look up the corresponding track/album on the other platform
-3. Reply with an embedded message containing links to both services
+1. Monitor messages for Apple Music, Spotify, and YouTube Music links
+2. Look up the corresponding track/album on the other platforms
+3. Reply with an embedded message containing links to all available services
 4. Deletes the original message (if it only contained music links [keeping the channel clean])
 
 ## Deployment
@@ -209,6 +226,7 @@ The application exposes port `10000` by default and is designed to be deployed b
 - **NetCord** - Discord bot library
 - **Apple MusicKit API** - Apple Music integration
 - **Spotify Web API** - Spotify integration
+- **YouTube Data API v3** - YouTube Music integration
 
 ## License
 
