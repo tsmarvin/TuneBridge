@@ -232,9 +232,25 @@ namespace TuneBridge.Domain.Implementations.Services {
             // First, try to get images array (similar to Spotify) - provides direct URLs to different sizes
             if (element.TryGetProperty( "images", out JsonElement imagesProps )) {
                 if (imagesProps.ValueKind == JsonValueKind.Array && imagesProps.GetArrayLength( ) > 0) {
-                    // Get the largest image from the array (typically first or last)
-                    JsonElement largestImage = imagesProps.EnumerateArray().Last();
-                    if (largestImage.TryGetProperty( "url", out JsonElement urlProp )) {
+                    // Find the largest image by comparing width * height
+                    JsonElement? largestImage = null;
+                    int maxSize = 0;
+                    
+                    foreach (JsonElement image in imagesProps.EnumerateArray()) {
+                        if (image.TryGetProperty( "width", out JsonElement widthProp ) &&
+                            image.TryGetProperty( "height", out JsonElement heightProp )) {
+                            int width = widthProp.GetInt32();
+                            int height = heightProp.GetInt32();
+                            int size = width * height;
+                            
+                            if (size > maxSize) {
+                                maxSize = size;
+                                largestImage = image;
+                            }
+                        }
+                    }
+                    
+                    if (largestImage.HasValue && largestImage.Value.TryGetProperty( "url", out JsonElement urlProp )) {
                         string? url = urlProp.GetString();
                         if (!string.IsNullOrEmpty(url)) {
                             return url;
@@ -254,8 +270,25 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Try images array from album object
                 if (albumProps.TryGetProperty( "images", out JsonElement albumImagesProps )) {
                     if (albumImagesProps.ValueKind == JsonValueKind.Array && albumImagesProps.GetArrayLength( ) > 0) {
-                        JsonElement largestImage = albumImagesProps.EnumerateArray().Last();
-                        if (largestImage.TryGetProperty( "url", out JsonElement urlProp )) {
+                        // Find the largest image by comparing width * height
+                        JsonElement? largestImage = null;
+                        int maxSize = 0;
+                        
+                        foreach (JsonElement image in albumImagesProps.EnumerateArray()) {
+                            if (image.TryGetProperty( "width", out JsonElement widthProp ) &&
+                                image.TryGetProperty( "height", out JsonElement heightProp )) {
+                                int width = widthProp.GetInt32();
+                                int height = heightProp.GetInt32();
+                                int size = width * height;
+                                
+                                if (size > maxSize) {
+                                    maxSize = size;
+                                    largestImage = image;
+                                }
+                            }
+                        }
+                        
+                        if (largestImage.HasValue && largestImage.Value.TryGetProperty( "url", out JsonElement urlProp )) {
                             string? url = urlProp.GetString();
                             if (!string.IsNullOrEmpty(url)) {
                                 return url;
