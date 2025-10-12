@@ -57,7 +57,7 @@ public class MusicLookupControllerTests
     {
         // Arrange
         var request = new MusicLookupController.UrlReq(
-            "https://open.spotify.com/album/6X9k3hgEYTUx6tD5FVx7hq"
+            "https://open.spotify.com/track/3z8h0TU7ReDPLIbEnYhWZb"
         );
 
         // Act
@@ -75,7 +75,7 @@ public class MusicLookupControllerTests
     {
         // Arrange
         var request = new MusicLookupController.UrlReq(
-            "https://tidal.com/browse/album/110827651"
+            "https://tidal.com/browse/track/110827652"
         );
 
         // Act
