@@ -1,24 +1,43 @@
+using System.Text;
+
 namespace TuneBridge.Domain.Implementations.Auth {
 
     /// <summary>
-    /// Encapsulates SoundCloud API credentials. SoundCloud API v2 currently uses client_id 
-    /// as a query parameter for authentication rather than OAuth tokens.
+    /// Encapsulates SoundCloud API credentials for OAuth 2.1 client credentials flow authentication.
     /// This class is immutable and thread-safe, designed to be registered as a singleton in dependency injection.
     /// </summary>
     /// <param name="clientId">
-    /// The Client ID from your SoundCloud app. This is used as a query parameter in API requests.
+    /// The Client ID from your SoundCloud app. Used in the OAuth token request.
+    /// </param>
+    /// <param name="clientSecret">
+    /// The Client Secret from your SoundCloud app. Used in the OAuth token request.
     /// </param>
     /// <remarks>
     /// Credentials are obtained by requesting API access via SoundCloud support.
     /// See: https://help.soundcloud.com/hc/en-us/requests/new
+    /// SoundCloud uses OAuth 2.1 with client credentials flow.
+    /// See: https://developers.soundcloud.com/docs/api/guide#authentication
     /// </remarks>
     public sealed class SoundCloudCredentials(
-        string clientId
+        string clientId,
+        string clientSecret
     ) {
         /// <summary>
-        /// The Client ID for SoundCloud API requests. Used as a query parameter in API calls.
+        /// The Client ID for SoundCloud OAuth authentication.
         /// </summary>
         public string ClientId { get; } = clientId;
+
+        /// <summary>
+        /// The Client Secret for SoundCloud OAuth authentication.
+        /// </summary>
+        public string ClientSecret { get; } = clientSecret;
+
+        /// <summary>
+        /// The Base64-encoded representation of "clientId:clientSecret" for HTTP Basic authentication
+        /// used in the OAuth token request.
+        /// </summary>
+        public string Credentials { get; }
+            = Convert.ToBase64String( Encoding.UTF8.GetBytes( $"{clientId}:{clientSecret}" ) );
     }
 
 }
