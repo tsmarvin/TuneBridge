@@ -28,7 +28,7 @@ namespace TuneBridge.Configuration {
             return config.AddCommandLine( args )
                 .AddEnvironmentVariables( )
                 .AddJsonFile(
-                    path: Path.Join( Path.GetDirectoryName( Environment.ProcessPath ), "appsettings.json" ),
+                    path: "appsettings.json",
                     optional: false,
                     reloadOnChange: true
                 );

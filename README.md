@@ -219,6 +219,61 @@ The application exposes port `10000` by default and is designed to be deployed b
 
 **Note**: Public hosting location is TBD.
 
+## Testing
+
+TuneBridge includes a comprehensive test suite with unit, integration, and end-to-end tests.
+
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test service integration with external APIs  
+- **End-to-End Tests**: Test complete application flows including API endpoints
+
+### Quick Start
+
+```bash
+# Run all tests
+dotnet test
+
+# Run only unit tests (no API credentials needed)
+dotnet test --filter "FullyQualifiedName~Unit"
+
+# Run integration tests
+dotnet test --filter "FullyQualifiedName~Integration"
+
+# Run end-to-end tests
+dotnet test --filter "FullyQualifiedName~EndToEnd"
+```
+
+### Configuration for Tests
+
+Tests read credentials from `appsettings.json`. In CI, the workflow creates this file from the `appsettings.transform.json` template using GitHub secrets.
+
+For local testing, create an `appsettings.json` in the test output directory with your credentials:
+
+```json
+{
+  "TuneBridge": {
+    "NodeNumber": 0,
+    "AppleTeamId": "your_team_id",
+    "AppleKeyId": "your_key_id",
+    "AppleKeyPath": "/path/to/AuthKey.p8",
+    "SpotifyClientId": "your_client_id",
+    "SpotifyClientSecret": "your_client_secret",
+    "TidalClientId": "your_tidal_client_id",
+    "TidalClientSecret": "your_tidal_client_secret",
+    "DiscordToken": ""
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "Microsoft.Hosting.Lifetime": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
+```
+
+Tests automatically run in CI/CD pipelines when configured with appropriate GitHub secrets.
+
 ## Technology Stack
 
 - **.NET 9.0** - Cross-platform framework
