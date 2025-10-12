@@ -50,6 +50,11 @@ namespace TuneBridge.Configuration {
 
             HashSet<SupportedProviders> enabledProviders = [];
 
+            // Build a temporary service provider to get ILogger for startup messages
+            using ServiceProvider tempProvider = services.BuildServiceProvider();
+            ILoggerFactory loggerFactory = tempProvider.GetRequiredService<ILoggerFactory>( );
+            ILogger logger = loggerFactory.CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+
             // Register Apple Music if credentials are present.
             if (string.IsNullOrWhiteSpace( settings.AppleTeamId ) == false &&
                 string.IsNullOrWhiteSpace( settings.AppleKeyId ) == false
@@ -75,7 +80,7 @@ namespace TuneBridge.Configuration {
 
                 _ = enabledProviders.Add( SupportedProviders.AppleMusic );
             } else {
-                Console.WriteLine( "TuneBridge: Music lookup service for Apple Music disabled due to invalid input credentials." );
+                logger.LogInformation( "TuneBridge: Music lookup service for Apple Music disabled due to invalid input credentials." );
             }
 
             // Register Spotify if credentials are present.
@@ -96,7 +101,7 @@ namespace TuneBridge.Configuration {
 
                 _ = enabledProviders.Add( SupportedProviders.Spotify );
             } else {
-                Console.WriteLine( "TuneBridge: Music lookup service for Spotify disabled due to invalid input credentials." );
+                logger.LogInformation( "TuneBridge: Music lookup service for Spotify disabled due to invalid input credentials." );
             }
 
             // Register Tidal if credentials are present.
@@ -117,7 +122,7 @@ namespace TuneBridge.Configuration {
 
                 _ = enabledProviders.Add( SupportedProviders.Tidal );
             } else {
-                Console.WriteLine( "TuneBridge: Music lookup service for Tidal disabled due to invalid input credentials." );
+                logger.LogInformation( "TuneBridge: Music lookup service for Tidal disabled due to invalid input credentials." );
             }
 
             // Validate that at least one provider is enabled.
@@ -145,7 +150,7 @@ namespace TuneBridge.Configuration {
                 } );
                 _ = services.AddShardedGatewayHandlers( typeof( Program ).Assembly );
             } else {
-                Console.WriteLine( "TuneBridge: Discord services disabled due to invalid input credentials." );
+                logger.LogInformation( "TuneBridge: Discord services disabled due to invalid input credentials." );
             }
 
             return services;
