@@ -75,7 +75,7 @@ public class MusicLookupControllerTests
     {
         // Arrange
         var request = new MusicLookupController.UrlReq(
-            "https://tidal.com/album/96572652"
+            "https://tidal.com/browse/album/96572652"
         );
 
         // Act
