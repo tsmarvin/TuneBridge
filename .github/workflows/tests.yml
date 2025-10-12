@@ -47,6 +47,8 @@ jobs:
               -e 's|"{AppleKeyPath}"|"/tmp/test-keys/apple_key.p8"|g' \
               -e 's/"{SpotifyClientId}"/"${{ secrets.SPOTIFYCLIENTID }}"/g' \
               -e 's/"{SpotifyClientSecret}"/"${{ secrets.SPOTIFYCLIENTSECRET }}"/g' \
+              -e 's/"{TidalClientId}"/"${{ secrets.TIDALCLIENTID }}"/g' \
+              -e 's/"{TidalClientSecret}"/"${{ secrets.TIDALCLIENTSECRET }}"/g' \
               -e 's/"{DiscordToken}"/""/g' \
               -e 's/"{Default_LogLevel}"/"Information"/g' \
               -e 's/"{Hosting_LogLevel}"/"Information"/g' \

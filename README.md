@@ -258,7 +258,9 @@ For local testing, create an `appsettings.json` in the test output directory wit
     "AppleKeyPath": "/path/to/AuthKey.p8",
     "SpotifyClientId": "your_client_id",
     "SpotifyClientSecret": "your_client_secret",
-    "DiscordToken": "your_bot_token"
+    "TidalClientId": "your_tidal_client_id",
+    "TidalClientSecret": "your_tidal_client_secret",
+    "DiscordToken": ""
   },
   "Logging": {
     "LogLevel": {

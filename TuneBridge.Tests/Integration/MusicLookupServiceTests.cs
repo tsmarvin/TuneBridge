@@ -130,7 +130,8 @@ public class MusicLookupServiceTests
     {
         // Arrange
         var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
-        var spotifyUrl = "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv";
+        // Using Bohemian Rhapsody album URL
+        var spotifyUrl = "https://open.spotify.com/album/6X9k3hgEYTUx6tD5FVx7hq";
 
         // Act
         var results = new List<Domain.Contracts.DTOs.MediaLinkResult>();
@@ -160,6 +161,30 @@ public class MusicLookupServiceTests
 
         // Assert - Should handle gracefully, either null or empty results
         Assert.IsTrue(result == null || result.Results.Count == 0);
+    }
+
+    [TestMethod]
+    public async Task GetInfoByUrl_WithTidalUrl_ShouldReturnResult()
+    {
+        // Arrange
+        var mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
+        // Using Bohemian Rhapsody album URL on Tidal
+        var tidalUrl = "https://tidal.com/browse/album/110827651";
+
+        // Act
+        var results = new List<Domain.Contracts.DTOs.MediaLinkResult>();
+        await foreach (var result in mediaLinkService.GetInfoAsync(tidalUrl))
+        {
+            results.Add(result);
+        }
+
+        // Assert
+        Assert.IsTrue(results.Count > 0, "Results collection should not be empty");
+        var firstResult = results[0];
+        Assert.IsTrue(firstResult.Results.Count > 0, "firstResult.Results should not be empty");
+        var firstLookup = firstResult.Results.First().Value;
+        Assert.IsNotNull(firstLookup.Title);
+        Assert.IsNotNull(firstLookup.Artist);
     }
 
     [TestCleanup]

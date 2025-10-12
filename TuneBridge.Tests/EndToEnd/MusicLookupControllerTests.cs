@@ -55,10 +55,27 @@ public class MusicLookupControllerTests
     [TestMethod]
     public async Task ByUrlList_WithValidSpotifyUrl_ReturnsOkWithResults()
     {
-
         // Arrange
         var request = new MusicLookupController.UrlReq(
-            "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv"
+            "https://open.spotify.com/album/6X9k3hgEYTUx6tD5FVx7hq"
+        );
+
+        // Act
+        var response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
+
+        // Assert
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>();
+        Assert.IsNotNull(results);
+        Assert.IsTrue(results!.Count > 0, "Results should not be empty");
+    }
+
+    [TestMethod]
+    public async Task ByUrlList_WithValidTidalUrl_ReturnsOkWithResults()
+    {
+        // Arrange
+        var request = new MusicLookupController.UrlReq(
+            "https://tidal.com/browse/album/110827651"
         );
 
         // Act
@@ -74,11 +91,10 @@ public class MusicLookupControllerTests
     [TestMethod]
     public async Task ByUrlList_WithMultipleUrls_ReturnsMultipleResults()
     {
-
         // Arrange
         var request = new MusicLookupController.UrlReq(
-            "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv " +
-            "https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806326"
+            "https://open.spotify.com/album/6X9k3hgEYTUx6tD5FVx7hq " +
+            "https://music.apple.com/us/album/a-night-at-the-opera-deluxe-remastered-version/1440806041"
         );
 
         // Act
