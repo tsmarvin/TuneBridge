@@ -40,14 +40,14 @@ jobs:
             echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
           fi
           
-          # Create appsettings.json for tests
+          # Create appsettings.json for tests (with empty DiscordToken to disable Discord bot in tests)
           sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
               -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
               -e 's/"{AppleKeyId}"/"${{ secrets.APPLEKEYID }}"/g' \
               -e 's|"{AppleKeyPath}"|"/tmp/test-keys/apple_key.p8"|g' \
               -e 's/"{SpotifyClientId}"/"${{ secrets.SPOTIFYCLIENTID }}"/g' \
               -e 's/"{SpotifyClientSecret}"/"${{ secrets.SPOTIFYCLIENTSECRET }}"/g' \
-              -e 's/"{DiscordToken}"/"${{ secrets.DISCORDTOKEN }}"/g' \
+              -e 's/"{DiscordToken}"/""/g' \
               -e 's/"{Default_LogLevel}"/"Information"/g' \
               -e 's/"{Hosting_LogLevel}"/"Information"/g' \
               -e 's/"{Allowed_Hosts}"/"*"/g' \
