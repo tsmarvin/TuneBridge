@@ -1,17 +1,7 @@
 ﻿#!/bin/sh
 set -eu
 
-# ---- Validate required env vars ----
-required_vars="DISCORD_TOKEN"
-for v in $required_vars; do
-  val="$(printenv "$v" 2>/dev/null || true)"
-  if [ -z "$val" ]; then
-    echo "ERROR: Missing required env var: $v" >&2
-    exit 1
-  fi
-done
-
-# ---- Configure non-required defaults ----
+# ---- Configure defaults ----
 NODE_NUMBER="${NODE_NUMBER:-0}"
 ALLOWED_HOSTS="${ALLOWED_HOSTS:-*}"
 DEFAULT_LOGLEVEL="${DEFAULT_LOGLEVEL:-Information}"
@@ -25,6 +15,9 @@ SPOTIFY_CLIENT_ID="${SPOTIFY_CLIENT_ID:-}"
 SPOTIFY_CLIENT_SECRET="${SPOTIFY_CLIENT_SECRET:-}"
 TIDAL_CLIENT_ID="${TIDAL_CLIENT_ID:-}"
 TIDAL_CLIENT_SECRET="${TIDAL_CLIENT_SECRET:-}"
+
+# Optional Discord bot token
+DISCORD_TOKEN="${DISCORD_TOKEN:-}"
 
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }

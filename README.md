@@ -19,9 +19,9 @@ The application uses official APIs from all services to ensure accurate matching
 
 ## Configuration
 
-### Required Environment Variables
+### Environment Variables
 
-TuneBridge requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal), plus a Discord bot token if using Discord integration:
+TuneBridge requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord integration is optional.
 
 | Variable | Description | Required |
 |----------|-------------|----------|
@@ -32,9 +32,10 @@ TuneBridge requires API credentials for at least one music provider (Apple Music
 | `SPOTIFY_CLIENT_SECRET` | Your Spotify API Client Secret | No* |
 | `TIDAL_CLIENT_ID` | Your Tidal API Client ID | No* |
 | `TIDAL_CLIENT_SECRET` | Your Tidal API Client Secret | No* |
-| `DISCORD_TOKEN` | Your Discord bot token | Yes |
+| `DISCORD_TOKEN` | Your Discord bot token | No** |
 
-\* At least one complete set of music provider credentials is required (Apple Music, Spotify, or Tidal)
+\* At least one complete set of music provider credentials is required (Apple Music, Spotify, or Tidal)  
+\*\* Required only if using Discord integration
 
 ### Optional Environment Variables
 
