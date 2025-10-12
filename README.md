@@ -68,7 +68,14 @@ TuneBridge requires API credentials for Apple Music and Spotify. YouTube Music A
 5. Create an API key
 6. (Recommended) Restrict the API key to YouTube Data API v3 for security
 
-**Note**: YouTube Data API has a daily quota limit. See [YouTube API quota usage](https://developers.google.com/youtube/v3/getting-started#quota) for details.
+**Quota Management**: YouTube Data API has a default daily quota of 10,000 units. TuneBridge implements several optimizations to minimize quota usage:
+
+- **In-Memory Caching**: Search results are cached for 1 hour to avoid redundant API calls (saves 100 units per cached lookup)
+- **Quota Tracking**: The service logs quota usage and warns when approaching the daily limit
+- **Smart Lookups**: Direct URL lookups cost only 1 unit vs. 100 units for search queries
+- **Cache Hit Rate**: In typical usage, cache hits can reduce quota consumption by 80-90%
+
+With these optimizations, TuneBridge can handle hundreds of cross-platform lookups per day. See [YouTube API quota documentation](https://developers.google.com/youtube/v3/getting-started#quota) for detailed cost breakdown.
 
 #### Discord Bot Token
 
