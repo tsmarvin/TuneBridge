@@ -87,7 +87,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 foreach ((string albumId, string albumName) in artistAlbumIds) {
                     string trackLookup = $"tracks for artist {artistName} album {albumName} id#{albumId} ";
 
-                    MusicLookupResultDto? result = await ParseAlbumTrackListsAsync(
+                    MusicLookupResultDto? result = ParseAlbumTrackLists(
                         await NewMusicApiRequest(TidalLinkParser.GetAlbumTracksURI(albumId), trackLookup),
                         sanitizedSongTitle,
                         trackLookup
@@ -291,7 +291,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             }
         }
 
-        private async Task<MusicLookupResultDto?> ParseAlbumTrackListsAsync(
+        private MusicLookupResultDto? ParseAlbumTrackLists(
             string? body,
             string sanitizedSongTitle,
             string lookupKey
@@ -310,22 +310,8 @@ namespace TuneBridge.Domain.Implementations.Services {
                         if (SanitizeSongTitle( name ).Equals( sanitizedSongTitle, StringComparison.InvariantCultureIgnoreCase ) &&
                             CanParseJsonElement( item, out JsonElement element )
                         ) {
-                            string trackId = item.GetProperty("id").GetString()!;
-
-                            // The Album Track endpoint doesn't return the tracks with external Id's (ISRC's) included.
-                            // So we'll perform another direct lookup to get the ISRC.
-                            string? trackBody = await NewMusicApiRequest( TidalLinkParser.GetTrackIdURI( trackId ), lookupKey );
-
-                            // This really shouldnt happen, but if something goes wrong we can return what we've already matched.
-                            if (string.IsNullOrWhiteSpace( trackBody )) { return ParseTidalResponse( element, lookupKey, TidalEntity.Track, null ); }
-
-                            using JsonDocument trackJson = JsonDocument.Parse( trackBody );
-                            return ParseTidalResponse(
-                                trackJson.RootElement,
-                                lookupKey,
-                                TidalEntity.Track,
-                                null
-                            );
+                            // Tidal's Album Track endpoint includes ISRC directly in the response
+                            return ParseTidalResponse( element, lookupKey, TidalEntity.Track, null );
                         }
                     }
                 }
