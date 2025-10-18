@@ -21,8 +21,8 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// and determines whether the link points to a track, album, artist, or playlist.
         /// </summary>
         /// <param name="link">
-        /// Spotify URL in the format "https://open.spotify.com/{type}/{id}".
-        /// Must follow the open.spotify.com pattern. Query parameters are ignored.
+        /// Spotify URL in the format "https://open.spotify.com/{type}/{id}" or "https://spotify.link/{code}".
+        /// Must follow the open.spotify.com or spotify.link pattern. Query parameters are ignored.
         /// </param>
         /// <param name="kind">
         /// Output: The entity type extracted from the URL, mapped to <see cref="SpotifyEntity"/> enum.
@@ -39,6 +39,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <remarks>
         /// Only track and album URLs are currently utilized for music lookup. Artist and playlist URLs
         /// are parsed but may not be fully supported by all downstream operations.
+        /// For spotify.link URLs, the method follows the redirect to obtain the actual open.spotify.com URL.
         /// </remarks>
         public static bool TryParseUri(
             string link,
@@ -47,6 +48,14 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         ) {
             kind = SpotifyEntity.Unknown;
             id = string.Empty;
+
+            // If it's a spotify.link URL, resolve it to the actual Spotify URL
+            if (SpotifyShortLink.IsMatch( link )) {
+                string? resolvedUrl = ResolveSpotifyShortLink( link );
+                if (resolvedUrl != null) {
+                    link = resolvedUrl;
+                }
+            }
 
             if (SpotifyLink.IsMatch( link )) {
 
@@ -66,9 +75,36 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
             return kind != SpotifyEntity.Unknown && !string.IsNullOrEmpty( id );
         }
 
+        /// <summary>
+        /// Resolves a spotify.link short URL to the actual open.spotify.com URL by following the HTTP redirect.
+        /// </summary>
+        /// <param name="shortLink">The spotify.link URL to resolve.</param>
+        /// <returns>The resolved open.spotify.com URL, or null if resolution fails.</returns>
+        private static string? ResolveSpotifyShortLink( string shortLink ) {
+            try {
+                using HttpClient client = new( new HttpClientHandler { AllowAutoRedirect = false } );
+                client.Timeout = TimeSpan.FromSeconds( 5 );
+                HttpResponseMessage response = client.GetAsync( shortLink ).Result;
+                
+                if (response.StatusCode == System.Net.HttpStatusCode.MovedPermanently ||
+                    response.StatusCode == System.Net.HttpStatusCode.Found ||
+                    response.StatusCode == System.Net.HttpStatusCode.SeeOther ||
+                    response.StatusCode == System.Net.HttpStatusCode.TemporaryRedirect) {
+                    return response.Headers.Location?.ToString();
+                }
+            } catch {
+                // If resolution fails, return null to let the caller handle it
+            }
+            return null;
+        }
+
         private static readonly Regex SpotifyLink = SpotifyMusicLink();
         [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex SpotifyMusicLink( );
+
+        private static readonly Regex SpotifyShortLink = SpotifyShortLinkPattern();
+        [GeneratedRegex( @"spotify\.link/[A-Za-z0-9]+", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+        private static partial Regex SpotifyShortLinkPattern( );
 
         /// <summary>
         /// Constructs an API URI for searching artists by name.
