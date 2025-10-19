@@ -42,6 +42,7 @@ TuneBridge requires API credentials for at least one music provider (Apple Music
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `NODE_NUMBER` | Node number for Discord sharding | `0` |
+| `BASE_URL` | Base URL for the web application (used for OpenGraph card URLs) | `http://localhost:10000` |
 | `ALLOWED_HOSTS` | Allowed hosts for the web server | `*` |
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
@@ -88,6 +89,7 @@ export SPOTIFY_CLIENT_SECRET="your_client_secret"
 export TIDAL_CLIENT_ID="your_tidal_client_id"
 export TIDAL_CLIENT_SECRET="your_tidal_client_secret"
 export DISCORD_TOKEN="your_bot_token"
+export BASE_URL="https://your-domain.com"
 ```
 
 2. Build and run with Docker:
@@ -102,6 +104,7 @@ docker run -p 10000:10000 \
   -e TIDAL_CLIENT_ID \
   -e TIDAL_CLIENT_SECRET \
   -e DISCORD_TOKEN \
+  -e BASE_URL \
   -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
   tunebridge
 ```
@@ -126,7 +129,8 @@ The application will be available at `http://localhost:10000`
     "SpotifyClientSecret": "your_client_secret",
     "TidalClientId": "your_tidal_client_id",
     "TidalClientSecret": "your_tidal_client_secret",
-    "DiscordToken": "your_bot_token"
+    "DiscordToken": "your_bot_token",
+    "BaseUrl": "http://localhost:10000"
   }
 }
 ```
@@ -199,13 +203,79 @@ Content-Type: application/json
 }
 ```
 
+## OpenGraph Embeddable Cards
+
+TuneBridge generates OpenGraph embeddable cards for music lookup results. These cards can be shared on any platform that supports OpenGraph metadata (Discord, Slack, Twitter, Facebook, etc.), providing rich previews with:
+
+- Album/track artwork
+- Artist and title information
+- Links to all available streaming platforms (Spotify, Apple Music, Tidal)
+- ISRC/UPC identifiers for exact matching
+
+### How It Works
+
+When a music link is shared (via Discord bot or API), TuneBridge:
+1. Looks up the track/album across all configured providers
+2. Generates a unique OpenGraph card URL (e.g., `/music/card/{id}`)
+3. Returns this URL, which platforms automatically preview using OpenGraph metadata
+
+### Card URL Structure
+
+Cards are accessible at: `{BASE_URL}/music/card/{id}`
+
+Example: `https://your-domain.com/music/card/a1b2c3d4e5f6`
+
+### OpenGraph Metadata
+
+Each card includes standard OpenGraph tags:
+- `og:type` - "music.song" or "music.album"
+- `og:title` - Track or album title
+- `og:description` - Artist, ISRC/UPC, and provider links
+- `og:image` - Album artwork
+- `og:url` - The card URL
+- `music:musician` - Artist name
+- Twitter Card tags for enhanced Twitter previews
+
+### Card Expiration
+
+Cards are stored in memory for 24 hours after generation. After expiration, the card URL will return a 404 error. This is designed for temporary sharing and reduces storage requirements.
+
+### Integration Examples
+
+#### Discord Bot
+The Discord bot automatically generates and shares OpenGraph card URLs when music links are detected in messages. Discord fetches the OpenGraph metadata and displays a rich preview.
+
+#### Direct API Usage
+```bash
+# Get card URL via API
+curl -X POST http://localhost:10000/music/lookup/url \
+  -H "Content-Type: application/json" \
+  -d '{"uri": "https://open.spotify.com/track/3n3Ppam7vgaVa1iaRUc9Lp"}'
+
+# The response includes a MediaLinkResult with provider URLs
+# Use IMediaCardService to generate a card URL for sharing
+```
+
+#### Custom Integration
+```csharp
+// Inject IMediaCardService and IMediaLinkService
+MediaLinkResult? result = await _mediaLinkService.GetInfoAsync(title, artist);
+if (result != null) {
+    string cardId = _mediaCardService.StoreResult(result);
+    string cardUrl = $"{baseUrl}/music/card/{cardId}";
+    // Share cardUrl - platforms will display OpenGraph preview
+}
+```
+
 ## Discord Bot Usage
 
 Once invited to your Discord server, the bot will automatically:
 1. Monitor messages for Apple Music, Spotify, and Tidal links
 2. Look up the corresponding track/album on the other platforms
-3. Reply with an embedded message containing links to all available services
+3. Reply with an OpenGraph card URL that Discord renders as a rich preview
 4. Deletes the original message (if it only contained music links [keeping the channel clean])
+
+The bot now uses OpenGraph cards instead of Discord-specific embeds, allowing the same cards to be shared across multiple platforms.
 
 ## Deployment
 
