@@ -1,9 +1,11 @@
 ﻿using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Http.Resilience;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using Polly;
 using TuneBridge.Domain.Implementations.Auth;
+using TuneBridge.Domain.Implementations.Database;
 using TuneBridge.Domain.Implementations.Services;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Enums;
@@ -131,12 +133,76 @@ namespace TuneBridge.Configuration {
             }
 
             // Add the DefaultMediaLinkService with enabled IMusicLookupService(s).
-            _ = services.AddTransient<IMediaLinkService>( s => new DefaultMediaLinkService(
-                GetEnabledProviderServices( enabledProviders, s ),
-                s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
-                s.GetRequiredService<JsonSerializerOptions>( )
-            ) );
+            _ = services.AddTransient<IMediaLinkService>( s => {
+                var baseService = new DefaultMediaLinkService(
+                    GetEnabledProviderServices( enabledProviders, s ),
+                    s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
+                    s.GetRequiredService<JsonSerializerOptions>( )
+                );
+
+                // Wrap with caching if Bluesky is configured
+                if (!string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
+                    !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
+                    !string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
+
+                    // Configure SQLite database for caching
+                    var dbPath = Path.IsPathRooted( settings.CacheDbPath )
+                        ? settings.CacheDbPath
+                        : Path.Combine( Path.GetDirectoryName( Environment.ProcessPath ) ?? ".", settings.CacheDbPath );
+
+                    var dbContext = s.GetRequiredService<MediaLinkCacheDbContext>( );
+                    var blueskyStorage = s.GetRequiredService<IBlueskyStorageService>( );
+                    var cacheService = new MediaLinkCacheService(
+                        dbContext,
+                        blueskyStorage,
+                        s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
+                        s.GetRequiredService<JsonSerializerOptions>( ),
+                        settings.CacheDays
+                    );
+
+                    return new CachedMediaLinkService(
+                        baseService,
+                        cacheService,
+                        s.GetRequiredService<ILogger<CachedMediaLinkService>>( )
+                    );
+                } else {
+                    logger.LogInformation( "TuneBridge: Bluesky PDS storage and caching disabled due to missing credentials." );
+                    return baseService;
+                }
+            } );
             _ = services.AddSingleton( enabledProviders );
+
+            // Configure SQLite database for caching if Bluesky is enabled
+            if (!string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
+                !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
+                !string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
+
+                var dbPath = Path.IsPathRooted( settings.CacheDbPath )
+                    ? settings.CacheDbPath
+                    : Path.Combine( Path.GetDirectoryName( Environment.ProcessPath ) ?? ".", settings.CacheDbPath );
+
+                _ = services.AddDbContext<MediaLinkCacheDbContext>( options =>
+                    options.UseSqlite( $"Data Source={dbPath}" )
+                );
+
+                _ = services.AddSingleton<IBlueskyStorageService>( s =>
+                    new BlueskyStorageService(
+                        settings.BlueskyPdsUrl,
+                        settings.BlueskyIdentifier,
+                        settings.BlueskyPassword,
+                        s.GetRequiredService<ILogger<BlueskyStorageService>>( ),
+                        s.GetRequiredService<JsonSerializerOptions>( )
+                    )
+                );
+
+                // Ensure database is created
+                using (var scope = services.BuildServiceProvider( ).CreateScope( )) {
+                    var db = scope.ServiceProvider.GetRequiredService<MediaLinkCacheDbContext>( );
+                    db.Database.EnsureCreated( );
+                    logger.LogInformation( "TuneBridge: SQLite cache database initialized at: {path}", dbPath );
+                }
+            }
+
 
 
             _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
