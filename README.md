@@ -1,10 +1,10 @@
 # TuneBridge
 
-**TuneBridge** is a cross-platform music link converter and lookup service that bridges Apple Music and Spotify. It provides both a web interface and a Discord bot for seamless music sharing across different streaming platforms.
+**TuneBridge** is a cross-platform music link converter and lookup service that bridges Apple Music, Spotify, and Tidal. It provides both a web interface and a Discord bot for seamless music sharing across different streaming platforms.
 
 ## Features
 
-- 🎵 **Music Link Conversion**: Convert music links between Apple Music and Spotify
+- 🎵 **Music Link Conversion**: Convert music links between Apple Music, Spotify, and Tidal
 - 🔍 **Multiple Lookup Methods**: Search by URL, ISRC, UPC, or title/artist
 - 🤖 **Discord Bot Integration**: Automatically detect and convert music links in Discord messages
 - 🌐 **Web API**: RESTful API endpoints for programmatic access
@@ -13,24 +13,29 @@
 
 ## What It Does
 
-TuneBridge acts as a universal translator for music streaming services. When you share a music link (song or album) from Apple Music or Spotify, TuneBridge automatically finds the equivalent content on the other platform.
+TuneBridge acts as a universal translator for music streaming services. When you share a music link (song or album) from Apple Music, Spotify, or Tidal, TuneBridge automatically finds the equivalent content on the other platforms.
 
-The application uses official APIs from both services to ensure accurate matching through standardized identifiers (ISRC for tracks, UPC for albums). When matches cannot be found via external IDs, the application performs fuzzy matching using metadata to find the equivalent content.
+The application uses official APIs from all services to ensure accurate matching through standardized identifiers (ISRC for tracks, UPC for albums). When matches cannot be found via external IDs, the application performs fuzzy matching using metadata to find the equivalent content.
 
 ## Configuration
 
-### Required Environment Variables
+### Environment Variables
 
-TuneBridge requires API credentials for both Apple Music and Spotify, plus a Discord bot token if using Discord integration:
+TuneBridge requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord integration is optional.
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `APPLE_TEAM_ID` | Your Apple Developer Team ID | Yes |
-| `APPLE_KEY_ID` | Your Apple Music API Key ID | Yes |
-| `APPLE_KEY_PATH` | Path to your Apple Music private key (.p8 file) | Yes |
-| `SPOTIFY_CLIENT_ID` | Your Spotify API Client ID | Yes |
-| `SPOTIFY_CLIENT_SECRET` | Your Spotify API Client Secret | Yes |
-| `DISCORD_TOKEN` | Your Discord bot token | Yes |
+| `APPLE_TEAM_ID` | Your Apple Developer Team ID | No* |
+| `APPLE_KEY_ID` | Your Apple Music API Key ID | No* |
+| `APPLE_KEY_PATH` | Path to your Apple Music private key (.p8 file) | No* |
+| `SPOTIFY_CLIENT_ID` | Your Spotify API Client ID | No* |
+| `SPOTIFY_CLIENT_SECRET` | Your Spotify API Client Secret | No* |
+| `TIDAL_CLIENT_ID` | Your Tidal API Client ID | No* |
+| `TIDAL_CLIENT_SECRET` | Your Tidal API Client Secret | No* |
+| `DISCORD_TOKEN` | Your Discord bot token | No** |
+
+\* At least one complete set of music provider credentials is required (Apple Music, Spotify, or Tidal)  
+\*\* Required only if using Discord integration
 
 ### Optional Environment Variables
 
@@ -56,6 +61,12 @@ TuneBridge requires API credentials for both Apple Music and Spotify, plus a Dis
 2. Follow the guide to [Register Your App](https://developer.spotify.com/documentation/general/guides/app-settings/#register-your-app)
 3. Note your Client ID and Client Secret
 
+#### Tidal API Credentials
+
+1. Visit the [Tidal Developer Portal](https://developer.tidal.com/)
+2. Create a new application to get API access
+3. Note your Client ID and Client Secret
+
 #### Discord Bot Token
 
 1. Visit the [Discord Developer Portal](https://discord.com/developers/applications)
@@ -74,6 +85,8 @@ export APPLE_KEY_ID="your_key_id"
 export APPLE_KEY_PATH="/app/key.p8"
 export SPOTIFY_CLIENT_ID="your_client_id"
 export SPOTIFY_CLIENT_SECRET="your_client_secret"
+export TIDAL_CLIENT_ID="your_tidal_client_id"
+export TIDAL_CLIENT_SECRET="your_tidal_client_secret"
 export DISCORD_TOKEN="your_bot_token"
 ```
 
@@ -86,6 +99,8 @@ docker run -p 10000:10000 \
   -e APPLE_KEY_PATH \
   -e SPOTIFY_CLIENT_ID \
   -e SPOTIFY_CLIENT_SECRET \
+  -e TIDAL_CLIENT_ID \
+  -e TIDAL_CLIENT_SECRET \
   -e DISCORD_TOKEN \
   -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
   tunebridge
@@ -109,6 +124,8 @@ The application will be available at `http://localhost:10000`
     "AppleKeyPath": "/path/to/AuthKey.p8",
     "SpotifyClientId": "your_client_id",
     "SpotifyClientSecret": "your_client_secret",
+    "TidalClientId": "your_tidal_client_id",
+    "TidalClientSecret": "your_tidal_client_secret",
     "DiscordToken": "your_bot_token"
   }
 }
@@ -185,9 +202,9 @@ Content-Type: application/json
 ## Discord Bot Usage
 
 Once invited to your Discord server, the bot will automatically:
-1. Monitor messages for Apple Music and Spotify links
-2. Look up the corresponding track/album on the other platform
-3. Reply with an embedded message containing links to both services
+1. Monitor messages for Apple Music, Spotify, and Tidal links
+2. Look up the corresponding track/album on the other platforms
+3. Reply with an embedded message containing links to all available services
 4. Deletes the original message (if it only contained music links [keeping the channel clean])
 
 ## Deployment
@@ -209,6 +226,7 @@ The application exposes port `10000` by default and is designed to be deployed b
 - **NetCord** - Discord bot library
 - **Apple MusicKit API** - Apple Music integration
 - **Spotify Web API** - Spotify integration
+- **Tidal API** - Tidal integration
 
 ## License
 
