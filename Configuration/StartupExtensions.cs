@@ -146,7 +146,6 @@ namespace TuneBridge.Configuration {
                 _ = services.AddDiscordShardedGateway( options => {
                     options.Token = settings.DiscordToken;
                     options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
-                    options.ShardCount = null; // let discord decide for us
                 } );
                 _ = services.AddShardedGatewayHandlers( typeof( Program ).Assembly );
             } else {
