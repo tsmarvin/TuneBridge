@@ -95,20 +95,96 @@ When a new lookup is performed with a link that resolves to an already-cached re
 
 ## Bluesky Storage Format
 
-MediaLinkResults are stored as Bluesky posts with the following format:
+MediaLinkResults are stored as custom AT Protocol records using the `media.tunebridge.lookup.result` lexicon.
 
-```
-#TuneBridge MediaLinkResult
+### Lexicon Definition
+
+The custom lexicon is defined in `Domain/Lexicons/media.tunebridge.lookup.result.json`:
+
+```json
 {
-  "Results": {
-    "AppleMusic": { ... },
-    "Spotify": { ... }
-  },
-  "_inputLinks": ["music.apple.com/...", "open.spotify.com/..."]
+  "lexicon": 1,
+  "id": "media.tunebridge.lookup.result",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Result of parsing and looking up media links across supported music streaming providers.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["results", "lookedUpAt"],
+        "properties": {
+          "results": { /* array of providerResult */ },
+          "inputLinks": { /* array of URIs */ },
+          "lookedUpAt": { /* ISO 8601 datetime */ }
+        }
+      }
+    },
+    "providerResult": {
+      "type": "object",
+      "required": ["provider", "artist", "title", "url", "marketRegion"],
+      "properties": {
+        "provider": { /* appleMusic, spotify, or tidal */ },
+        "artist": { /* string */ },
+        "title": { /* string */ },
+        "externalId": { /* ISRC/UPC */ },
+        "url": { /* URI */ },
+        "artUrl": { /* URI */ },
+        "marketRegion": { /* ISO 3166-1 alpha-2 */ },
+        "isAlbum": { /* boolean */ }
+      }
+    }
+  }
 }
 ```
 
-The `#TuneBridge MediaLinkResult` marker identifies posts as TuneBridge cache entries.
+### Record Structure
+
+Records are stored using the AT Protocol's `com.atproto.repo.createRecord` endpoint with:
+- **Collection**: `media.tunebridge.lookup.result`
+- **Record Key**: Auto-generated TID (timestamp identifier)
+- **Record Value**: MediaLinkResultRecord (custom C# record class)
+
+Example record structure:
+
+```json
+{
+  "results": [
+    {
+      "provider": "spotify",
+      "artist": "Artist Name",
+      "title": "Track Title",
+      "externalId": "USRC12345678",
+      "url": "https://open.spotify.com/track/...",
+      "artUrl": "https://i.scdn.co/image/...",
+      "marketRegion": "us",
+      "isAlbum": false
+    },
+    {
+      "provider": "appleMusic",
+      "artist": "Artist Name",
+      "title": "Track Title",
+      "externalId": "USRC12345678",
+      "url": "https://music.apple.com/us/album/...",
+      "artUrl": "https://is1-ssl.mzstatic.com/image/...",
+      "marketRegion": "us",
+      "isAlbum": false
+    }
+  ],
+  "inputLinks": [
+    "https://open.spotify.com/track/..."
+  ],
+  "lookedUpAt": "2025-10-19T23:00:00Z"
+}
+```
+
+### Benefits of Custom Lexicon
+
+- **Structured Data**: Records are properly typed and validated against the lexicon schema
+- **Queryable**: Can be indexed and queried efficiently by Bluesky infrastructure
+- **Versioned**: Lexicon versioning allows for future schema evolution
+- **Interoperable**: Other AT Protocol clients can understand and display the data
+- **Efficient**: More compact than storing JSON in post text
 
 ## API Interfaces
 
@@ -169,9 +245,11 @@ sqlite3 medialinkscache.db ".backup medialinkscache.backup.db"
 
 ## Limitations
 
-- Bluesky posts are public by default (cache entries are visible on your profile)
-- Maximum post size is ~300KB (sufficient for typical MediaLinkResults)
+- Custom lexicon records are stored in the user's AT Protocol repository
+- Records are not displayed as standard posts in Bluesky feeds
+- Records are publicly accessible via AT Protocol if you know the record URI
 - Rate limits apply to Bluesky API (authenticated: 3000/hour, 30000/day)
+- Maximum record size depends on PDS configuration (typically sufficient for MediaLinkResults)
 
 ## Security Considerations
 
