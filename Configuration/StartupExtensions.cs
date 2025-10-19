@@ -195,12 +195,7 @@ namespace TuneBridge.Configuration {
                     )
                 );
 
-                // Ensure database is created
-                using (var scope = services.BuildServiceProvider( ).CreateScope( )) {
-                    var db = scope.ServiceProvider.GetRequiredService<MediaLinkCacheDbContext>( );
-                    db.Database.EnsureCreated( );
-                    logger.LogInformation( "TuneBridge: SQLite cache database initialized at: {path}", dbPath );
-                }
+                logger.LogInformation( "TuneBridge: Bluesky PDS storage and caching configured with database at: {path}", dbPath );
             }
 
 
@@ -219,6 +214,24 @@ namespace TuneBridge.Configuration {
             }
 
             return services;
+        }
+
+        /// <summary>
+        /// Initializes the SQLite database for caching if Bluesky PDS is configured.
+        /// </summary>
+        /// <param name="serviceProvider">The service provider to use for resolving services.</param>
+        public static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
+            try {
+                var dbContext = serviceProvider.GetService<MediaLinkCacheDbContext>( );
+                if (dbContext is not null) {
+                    dbContext.Database.EnsureCreated( );
+                    var logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                    logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
+                }
+            } catch (Exception ex) {
+                var logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                logger.LogError( ex, "Failed to initialize SQLite cache database" );
+            }
         }
 
         /// <summary>
