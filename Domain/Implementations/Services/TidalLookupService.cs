@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Auth;
@@ -23,19 +23,24 @@ namespace TuneBridge.Domain.Implementations.Services {
         JsonSerializerOptions serializerOptions
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
 
+        /// <summary>
+        /// The default market region/storefront used for Tidal API requests.
+        /// </summary>
+        public const string DefaultStorefront = "US";
+
         public override SupportedProviders Provider => SupportedProviders.Tidal;
 
         public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc )
-            => ParseTidalResponse(
-                await NewMusicApiRequest( TidalLinkParser.GetTracksIsrcURI( isrc ), IsrcLookupKey ),
+            => await ParseTidalResponse(
+                await NewMusicApiRequest( TidalLinkParser.GetTracksIsrcURI( DefaultStorefront, isrc ), IsrcLookupKey ),
                 IsrcLookupKey,
                 TidalEntity.Track,
                 null
             );
 
         public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
-            => ParseTidalResponse(
-                await NewMusicApiRequest( TidalLinkParser.GetAlbumUpcURI( upc ), UpcLookupKey ),
+            => await ParseTidalResponse(
+                await NewMusicApiRequest( TidalLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), UpcLookupKey ),
                 UpcLookupKey,
                 TidalEntity.Album,
                 null
@@ -44,56 +49,23 @@ namespace TuneBridge.Domain.Implementations.Services {
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseTidalArtistList(
                 await NewMusicApiRequest(
-                    TidalLinkParser.GetArtistSearchUri(artist),
+                    TidalLinkParser.GetArtistSearchUri(DefaultStorefront, artist),
                     ArtistLookupKey
                 )
             );
+            MusicLookupResultDto? result = null;
 
             // Bail out early if we have no results
-            if (artistResults == null || artistResults.Count == 0) { return null; }
+            if (artistResults == null || artistResults.Count == 0) { return result; }
 
             string sanitizedAlbumTitle = SanitizeAlbumTitle( title );
+            string sanitizedTrackTitle = SanitizeSongTitle( title );
             foreach ((string id, string artistName) in artistResults) {
-                string lookupKey = $"albums for artist {artistName} {id} ";
+                result = await ParseArtistAlbums( id, artistName, sanitizedAlbumTitle );
+                if (result != null) { return result; }
 
-                List<(string id, string albumName)> artistAlbumIds = [];
-                foreach ((string albumId, MusicLookupResultDto album) in ParseArtistAlbumLists(
-                    await NewMusicApiRequest( TidalLinkParser.GetArtistAlbumsURI( id ), lookupKey ),
-                    lookupKey
-                )) {
-                    if (ValidateSanitizedAlbumTitle( album, sanitizedAlbumTitle )) {
-                        // The Artist Album endpoint doesn't return the albums with external Id's (UPC's) included.
-                        // So we'll perform another direct lookup to get the UPC.
-                        string? body = await NewMusicApiRequest( TidalLinkParser.GetAlbumIdURI( albumId ), lookupKey );
-
-                        // This really shouldnt happen, but if something goes wrong we can return what we've already matched.
-                        if (string.IsNullOrWhiteSpace( body )) { return album; }
-
-                        using JsonDocument jsonDoc = JsonDocument.Parse( body );
-                        return ParseTidalResponse(
-                            jsonDoc.RootElement,
-                            lookupKey,
-                            TidalEntity.Album,
-                            null
-                        );
-                    } else {
-                        artistAlbumIds.Add( (albumId, album.Title) );
-                    }
-                }
-
-                // If we couldnt match the artist + album combination, try searching for the
-                // individual tracks on those albums instead.
-                string sanitizedSongTitle = SanitizeSongTitle( title );
-                foreach ((string albumId, string albumName) in artistAlbumIds) {
-                    string trackLookup = $"tracks for artist {artistName} album {albumName} id#{albumId} ";
-
-                    MusicLookupResultDto? result = ParseAlbumTrackLists(
-                        await NewMusicApiRequest(TidalLinkParser.GetAlbumTracksURI(albumId), trackLookup),
-                        sanitizedSongTitle,
-                        trackLookup
-                    );
-                    if (result != null) { return result; }
-                }
+                result = await ParseArtistTracks( id, artistName, sanitizedTrackTitle );
+                if (result != null) { return result; }
             }
 
             return null;
@@ -102,23 +74,82 @@ namespace TuneBridge.Domain.Implementations.Services {
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
             if (TidalLinkParser.TryParseUri( uri, out TidalEntity kind, out string id )) {
                 if (kind == TidalEntity.Album) {
-                    string? body = await NewMusicApiRequest( TidalLinkParser.GetAlbumIdURI( id ), AlbumLookupKey );
-                    if (body != null) {
-                        using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                        return ParseTidalResponse(
-                            jsonDoc.RootElement,
-                            AlbumLookupKey,
-                            kind,
-                            true
-                        );
-                    }
+                    return await NewAlbumIdLookup( id, true );
                 } else if (kind == TidalEntity.Track) {
-                    return ParseTidalResponse(
-                        await NewMusicApiRequest( TidalLinkParser.GetTrackIdURI( id ), SongLookupKey ),
-                        SongLookupKey,
-                        kind,
-                        true
-                    );
+                    return await NewTrackIdLookup( id, true );
+                }
+            }
+            return null;
+        }
+
+        private async Task<MusicLookupResultDto?> ParseArtistAlbums( string artistId, string artistName, string title ) {
+            string lookupKey = $"albums for artist {artistName} {artistId} ";
+
+            string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistAlbumsUri( DefaultStorefront, artistId ), lookupKey );
+            if (body == null) { return null; }
+
+            using JsonDocument jsonDoc = JsonDocument.Parse(body);
+            if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
+                MusicLookupResultDto? albumResult = await ParseIncludedElementList( includedOutput, title, true );
+                if (albumResult != null) { return albumResult; }
+            }
+            return null;
+        }
+
+        private async Task<MusicLookupResultDto?> ParseArtistTracks( string artistId, string artistName, string title ) {
+            string lookupKey = $"tracks for artist {artistName} {artistId} ";
+
+            string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistTracksUri( DefaultStorefront, artistId ), lookupKey );
+            if (body == null) { return null; }
+
+            using JsonDocument jsonDoc = JsonDocument.Parse(body);
+            if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
+                MusicLookupResultDto? trackResult = await ParseIncludedElementList( includedOutput, title, false );
+                if (trackResult != null) { return trackResult; }
+            }
+            return null;
+        }
+
+        private async Task<MusicLookupResultDto?> ParseIncludedElementList( JsonElement includedOutput, string title, bool isAlbum ) {
+            foreach (JsonElement item in includedOutput.EnumerateArray( )) {
+                if (item.TryGetProperty( "type", out JsonElement itemType )
+                    && item.TryGetProperty( "id", out JsonElement itemIdProp )
+                    && string.IsNullOrWhiteSpace( itemIdProp.GetString( ) ) == false
+                    && ((isAlbum && itemType.GetString( ) == "albums") || (!isAlbum && itemType.GetString( ) == "tracks"))
+                    && item.TryGetProperty( "attributes", out JsonElement itemAttributes )
+                    && itemAttributes.TryGetProperty( "title", out JsonElement itemTitleProp )
+                    && string.IsNullOrWhiteSpace( itemTitleProp.GetString( ) ) == false
+                    && (isAlbum
+                        ? SanitizeAlbumTitle( itemTitleProp.GetString( )! )
+                        : SanitizeSongTitle( itemTitleProp.GetString( )! )
+                       ).Equals( title, StringComparison.InvariantCultureIgnoreCase )
+                ) {
+                    string elementId = itemIdProp.GetString( )!;
+                    return isAlbum
+                            ? await NewAlbumIdLookup( elementId, false )
+                            : await NewTrackIdLookup( elementId, false );
+                }
+            }
+            return null;
+        }
+
+        private async Task<MusicLookupResultDto?> NewAlbumIdLookup( string albumId, bool isPrimary ) {
+            string? body = await NewMusicApiRequest( TidalLinkParser.GetAlbumIdURI( DefaultStorefront, albumId ), AlbumLookupKey );
+            if (body != null) {
+                using JsonDocument jsonDoc = JsonDocument.Parse(body);
+                if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
+                    return await ParseTidalResponse( dataOutput, includedOutput, AlbumLookupKey, TidalEntity.Album, isPrimary );
+                }
+            }
+            return null;
+        }
+
+        private async Task<MusicLookupResultDto?> NewTrackIdLookup( string trackId, bool isPrimary ) {
+            string? body = await NewMusicApiRequest( TidalLinkParser.GetTrackIdURI( DefaultStorefront, trackId ), SongLookupKey );
+            if (body != null) {
+                using JsonDocument jsonDoc = JsonDocument.Parse(body);
+                if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
+                    return await ParseTidalResponse( dataOutput, includedOutput, SongLookupKey, TidalEntity.Track, isPrimary );
                 }
             }
             return null;
@@ -130,7 +161,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             return client;
         }
 
-        private MusicLookupResultDto? ParseTidalResponse(
+        private async Task<MusicLookupResultDto?> ParseTidalResponse(
             string? body,
             string lookupKey,
             TidalEntity kind,
@@ -139,8 +170,8 @@ namespace TuneBridge.Domain.Implementations.Services {
             if (string.IsNullOrWhiteSpace( body )) { return null; }
             try {
                 using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement element )) {
-                    return ParseTidalResponse( element, lookupKey, kind, isPrimary );
+                if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
+                    return await ParseTidalResponse( dataOutput, includedOutput, lookupKey, kind, isPrimary );
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from tidal." );
@@ -149,50 +180,28 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
-        private static bool CanParseJsonElement( JsonElement root, out JsonElement output ) {
-            output = root;
+        private static bool CanParseJsonElement( JsonElement root, out JsonElement dataOutput, out JsonElement includedOutput ) {
+            dataOutput = root;
+            includedOutput = root;
+            bool result1 = false;
+            bool result2 = false;
 
-            if (root.TryGetProperty( "tracks", out JsonElement trackProps )) {
-                output = trackProps;
-            } else if (root.TryGetProperty( "albums", out JsonElement albumProps )) {
-                output = albumProps;
+            if (root.TryGetProperty( "data", out JsonElement dataProps )) {
+                dataOutput = dataProps.ValueKind == JsonValueKind.Array ? dataProps.EnumerateArray( ).First( ) : dataProps;
+                result1 = true;
             }
 
-            if (output.TryGetProperty( "items", out JsonElement items )) {
-                output = items;
+            if (root.TryGetProperty( "included", out JsonElement includedProps )) {
+                includedOutput = includedProps;
+                result2 = true;
             }
 
-            if (output.ValueKind == JsonValueKind.Array) {
-                if (output.GetArrayLength( ) > 0) {
-                    output = output.EnumerateArray( ).First( );
-                } else {
-                    return false;
-                }
-            }
-
-            return true;
+            return result1 && result2;
         }
 
-        private static string GetArtistName( JsonElement element ) {
-            string result = string.Empty;
-            if (element.TryGetProperty( "artists", out JsonElement artistsProps )) {
-                if (artistsProps.GetArrayLength( ) > 0) {
-                    result = artistsProps
-                                .EnumerateArray( )
-                                .First( )
-                                .GetProperty( "name" )
-                                .GetString( ) ?? string.Empty;
-                }
-            } else if (element.TryGetProperty( "artist", out JsonElement artistProp )) {
-                if (artistProp.TryGetProperty( "name", out JsonElement nameProp )) {
-                    result = nameProp.GetString( ) ?? string.Empty;
-                }
-            }
-            return result;
-        }
-
-        private MusicLookupResultDto? ParseTidalResponse(
-            JsonElement element,
+        private async Task<MusicLookupResultDto?> ParseTidalResponse(
+            JsonElement dataOutput,
+            JsonElement includedOutput,
             string lookupKey,
             TidalEntity kind,
             bool? isPrimary
@@ -200,64 +209,116 @@ namespace TuneBridge.Domain.Implementations.Services {
             bool isAlbum = kind == TidalEntity.Album;
             MusicLookupResultDto result = new() {
                 IsAlbum = isAlbum,
-                IsPrimary = isPrimary ?? false
+                IsPrimary = isPrimary ?? false,
+                MarketRegion = DefaultStorefront
             };
 
             try {
-                result.Artist = GetArtistName( element );
+                if (dataOutput.TryGetProperty( "relationships", out JsonElement dataRelationships )) {
+                    result.Artist = GetArtistName( dataRelationships, includedOutput );
+                }
 
-                result.Title = element
+                if (dataOutput.TryGetProperty( "attributes", out JsonElement dataAttributes )) {
+                    result.Title = dataAttributes
                                 .GetProperty( "title" )
                                 .GetString( ) ?? string.Empty;
 
-                result.ExternalId = GetExternalIdFromJson( element, isAlbum );
+                    result.ExternalId = GetExternalIdFromJson( dataAttributes, isAlbum );
 
-                // Construct Tidal URL
-                string tidalId = element.GetProperty( "id" ).GetString() ?? string.Empty;
-                result.URL = kind == TidalEntity.Album
-                    ? $"https://tidal.com/browse/album/{tidalId}"
-                    : $"https://tidal.com/browse/track/{tidalId}";
+                    if (dataAttributes.TryGetProperty( "externalLinks", out JsonElement extLinks )
+                        && extLinks.GetArrayLength( ) > 0
+                        && extLinks
+                            .EnumerateArray( )
+                            .First( )
+                            .TryGetProperty( "href", out JsonElement hrefInfo )
+                    ) {
+                        result.URL = hrefInfo.GetString( ) ?? string.Empty;
+                    }
+                }
 
-                result.ArtUrl = GetAlbumArtUrl( element );
+                result.ArtUrl = await GetAlbumArtUrl( includedOutput, isAlbum );
 
                 return result;
             } catch (Exception ex) {
                 Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from tidal." );
-                Logger.LogTrace( JsonSerializer.Serialize( element, SerializerOptions ) );
+                Logger.LogTrace( JsonSerializer.Serialize( dataOutput, SerializerOptions ) );
+                Logger.LogTrace( JsonSerializer.Serialize( includedOutput, SerializerOptions ) );
                 return null;
             }
         }
 
-        private static string GetAlbumArtUrl( JsonElement element ) {
-            // Try to get images array - provides direct URLs to different sizes
-            // Tidal API orders images from largest to smallest, so we can use the first one
-            if (element.TryGetProperty( "images", out JsonElement imagesProps )) {
-                if (imagesProps.ValueKind == JsonValueKind.Array && imagesProps.GetArrayLength( ) > 0) {
-                    JsonElement firstImage = imagesProps.EnumerateArray().First();
-                    if (firstImage.TryGetProperty( "url", out JsonElement urlProp )) {
-                        string? url = urlProp.GetString();
-                        if (!string.IsNullOrEmpty(url)) {
-                            return url;
+
+        private static string GetArtistName(
+            JsonElement dataRelationships,
+            JsonElement includedOutput
+        ) {
+            string result = string.Empty;
+            if (dataRelationships.TryGetProperty( "artists", out JsonElement artistsProps ) && artistsProps.TryGetProperty( "data", out JsonElement artistsArray )) {
+                List<string> artistIds = [];
+                foreach (JsonElement artistInfo in artistsArray.EnumerateArray( )) {
+                    if (artistInfo.TryGetProperty( "type", out JsonElement contributorType ) && contributorType.GetString( ) == "artists" && artistInfo.TryGetProperty( "id", out JsonElement contributorId )) {
+                        string artistId = contributorId.GetString( ) ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace( artistId ) == false) {
+                            artistIds.Add( artistId );
+                            result += $"|{artistId}| & ";
+                        }
+                    }
+                }
+
+                result = result.TrimEnd( ' ', '&' );
+
+                // Find the matching artist in the included output
+                foreach (JsonElement includedItem in includedOutput.EnumerateArray( )) {
+                    if (includedItem.TryGetProperty( "type", out JsonElement includedType )
+                        && includedType.GetString( ) == "artists"
+                        && includedItem.TryGetProperty( "id", out JsonElement includedId )
+                        && includedItem.TryGetProperty( "attributes", out JsonElement includedAttributes )
+                        && includedAttributes.TryGetProperty( "name", out JsonElement includedName )
+                    ) {
+                        string artistId = includedId.GetString( ) ?? string.Empty;
+                        string artistName = includedName.GetString( ) ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace( artistId ) == false && string.IsNullOrWhiteSpace( artistName ) == false) {
+                            result = result.Replace( $"|{artistId}|", artistName );
                         }
                     }
                 }
             }
-            
-            // Try images array from album object
-            if (element.TryGetProperty( "album", out JsonElement albumProps )) {
-                if (albumProps.TryGetProperty( "images", out JsonElement albumImagesProps )) {
-                    if (albumImagesProps.ValueKind == JsonValueKind.Array && albumImagesProps.GetArrayLength( ) > 0) {
-                        JsonElement firstImage = albumImagesProps.EnumerateArray().First();
-                        if (firstImage.TryGetProperty( "url", out JsonElement urlProp )) {
-                            string? url = urlProp.GetString();
-                            if (!string.IsNullOrEmpty(url)) {
-                                return url;
-                            }
+            return result;
+        }
+
+        private async Task<string> GetAlbumArtUrl(
+            JsonElement includedOutput,
+            bool isAlbum
+        ) {
+            if (isAlbum == false) {
+                // Lookup album from album details and then return album art
+                foreach (JsonElement item in includedOutput.EnumerateArray( )) {
+                    if (item.TryGetProperty( "type", out JsonElement itemType )
+                        && itemType.GetString( ) == "albums"
+                        && item.TryGetProperty( "id", out JsonElement albumIdProp )
+                    ) {
+                        MusicLookupResultDto? album = await NewAlbumIdLookup( albumIdProp.GetString( )!, false );
+                        if (string.IsNullOrWhiteSpace( album?.ArtUrl ) == false) {
+                            return album.ArtUrl;
                         }
                     }
                 }
+            } else {
+                // Parse Album art directly from included output
+                foreach (JsonElement item in includedOutput.EnumerateArray( )) {
+                    if (item.TryGetProperty( "type", out JsonElement itemType )
+                        && itemType.GetString( ) == "artworks"
+                        && item.TryGetProperty( "attributes", out JsonElement itemAttributes )
+                        && itemAttributes.TryGetProperty( "mediaType", out JsonElement itemMediaTypeProp )
+                        && itemMediaTypeProp.GetString( ) == "IMAGE"
+                        && itemAttributes.TryGetProperty( "files", out JsonElement itemFilesProp )
+                        && itemFilesProp.GetArrayLength( ) > 0
+                        && itemFilesProp.EnumerateArray( ).First( ).TryGetProperty( "href", out JsonElement itemUrlProp )
+                    ) {
+                        return itemUrlProp.GetString( ) ?? string.Empty;
+                    }
+                }
             }
-            
             return string.Empty;
         }
 
@@ -268,16 +329,20 @@ namespace TuneBridge.Domain.Implementations.Services {
             try {
                 using JsonDocument jsonDoc = JsonDocument.Parse(body);
                 JsonElement root = jsonDoc.RootElement;
-                if (root.TryGetProperty( "artists", out JsonElement artistsProps ) &&
-                    artistsProps.TryGetProperty( "items", out JsonElement itemsProps )
+                if (root.TryGetProperty( "included", out JsonElement includedDetails ) &&
+                    includedDetails.GetArrayLength( ) > 0
                 ) {
-                    if (itemsProps.GetArrayLength( ) == 0) { return null; }
-
-                    foreach (JsonElement artist in itemsProps.EnumerateArray( )) {
-                        results.Add(
-                            (artist.GetProperty( "id" ).GetString( )!,
-                            artist.GetProperty( "name" ).GetString( )!)
-                        );
+                    foreach (JsonElement item in includedDetails.EnumerateArray( )) {
+                        if (item.GetProperty( "type" ).GetString( ) == "artists"
+                            && item.TryGetProperty( "attributes", out JsonElement artistAttributes )
+                            && artistAttributes.TryGetProperty( "name", out JsonElement artistNameProp )
+                            && item.TryGetProperty( "id", out JsonElement artistIdProp )
+                        ) {
+                            results.Add(
+                                (artistIdProp.GetString( )!,
+                                artistNameProp.GetString( )!)
+                            );
+                        }
                     }
                     return results;
                 }
@@ -287,54 +352,6 @@ namespace TuneBridge.Domain.Implementations.Services {
                 Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
                 return null;
             }
-        }
-
-        private IEnumerable<(string id, MusicLookupResultDto album)> ParseArtistAlbumLists(
-            string? body,
-            string lookupKey
-        ) {
-            if (body == null) { yield break; }
-
-            using JsonDocument jsonDoc = JsonDocument.Parse(body);
-            JsonElement root = jsonDoc.RootElement;
-            if (root.TryGetProperty( "items", out JsonElement itemProps )) {
-                if (itemProps.GetArrayLength( ) == 0) { yield break; }
-
-                foreach (JsonElement item in itemProps.EnumerateArray( )) {
-                    yield return (item.GetProperty( "id" ).GetString( )!, ParseTidalResponse( item, lookupKey, TidalEntity.Album, null )!);
-                }
-            }
-        }
-
-        private MusicLookupResultDto? ParseAlbumTrackLists(
-            string? body,
-            string sanitizedSongTitle,
-            string lookupKey
-        ) {
-            if (body == null) { return null; }
-
-            try {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                JsonElement root = jsonDoc.RootElement;
-                if (root.TryGetProperty( "items", out JsonElement itemProps )) {
-                    if (itemProps.GetArrayLength( ) == 0) { return null; }
-
-                    foreach (JsonElement item in itemProps.EnumerateArray( )) {
-                        string name = (item.GetProperty("title").GetString() ?? string.Empty).Trim();
-
-                        if (SanitizeSongTitle( name ).Equals( sanitizedSongTitle, StringComparison.InvariantCultureIgnoreCase ) &&
-                            CanParseJsonElement( item, out JsonElement element )
-                        ) {
-                            // Tidal's Album Track endpoint includes ISRC directly in the response
-                            return ParseTidalResponse( element, lookupKey, TidalEntity.Track, null );
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from tidal." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
-            }
-            return null;
         }
 
     }

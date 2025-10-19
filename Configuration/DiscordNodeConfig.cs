@@ -1,5 +1,5 @@
-﻿using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Implementations.DiscordGatewayHandlers;
+﻿using TuneBridge.Domain.Implementations.DiscordGatewayHandlers;
+using TuneBridge.Domain.Interfaces;
 
 namespace TuneBridge.Configuration {
     /// <summary>

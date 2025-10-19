@@ -113,7 +113,7 @@ namespace TuneBridge.Configuration {
                 } ).AddStandardResilience( );
 
                 _ = services.AddHttpClient( "tidal-api", c => {
-                    c.BaseAddress = new Uri( "https://openapi.tidal.com/v1/" );
+                    c.BaseAddress = new Uri( "https://openapi.tidal.com/v2/" );
                 } ).AddStandardResilience( );
 
                 _ = services.AddSingleton( new TidalCredentials( settings.TidalClientId, settings.TidalClientSecret ) );

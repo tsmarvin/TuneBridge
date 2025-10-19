@@ -50,18 +50,18 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
             id = string.Empty;
 
             // If it's a spotify.link URL, resolve it to the actual Spotify URL
-            if (SpotifyShortLink.IsMatch( link )) {
+            if (s_spotifyShortLink.IsMatch( link )) {
                 string? resolvedUrl = ResolveSpotifyShortLink( link );
                 if (resolvedUrl != null) {
                     link = resolvedUrl;
                 }
             }
 
-            if (SpotifyLink.IsMatch( link )) {
+            if (s_spotifyLink.IsMatch( link )) {
 
-                string? uri = SpotifyLink.GetGroupValues(link, "type").FirstOrDefault();
+                string? uri = s_spotifyLink.GetGroupValues(link, "type").FirstOrDefault();
                 if (uri != null) {
-                    Match match = SpotifyLink.Match(link);
+                    Match match = s_spotifyLink.Match(link);
 
                     id = match.Groups["id"].Value;
                     kind = match.Groups["type"].Value.ToLowerInvariant( ) switch {
@@ -81,28 +81,21 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <param name="shortLink">The spotify.link URL to resolve.</param>
         /// <returns>The resolved open.spotify.com URL, or null if resolution fails.</returns>
         private static string? ResolveSpotifyShortLink( string shortLink ) {
-            try {
-                using HttpClient client = new( new HttpClientHandler { AllowAutoRedirect = false } );
-                client.Timeout = TimeSpan.FromSeconds( 5 );
-                HttpResponseMessage response = client.GetAsync( shortLink ).Result;
-                
-                if (response.StatusCode == System.Net.HttpStatusCode.MovedPermanently ||
-                    response.StatusCode == System.Net.HttpStatusCode.Found ||
-                    response.StatusCode == System.Net.HttpStatusCode.SeeOther ||
-                    response.StatusCode == System.Net.HttpStatusCode.TemporaryRedirect) {
-                    return response.Headers.Location?.ToString();
-                }
-            } catch {
-                // If resolution fails, return null to let the caller handle it
-            }
-            return null;
+            using HttpClient client = new( new HttpClientHandler { AllowAutoRedirect = false } );
+            HttpResponseMessage response = client.GetAsync( $"https://{shortLink}" ).Result;
+            return response.StatusCode is System.Net.HttpStatusCode.MovedPermanently or
+                   System.Net.HttpStatusCode.Found or
+                   System.Net.HttpStatusCode.SeeOther or
+                   System.Net.HttpStatusCode.TemporaryRedirect
+                ? (response.Headers.Location?.ToString( ))
+                : null;
         }
 
-        private static readonly Regex SpotifyLink = SpotifyMusicLink();
+        private static readonly Regex s_spotifyLink = SpotifyMusicLink();
         [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex SpotifyMusicLink( );
 
-        private static readonly Regex SpotifyShortLink = SpotifyShortLinkPattern();
+        private static readonly Regex s_spotifyShortLink = SpotifyShortLinkPattern();
         [GeneratedRegex( @"spotify\.link/[A-Za-z0-9]+", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex SpotifyShortLinkPattern( );
 

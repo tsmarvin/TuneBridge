@@ -27,7 +27,7 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
         /// <param name="result">The media link result to format and send.</param>
         /// <param name="userId">The user ID who shared the link.</param>
         /// <returns>True if the message was sent successfully.</returns>
-        internal async Task<bool> SendLinkMessage( GatewayClient client, ulong channelId, MediaLinkResult result, ulong userId ) {
+        internal static async Task<bool> SendLinkMessage( GatewayClient client, ulong channelId, MediaLinkResult result, ulong userId ) {
             _ = await client.Rest.SendMessageAsync(
                 channelId,
                 result.ToDiscordMessageProperties( userId )
