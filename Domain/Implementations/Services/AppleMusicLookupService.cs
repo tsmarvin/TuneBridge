@@ -2,7 +2,6 @@
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Auth;
-using TuneBridge.Domain.Implementations.Extensions;
 using TuneBridge.Domain.Implementations.LinkParsers;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Bases;

@@ -1,5 +1,4 @@
-using System.Text.RegularExpressions;
-using TuneBridge.Domain.Implementations.Extensions;
+﻿using System.Text.RegularExpressions;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Implementations.LinkParsers {
@@ -48,27 +47,28 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
             kind = TidalEntity.Unknown;
             id = string.Empty;
 
-            if (TidalLink.IsMatch( link )) {
+            if (s_tidalLink.IsMatch( link )) {
+                Match tidalMatch = s_tidalLink.Match(link);
 
-                string? uri = TidalLink.GetGroupValues(link, "type").FirstOrDefault();
-                if (uri != null) {
-                    Match match = TidalLink.Match(link);
-
-                    id = match.Groups["id"].Value;
-                    kind = match.Groups["type"].Value.ToLowerInvariant( ) switch {
+                if (tidalMatch.Groups.ContainsKey( "type" )) {
+                    kind = tidalMatch.Groups["type"].Value switch {
                         "track" => TidalEntity.Track,
                         "album" => TidalEntity.Album,
                         "artist" => TidalEntity.Artist,
-                        _ => TidalEntity.Unknown
+                        _ => TidalEntity.Unknown,
                     };
+                }
+
+                if (tidalMatch.Groups.ContainsKey( "id" )) {
+                    id = tidalMatch.Groups["id"].Value;
                 }
             }
 
-            return kind != TidalEntity.Unknown && !string.IsNullOrEmpty( id );
+            return (kind == TidalEntity.Track || kind == TidalEntity.Album) && !string.IsNullOrEmpty( id );
         }
 
-        private static readonly Regex TidalLink = TidalMusicLink();
-        [GeneratedRegex( @"(?:(?:listen\.)?tidal\.com/)(?:browse/)?(?<type>track|album|artist)/(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+        private static readonly Regex s_tidalLink = TidalMusicLink();
+        [GeneratedRegex( @"(?:(?:listen\.)?tidal\.com/)(?:browse/)?(?<type>track|album)/(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex TidalMusicLink( );
 
         /// <summary>
@@ -76,69 +76,78 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// </summary>
         /// <param name="artist">The artist name to search for.</param>
         /// <returns>The API URI for artist search.</returns>
-        public static string GetArtistSearchUri( string artist )
-            => ArtistsSearchURI.Replace( "{artist}", Uri.EscapeDataString( artist ) );
+        public static string GetArtistSearchUri( string storefront, string artist )
+            => ArtistSearchURI
+                .Replace( "{storefront}", storefront )
+                .Replace( "{artist}", Uri.EscapeDataString( artist ) );
+
+        /// <summary>
+        /// Constructs an API URI for searching artists track titles by name.
+        /// </summary>
+        /// <param name="artistId">The artist to get tracks for.</param>
+        /// <returns>The API URI for artist tracks to search.</returns>
+        public static string GetArtistTracksUri( string storefront, string artistId )
+            => ArtistTrackRelationshipsUri
+                .Replace( "{storefront}", storefront )
+                .Replace( "{artistId}", artistId );
+
+        /// <summary>
+        /// Constructs an API URI for searching artists album titles by name.
+        /// </summary>
+        /// <param name="artistId">The artist to get albums for.</param>
+        /// <returns>The API URI for artist albums to search.</returns>
+        public static string GetArtistAlbumsUri( string storefront, string artistId )
+            => ArtistAlbumRelationshipsUri
+                .Replace( "{storefront}", storefront )
+                .Replace( "{artistId}", artistId );
 
         /// <summary>
         /// Constructs an API URI for looking up a track by ISRC.
         /// </summary>
         /// <param name="isrc">The ISRC code.</param>
         /// <returns>The API URI for ISRC lookup.</returns>
-        public static string GetTracksIsrcURI( string isrc )
-            => TracksIsrcURI.Replace( "{isrc}", isrc );
+        public static string GetTracksIsrcURI( string storefront, string isrc )
+            => TracksIsrcURI
+                .Replace( "{storefront}", storefront )
+                .Replace( "{isrc}", isrc );
 
         /// <summary>
         /// Constructs an API URI for looking up an album by UPC.
         /// </summary>
         /// <param name="upc">The UPC code.</param>
         /// <returns>The API URI for UPC lookup.</returns>
-        public static string GetAlbumUpcURI( string upc )
-            => AlbumsUpcURI.Replace( "{upc}", upc );
+        public static string GetAlbumUpcURI( string storefront, string upc )
+            => AlbumsUpcURI
+                .Replace( "{storefront}", storefront )
+                .Replace( "{upc}", upc );
 
         /// <summary>
-        /// Constructs an API URI for getting an artist's albums.
+        /// Constructs an API URI for looking up an album by its Tidal Id.
         /// </summary>
-        /// <param name="artistId">The artist's Tidal ID.</param>
-        /// <returns>The API URI for the artist's albums.</returns>
-        public static string GetArtistAlbumsURI( string artistId )
-            => ArtistAlbumsURI
-                .Replace( "{id}", artistId );
+        /// <param name="albumId">The tidal album id to search for.</param>
+        /// <returns>The API URI for album lookup by id.</returns>
+        public static string GetAlbumIdURI( string storefront, string albumId )
+            => AlbumIdUri
+                .Replace( "{storefront}", storefront )
+                .Replace( "{albumId}", albumId );
 
         /// <summary>
-        /// Constructs an API URI for getting an album's tracks.
+        /// Constructs an API URI for looking up a track by its Tidal Id.
         /// </summary>
-        /// <param name="albumId">The album's Tidal ID.</param>
-        /// <returns>The API URI for the album's tracks.</returns>
-        public static string GetAlbumTracksURI( string albumId )
-            => AlbumTracksURI
-                .Replace( "{id}", albumId );
+        /// <param name="trackId">The tidal track id to search for.</param>
+        /// <returns>The API URI for track lookup by id.</returns>
+        public static string GetTrackIdURI( string storefront, string trackId )
+            => TrackIdUri
+                .Replace( "{storefront}", storefront )
+                .Replace( "{trackId}", trackId );
 
-        /// <summary>
-        /// Constructs an API URI for getting album details by ID.
-        /// </summary>
-        /// <param name="albumId">The album's Tidal ID.</param>
-        /// <returns>The API URI for the album.</returns>
-        public static string GetAlbumIdURI( string albumId )
-            => AlbumsURI
-                .Replace( "{id}", albumId );
-
-        /// <summary>
-        /// Constructs an API URI for getting track details by ID.
-        /// </summary>
-        /// <param name="trackId">The track's Tidal ID.</param>
-        /// <returns>The API URI for the track.</returns>
-        public static string GetTrackIdURI( string trackId )
-            => TracksURI
-                .Replace( "{id}", trackId );
-
-
-        private const string TracksIsrcURI = "search/tracks?query={isrc}&limit=1&countryCode=US";
-        private const string AlbumsUpcURI = "search/albums?query={upc}&limit=1&countryCode=US";
-        private const string ArtistsSearchURI = "search/artists?query={artist}&limit=10&countryCode=US";
-        private const string ArtistAlbumsURI = "artists/{id}/albums?countryCode=US&limit=50";
-        private const string AlbumTracksURI = "albums/{id}/tracks?countryCode=US&limit=100";
-        private const string AlbumsURI = "albums/{id}?countryCode=US";
-        private const string TracksURI = "tracks/{id}?countryCode=US";
+        private const string TracksIsrcURI = "tracks?filter%5Bisrc%5D={isrc}&countryCode={storefront}&include=albums&include=artists";
+        private const string AlbumsUpcURI = "albums?filter%5BbarcodeId%5D={upc}&countryCode={storefront}&include=artists&include=coverArt";
+        private const string ArtistSearchURI = "searchResults/{artist}?countryCode={storefront}&explicitFilter=include&include=artists";
+        private const string ArtistAlbumRelationshipsUri = "artists/{artistId}/relationships/albums?countryCode={storefront}&include=albums";
+        private const string ArtistTrackRelationshipsUri = "artists/{artistId}/relationships/tracks?countryCode={storefront}&collapseBy=FINGERPRINT&include=tracks";
+        private const string TrackIdUri = "tracks/{trackId}?countryCode={storefront}&include=albums&include=artists";
+        private const string AlbumIdUri = "albums/{albumId}?countryCode={storefront}&include=artists&include=coverArt";
 
     }
 }

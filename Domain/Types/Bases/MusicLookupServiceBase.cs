@@ -60,7 +60,7 @@ namespace TuneBridge.Domain.Types.Bases {
 
             HttpResponseMessage resp = await http.GetAsync(requestUri);
             if (!resp.IsSuccessStatusCode) {
-                Logger.LogError( "An error occurred while fetching {lookupKey}data from apple: HTTP {statusCode} {reasonPhrase}", lookupKey, (int)resp.StatusCode, resp.ReasonPhrase );
+                Logger.LogError( "An error occurred while fetching {lookupKey}data from {provider}: HTTP {statusCode} {reasonPhrase}", lookupKey, Provider.ToString( ), (int)resp.StatusCode, resp.ReasonPhrase );
                 return null;
             }
             return await resp.Content.ReadAsStringAsync( );
@@ -74,7 +74,9 @@ namespace TuneBridge.Domain.Types.Bases {
             return isAlbum
                     ? (element.TryGetProperty( "upc", out JsonElement upcProp )
                             ? upcProp.GetString( ) ?? string.Empty
-                            : string.Empty)
+                            : element.TryGetProperty( "barcodeId", out JsonElement barcodeProp )
+                                ? barcodeProp.GetString( ) ?? string.Empty
+                                : string.Empty)
                     : (element.TryGetProperty( "isrc", out JsonElement isrcProp )
                             ? isrcProp.GetString( ) ?? string.Empty
                             : string.Empty);
@@ -106,7 +108,7 @@ namespace TuneBridge.Domain.Types.Bases {
         protected static string SanitizeSongTitle( string title )
             => SanitizeTitleString(
                 s_songTitleAddendum.IsMatch( title ) ?
-                    (title.Replace( s_songTitleAddendum.GetGroupValues( title, "Addendum" ).First( ), string.Empty ).Trim( )) + " "
+                    title.Replace( s_songTitleAddendum.GetGroupValues( title, "Addendum" ).First( ), string.Empty ).Trim( ) + " "
                     + s_songTitleAddendum.GetGroupValues( title, "EditType" ).First( ).Trim( )
                 : title
             );
