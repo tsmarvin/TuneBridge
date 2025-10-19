@@ -138,8 +138,14 @@ namespace TuneBridge.Configuration {
             ) );
             _ = services.AddSingleton( enabledProviders );
 
+            // Register the MediaCardService for OpenGraph card generation
+            _ = services.AddSingleton<IMediaCardService, InMemoryMediaCardService>( );
 
-            _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
+            _ = services.AddTransient( s => new DiscordNodeConfig( 
+                s.GetRequiredService<IMediaLinkService>( ), 
+                s.GetRequiredService<IMediaCardService>( ),
+                settings.BaseUrl,
+                settings.NodeNumber ) );
 
             // Register Discord if credentials are present.
             if (string.IsNullOrWhiteSpace( settings.DiscordToken ) == false) {

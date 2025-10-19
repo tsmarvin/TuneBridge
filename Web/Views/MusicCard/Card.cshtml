@@ -1,0 +1,188 @@
+@model TuneBridge.Domain.Contracts.DTOs.MediaLinkResult
+@using TuneBridge.Domain.Types.Enums
+@using TuneBridge.Domain.Implementations.Extensions
+@{
+    var cardUrl = $"{Context.Request.Scheme}://{Context.Request.Host}{Context.Request.Path}";
+    var ogTags = Model.ToOpenGraphTags(cardUrl);
+    
+    var primary = Model.Results.FirstOrDefault(kv => kv.Value.IsPrimary);
+    if (primary.Value == null) {
+        primary = Model.Results.First();
+    }
+    var dto = primary.Value;
+    
+    ViewData["Title"] = ogTags.GetValueOrDefault("og:title", "Music Card");
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - TuneBridge</title>
+    
+    @foreach (var tag in ogTags) {
+        <meta property="@tag.Key" content="@tag.Value" />
+    }
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 600px;
+            width: 100%;
+            overflow: hidden;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .card-header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .card-body {
+            padding: 30px;
+        }
+        .album-art {
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .info {
+            margin-bottom: 25px;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .provider-links {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .provider-link {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
+        .provider-link:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+            transform: translateX(5px);
+        }
+        .provider-icon {
+            width: 32px;
+            height: 32px;
+            margin-right: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            border-radius: 6px;
+            color: white;
+        }
+        .provider-spotify { background: #1DB954; }
+        .provider-applemusic { background: #FA243C; }
+        .provider-tidal { background: #000000; }
+        .provider-name {
+            font-weight: 500;
+        }
+        .external-id {
+            background: #e3f2fd;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #1565c0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="card-header">
+            <h1>🎵 TuneBridge Music Card</h1>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrWhiteSpace(dto.ArtUrl)) {
+                <img src="@dto.ArtUrl" alt="@dto.Title by @dto.Artist" class="album-art" />
+            }
+            
+            <div class="info">
+                <div class="info-label">@(dto.IsAlbum == true ? "Album" : dto.IsAlbum == false ? "Song" : "Title")</div>
+                <div class="info-value">@dto.Title</div>
+            </div>
+            
+            <div class="info">
+                <div class="info-label">Artist</div>
+                <div class="info-value">@dto.Artist</div>
+            </div>
+            
+            @if (!string.IsNullOrWhiteSpace(dto.ExternalId)) {
+                <div class="info">
+                    <div class="info-label">@(dto.IsAlbum == true ? "UPC" : "ISRC")</div>
+                    <div class="external-id">@dto.ExternalId</div>
+                </div>
+            }
+            
+            <div class="info">
+                <div class="info-label">Available On</div>
+                <div class="provider-links">
+                    @foreach (var kv in Model.Results.OrderBy(kv => kv.Key)) {
+                        var provider = kv.Key;
+                        var providerDto = kv.Value;
+                        var providerName = provider == SupportedProviders.AppleMusic ? "Apple Music" : provider.ToString();
+                        var providerClass = provider switch {
+                            SupportedProviders.Spotify => "provider-spotify",
+                            SupportedProviders.AppleMusic => "provider-applemusic",
+                            SupportedProviders.Tidal => "provider-tidal",
+                            _ => ""
+                        };
+                        var providerIcon = provider switch {
+                            SupportedProviders.Spotify => "S",
+                            SupportedProviders.AppleMusic => "A",
+                            SupportedProviders.Tidal => "T",
+                            _ => "?"
+                        };
+                        
+                        <a href="@providerDto.URL" target="_blank" rel="noopener noreferrer" class="provider-link">
+                            <div class="provider-icon @providerClass">@providerIcon</div>
+                            <span class="provider-name">Listen on @providerName</span>
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

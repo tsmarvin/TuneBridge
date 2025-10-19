@@ -66,5 +66,11 @@
         /// </summary>
         public string DiscordToken { get; set; } = string.Empty;
 
+        /// <summary>
+        /// The base URL for the web application (used for generating OpenGraph card URLs).
+        /// Defaults to "http://localhost:10000" if not specified.
+        /// </summary>
+        public string BaseUrl { get; set; } = "http://localhost:10000";
+
     }
 }
