@@ -59,8 +59,6 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
                     };
                 }
 
-                ;
-
                 if (tidalMatch.Groups.ContainsKey( "id" )) {
                     id = tidalMatch.Groups["id"].Value;
                 }

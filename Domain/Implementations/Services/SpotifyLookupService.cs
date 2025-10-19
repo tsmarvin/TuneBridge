@@ -100,7 +100,8 @@ namespace TuneBridge.Domain.Implementations.Services {
         }
 
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
-            if (SpotifyLinkParser.TryParseUri( uri, out SpotifyEntity kind, out string id )) {
+            (bool result, SpotifyEntity kind, string id) = await SpotifyLinkParser.TryParseUriAsync( uri );
+            if (result) {
                 if (kind == SpotifyEntity.Album) {
                     string? body = await NewMusicApiRequest( $"albums/{id}", AlbumLookupKey );
                     if (body != null) {

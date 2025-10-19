@@ -41,17 +41,15 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// are parsed but may not be fully supported by all downstream operations.
         /// For spotify.link URLs, the method follows the redirect to obtain the actual open.spotify.com URL.
         /// </remarks>
-        public static bool TryParseUri(
-            string link,
-            out SpotifyEntity kind,
-            out string id
+        public static async Task<(bool, SpotifyEntity kind, string id)> TryParseUriAsync(
+            string link
         ) {
-            kind = SpotifyEntity.Unknown;
-            id = string.Empty;
+            SpotifyEntity kind = SpotifyEntity.Unknown;
+            string id = string.Empty;
 
             // If it's a spotify.link URL, resolve it to the actual Spotify URL
             if (s_spotifyShortLink.IsMatch( link )) {
-                string? resolvedUrl = ResolveSpotifyShortLink( link );
+                string? resolvedUrl = await ResolveSpotifyShortLink( link );
                 if (resolvedUrl != null) {
                     link = resolvedUrl;
                 }
@@ -72,7 +70,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
                 }
             }
 
-            return kind != SpotifyEntity.Unknown && !string.IsNullOrEmpty( id );
+            return (kind != SpotifyEntity.Unknown && !string.IsNullOrEmpty( id ), kind, id);
         }
 
         /// <summary>
@@ -80,9 +78,10 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// </summary>
         /// <param name="shortLink">The spotify.link URL to resolve.</param>
         /// <returns>The resolved open.spotify.com URL, or null if resolution fails.</returns>
-        private static string? ResolveSpotifyShortLink( string shortLink ) {
+        private static async Task<string?> ResolveSpotifyShortLink( string shortLink ) {
             using HttpClient client = new( new HttpClientHandler { AllowAutoRedirect = false } );
-            HttpResponseMessage response = client.GetAsync( $"https://{shortLink}" ).Result;
+            client.Timeout = TimeSpan.FromSeconds( 5 );
+            HttpResponseMessage response = await client.GetAsync( $"https://{shortLink}" );
             return response.StatusCode is System.Net.HttpStatusCode.MovedPermanently or
                    System.Net.HttpStatusCode.Found or
                    System.Net.HttpStatusCode.SeeOther or
