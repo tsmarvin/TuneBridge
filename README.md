@@ -7,6 +7,7 @@
 - 🎵 **Music Link Conversion**: Convert music links between Apple Music, Spotify, and Tidal
 - 🔍 **Multiple Lookup Methods**: Search by URL, ISRC, UPC, or title/artist
 - 🤖 **Discord Bot Integration**: Automatically detect and convert music links in Discord messages
+- 📇 **OpenGraph Cards**: Embeddable cards with rich previews for music links on any platform
 - 🌐 **Web API**: RESTful API endpoints for programmatic access
 - 🖥️ **Web Interface**: Simple browser-based UI for manual lookups
 - 🐳 **Docker Support**: Easy deployment with Docker containers
@@ -51,6 +52,7 @@ TuneBridge requires API credentials for at least one music provider (Apple Music
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
 | `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
 | `CACHE_DB_PATH` | Path to SQLite database for cache lookups | `medialinkscache.db` |
+| `BASE_URL` | Base URL for the application (for OpenGraph card URLs) | `http://localhost:5000` |
 
 ### Obtaining API Credentials
 
@@ -158,6 +160,67 @@ dotnet run
 
 The application will start on the default ASP.NET Core ports (usually 5000/5001).
 
+## OpenGraph Embeddable Cards
+
+TuneBridge generates OpenGraph cards for music links that can be embedded on any platform supporting OpenGraph metadata (Discord, Slack, Twitter, Facebook, etc.). These cards provide:
+
+- Rich previews with album/track artwork
+- Links to all available streaming platforms
+- Beautiful, responsive design
+- Automatic metadata extraction
+
+### Using OpenGraph Cards
+
+#### From the API
+
+When you use any of the lookup endpoints (URL, ISRC, UPC, or Title), the returned `MediaLinkResult` can be stored and accessed as an OpenGraph card:
+
+```csharp
+// Store a result and get a card URL
+var cardService = serviceProvider.GetRequiredService<IOpenGraphCardService>();
+string cardId = cardService.StoreResult(mediaLinkResult);
+string cardUrl = $"{baseUrl}/card/{cardId}";
+```
+
+#### With Discord Bot
+
+The Discord bot now automatically generates OpenGraph cards when music links are detected. Instead of sending Discord-specific embeds, the bot:
+
+1. Stores the lookup result
+2. Generates a unique card URL
+3. Sends the URL in a message
+4. Discord automatically renders the OpenGraph preview
+
+This approach makes the cards:
+- Platform-independent (works on any service supporting OpenGraph)
+- Shareable beyond Discord
+- Consistent across different platforms
+
+#### Card Endpoints
+
+```http
+GET /card/{id}
+```
+
+Returns an HTML page with OpenGraph metadata and a beautiful UI displaying:
+- Track/album title and artist
+- Cover artwork
+- Links to all available streaming platforms (Spotify, Apple Music, Tidal)
+- Responsive design for mobile and desktop
+
+Cards are cached for 24 hours and automatically expire to manage memory usage.
+
+### Example OpenGraph Metadata
+
+The cards include standard OpenGraph tags:
+- `og:type`: `music.song` or `music.album`
+- `og:title`: Track or album title
+- `og:description`: Artist and available platforms
+- `og:image`: Album/track artwork
+- `music:musician`: Artist name
+
+This ensures proper rendering on all platforms that support OpenGraph previews.
+
 ## API Endpoints
 
 ### Web Interface
@@ -223,8 +286,11 @@ Content-Type: application/json
 Once invited to your Discord server, the bot will automatically:
 1. Monitor messages for Apple Music, Spotify, and Tidal links
 2. Look up the corresponding track/album on the other platforms
-3. Reply with an embedded message containing links to all available services
-4. Deletes the original message (if it only contained music links [keeping the channel clean])
+3. Generate an OpenGraph card with links to all available services
+4. Reply with a shareable card URL that Discord automatically previews
+5. Delete the original message (if it only contained music links, keeping the channel clean)
+
+The bot now uses OpenGraph cards instead of Discord-specific embeds, making the shared links work on any platform that supports OpenGraph metadata.
 
 ## Deployment
 
