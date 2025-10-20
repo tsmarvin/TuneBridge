@@ -8,15 +8,15 @@ using TuneBridge.Domain.Interfaces;
 namespace TuneBridge.Domain.Implementations.Services {
 
     /// <summary>
-    /// Implementation of <see cref="IMediaLinkCacheService"/> that uses SQLite for caching
-    /// and Bluesky PDS for persistent storage.
+    /// Implementation of <see cref="IMediaLinkCacheService"/> that uses SQLite to track Bluesky PDS record locations
+    /// and Bluesky PDS for persistent storage. The SQLite database is used only for efficient lookups; all actual
+    /// data is stored on and retrieved from the PDS.
     /// </summary>
     public class MediaLinkCacheService : IMediaLinkCacheService {
 
         private readonly MediaLinkCacheDbContext _dbContext;
         private readonly IBlueskyStorageService _blueskyStorage;
         private readonly ILogger<MediaLinkCacheService> _logger;
-        private readonly JsonSerializerOptions _serializerOptions;
         private readonly int _cacheDays;
 
         public MediaLinkCacheService(
@@ -29,7 +29,6 @@ namespace TuneBridge.Domain.Implementations.Services {
             _dbContext = dbContext;
             _blueskyStorage = blueskyStorage;
             _logger = logger;
-            _serializerOptions = serializerOptions;
             _cacheDays = cacheDays;
         }
 
@@ -39,7 +38,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Normalize the input link
                 string normalizedLink = NormalizeLink( inputLink );
 
-                // Check if we have a cached entry for this input link
+                // Check if we have a cache entry for this input link
                 var inputLinkEntry = await _dbContext.InputLinks
                     .Include( il => il.MediaLinkCacheEntry )
                     .FirstOrDefaultAsync( il => il.Link == normalizedLink );
@@ -50,22 +49,22 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                 var cacheEntry = inputLinkEntry.MediaLinkCacheEntry;
 
-                // Check if the cache entry is still valid
-                var expirationDate = DateTime.UtcNow.AddDays( -_cacheDays );
-                if (cacheEntry.LastAccessedAt < expirationDate) {
-                    _logger.LogInformation( "Cache entry expired for link: {link}", normalizedLink );
+                // Fetch the actual result from Bluesky PDS
+                var result = await _blueskyStorage.GetMediaLinkResultAsync( cacheEntry.RecordUri );
+
+                if (result is null) {
+                    _logger.LogWarning( "Record not found on PDS, removing cache entry: {uri}", cacheEntry.RecordUri );
+                    // Remove the cache entry if the record no longer exists on PDS
+                    _ = _dbContext.CacheEntries.Remove( cacheEntry );
+                    _ = await _dbContext.SaveChangesAsync( );
                     return null;
                 }
 
-                // Update last accessed time
-                cacheEntry.LastAccessedAt = DateTime.UtcNow;
-                _ = await _dbContext.SaveChangesAsync( );
-
-                // Deserialize the cached result
-                var result = JsonSerializer.Deserialize<MediaLinkResult>( cacheEntry.SerializedResult, _serializerOptions );
-
-                if (result is null) {
-                    _logger.LogWarning( "Failed to deserialize cached result for link: {link}", normalizedLink );
+                // Check if the record needs to be refreshed (older than cache window)
+                var expirationDate = DateTime.UtcNow.AddDays( -_cacheDays );
+                if (cacheEntry.LastLookedUpAt < expirationDate) {
+                    _logger.LogInformation( "Record is stale, will need refresh: {uri}", cacheEntry.RecordUri );
+                    // Return null to trigger a fresh lookup and update
                     return null;
                 }
 
@@ -84,15 +83,11 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Store on Bluesky PDS first
                 string recordUri = await _blueskyStorage.StoreMediaLinkResultAsync( result );
 
-                // Serialize the result for SQLite storage
-                string serializedResult = JsonSerializer.Serialize( result, _serializerOptions );
-
-                // Create cache entry
+                // Create cache entry (without storing the result data in SQLite)
                 var cacheEntry = new MediaLinkCacheEntry {
                     RecordUri = recordUri,
-                    SerializedResult = serializedResult,
                     CreatedAt = DateTime.UtcNow,
-                    LastAccessedAt = DateTime.UtcNow
+                    LastLookedUpAt = DateTime.UtcNow
                 };
 
                 _ = _dbContext.CacheEntries.Add( cacheEntry );
@@ -137,8 +132,38 @@ namespace TuneBridge.Domain.Implementations.Services {
                     return;
                 }
 
-                // Add new input links
-                var normalizedLinks = newLinks.Select( NormalizeLink ).Distinct( );
+                // Fetch the current record from PDS
+                var currentResult = await _blueskyStorage.GetMediaLinkResultAsync( recordUri );
+                if (currentResult is null) {
+                    _logger.LogWarning( "Record not found on PDS: {uri}", recordUri );
+                    return;
+                }
+
+                // Add the new links to the result's input links
+                var normalizedLinks = newLinks.Select( NormalizeLink ).Distinct( ).ToList( );
+                var existingLinks = currentResult._inputLinks.Select( NormalizeLink ).ToHashSet( );
+                var linksToAdd = normalizedLinks.Where( l => !existingLinks.Contains( l ) ).ToList( );
+
+                if (linksToAdd.Count > 0) {
+                    // Add new links to the result
+                    foreach (var link in linksToAdd) {
+                        currentResult._inputLinks.Add( $"https://{link}" );
+                    }
+
+                    // Update the record on PDS with the new links
+                    bool updated = await _blueskyStorage.UpdateMediaLinkResultAsync( recordUri, currentResult );
+                    
+                    if (updated) {
+                        // Update the cache entry's LastLookedUpAt since we just refreshed it
+                        cacheEntry.LastLookedUpAt = DateTime.UtcNow;
+                        _ = await _dbContext.SaveChangesAsync( );
+
+                        _logger.LogInformation( "Updated PDS record with {count} new input links: {uri}",
+                            linksToAdd.Count, recordUri );
+                    }
+                }
+
+                // Add new input links to the SQLite cache for lookup
                 foreach (string link in normalizedLinks) {
                     // Check if the link already exists
                     bool exists = await _dbContext.InputLinks.AnyAsync( il => il.Link == link );

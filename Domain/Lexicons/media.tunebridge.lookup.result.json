@@ -27,8 +27,7 @@
               "type": "string",
               "format": "uri",
               "maxLength": 2000
-            },
-            "maxLength": 20
+            }
           },
           "lookedUpAt": {
             "type": "string",

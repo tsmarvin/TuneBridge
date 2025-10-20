@@ -134,6 +134,43 @@ namespace TuneBridge.Domain.Implementations.Services {
             }
         }
 
+        /// <inheritdoc/>
+        public async Task<bool> UpdateMediaLinkResultAsync( string recordUri, MediaLinkResult result ) {
+            await EnsureAuthenticatedAsync( );
+
+            try {
+                // Parse the AT-URI to get repo and rkey
+                var atUri = new AtUri( recordUri );
+
+                if (atUri.RecordKey is null) {
+                    _logger.LogWarning( "Invalid AT-URI, missing record key: {uri}", recordUri );
+                    return false;
+                }
+                
+                // Convert MediaLinkResult DTO to custom record
+                var record = ConvertToRecord( result );
+
+                // Update the record on Bluesky PDS using PutRecord
+                var putResult = await _agent.PutRecord(
+                    record: record,
+                    collection: MediaLinkResultCollection,
+                    rKey: atUri.RecordKey
+                );
+
+                if (!putResult.Succeeded) {
+                    string errorMsg = putResult.AtErrorDetail?.Message ?? $"HTTP {putResult.StatusCode}";
+                    _logger.LogWarning( "Failed to update record on Bluesky PDS: {error}", errorMsg );
+                    return false;
+                }
+
+                _logger.LogInformation( "Successfully updated MediaLinkResult on Bluesky PDS: {uri}", recordUri );
+                return true;
+            } catch (Exception ex) {
+                _logger.LogError( ex, "Failed to update MediaLinkResult on Bluesky PDS: {uri}", recordUri );
+                return false;
+            }
+        }
+
         /// <summary>
         /// Converts a MediaLinkResult DTO to a MediaLinkResultRecord for storage.
         /// </summary>

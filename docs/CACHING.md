@@ -37,23 +37,22 @@ Add the following settings to your `appsettings.json`:
 
 ## SQLite Database Schema
 
-The cache database consists of two main tables:
+The cache database consists of two main tables. **Important**: The SQLite database is used only for efficient lookups to find Bluesky PDS record locations. All actual MediaLinkResult data is stored on and retrieved from the Bluesky PDS.
 
 ### MediaLinkCacheEntry
 
-Stores cached MediaLinkResult records and their Bluesky PDS locations.
+Stores Bluesky PDS record locations for efficient lookups.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | Id | INTEGER | Primary key |
-| RecordUri | TEXT | AT-URI of the Bluesky post (e.g., `at://did:plc:xxx/app.bsky.feed.post/yyy`) |
-| SerializedResult | TEXT | JSON representation of the MediaLinkResult |
+| RecordUri | TEXT | AT-URI of the Bluesky record (e.g., `at://did:plc:xxx/media.tunebridge.lookup.result/yyy`) |
 | CreatedAt | DATETIME | When this cache entry was created |
-| LastAccessedAt | DATETIME | When this cache entry was last accessed |
+| LastLookedUpAt | DATETIME | When this record was last looked up or refreshed on PDS (used for staleness check) |
 
 **Indexes:**
 - Unique index on `RecordUri`
-- Index on `LastAccessedAt` for efficient expiration queries
+- Index on `LastLookedUpAt` for efficient expiration queries
 
 ### InputLinkEntry
 
@@ -74,24 +73,40 @@ Tracks input links that map to cached results. Multiple input links can point to
 
 ### Lookup Flow
 
-1. **Cache Check**: When a lookup is requested with input links, the system first checks the SQLite database
-2. **Expiration Check**: If found, checks if the entry is within the cache window (X days from `LastAccessedAt`)
-3. **Cache Hit**: If valid, returns the cached result and updates `LastAccessedAt`
-4. **Cache Miss**: If not found or expired, performs a fresh lookup
+1. **Cache Check**: When a lookup is requested with input links, the system checks the SQLite database for a matching link
+2. **PDS Fetch**: If found, fetches the actual MediaLinkResult from Bluesky PDS using the stored RecordUri
+3. **Staleness Check**: Checks if the record's `lookedUpAt` timestamp is older than the cache window (X days from `LastLookedUpAt` in SQLite)
+4. **Cache Hit**: If fresh, returns the PDS result
+5. **Cache Miss/Stale**: If not found, missing from PDS, or stale, performs a fresh lookup
 
 ### Storage Flow
 
 1. **Lookup Execution**: Performs lookup across configured music providers
-2. **Bluesky Storage**: Stores the MediaLinkResult as a Bluesky post with JSON content
-3. **SQLite Storage**: Stores the Bluesky record URI and serialized result in SQLite
-4. **Link Association**: Associates all input links with the cache entry
+2. **Bluesky Storage**: Stores the MediaLinkResult as a Bluesky PDS record with JSON content and current timestamp
+3. **SQLite Storage**: Stores only the Bluesky record URI and lookup timestamp in SQLite (no data duplication)
+4. **Link Association**: Associates all input links with the cache entry in SQLite
+
+### Record Refresh
+
+When a record is found to be stale (older than cache window):
+1. A fresh lookup is performed via the music provider APIs
+2. The existing PDS record is **updated** (using PutRecord) with:
+   - New provider results
+   - Updated `lookedUpAt` timestamp
+   - All accumulated input links (old + new)
+3. The SQLite `LastLookedUpAt` is updated
+4. The same RecordUri is maintained (no new record created)
 
 ### Link Association
 
 When a new lookup is performed with a link that resolves to an already-cached result:
-- The new link is added to the `InputLinkEntry` table
-- No duplicate Bluesky post is created
-- Future lookups with the new link will hit the cache
+1. The new link is compared against existing links in the PDS record
+2. If new, the PDS record is **updated** with the additional link
+3. The `lookedUpAt` timestamp is refreshed on the PDS record
+4. The new link is added to the SQLite `InputLinkEntry` table for future lookups
+5. The SQLite `LastLookedUpAt` is updated
+
+**Important**: There is no practical limit on the number of input links that can be associated with a record. All links that resolve to the same music content will be stored together.
 
 ## Bluesky Storage Format
 
@@ -194,8 +209,14 @@ Example record structure:
 public interface IBlueskyStorageService {
     Task<string> StoreMediaLinkResultAsync(MediaLinkResult result);
     Task<MediaLinkResult?> GetMediaLinkResultAsync(string recordUri);
+    Task<bool> UpdateMediaLinkResultAsync(string recordUri, MediaLinkResult result);
 }
 ```
+
+**Methods:**
+- `StoreMediaLinkResultAsync`: Creates a new record on Bluesky PDS
+- `GetMediaLinkResultAsync`: Retrieves a record from Bluesky PDS by its AT-URI
+- `UpdateMediaLinkResultAsync`: Updates an existing record on Bluesky PDS (used for refreshing stale records and adding new links)
 
 ### IMediaLinkCacheService
 
@@ -216,23 +237,41 @@ A decorator for `IMediaLinkService` that transparently adds caching:
 
 ## Performance Considerations
 
-- **Cache Hit**: ~1-5ms (SQLite query)
-- **Cache Miss + Bluesky Storage**: ~500-2000ms (API calls + network)
-- **Database Size**: Approximately 1-2KB per cached result
+- **Cache Lookup**: ~1-5ms (SQLite query to find RecordUri)
+- **PDS Fetch**: ~100-500ms (Bluesky PDS API call to retrieve record)
+- **Fresh Lookup + PDS Storage**: ~500-2000ms (Music provider API calls + PDS record creation/update)
+- **Record Update**: ~100-500ms (PDS API call to update existing record)
+- **Database Size**: Approximately 100-200 bytes per cached link + record URI (no result data stored in SQLite)
+
+### Key Points
+
+- SQLite is used only for efficient link-to-RecordUri lookups
+- All MediaLinkResult data is stored on and retrieved from Bluesky PDS
+- Stale records are updated on PDS, not replaced
+- No data duplication between SQLite and PDS
 
 ## Maintenance
 
-### Cache Expiration
+### Record Refresh
 
-Entries older than `CacheDays` are considered expired but not automatically deleted. They remain in the database for historical tracking.
+Records older than `CacheDays` are automatically refreshed on next access:
+- A fresh lookup is performed
+- The PDS record is updated (not replaced) with new data and timestamp
+- The SQLite `LastLookedUpAt` is updated
 
 ### Manual Cache Cleanup
 
-To manually clean up old entries:
+To remove orphaned SQLite entries (where PDS records have been manually deleted):
 
 ```sql
-DELETE FROM MediaLinkCacheEntry 
-WHERE LastAccessedAt < datetime('now', '-30 days');
+-- Find cache entries where PDS record no longer exists
+-- (Manual verification required via PDS queries)
+
+-- Remove a specific cache entry
+DELETE FROM MediaLinkCacheEntry WHERE RecordUri = 'at://...';
+
+-- Remove very old cache entries (30+ days)
+DELETE FROM MediaLinkCacheEntry WHERE LastLookedUpAt < datetime('now', '-30 days');
 ```
 
 ### Database Backup
@@ -242,6 +281,8 @@ The SQLite database file can be backed up while the application is running:
 ```bash
 sqlite3 medialinkscache.db ".backup medialinkscache.backup.db"
 ```
+
+**Note**: Backing up only the SQLite database is insufficient for full data recovery. The actual MediaLinkResult data is stored on Bluesky PDS.
 
 ## Limitations
 

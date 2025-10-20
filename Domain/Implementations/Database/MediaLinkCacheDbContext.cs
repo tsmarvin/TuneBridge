@@ -31,16 +31,14 @@ namespace TuneBridge.Domain.Implementations.Database {
                 _ = entity.Property( e => e.RecordUri )
                     .IsRequired( )
                     .HasMaxLength( 500 );
-                _ = entity.Property( e => e.SerializedResult )
-                    .IsRequired( );
                 _ = entity.Property( e => e.CreatedAt )
                     .IsRequired( );
-                _ = entity.Property( e => e.LastAccessedAt )
+                _ = entity.Property( e => e.LastLookedUpAt )
                     .IsRequired( );
 
                 _ = entity.HasIndex( e => e.RecordUri )
                     .IsUnique( );
-                _ = entity.HasIndex( e => e.LastAccessedAt );
+                _ = entity.HasIndex( e => e.LastLookedUpAt );
             } );
 
             // Configure InputLinkEntry

@@ -3,6 +3,7 @@ namespace TuneBridge.Domain.Contracts.Entities {
     /// <summary>
     /// Represents a cached MediaLinkResult entry stored in the SQLite database.
     /// This entity tracks the Bluesky PDS record location and associated input links.
+    /// The actual MediaLinkResult data is always fetched from the PDS to ensure freshness.
     /// </summary>
     public class MediaLinkCacheEntry {
 
@@ -12,14 +13,9 @@ namespace TuneBridge.Domain.Contracts.Entities {
         public int Id { get; set; }
 
         /// <summary>
-        /// The AT-URI of the record on Bluesky PDS (e.g., at://did:plc:xxx/app.bsky.feed.post/yyy).
+        /// The AT-URI of the record on Bluesky PDS (e.g., at://did:plc:xxx/media.tunebridge.lookup.result/yyy).
         /// </summary>
         public string RecordUri { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Serialized JSON representation of the MediaLinkResult for quick reference.
-        /// </summary>
-        public string SerializedResult { get; set; } = string.Empty;
 
         /// <summary>
         /// The timestamp when this cache entry was created.
@@ -27,9 +23,10 @@ namespace TuneBridge.Domain.Contracts.Entities {
         public DateTime CreatedAt { get; set; }
 
         /// <summary>
-        /// The timestamp when this cache entry was last accessed.
+        /// The timestamp when this record was last looked up (either created or refreshed on PDS).
+        /// Used to determine if the record needs to be updated.
         /// </summary>
-        public DateTime LastAccessedAt { get; set; }
+        public DateTime LastLookedUpAt { get; set; }
 
         /// <summary>
         /// Navigation property for related input links.

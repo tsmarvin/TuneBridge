@@ -20,5 +20,13 @@ namespace TuneBridge.Domain.Interfaces {
         /// <param name="recordUri">The AT-URI of the record.</param>
         /// <returns>The MediaLinkResult, or null if not found.</returns>
         Task<MediaLinkResult?> GetMediaLinkResultAsync( string recordUri );
+
+        /// <summary>
+        /// Updates an existing MediaLinkResult record on Bluesky PDS.
+        /// </summary>
+        /// <param name="recordUri">The AT-URI of the record to update.</param>
+        /// <param name="result">The updated MediaLinkResult.</param>
+        /// <returns>True if the update was successful, false otherwise.</returns>
+        Task<bool> UpdateMediaLinkResultAsync( string recordUri, MediaLinkResult result );
     }
 }
