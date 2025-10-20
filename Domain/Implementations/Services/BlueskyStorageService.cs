@@ -216,12 +216,21 @@ namespace TuneBridge.Domain.Implementations.Services {
             var result = new MediaLinkResult( );
 
             foreach (var providerResult in record.Results) {
-                SupportedProviders provider = providerResult.Provider.ToLowerInvariant( ) switch {
-                    "applemusic" => SupportedProviders.AppleMusic,
-                    "spotify" => SupportedProviders.Spotify,
-                    "tidal" => SupportedProviders.Tidal,
-                    _ => Enum.TryParse<SupportedProviders>( providerResult.Provider, true, out var p ) ? p : SupportedProviders.Spotify
-                };
+                // Try to parse provider, skip if unknown to avoid incorrect mappings
+                SupportedProviders provider;
+                var providerLower = providerResult.Provider.ToLowerInvariant();
+                if (providerLower == "applemusic") {
+                    provider = SupportedProviders.AppleMusic;
+                } else if (providerLower == "spotify") {
+                    provider = SupportedProviders.Spotify;
+                } else if (providerLower == "tidal") {
+                    provider = SupportedProviders.Tidal;
+                } else if (Enum.TryParse<SupportedProviders>( providerResult.Provider, true, out var p )) {
+                    provider = p;
+                } else {
+                    // Skip unknown providers to avoid incorrect mappings
+                    continue;
+                }
 
                 result.Results.Add( provider, new MusicLookupResultDto {
                     Artist = providerResult.Artist,

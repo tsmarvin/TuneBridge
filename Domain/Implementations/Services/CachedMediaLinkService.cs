@@ -169,10 +169,9 @@ namespace TuneBridge.Domain.Implementations.Services {
             );
 
             foreach (System.Text.RegularExpressions.Match match in matches) {
-                if (match.Groups.Count > 1) {
-                    string link = match.Groups[1].Value;
-                    // Add protocol back and normalize consistently
-                    string normalizedLink = LinkNormalizer.Normalize( "https://" + link );
+                if (match.Success) {
+                    // Use full match to preserve original scheme, then normalize
+                    string normalizedLink = LinkNormalizer.Normalize( match.Value );
                     links.Add( normalizedLink );
                 }
             }

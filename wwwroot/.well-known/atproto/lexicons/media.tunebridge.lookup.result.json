@@ -17,7 +17,7 @@
               "type": "ref",
               "ref": "#providerResult"
             },
-            "minLength": 0,
+            "minLength": 1,
             "maxLength": 10
           },
           "lookedUpAt": {
