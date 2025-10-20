@@ -72,7 +72,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                         staleEntries[cachedResult.Value.recordUri].Add( link );
                     } else {
                         // Return fresh cached result
-                        _logger.LogInformation( "Using fresh cached result for link: {link}", link );
+                        _logger.LogInformation( "Using fresh cached result from RecordUri: {RecordUri}", cachedResult.Value.recordUri );
                         
                         // Track fresh entry to associate new links later
                         if (!freshEntries.ContainsKey( cachedResult.Value.recordUri )) {

@@ -66,12 +66,12 @@ namespace TuneBridge.Domain.Implementations.Services {
                 if (isStale) {
                     _logger.LogInformation( "Record is stale, needs refresh: {uri}", cacheEntry.RecordUri );
                 } else {
-                    _logger.LogInformation( "Cache hit for link: {link}", normalizedLink );
+                    _logger.LogInformation( "Cache hit for RecordUri: {uri}", cacheEntry.RecordUri );
                 }
 
                 return (result, cacheEntry.RecordUri, isStale);
             } catch (Exception ex) {
-                _logger.LogError( ex, "Error while trying to get cached result for link: {link}", inputLink );
+                _logger.LogError( ex, "Error while trying to get cached result" );
                 return null;
             }
         }
