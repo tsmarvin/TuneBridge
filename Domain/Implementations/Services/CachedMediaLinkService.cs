@@ -51,6 +51,8 @@ namespace TuneBridge.Domain.Implementations.Services {
             var processedLinks = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
             // Track stale entries that need refreshing: recordUri -> list of input links
             var staleEntries = new Dictionary<string, HashSet<string>>( );
+            // Track fresh entries to associate new links later: recordUri -> list of cached input links
+            var freshEntries = new Dictionary<string, HashSet<string>>( );
 
             // Check cache for each extracted link
             foreach (string link in extractedLinks) {
@@ -71,6 +73,13 @@ namespace TuneBridge.Domain.Implementations.Services {
                     } else {
                         // Return fresh cached result
                         _logger.LogInformation( "Using fresh cached result for link: {link}", link );
+                        
+                        // Track fresh entry to associate new links later
+                        if (!freshEntries.ContainsKey( cachedResult.Value.recordUri )) {
+                            freshEntries[cachedResult.Value.recordUri] = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+                        }
+                        freshEntries[cachedResult.Value.recordUri].Add( link );
+                        
                         yield return cachedResult.Value.result;
                     }
                 }
@@ -110,6 +119,17 @@ namespace TuneBridge.Domain.Implementations.Services {
                             }
                         }
 
+                        // Check if this result matches a fresh entry (new links for existing result)
+                        string? matchingFreshRecordUri = null;
+                        if (matchingStaleRecordUri == null) {
+                            foreach (var (recordUri, freshLinks) in freshEntries) {
+                                if (resultInputLinks.Any( ril => freshLinks.Contains( ril ) )) {
+                                    matchingFreshRecordUri = recordUri;
+                                    break;
+                                }
+                            }
+                        }
+
                         if (matchingStaleRecordUri != null) {
                             // Update the existing stale entry
                             await _cacheService.UpdateCacheEntryAsync( matchingStaleRecordUri, result, resultInputLinks );
@@ -117,6 +137,10 @@ namespace TuneBridge.Domain.Implementations.Services {
                             
                             // Remove from stale entries to avoid reprocessing
                             _ = staleEntries.Remove( matchingStaleRecordUri );
+                        } else if (matchingFreshRecordUri != null) {
+                            // Add new links to existing fresh cache entry
+                            await _cacheService.AddInputLinksAsync( matchingFreshRecordUri, resultInputLinks );
+                            _logger.LogInformation( "Added new links to existing fresh cache entry: {uri}", matchingFreshRecordUri );
                         } else {
                             // Cache as a new result
                             string recordUri = await _cacheService.CacheResultAsync( result, resultInputLinks );
