@@ -198,11 +198,18 @@ namespace TuneBridge.Domain.Implementations.Services {
                 _dbContext.InputLinks.AddRange( newEntries );
                 try {
                     _ = await _dbContext.SaveChangesAsync( );
-                } catch (DbUpdateException) {
-                    // If we still hit a unique constraint (race condition), detach all entries
+                } catch (DbUpdateException ex) {
+                    // Log the conflict for diagnostics
+                    _logger.LogWarning( ex, "Unique constraint violation when adding input links to cache entry {CacheEntryId}. This typically occurs due to concurrent requests for the same links. Conflicting links: {Links}", 
+                        cacheEntryId, string.Join( ", ", normalizedLinks ) );
+                    
+                    // Detach conflicting entries to avoid tracking issues
                     foreach (var entry in newEntries) {
                         _dbContext.Entry( entry ).State = EntityState.Detached;
                     }
+                    
+                    // Could optionally re-query and retry only non-conflicting links, but for now we accept the race condition
+                    // as the links are likely already in the database from the concurrent request
                 }
             }
         }
