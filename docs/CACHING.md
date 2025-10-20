@@ -113,7 +113,7 @@ MediaLinkResults are stored as custom AT Protocol records using the `media.tuneb
 
 ### Lexicon Definition
 
-The custom lexicon is defined in `Domain/Lexicons/media.tunebridge.lookup.result.json`:
+The custom lexicon is defined in `wwwroot/.well-known/atproto/lexicons/media.tunebridge.lookup.result.json`:
 
 ```json
 {
@@ -214,7 +214,7 @@ public interface IBlueskyStorageService {
 **Methods:**
 - `StoreMediaLinkResultAsync`: Creates a new record on Bluesky PDS
 - `GetMediaLinkResultAsync`: Retrieves a record from Bluesky PDS by its AT-URI
-- `UpdateMediaLinkResultAsync`: Updates an existing record on Bluesky PDS (used for refreshing stale records and adding new links)
+- `UpdateMediaLinkResultAsync`: Updates an existing record on Bluesky PDS (used for refreshing stale records with new music metadata)
 
 ### IMediaLinkCacheService
 

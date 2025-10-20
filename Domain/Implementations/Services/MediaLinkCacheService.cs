@@ -166,7 +166,11 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// Batches all adds and saves once to reduce database I/O.
         /// </summary>
         private async Task AddLinksToEntryAsync( int cacheEntryId, IEnumerable<string> links ) {
-            var normalizedLinks = links.Select( LinkNormalizer.Normalize ).Distinct( ).ToList( );
+            var normalizedLinks = links
+                .Select( LinkNormalizer.Normalize )
+                .Where( link => !string.IsNullOrEmpty( link ) ) // Filter out empty/null normalized links
+                .Distinct( )
+                .ToList( );
             
             if (normalizedLinks.Count == 0) {
                 return;
