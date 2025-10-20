@@ -1,0 +1,227 @@
+@model TuneBridge.Domain.Contracts.DTOs.MediaLinkResult
+@using TuneBridge.Domain.Implementations.Extensions
+@using TuneBridge.Domain.Types.Enums
+@{
+    var metadata = ViewBag.Metadata as Dictionary<string, string>;
+    var result = ViewBag.Result as TuneBridge.Domain.Contracts.DTOs.MediaLinkResult;
+    
+    // Extract information for display
+    string title = metadata?.GetValueOrDefault("og:title") ?? "Music Link";
+    string description = metadata?.GetValueOrDefault("og:description") ?? "";
+    string image = metadata?.GetValueOrDefault("og:image") ?? "";
+    string musicType = metadata?.GetValueOrDefault("og:type")?.Replace("music.", "") ?? "track";
+    
+    // Parse description to get artist
+    string artist = "";
+    if (description.StartsWith("Artist: ")) {
+        int lineEnd = description.IndexOf('\n');
+        artist = lineEnd > 0 ? description.Substring(8, lineEnd - 8) : description.Substring(8);
+    }
+    
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@title</title>
+    
+    @* OpenGraph meta tags *@
+    @if (metadata != null)
+    {
+        foreach (var kvp in metadata)
+        {
+            <meta property="@kvp.Key" content="@kvp.Value" />
+        }
+    }
+    
+    @* Additional meta tags *@
+    <meta property="og:site_name" content="TuneBridge" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@title" />
+    <meta name="twitter:description" content="@description" />
+    @if (!string.IsNullOrWhiteSpace(image))
+    {
+        <meta name="twitter:image" content="@image" />
+    }
+    
+    <style>
+        :root {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+        }
+        
+        body {
+            margin: 0;
+            padding: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .card-header h1 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.75rem;
+            font-weight: 600;
+        }
+        
+        .card-header p {
+            margin: 0;
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .card-image {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            display: block;
+        }
+        
+        .card-body {
+            padding: 2rem;
+        }
+        
+        .type-badge {
+            display: inline-block;
+            background: #f3f4f6;
+            color: #4b5563;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-transform: capitalize;
+            margin-bottom: 1rem;
+        }
+        
+        .providers {
+            display: grid;
+            gap: 0.75rem;
+        }
+        
+        .provider-link {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            text-decoration: none;
+            color: #111827;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        
+        .provider-link:hover {
+            background: #f3f4f6;
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+        
+        .provider-icon {
+            width: 32px;
+            height: 32px;
+            margin-right: 0.75rem;
+            font-size: 1.5rem;
+        }
+        
+        .footer {
+            text-align: center;
+            color: #6b7280;
+            font-size: 0.875rem;
+            padding: 1.5rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        @@media (max-width: 640px) {
+            body {
+                padding: 1rem;
+            }
+            
+            .card-header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .card-body {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="card-header">
+            <h1>@title</h1>
+            @if (!string.IsNullOrWhiteSpace(artist))
+            {
+                <p>@artist</p>
+            }
+        </div>
+        
+        @if (!string.IsNullOrWhiteSpace(image))
+        {
+            <img src="@image" alt="@title artwork" class="card-image" />
+        }
+        
+        <div class="card-body">
+            <div class="type-badge">@musicType</div>
+            
+            <h2 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem;">Listen on:</h2>
+            
+            <div class="providers">
+                @if (result != null)
+                {
+                    foreach (var provider in result.Results.OrderBy(kv => kv.Key))
+                    {
+                        var providerName = provider.Key.GetDescription();
+                        var providerUrl = provider.Value.URL;
+                        var icon = GetProviderIcon(provider.Key);
+                        
+                        <a href="@providerUrl" class="provider-link" target="_blank" rel="noopener noreferrer">
+                            <span class="provider-icon">@Html.Raw(icon)</span>
+                            <span>@providerName</span>
+                        </a>
+                    }
+                }
+            </div>
+        </div>
+        
+        <div class="footer">
+            Powered by TuneBridge
+        </div>
+    </div>
+</body>
+</html>
+
+@functions {
+    string GetProviderIcon(SupportedProviders provider)
+    {
+        return provider switch
+        {
+            SupportedProviders.Spotify => "🎵",
+            SupportedProviders.AppleMusic => "🎶",
+            SupportedProviders.Tidal => "🌊",
+            _ => "🎧"
+        };
+    }
+}

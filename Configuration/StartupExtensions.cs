@@ -166,6 +166,9 @@ namespace TuneBridge.Configuration {
             } );
             _ = services.AddSingleton( enabledProviders );
 
+            // Register OpenGraph card service
+            _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>( );
+
             // Configure SQLite database for caching if Bluesky is enabled
             if (!string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
                 !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&

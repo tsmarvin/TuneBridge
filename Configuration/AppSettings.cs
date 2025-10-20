@@ -91,5 +91,10 @@
         /// </summary>
         public string CacheDbPath { get; set; } = "medialinkscache.db";
 
+        /// <summary>
+        /// The base URL for the application (e.g., https://tunebridge.example.com). Used for generating OpenGraph card URLs.
+        /// </summary>
+        public string BaseUrl { get; set; } = string.Empty;
+
     }
 }
