@@ -33,9 +33,13 @@ TuneBridge requires API credentials for at least one music provider (Apple Music
 | `TIDAL_CLIENT_ID` | Your Tidal API Client ID | No* |
 | `TIDAL_CLIENT_SECRET` | Your Tidal API Client Secret | No* |
 | `DISCORD_TOKEN` | Your Discord bot token | No** |
+| `BLUESKY_PDS_URL` | Bluesky PDS URL for storing lookup results | No*** |
+| `BLUESKY_IDENTIFIER` | Bluesky account identifier (handle or DID) | No*** |
+| `BLUESKY_PASSWORD` | Bluesky app password | No*** |
 
 \* At least one complete set of music provider credentials is required (Apple Music, Spotify, or Tidal)  
-\*\* Required only if using Discord integration
+\*\* Required only if using Discord integration  
+\*\*\* Required only if using Bluesky PDS storage for caching lookup results
 
 ### Optional Environment Variables
 
@@ -45,6 +49,8 @@ TuneBridge requires API credentials for at least one music provider (Apple Music
 | `ALLOWED_HOSTS` | Allowed hosts for the web server | `*` |
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
+| `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
+| `CACHE_DB_PATH` | Path to SQLite database for cache lookups | `medialinkscache.db` |
 
 ### Obtaining API Credentials
 
@@ -73,6 +79,19 @@ TuneBridge requires API credentials for at least one music provider (Apple Music
 2. Follow the [Getting Started Guide](https://discord.com/developers/docs/quick-start/getting-started)
 3. Create a bot and copy its token
 4. Invite the bot to your server with appropriate permissions (Read Messages, Send Messages, Embed Links, Manage Messages)
+
+#### Bluesky PDS Credentials (Optional - for caching)
+
+If you want to store lookup results on a Bluesky PDS for persistent caching:
+
+1. Create a Bluesky account at [bsky.app](https://bsky.app) if you don't have one
+2. Go to Settings → App Passwords
+3. Create a new app password for TuneBridge
+4. Use your handle (e.g., `yourname.bsky.social`) as `BLUESKY_IDENTIFIER`
+5. Use the generated app password as `BLUESKY_PASSWORD`
+6. Set `BLUESKY_PDS_URL` to `https://bsky.social` (or your custom PDS URL)
+
+**Note**: Lookup results are stored as custom AT Protocol lexicon records on your PDS. Input links with tracking parameters are kept private in a local SQLite database for privacy protection.
 
 ## Running the Application
 
