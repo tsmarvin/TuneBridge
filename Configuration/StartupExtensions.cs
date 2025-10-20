@@ -145,18 +145,12 @@ namespace TuneBridge.Configuration {
                     !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
                     !string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
 
-                    // Configure SQLite database for caching
-                    var dbPath = Path.IsPathRooted( settings.CacheDbPath )
-                        ? settings.CacheDbPath
-                        : Path.Combine( Path.GetDirectoryName( Environment.ProcessPath ) ?? ".", settings.CacheDbPath );
-
                     var dbContext = s.GetRequiredService<MediaLinkCacheDbContext>( );
                     var blueskyStorage = s.GetRequiredService<IBlueskyStorageService>( );
                     var cacheService = new MediaLinkCacheService(
                         dbContext,
                         blueskyStorage,
                         s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
-                        s.GetRequiredService<JsonSerializerOptions>( ),
                         settings.CacheDays
                     );
 
@@ -190,8 +184,7 @@ namespace TuneBridge.Configuration {
                         settings.BlueskyPdsUrl,
                         settings.BlueskyIdentifier,
                         settings.BlueskyPassword,
-                        s.GetRequiredService<ILogger<BlueskyStorageService>>( ),
-                        s.GetRequiredService<JsonSerializerOptions>( )
+                        s.GetRequiredService<ILogger<BlueskyStorageService>>( )
                     )
                 );
 
@@ -222,7 +215,9 @@ namespace TuneBridge.Configuration {
         /// <param name="serviceProvider">The service provider to use for resolving services.</param>
         public static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
             try {
-                var dbContext = serviceProvider.GetService<MediaLinkCacheDbContext>( );
+                // Create a scope to resolve scoped services properly
+                using var scope = serviceProvider.CreateScope( );
+                var dbContext = scope.ServiceProvider.GetService<MediaLinkCacheDbContext>( );
                 if (dbContext is not null) {
                     dbContext.Database.EnsureCreated( );
                     var logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );

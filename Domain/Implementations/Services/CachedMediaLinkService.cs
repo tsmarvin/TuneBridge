@@ -48,7 +48,8 @@ namespace TuneBridge.Domain.Implementations.Services {
 
             // Track which links we've already processed to avoid duplicates
             var processedLinks = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
-            var cachedResults = new List<(MediaLinkResult result, string recordUri, List<string> inputLinks)>( );
+            // Track stale entries that need refreshing: recordUri -> list of input links
+            var staleEntries = new Dictionary<string, HashSet<string>>( );
 
             // Check cache for each extracted link
             foreach (string link in extractedLinks) {
@@ -58,48 +59,74 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                 var cachedResult = await _cacheService.TryGetCachedResultAsync( link );
                 if (cachedResult.HasValue) {
-                    _logger.LogInformation( "Using cached result for link: {link}", link );
                     processedLinks.Add( link );
                     
-                    // Track this cached result
-                    var existingCached = cachedResults.FirstOrDefault( cr => cr.recordUri == cachedResult.Value.recordUri );
-                    if (existingCached.result != null) {
-                        existingCached.inputLinks.Add( link );
+                    if (cachedResult.Value.isStale) {
+                        // Track stale entry for later refresh
+                        if (!staleEntries.ContainsKey( cachedResult.Value.recordUri )) {
+                            staleEntries[cachedResult.Value.recordUri] = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+                        }
+                        staleEntries[cachedResult.Value.recordUri].Add( link );
                     } else {
-                        cachedResults.Add( (cachedResult.Value.result, cachedResult.Value.recordUri, new List<string> { link }) );
+                        // Return fresh cached result
+                        _logger.LogInformation( "Using fresh cached result for link: {link}", link );
+                        yield return cachedResult.Value.result;
                     }
-
-                    yield return cachedResult.Value.result;
                 }
-            }
-
-            // If all links were cached, we're done
-            if (processedLinks.Count == extractedLinks.Count) {
-                yield break;
             }
 
             // Build content with only non-cached links for lookup
             var nonCachedLinks = extractedLinks.Except( processedLinks ).ToList( );
-            if (nonCachedLinks.Count == 0) {
-                yield break;
-            }
-
-            string contentWithNonCachedLinks = string.Join( " ", nonCachedLinks.Select( l => $"https://{l}" ) );
-
-            // Perform lookup for non-cached links
-            await foreach (MediaLinkResult result in _innerService.GetInfoAsync( contentWithNonCachedLinks )) {
-                // Determine which input links generated this result
-                var resultInputLinks = result._inputLinks.Select( l => l.Replace( "https://", "" ).Replace( "http://", "" ).TrimEnd( '/' ).ToLowerInvariant( ) ).ToList( );
-
-                try {
-                    // Cache the result with its input links
-                    string recordUri = await _cacheService.CacheResultAsync( result, resultInputLinks );
-                    _logger.LogInformation( "Cached new result to Bluesky: {uri}", recordUri );
-                } catch (Exception ex) {
-                    _logger.LogError( ex, "Failed to cache result, continuing without caching" );
+            
+            // Perform lookup for non-cached and stale links
+            if (nonCachedLinks.Count > 0 || staleEntries.Count > 0) {
+                string contentWithNonCachedLinks = string.Join( " ", nonCachedLinks.Select( l => $"https://{l}" ) );
+                
+                // Add stale entry links to trigger a fresh lookup
+                foreach (var staleLinks in staleEntries.Values) {
+                    contentWithNonCachedLinks += " " + string.Join( " ", staleLinks.Select( l => $"https://{l}" ) );
                 }
 
-                yield return result;
+                contentWithNonCachedLinks = contentWithNonCachedLinks.Trim( );
+                
+                if (string.IsNullOrEmpty( contentWithNonCachedLinks )) {
+                    yield break;
+                }
+
+                await foreach (MediaLinkResult result in _innerService.GetInfoAsync( contentWithNonCachedLinks )) {
+                    // Determine which input links generated this result
+                    var resultInputLinks = result._inputLinks
+                        .Select( l => l.Replace( "https://", "" ).Replace( "http://", "" ).TrimEnd( '/' ).ToLowerInvariant( ) )
+                        .ToList( );
+
+                    try {
+                        // Check if this result matches a stale entry
+                        string? matchingStaleRecordUri = null;
+                        foreach (var (recordUri, staleLinks) in staleEntries) {
+                            if (resultInputLinks.Any( ril => staleLinks.Contains( ril ) )) {
+                                matchingStaleRecordUri = recordUri;
+                                break;
+                            }
+                        }
+
+                        if (matchingStaleRecordUri != null) {
+                            // Update the existing stale entry
+                            await _cacheService.UpdateCacheEntryAsync( matchingStaleRecordUri, result, resultInputLinks );
+                            _logger.LogInformation( "Refreshed stale cache entry: {uri}", matchingStaleRecordUri );
+                            
+                            // Remove from stale entries to avoid reprocessing
+                            _ = staleEntries.Remove( matchingStaleRecordUri );
+                        } else {
+                            // Cache as a new result
+                            string recordUri = await _cacheService.CacheResultAsync( result, resultInputLinks );
+                            _logger.LogInformation( "Cached new result to Bluesky: {uri}", recordUri );
+                        }
+                    } catch (Exception ex) {
+                        _logger.LogError( ex, "Failed to cache result, continuing without caching" );
+                    }
+
+                    yield return result;
+                }
             }
         }
 

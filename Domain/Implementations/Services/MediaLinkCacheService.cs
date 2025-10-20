@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Contracts.Entities;
@@ -23,7 +22,6 @@ namespace TuneBridge.Domain.Implementations.Services {
             MediaLinkCacheDbContext dbContext,
             IBlueskyStorageService blueskyStorage,
             ILogger<MediaLinkCacheService> logger,
-            JsonSerializerOptions serializerOptions,
             int cacheDays
         ) {
             _dbContext = dbContext;
@@ -33,7 +31,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
-        public async Task<(MediaLinkResult result, string recordUri)?> TryGetCachedResultAsync( string inputLink ) {
+        public async Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultAsync( string inputLink ) {
             try {
                 // Normalize the input link
                 string normalizedLink = NormalizeLink( inputLink );
@@ -62,15 +60,15 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                 // Check if the record needs to be refreshed (older than cache window)
                 var expirationDate = DateTime.UtcNow.AddDays( -_cacheDays );
-                if (cacheEntry.LastLookedUpAt < expirationDate) {
-                    _logger.LogInformation( "Record is stale, will need refresh: {uri}", cacheEntry.RecordUri );
-                    // Return null to trigger a fresh lookup and update
-                    return null;
+                bool isStale = cacheEntry.LastLookedUpAt < expirationDate;
+                
+                if (isStale) {
+                    _logger.LogInformation( "Record is stale, needs refresh: {uri}", cacheEntry.RecordUri );
+                } else {
+                    _logger.LogInformation( "Cache hit for link: {link}", normalizedLink );
                 }
 
-                _logger.LogInformation( "Cache hit for link: {link}", normalizedLink );
-
-                return (result, cacheEntry.RecordUri);
+                return (result, cacheEntry.RecordUri, isStale);
             } catch (Exception ex) {
                 _logger.LogError( ex, "Error while trying to get cached result for link: {link}", inputLink );
                 return null;
@@ -93,29 +91,48 @@ namespace TuneBridge.Domain.Implementations.Services {
                 _ = _dbContext.CacheEntries.Add( cacheEntry );
                 _ = await _dbContext.SaveChangesAsync( );
 
-                // Add input links
-                var normalizedLinks = inputLinks.Select( NormalizeLink ).Distinct( );
-                foreach (string link in normalizedLinks) {
-                    // Check if the link already exists
-                    bool exists = await _dbContext.InputLinks.AnyAsync( il => il.Link == link );
-                    if (!exists) {
-                        var inputLinkEntry = new InputLinkEntry {
-                            Link = link,
-                            MediaLinkCacheEntryId = cacheEntry.Id,
-                            CreatedAt = DateTime.UtcNow
-                        };
-                        _ = _dbContext.InputLinks.Add( inputLinkEntry );
-                    }
-                }
+                // Add input links with conflict handling
+                await AddLinksToEntryAsync( cacheEntry.Id, inputLinks );
 
-                _ = await _dbContext.SaveChangesAsync( );
-
-                _logger.LogInformation( "Cached result with {linkCount} input links to Bluesky record: {uri}",
-                    normalizedLinks.Count( ), recordUri );
+                _logger.LogInformation( "Cached result with input links to Bluesky record: {uri}", recordUri );
 
                 return recordUri;
             } catch (Exception ex) {
                 _logger.LogError( ex, "Error while caching result" );
+                throw;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task UpdateCacheEntryAsync( string recordUri, MediaLinkResult result, IEnumerable<string> inputLinks ) {
+            try {
+                // Update the record on Bluesky PDS
+                bool updated = await _blueskyStorage.UpdateMediaLinkResultAsync( recordUri, result );
+                
+                if (!updated) {
+                    _logger.LogWarning( "Failed to update PDS record: {uri}", recordUri );
+                    return;
+                }
+
+                // Find the cache entry by record URI
+                var cacheEntry = await _dbContext.CacheEntries
+                    .FirstOrDefaultAsync( ce => ce.RecordUri == recordUri );
+
+                if (cacheEntry is null) {
+                    _logger.LogWarning( "Cache entry not found for record URI: {uri}", recordUri );
+                    return;
+                }
+
+                // Update the LastLookedUpAt timestamp
+                cacheEntry.LastLookedUpAt = DateTime.UtcNow;
+                _ = await _dbContext.SaveChangesAsync( );
+
+                // Add any new input links
+                await AddLinksToEntryAsync( cacheEntry.Id, inputLinks );
+
+                _logger.LogInformation( "Updated cache entry with fresh lookup: {uri}", recordUri );
+            } catch (Exception ex) {
+                _logger.LogError( ex, "Error while updating cache entry for record URI: {uri}", recordUri );
                 throw;
             }
         }
@@ -134,27 +151,35 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                 // Add new input links to the SQLite cache for lookup
                 // Note: Input links are NOT stored on PDS for user privacy
-                var normalizedLinks = newLinks.Select( NormalizeLink ).Distinct( );
-                foreach (string link in normalizedLinks) {
-                    // Check if the link already exists
-                    bool exists = await _dbContext.InputLinks.AnyAsync( il => il.Link == link );
-                    if (!exists) {
-                        var inputLinkEntry = new InputLinkEntry {
-                            Link = link,
-                            MediaLinkCacheEntryId = cacheEntry.Id,
-                            CreatedAt = DateTime.UtcNow
-                        };
-                        _ = _dbContext.InputLinks.Add( inputLinkEntry );
-                    }
-                }
+                await AddLinksToEntryAsync( cacheEntry.Id, newLinks );
 
-                _ = await _dbContext.SaveChangesAsync( );
-
-                _logger.LogInformation( "Added {linkCount} new input links to cache entry: {uri}",
-                    normalizedLinks.Count( ), recordUri );
+                _logger.LogInformation( "Added new input links to cache entry: {uri}", recordUri );
             } catch (Exception ex) {
                 _logger.LogError( ex, "Error while adding input links for record URI: {uri}", recordUri );
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Helper method to add links to a cache entry with conflict handling.
+        /// </summary>
+        private async Task AddLinksToEntryAsync( int cacheEntryId, IEnumerable<string> links ) {
+            var normalizedLinks = links.Select( NormalizeLink ).Distinct( );
+            foreach (string link in normalizedLinks) {
+                var inputLinkEntry = new InputLinkEntry {
+                    Link = link,
+                    MediaLinkCacheEntryId = cacheEntryId,
+                    CreatedAt = DateTime.UtcNow
+                };
+                
+                try {
+                    _ = _dbContext.InputLinks.Add( inputLinkEntry );
+                    _ = await _dbContext.SaveChangesAsync( );
+                } catch (DbUpdateException) {
+                    // Link already exists (unique constraint violation), which is fine
+                    // Detach the entity to prevent tracking issues
+                    _dbContext.Entry( inputLinkEntry ).State = EntityState.Detached;
+                }
             }
         }
 

@@ -28,7 +28,6 @@ namespace TuneBridge.Domain.Implementations.Services {
         private readonly string _identifier;
         private readonly string _password;
         private readonly ILogger<BlueskyStorageService> _logger;
-        private readonly JsonSerializerOptions _serializerOptions;
         private readonly SemaphoreSlim _authLock = new( 1, 1 );
         private bool _isAuthenticated;
 
@@ -36,18 +35,20 @@ namespace TuneBridge.Domain.Implementations.Services {
             string pdsUrl,
             string identifier,
             string password,
-            ILogger<BlueskyStorageService> logger,
-            JsonSerializerOptions serializerOptions
+            ILogger<BlueskyStorageService> logger
         ) {
-            // If a custom PDS URL is provided (not default bsky.social), we need to handle it differently
-            // For now, we'll use the default Bluesky service
+            // Note: The current version of idunno.Bluesky (1.0.0) uses the default Bluesky PDS
+            // Custom PDS URL support may require using AtProtoAgent directly or a newer library version
             _agent = new BlueskyAgent( );
             _identifier = identifier;
             _password = password;
             _logger = logger;
-            _serializerOptions = serializerOptions;
             
-            _logger.LogInformation( "BlueskyStorageService initialized with PDS URL: {url}", pdsUrl );
+            if (!string.IsNullOrWhiteSpace( pdsUrl ) && pdsUrl != "https://bsky.social") {
+                _logger.LogWarning( "Custom PDS URL specified ({url}) but current library version uses default Bluesky PDS", pdsUrl );
+            } else {
+                _logger.LogInformation( "BlueskyStorageService initialized with default Bluesky PDS" );
+            }
         }
 
         /// <summary>
