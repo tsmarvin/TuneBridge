@@ -132,38 +132,9 @@ namespace TuneBridge.Domain.Implementations.Services {
                     return;
                 }
 
-                // Fetch the current record from PDS
-                var currentResult = await _blueskyStorage.GetMediaLinkResultAsync( recordUri );
-                if (currentResult is null) {
-                    _logger.LogWarning( "Record not found on PDS: {uri}", recordUri );
-                    return;
-                }
-
-                // Add the new links to the result's input links
-                var normalizedLinks = newLinks.Select( NormalizeLink ).Distinct( ).ToList( );
-                var existingLinks = currentResult._inputLinks.Select( NormalizeLink ).ToHashSet( );
-                var linksToAdd = normalizedLinks.Where( l => !existingLinks.Contains( l ) ).ToList( );
-
-                if (linksToAdd.Count > 0) {
-                    // Add new links to the result
-                    foreach (var link in linksToAdd) {
-                        currentResult._inputLinks.Add( $"https://{link}" );
-                    }
-
-                    // Update the record on PDS with the new links
-                    bool updated = await _blueskyStorage.UpdateMediaLinkResultAsync( recordUri, currentResult );
-                    
-                    if (updated) {
-                        // Update the cache entry's LastLookedUpAt since we just refreshed it
-                        cacheEntry.LastLookedUpAt = DateTime.UtcNow;
-                        _ = await _dbContext.SaveChangesAsync( );
-
-                        _logger.LogInformation( "Updated PDS record with {count} new input links: {uri}",
-                            linksToAdd.Count, recordUri );
-                    }
-                }
-
                 // Add new input links to the SQLite cache for lookup
+                // Note: Input links are NOT stored on PDS for user privacy
+                var normalizedLinks = newLinks.Select( NormalizeLink ).Distinct( );
                 foreach (string link in normalizedLinks) {
                     // Check if the link already exists
                     bool exists = await _dbContext.InputLinks.AnyAsync( il => il.Link == link );

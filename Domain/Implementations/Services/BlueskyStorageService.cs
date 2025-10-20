@@ -173,6 +173,8 @@ namespace TuneBridge.Domain.Implementations.Services {
 
         /// <summary>
         /// Converts a MediaLinkResult DTO to a MediaLinkResultRecord for storage.
+        /// Note: Input links are NOT included in the PDS record for user privacy.
+        /// They are tracked only in SQLite.
         /// </summary>
         private static MediaLinkResultRecord ConvertToRecord( MediaLinkResult result ) {
             var providerResults = new List<ProviderResultRecord>( );
@@ -199,13 +201,13 @@ namespace TuneBridge.Domain.Implementations.Services {
 
             return new MediaLinkResultRecord(
                 results: providerResults,
-                lookedUpAt: DateTimeOffset.UtcNow,
-                inputLinks: result._inputLinks.Count > 0 ? result._inputLinks : null
+                lookedUpAt: DateTimeOffset.UtcNow
             );
         }
 
         /// <summary>
         /// Converts a MediaLinkResultRecord from storage back to a MediaLinkResult DTO.
+        /// Note: Input links are not stored in PDS records, only provider results.
         /// </summary>
         private static MediaLinkResult ConvertFromRecord( MediaLinkResultRecord record ) {
             var result = new MediaLinkResult( );
@@ -229,10 +231,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 } );
             }
 
-            if (record.InputLinks is not null) {
-                result._inputLinks.AddRange( record.InputLinks );
-            }
-
+            // Input links are tracked only in SQLite, not in PDS records
             return result;
         }
     }

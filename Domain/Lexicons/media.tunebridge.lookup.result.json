@@ -20,15 +20,6 @@
             "minLength": 0,
             "maxLength": 10
           },
-          "inputLinks": {
-            "type": "array",
-            "description": "The original media links used for the initial lookup.",
-            "items": {
-              "type": "string",
-              "format": "uri",
-              "maxLength": 2000
-            }
-          },
           "lookedUpAt": {
             "type": "string",
             "format": "datetime",

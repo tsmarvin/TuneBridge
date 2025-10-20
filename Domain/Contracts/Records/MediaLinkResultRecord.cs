@@ -6,6 +6,7 @@ namespace TuneBridge.Domain.Contracts.Records {
     /// <summary>
     /// AT Protocol record for TuneBridge MediaLinkResult.
     /// Corresponds to the media.tunebridge.lookup.result lexicon.
+    /// Note: Input links are tracked only in SQLite for privacy - not stored on PDS.
     /// </summary>
     public sealed record MediaLinkResultRecord : AtProtoRecord {
 
@@ -20,16 +21,13 @@ namespace TuneBridge.Domain.Contracts.Records {
         /// </summary>
         /// <param name="results">Collection of lookup results from each provider.</param>
         /// <param name="lookedUpAt">ISO 8601 timestamp of when this lookup was performed.</param>
-        /// <param name="inputLinks">The original media links used for the initial lookup.</param>
         [JsonConstructor]
         public MediaLinkResultRecord(
             ICollection<ProviderResultRecord> results,
-            DateTimeOffset lookedUpAt,
-            ICollection<string>? inputLinks = null
+            DateTimeOffset lookedUpAt
         ) : base( ) {
             Results = results ?? throw new ArgumentNullException( nameof( results ) );
             LookedUpAt = lookedUpAt;
-            InputLinks = inputLinks;
         }
 
         /// <summary>
@@ -38,13 +36,6 @@ namespace TuneBridge.Domain.Contracts.Records {
         [JsonPropertyName( "results" )]
         [JsonRequired]
         public ICollection<ProviderResultRecord> Results { get; init; } = [];
-
-        /// <summary>
-        /// The original media links used for the initial lookup.
-        /// </summary>
-        [JsonPropertyName( "inputLinks" )]
-        [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
-        public ICollection<string>? InputLinks { get; init; }
 
         /// <summary>
         /// ISO 8601 timestamp of when this lookup was performed.

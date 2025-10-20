@@ -100,13 +100,12 @@ When a record is found to be stale (older than cache window):
 ### Link Association
 
 When a new lookup is performed with a link that resolves to an already-cached result:
-1. The new link is compared against existing links in the PDS record
-2. If new, the PDS record is **updated** with the additional link
-3. The `lookedUpAt` timestamp is refreshed on the PDS record
-4. The new link is added to the SQLite `InputLinkEntry` table for future lookups
-5. The SQLite `LastLookedUpAt` is updated
+1. The new link is added to the SQLite `InputLinkEntry` table for future lookups
+2. The SQLite cache entry remains pointed to the same PDS record
 
-**Important**: There is no practical limit on the number of input links that can be associated with a record. All links that resolve to the same music content will be stored together.
+**Privacy Protection**: Input links are stored ONLY in the local SQLite database, not on Bluesky PDS. This prevents exposure of potentially tracking-laden URLs (query parameters, referral codes, etc.) on the public Bluesky network while still enabling efficient lookup-to-record mapping locally.
+
+**Important**: There is no practical limit on the number of input links that can be associated with a record in SQLite. All links that resolve to the same music content will be mapped to the same PDS record.
 
 ## Bluesky Storage Format
 
@@ -130,7 +129,6 @@ The custom lexicon is defined in `Domain/Lexicons/media.tunebridge.lookup.result
         "required": ["results", "lookedUpAt"],
         "properties": {
           "results": { /* array of providerResult */ },
-          "inputLinks": { /* array of URIs */ },
           "lookedUpAt": { /* ISO 8601 datetime */ }
         }
       }
@@ -186,12 +184,11 @@ Example record structure:
       "isAlbum": false
     }
   ],
-  "inputLinks": [
-    "https://open.spotify.com/track/..."
-  ],
   "lookedUpAt": "2025-10-19T23:00:00Z"
 }
 ```
+
+**Important Privacy Note**: Input links (the URLs users provide) are intentionally NOT stored in Bluesky PDS records. They are tracked only in the local SQLite database. This protects user privacy by not exposing potentially tracking-laden URLs on the public Bluesky network.
 
 ### Benefits of Custom Lexicon
 
@@ -199,6 +196,7 @@ Example record structure:
 - **Queryable**: Can be indexed and queried efficiently by Bluesky infrastructure
 - **Versioned**: Lexicon versioning allows for future schema evolution
 - **Interoperable**: Other AT Protocol clients can understand and display the data
+- **Privacy-Focused**: Input URLs are not stored on PDS, preventing exposure of tracking parameters
 - **Efficient**: More compact than storing JSON in post text
 
 ## API Interfaces
