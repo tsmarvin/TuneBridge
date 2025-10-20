@@ -93,9 +93,9 @@ When a record is found to be stale (older than cache window):
 2. The existing PDS record is **updated** (using PutRecord) with:
    - New provider results
    - Updated `lookedUpAt` timestamp
-   - All accumulated input links (old + new)
-3. The SQLite `LastLookedUpAt` is updated
-4. The same RecordUri is maintained (no new record created)
+3. Input links are associated with the record in SQLite only (not stored on PDS for privacy)
+4. The SQLite `LastLookedUpAt` is updated
+5. The same RecordUri is maintained (no new record created)
 
 ### Link Association
 
@@ -220,8 +220,9 @@ public interface IBlueskyStorageService {
 
 ```csharp
 public interface IMediaLinkCacheService {
-    Task<(MediaLinkResult result, string recordUri)?> TryGetCachedResultAsync(string inputLink);
+    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultAsync(string inputLink);
     Task<string> CacheResultAsync(MediaLinkResult result, IEnumerable<string> inputLinks);
+    Task UpdateCacheEntryAsync(string recordUri, MediaLinkResult result, IEnumerable<string> inputLinks);
     Task AddInputLinksAsync(string recordUri, IEnumerable<string> newLinks);
 }
 ```
