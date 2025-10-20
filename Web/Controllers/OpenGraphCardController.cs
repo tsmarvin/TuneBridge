@@ -28,7 +28,6 @@ public class OpenGraphCardController( IOpenGraphCardService cardService ) : Cont
 
         var metadata = result.ToOpenGraphMetadata();
         ViewBag.Metadata = metadata;
-        ViewBag.Result = result;
 
         return View( result );
     }
