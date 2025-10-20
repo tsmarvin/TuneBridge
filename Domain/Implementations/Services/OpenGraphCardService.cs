@@ -11,6 +11,8 @@ namespace TuneBridge.Domain.Implementations.Services {
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
         private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 24 );
+        private int _operationCounter;
+        private const int CleanupInterval = 100;
 
         /// <inheritdoc/>
         public string StoreResult( MediaLinkResult result ) {
@@ -36,8 +38,8 @@ namespace TuneBridge.Domain.Implementations.Services {
         }
 
         private void CleanExpiredEntries() {
-            // Only clean periodically to avoid performance issues
-            if (Random.Shared.Next( 0, 100 ) < 5) {
+            // Clean every Nth operation for predictable memory management
+            if (Interlocked.Increment( ref _operationCounter ) % CleanupInterval == 0) {
                 var now = DateTime.UtcNow;
                 var expiredKeys = _store
                     .Where( kv => kv.Value.Expiry <= now )

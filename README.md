@@ -52,7 +52,9 @@ TuneBridge requires API credentials for at least one music provider (Apple Music
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
 | `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
 | `CACHE_DB_PATH` | Path to SQLite database for cache lookups | `medialinkscache.db` |
-| `BASE_URL` | Base URL for the application (for OpenGraph card URLs) | `http://localhost:5000` |
+| `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `http://localhost:5000` |
+
+**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `TuneBridge__BaseUrl` maps to `TuneBridge:BaseUrl` in configuration).
 
 ### Obtaining API Credentials
 

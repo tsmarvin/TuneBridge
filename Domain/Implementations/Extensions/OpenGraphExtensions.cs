@@ -25,7 +25,7 @@ namespace TuneBridge.Domain.Implementations.Extensions {
             // Extract information from results, prioritizing the primary result
             foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results.OrderBy( kv => kv.Key )) {
                 
-                if (string.IsNullOrWhiteSpace( image ) && string.IsNullOrWhiteSpace( dto.ArtUrl ) == false) {
+                if (string.IsNullOrWhiteSpace( image ) && !string.IsNullOrWhiteSpace( dto.ArtUrl )) {
                     image = dto.ArtUrl;
                 }
 

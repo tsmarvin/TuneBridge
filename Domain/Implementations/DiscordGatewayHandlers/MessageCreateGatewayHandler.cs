@@ -72,8 +72,8 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
 
             string content = message.Content.Trim();
 
-            // Get the base URL from configuration, default to localhost for development
-            string baseUrl = _configuration["TuneBridge:BaseUrl"] ?? "http://localhost:5000";
+            // Get the base URL from configuration section, default to localhost for development
+            string baseUrl = _configuration.GetSection( "TuneBridge" )["BaseUrl"] ?? "http://localhost:5000";
 
             bool messageSent = false;
             List<string> inputLinks = [];

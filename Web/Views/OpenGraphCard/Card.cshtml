@@ -3,7 +3,6 @@
 @using TuneBridge.Domain.Types.Enums
 @{
     var metadata = ViewBag.Metadata as Dictionary<string, string>;
-    var result = ViewBag.Result as TuneBridge.Domain.Contracts.DTOs.MediaLinkResult;
     
     // Extract information for display
     string title = metadata?.GetValueOrDefault("og:title") ?? "Music Link";
@@ -189,9 +188,9 @@
             <h2 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem;">Listen on:</h2>
             
             <div class="providers">
-                @if (result != null)
+                @if (Model != null)
                 {
-                    foreach (var provider in result.Results.OrderBy(kv => kv.Key))
+                    foreach (var provider in Model.Results.OrderBy(kv => kv.Key))
                     {
                         var providerName = provider.Key.GetDescription();
                         var providerUrl = provider.Value.URL;
