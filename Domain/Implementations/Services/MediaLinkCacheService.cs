@@ -199,9 +199,9 @@ namespace TuneBridge.Domain.Implementations.Services {
                 try {
                     _ = await _dbContext.SaveChangesAsync( );
                 } catch (DbUpdateException ex) {
-                    // Log the conflict for diagnostics
-                    _logger.LogWarning( ex, "Unique constraint violation when adding input links to cache entry {CacheEntryId}. This typically occurs due to concurrent requests for the same links. Conflicting links: {Links}", 
-                        cacheEntryId, string.Join( ", ", normalizedLinks ) );
+                    // Log the conflict for diagnostics (without logging user input for security)
+                    _logger.LogWarning( ex, "Unique constraint violation when adding {LinkCount} input links to cache entry {CacheEntryId}. This typically occurs due to concurrent requests for the same links.", 
+                        normalizedLinks.Count, cacheEntryId );
                     
                     // Detach conflicting entries to avoid tracking issues
                     foreach (var entry in newEntries) {
