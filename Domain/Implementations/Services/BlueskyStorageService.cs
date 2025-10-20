@@ -1,4 +1,3 @@
-using System.Text.Json;
 using idunno.Bluesky;
 using idunno.AtProto;
 using idunno.AtProto.Repo;
@@ -37,7 +36,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             string password,
             ILogger<BlueskyStorageService> logger
         ) {
-            // Note: The current version of idunno.Bluesky (1.0.0) uses the default Bluesky PDS
+            // Note: idunno.Bluesky library uses the default Bluesky PDS
             // Custom PDS URL support may require using AtProtoAgent directly or a newer library version
             _agent = new BlueskyAgent( );
             _identifier = identifier;

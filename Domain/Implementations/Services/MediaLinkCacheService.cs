@@ -3,6 +3,7 @@ using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Contracts.Entities;
 using TuneBridge.Domain.Implementations.Database;
 using TuneBridge.Domain.Interfaces;
+using TuneBridge.Domain.Utils;
 
 namespace TuneBridge.Domain.Implementations.Services {
 
@@ -34,7 +35,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         public async Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultAsync( string inputLink ) {
             try {
                 // Normalize the input link
-                string normalizedLink = NormalizeLink( inputLink );
+                string normalizedLink = LinkNormalizer.Normalize( inputLink );
 
                 // Check if we have a cache entry for this input link
                 var inputLinkEntry = await _dbContext.InputLinks
@@ -162,47 +163,44 @@ namespace TuneBridge.Domain.Implementations.Services {
 
         /// <summary>
         /// Helper method to add links to a cache entry with conflict handling.
+        /// Batches all adds and saves once to reduce database I/O.
         /// </summary>
         private async Task AddLinksToEntryAsync( int cacheEntryId, IEnumerable<string> links ) {
-            var normalizedLinks = links.Select( NormalizeLink ).Distinct( );
-            foreach (string link in normalizedLinks) {
-                var inputLinkEntry = new InputLinkEntry {
+            var normalizedLinks = links.Select( LinkNormalizer.Normalize ).Distinct( ).ToList( );
+            
+            if (normalizedLinks.Count == 0) {
+                return;
+            }
+
+            // Fetch existing links to avoid conflicts
+            var existingLinks = await _dbContext.InputLinks
+                .Where( il => normalizedLinks.Contains( il.Link ) )
+                .Select( il => il.Link )
+                .ToListAsync( );
+
+            var existingLinkSet = new HashSet<string>( existingLinks, StringComparer.OrdinalIgnoreCase );
+
+            // Create new entries for links that don't exist
+            var newEntries = normalizedLinks
+                .Where( link => !existingLinkSet.Contains( link ) )
+                .Select( link => new InputLinkEntry {
                     Link = link,
                     MediaLinkCacheEntryId = cacheEntryId,
                     CreatedAt = DateTime.UtcNow
-                };
-                
+                } )
+                .ToList( );
+
+            if (newEntries.Count > 0) {
+                _dbContext.InputLinks.AddRange( newEntries );
                 try {
-                    _ = _dbContext.InputLinks.Add( inputLinkEntry );
                     _ = await _dbContext.SaveChangesAsync( );
                 } catch (DbUpdateException) {
-                    // Link already exists (unique constraint violation), which is fine
-                    // Detach the entity to prevent tracking issues
-                    _dbContext.Entry( inputLinkEntry ).State = EntityState.Detached;
+                    // If we still hit a unique constraint (race condition), detach all entries
+                    foreach (var entry in newEntries) {
+                        _dbContext.Entry( entry ).State = EntityState.Detached;
+                    }
                 }
             }
-        }
-
-        /// <summary>
-        /// Normalizes a link by removing protocol and trailing slashes for consistent comparison.
-        /// </summary>
-        private static string NormalizeLink( string link ) {
-            if (string.IsNullOrWhiteSpace( link )) {
-                return string.Empty;
-            }
-
-            // Remove protocol (http:// or https://)
-            string normalized = link.Trim( );
-            if (normalized.StartsWith( "https://", StringComparison.OrdinalIgnoreCase )) {
-                normalized = normalized[8..];
-            } else if (normalized.StartsWith( "http://", StringComparison.OrdinalIgnoreCase )) {
-                normalized = normalized[7..];
-            }
-
-            // Remove trailing slash
-            normalized = normalized.TrimEnd( '/' );
-
-            return normalized.ToLowerInvariant( );
         }
     }
 }

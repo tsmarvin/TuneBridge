@@ -1,5 +1,6 @@
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
+using TuneBridge.Domain.Utils;
 
 namespace TuneBridge.Domain.Implementations.Services {
 
@@ -96,7 +97,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 await foreach (MediaLinkResult result in _innerService.GetInfoAsync( contentWithNonCachedLinks )) {
                     // Determine which input links generated this result
                     var resultInputLinks = result._inputLinks
-                        .Select( l => l.Replace( "https://", "" ).Replace( "http://", "" ).TrimEnd( '/' ).ToLowerInvariant( ) )
+                        .Select( LinkNormalizer.Normalize )
                         .ToList( );
 
                     try {
@@ -145,8 +146,10 @@ namespace TuneBridge.Domain.Implementations.Services {
 
             foreach (System.Text.RegularExpressions.Match match in matches) {
                 if (match.Groups.Count > 1) {
-                    string link = match.Groups[1].Value.TrimEnd( '/' ).ToLowerInvariant( );
-                    links.Add( link );
+                    string link = match.Groups[1].Value;
+                    // Add protocol back and normalize consistently
+                    string normalizedLink = LinkNormalizer.Normalize( "https://" + link );
+                    links.Add( normalizedLink );
                 }
             }
 
