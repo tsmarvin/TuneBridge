@@ -37,17 +37,20 @@ namespace TuneBridge.Domain.Implementations.Services {
             ILogger<BlueskyStorageService> logger
         ) {
             // Note: idunno.Bluesky library uses the default Bluesky PDS
-            // Custom PDS URL support may require using AtProtoAgent directly or a newer library version
+            // Validate PDS URL - current library version only supports default Bluesky PDS
+            if (!string.IsNullOrWhiteSpace( pdsUrl ) && pdsUrl != "https://bsky.social") {
+                throw new NotSupportedException( 
+                    $"Custom PDS URL '{pdsUrl}' is not supported by the current version of idunno.Bluesky library. " +
+                    "Only the default Bluesky PDS (https://bsky.social) is supported. " +
+                    "To use a custom PDS, either use the default value or upgrade to a library version that supports custom service URLs." );
+            }
+            
             _agent = new BlueskyAgent( );
             _identifier = identifier;
             _password = password;
             _logger = logger;
             
-            if (!string.IsNullOrWhiteSpace( pdsUrl ) && pdsUrl != "https://bsky.social") {
-                _logger.LogWarning( "Custom PDS URL specified ({url}) but current library version uses default Bluesky PDS", pdsUrl );
-            } else {
-                _logger.LogInformation( "BlueskyStorageService initialized with default Bluesky PDS" );
-            }
+            _logger.LogInformation( "BlueskyStorageService initialized with default Bluesky PDS" );
         }
 
         /// <summary>
