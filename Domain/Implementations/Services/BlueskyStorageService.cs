@@ -3,6 +3,7 @@ using idunno.AtProto;
 using idunno.AtProto.Repo;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Contracts.Records;
+using TuneBridge.Domain.Implementations.Extensions;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Enums;
 
@@ -216,19 +217,8 @@ namespace TuneBridge.Domain.Implementations.Services {
             var result = new MediaLinkResult( );
 
             foreach (var providerResult in record.Results) {
-                // Try to parse provider, skip if unknown to avoid incorrect mappings
-                SupportedProviders provider;
-                var providerLower = providerResult.Provider.ToLowerInvariant();
-                if (providerLower == "applemusic") {
-                    provider = SupportedProviders.AppleMusic;
-                } else if (providerLower == "spotify") {
-                    provider = SupportedProviders.Spotify;
-                } else if (providerLower == "tidal") {
-                    provider = SupportedProviders.Tidal;
-                } else if (Enum.TryParse<SupportedProviders>( providerResult.Provider, true, out var p )) {
-                    provider = p;
-                } else {
-                    // Skip unknown providers to avoid incorrect mappings
+                // Try to parse provider using consistent logic, skip if unknown
+                if (!TryParseProvider(providerResult.Provider, out var provider)) {
                     continue;
                 }
 
@@ -245,6 +235,44 @@ namespace TuneBridge.Domain.Implementations.Services {
 
             // Input links are tracked only in SQLite, not in PDS records
             return result;
+        }
+
+        /// <summary>
+        /// Tries to parse a provider string into a <see cref="SupportedProviders"/> enum value.
+        /// Uses the enum's Description attribute for matching to ensure consistency with display names.
+        /// </summary>
+        /// <param name="providerString">The provider string to parse.</param>
+        /// <param name="provider">The parsed provider enum value if successful.</param>
+        /// <returns>True if the provider was successfully parsed, false otherwise.</returns>
+        private static bool TryParseProvider(string providerString, out SupportedProviders provider) {
+            provider = default;
+            
+            if (string.IsNullOrWhiteSpace(providerString)) {
+                return false;
+            }
+
+            // Try parsing by enum name first (case-insensitive)
+            if (Enum.TryParse<SupportedProviders>(providerString, true, out provider)) {
+                return true;
+            }
+
+            // Try matching against Description attributes
+            foreach (SupportedProviders p in Enum.GetValues<SupportedProviders>()) {
+                var description = p.GetDescription();
+                if (string.Equals(description, providerString, StringComparison.OrdinalIgnoreCase)) {
+                    provider = p;
+                    return true;
+                }
+                
+                // Also try description without spaces (e.g., "AppleMusic" vs "Apple Music")
+                var descriptionNoSpaces = description.Replace(" ", "", StringComparison.Ordinal);
+                if (string.Equals(descriptionNoSpaces, providerString, StringComparison.OrdinalIgnoreCase)) {
+                    provider = p;
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
