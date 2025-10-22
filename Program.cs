@@ -37,6 +37,9 @@ namespace TuneBridge {
 
             WebApplication app = builder.Build();
 
+            // Initialize cache database if configured
+            StartupExtensions.InitializeCacheDatabase( app.Services );
+
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment( )) {
                 _ = app.UseExceptionHandler( "/Home/Error" );

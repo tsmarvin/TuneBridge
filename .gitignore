@@ -67,3 +67,8 @@ _site/
 docs/api/
 docs/index.md
 obj/.cache/
+
+# SQLite cache database
+medialinkscache.db
+medialinkscache.db-shm
+medialinkscache.db-wal

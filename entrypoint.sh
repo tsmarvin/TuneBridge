@@ -19,6 +19,13 @@ TIDAL_CLIENT_SECRET="${TIDAL_CLIENT_SECRET:-}"
 # Optional Discord bot token
 DISCORD_TOKEN="${DISCORD_TOKEN:-}"
 
+# Optional Bluesky PDS configuration
+BLUESKY_PDS_URL="${BLUESKY_PDS_URL:-https://bsky.social}"
+BLUESKY_IDENTIFIER="${BLUESKY_IDENTIFIER:-}"
+BLUESKY_PASSWORD="${BLUESKY_PASSWORD:-}"
+CACHE_DAYS="${CACHE_DAYS:-7}"
+CACHE_DB_PATH="${CACHE_DB_PATH:-medialinkscache.db}"
+
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 
@@ -44,7 +51,12 @@ cat > /app/appsettings.json <<EOF
     "SpotifyClientSecret": "$SPOTIFY_CLIENT_SECRET",
     "TidalClientId": "$TIDAL_CLIENT_ID",
     "TidalClientSecret": "$TIDAL_CLIENT_SECRET",
-    "DiscordToken": "$DISCORD_TOKEN"
+    "DiscordToken": "$DISCORD_TOKEN",
+    "BlueskyPdsUrl": "$BLUESKY_PDS_URL",
+    "BlueskyIdentifier": "$BLUESKY_IDENTIFIER",
+    "BlueskyPassword": "$BLUESKY_PASSWORD",
+    "CacheDays": $CACHE_DAYS,
+    "CacheDbPath": "$CACHE_DB_PATH"
   },
   "Logging": {
     "LogLevel": {
