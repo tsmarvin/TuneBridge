@@ -162,11 +162,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             var links = new List<string>( );
             
             // Simple extraction - look for https:// or http:// followed by URL
-            var matches = System.Text.RegularExpressions.Regex.Matches( 
-                content, 
-                @"https?://([^\s]+)",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase 
-            );
+            var matches = UrlRegex.Matches( content );
 
             foreach (System.Text.RegularExpressions.Match match in matches) {
                 if (match.Success) {
