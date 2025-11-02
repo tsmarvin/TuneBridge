@@ -12,27 +12,28 @@ namespace TuneBridge.Domain.Implementations.Auth;
 public class ApiKeyProvider : IApiKeyProvider {
     private readonly ILogger<ApiKeyProvider> _logger;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ApiKeyHasher _hasher;
 
-    public ApiKeyProvider( ILogger<ApiKeyProvider> logger, UserManager<ApplicationUser> userManager ) {
+    public ApiKeyProvider( ILogger<ApiKeyProvider> logger, UserManager<ApplicationUser> userManager, ApiKeyHasher hasher ) {
         _logger = logger;
         _userManager = userManager;
+        _hasher = hasher;
     }
 
     public async Task<IApiKey?> ProvideAsync( string key ) {
         try {
-            // Find user by API key directly in the database
+            // Hash the provided key
+            string hashedKey = _hasher.HashApiKey( key );
+
+            // Find user by hashed API key directly in the database
             ApplicationUser? user = await _userManager.Users
-                .FirstOrDefaultAsync( u => u.ApiKey == key );
+                .FirstOrDefaultAsync( u => u.ApiKeyHash == hashedKey );
 
             if (user == null) {
                 return null;
             }
 
-            // Update last request timestamp
-            user.LastRequestAt = DateTime.UtcNow;
-            _ = await _userManager.UpdateAsync( user );
-
-            return new ApiKey( key, user.UserName ?? user.Email ?? "Unknown", [ "User" ] );
+            return new ApiKey( key, user.UserName ?? user.Id, [ "User" ] );
         } catch (Exception ex) {
             _logger.LogError( ex, "Error validating API key" );
             return null;

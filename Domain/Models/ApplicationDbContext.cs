@@ -16,7 +16,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser> {
 
         // Add indexes for performance
         _ = builder.Entity<ApplicationUser>( )
-            .HasIndex( u => u.ApiKey )
+            .HasIndex( u => u.ApiKeyHash )
             .IsUnique( );
     }
 }

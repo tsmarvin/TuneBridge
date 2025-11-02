@@ -16,8 +16,8 @@ public static class DatabaseExtensions {
         using IServiceScope scope = app.Services.CreateScope( );
         ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
 
-        // Create the database if it doesn't exist
-        _ = context.Database.EnsureCreated( );
+        // Apply pending migrations and create the database if it doesn't exist
+        context.Database.Migrate( );
 
         return app;
     }

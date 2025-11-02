@@ -53,8 +53,10 @@ namespace TuneBridge {
             _ = app.UseAuthentication( );
             _ = app.UseAuthorization( );
 
-            // Add rate limiting middleware
-            _ = app.UseMiddleware<RateLimitingMiddleware>( );
+            // Add rate limiting middleware with configured rate limit
+            AppSettings settings = new();
+            builder.Configuration.GetRequiredSection( "TuneBridge" ).Bind( settings );
+            _ = app.UseMiddleware<RateLimitingMiddleware>( settings.RateLimitRequestsPerHour );
 
             _ = app.MapStaticAssets( );
             _ = app.MapControllerRoute(

@@ -4,23 +4,19 @@ namespace TuneBridge.Domain.Models;
 
 /// <summary>
 /// Represents an application user with Identity functionality.
-/// Extends IdentityUser to add custom properties for user authentication and tracking.
+/// Minimal user information stored - only unique ID and authentication means.
 /// </summary>
 public class ApplicationUser : IdentityUser {
     /// <summary>
-    /// API key for authenticating API requests.
+    /// Hashed API key for authenticating API requests.
+    /// Stored as a salted hash for security.
     /// </summary>
-    public string? ApiKey { get; set; }
+    public string? ApiKeyHash { get; set; }
 
     /// <summary>
     /// Timestamp of when the user was created.
     /// </summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    /// <summary>
-    /// Timestamp of the last API request made by this user.
-    /// </summary>
-    public DateTime? LastRequestAt { get; set; }
 
     /// <summary>
     /// Count of requests made in the current rate limit window.

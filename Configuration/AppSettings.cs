@@ -71,5 +71,15 @@
         /// </summary>
         public string ConnectionString { get; set; } = "Data Source=tunebridge.db";
 
+        /// <summary>
+        /// Salt value for hashing API keys.
+        /// </summary>
+        public string ApiKeySalt { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Maximum number of requests per hour per user for rate limiting.
+        /// </summary>
+        public int RateLimitRequestsPerHour { get; set; } = 20;
+
     }
 }

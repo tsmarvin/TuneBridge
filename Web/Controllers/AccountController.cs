@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Cryptography;
+using TuneBridge.Domain.Implementations.Auth;
 using TuneBridge.Domain.Models;
 
 namespace TuneBridge.Web.Controllers;
@@ -16,14 +16,17 @@ public class AccountController : ControllerBase {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly ILogger<AccountController> _logger;
+    private readonly ApiKeyHasher _hasher;
 
     public AccountController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
-        ILogger<AccountController> logger ) {
+        ILogger<AccountController> logger,
+        ApiKeyHasher hasher ) {
         _userManager = userManager;
         _signInManager = signInManager;
         _logger = logger;
+        _hasher = hasher;
     }
 
     /// <summary>Request for user registration.</summary>
@@ -50,10 +53,14 @@ public class AccountController : ControllerBase {
             return BadRequest( ModelState );
         }
 
+        // Generate API key
+        string apiKey = ApiKeyHasher.GenerateApiKey( );
+        string hashedApiKey = _hasher.HashApiKey( apiKey );
+
         ApplicationUser user = new() {
             UserName = request.Username ?? request.Email,
             Email = request.Email,
-            ApiKey = GenerateApiKey( ),
+            ApiKeyHash = hashedApiKey,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -70,18 +77,16 @@ public class AccountController : ControllerBase {
 
         return Ok( new {
             userId = user.Id,
-            email = user.Email,
-            username = user.UserName,
-            apiKey = user.ApiKey,
+            apiKey = apiKey,
             message = "Registration successful. Save your API key - it will not be shown again."
         } );
     }
 
     /// <summary>
-    /// Authenticates a user and returns their API key.
+    /// Authenticates a user and returns a new API key.
     /// </summary>
     /// <param name="request">Login credentials.</param>
-    /// <returns>User details with API key on success.</returns>
+    /// <returns>User details with new API key on success.</returns>
     /// <response code="200">Login successful.</response>
     /// <response code="401">Invalid credentials.</response>
     [HttpPost( "login" )]
@@ -105,20 +110,17 @@ public class AccountController : ControllerBase {
             return Unauthorized( new { message = "Invalid email or password" } );
         }
 
-        // Generate new API key if not exists
-        if (string.IsNullOrEmpty( user.ApiKey )) {
-            user.ApiKey = GenerateApiKey( );
-            await _userManager.UpdateAsync( user );
-        }
+        // Generate new API key for this login session
+        string apiKey = ApiKeyHasher.GenerateApiKey( );
+        user.ApiKeyHash = _hasher.HashApiKey( apiKey );
+        await _userManager.UpdateAsync( user );
 
         _logger.LogInformation( "User logged in successfully with ID: {UserId}", user.Id );
 
         return Ok( new {
             userId = user.Id,
-            email = user.Email,
-            username = user.UserName,
-            apiKey = user.ApiKey,
-            message = "Login successful"
+            apiKey = apiKey,
+            message = "Login successful. New API key generated."
         } );
     }
 
@@ -136,30 +138,19 @@ public class AccountController : ControllerBase {
             return Unauthorized( );
         }
 
-        user.ApiKey = GenerateApiKey( );
+        string apiKey = ApiKeyHasher.GenerateApiKey( );
+        user.ApiKeyHash = _hasher.HashApiKey( apiKey );
         IdentityResult result = await _userManager.UpdateAsync( user );
 
         if (!result.Succeeded) {
             return BadRequest( new { message = "Failed to regenerate API key" } );
         }
 
-        _logger.LogInformation( "User {Email} regenerated API key", user.Email );
+        _logger.LogInformation( "User regenerated API key with ID: {UserId}", user.Id );
 
         return Ok( new {
-            apiKey = user.ApiKey,
+            apiKey = apiKey,
             message = "API key regenerated successfully. Update your applications with the new key."
         } );
-    }
-
-    /// <summary>
-    /// Generates a cryptographically secure random API key.
-    /// </summary>
-    /// <returns>Base64-encoded API key string.</returns>
-    private static string GenerateApiKey( ) {
-        byte[] randomBytes = new byte[32];
-        using (RandomNumberGenerator rng = RandomNumberGenerator.Create( )) {
-            rng.GetBytes( randomBytes );
-        }
-        return Convert.ToBase64String( randomBytes );
     }
 }
