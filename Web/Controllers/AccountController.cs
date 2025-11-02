@@ -99,10 +99,10 @@ public class AccountController : Controller {
     }
 
     /// <summary>
-    /// Authenticates a user and returns a new API key.
+    /// Authenticates a user and returns their existing API key.
     /// </summary>
     /// <param name="request">Login credentials.</param>
-    /// <returns>User details with new API key on success.</returns>
+    /// <returns>User details with API key on success.</returns>
     /// <response code="200">Login successful.</response>
     /// <response code="401">Invalid credentials.</response>
     [HttpPost]
@@ -127,17 +127,26 @@ public class AccountController : Controller {
             return Unauthorized( new { message = "Invalid email or password" } );
         }
 
-        // Generate new API key for this login session
-        string apiKey = ApiKeyHasher.GenerateApiKey( );
-        user.ApiKeyHash = _hasher.HashApiKey( apiKey );
-        await _userManager.UpdateAsync( user );
+        // Generate new API key only if user doesn't have one
+        string apiKey;
+        if (string.IsNullOrEmpty( user.ApiKeyHash )) {
+            apiKey = ApiKeyHasher.GenerateApiKey( );
+            user.ApiKeyHash = _hasher.HashApiKey( apiKey );
+            await _userManager.UpdateAsync( user );
+        } else {
+            // Return a message that the API key is already set
+            // User should use regenerate-api-key endpoint if they need a new one
+            apiKey = "***EXISTING_KEY***";
+        }
 
         _logger.LogInformation( "User logged in successfully with ID: {UserId}", user.Id );
 
         return Ok( new {
             userId = user.Id,
             apiKey = apiKey,
-            message = "Login successful. New API key generated."
+            message = apiKey == "***EXISTING_KEY***" 
+                ? "Login successful. Use /account/regenerate-api-key to get a new API key if needed." 
+                : "Login successful. New API key generated."
         } );
     }
 

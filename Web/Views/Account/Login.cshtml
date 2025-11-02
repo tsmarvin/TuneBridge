@@ -105,13 +105,20 @@
                     return;
                 }
 
-                // Show success message with API key
-                apiKeyEl.textContent = data.apiKey;
-                loginForm.classList.add('hidden');
-                successMessage.classList.remove('hidden');
+                // Check if user got existing API key placeholder or new key
+                if (data.apiKey === '***EXISTING_KEY***') {
+                    // User already has an API key, redirect to home
+                    sessionStorage.setItem('loginSuccess', 'true');
+                    window.location.href = '/';
+                } else {
+                    // Show success message with new API key
+                    apiKeyEl.textContent = data.apiKey;
+                    loginForm.classList.add('hidden');
+                    successMessage.classList.remove('hidden');
 
-                // Store API key in session storage for use in music lookup
-                sessionStorage.setItem('apiKey', data.apiKey);
+                    // Store API key in session storage for use in music lookup
+                    sessionStorage.setItem('apiKey', data.apiKey);
+                }
             } catch (err) {
                 error.textContent = 'Network error: ' + err.message;
                 error.classList.remove('hidden');
