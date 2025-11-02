@@ -1,0 +1,144 @@
+@{
+    ViewData["Title"] = "Register";
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>@ViewData["Title"] - TuneBridge</title>
+    <style>
+        :root { font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; }
+        body { margin: 2rem; background: #f9fafb; }
+        .card { max-width: 450px; margin: 0 auto; padding: 2rem; background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stack { display: grid; gap: 1rem; }
+        .form-group { display: grid; gap: .5rem; }
+        label { font-weight: 500; font-size: .9rem; }
+        input[type="email"], input[type="password"] { padding: .7rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; }
+        input:focus { outline: none; border-color: #0ea5e9; }
+        button { padding: .8rem 1rem; border-radius: 8px; border: none; background: #0ea5e9; color: white; font-weight: 500; cursor: pointer; font-size: 1rem; }
+        button:hover { background: #0284c7; }
+        button:disabled { opacity: .6; cursor: not-allowed; }
+        .error { color: #ef4444; font-size: .875rem; margin-top: .25rem; }
+        .success { color: #10b981; font-size: .875rem; padding: .75rem; background: #d1fae5; border-radius: 8px; }
+        .info { color: #6b7280; font-size: .875rem; margin-top: .5rem; }
+        .api-key { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: 8px; font-family: monospace; word-break: break-all; margin-top: .5rem; }
+        a { color: #0ea5e9; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        h2 { margin: 0 0 1rem 0; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Create Account</h2>
+        <div id="registerForm" class="stack">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" required />
+                <div class="info">Your email will be your unique identifier</div>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required />
+                <div class="info">Minimum 14 characters with uppercase, lowercase, digit, and special character</div>
+            </div>
+            <div class="form-group">
+                <label for="confirmPassword">Confirm Password</label>
+                <input type="password" id="confirmPassword" required />
+            </div>
+            <div id="error" class="error hidden"></div>
+            <button id="registerBtn">Create Account</button>
+            <div style="text-align: center; margin-top: .5rem;">
+                Already have an account? <a href="/account/login">Login</a>
+            </div>
+        </div>
+
+        <div id="successMessage" class="hidden stack">
+            <div class="success">Account created successfully!</div>
+            <p><strong>Your API Key:</strong></p>
+            <div class="api-key" id="apiKey"></div>
+            <p class="info" style="margin-top: 1rem;">
+                <strong>Important:</strong> Save this API key now. It will not be shown again.
+                You can use it to authenticate API requests by including the header:
+                <code>X-API-Key: [your-key]</code>
+            </p>
+            <button onclick="window.location.href='/'">Go to Music Lookup</button>
+        </div>
+    </div>
+
+    <script>
+        const email = document.getElementById('email');
+        const password = document.getElementById('password');
+        const confirmPassword = document.getElementById('confirmPassword');
+        const registerBtn = document.getElementById('registerBtn');
+        const error = document.getElementById('error');
+        const registerForm = document.getElementById('registerForm');
+        const successMessage = document.getElementById('successMessage');
+        const apiKeyEl = document.getElementById('apiKey');
+
+        registerBtn.addEventListener('click', async () => {
+            error.classList.add('hidden');
+            error.textContent = '';
+
+            // Validation
+            if (!email.value || !password.value || !confirmPassword.value) {
+                error.textContent = 'Please fill in all fields';
+                error.classList.remove('hidden');
+                return;
+            }
+
+            if (password.value !== confirmPassword.value) {
+                error.textContent = 'Passwords do not match';
+                error.classList.remove('hidden');
+                return;
+            }
+
+            registerBtn.disabled = true;
+            registerBtn.textContent = 'Creating account...';
+
+            try {
+                const response = await fetch('/account/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email.value,
+                        password: password.value
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    let errorMsg = 'Registration failed';
+                    if (data.errors) {
+                        errorMsg = Object.values(data.errors).flat().join('. ');
+                    } else if (data.message) {
+                        errorMsg = data.message;
+                    }
+                    error.textContent = errorMsg;
+                    error.classList.remove('hidden');
+                    registerBtn.disabled = false;
+                    registerBtn.textContent = 'Create Account';
+                    return;
+                }
+
+                // Show success message with API key
+                apiKeyEl.textContent = data.apiKey;
+                registerForm.classList.add('hidden');
+                successMessage.classList.remove('hidden');
+
+                // Store API key in session storage for use in music lookup
+                sessionStorage.setItem('apiKey', data.apiKey);
+            } catch (err) {
+                error.textContent = 'Network error: ' + err.message;
+                error.classList.remove('hidden');
+                registerBtn.disabled = false;
+                registerBtn.textContent = 'Create Account';
+            }
+        });
+    </script>
+</body>
+</html>

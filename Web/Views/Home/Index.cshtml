@@ -26,11 +26,17 @@
         .hidden { display: none; }
         .spacer { height: .5rem; }
         label { display: inline-flex; align-items: center; gap: .35rem; }
+        .auth-status { padding: .5rem .75rem; border-radius: 8px; font-size: .875rem; margin-bottom: 1rem; }
+        .auth-status.authenticated { background: #d1fae5; color: #065f46; }
+        .auth-status.unauthenticated { background: #fee2e2; color: #991b1b; }
+        .auth-status a { color: inherit; text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="card stack">
         <h2>Music Lookup</h2>
+
+        <div id="authStatus" class="auth-status hidden"></div>
 
         <fieldset class="stack">
             <legend>Mode</legend>
@@ -81,6 +87,19 @@
           const isrcRow = $('isrcRow');
           const upcRow = $('upcRow');
           const titleRow = $('titleRow');
+          const authStatus = $('authStatus');
+
+          // Check for stored API key
+          const apiKey = sessionStorage.getItem('apiKey');
+          if (apiKey) {
+            authStatus.className = 'auth-status authenticated';
+            authStatus.innerHTML = '✓ Authenticated - API key active';
+            authStatus.classList.remove('hidden');
+          } else {
+            authStatus.className = 'auth-status unauthenticated';
+            authStatus.innerHTML = '⚠ Not authenticated - <a href="/account/login">Login</a> or <a href="/account/register">Register</a> to use protected endpoints';
+            authStatus.classList.remove('hidden');
+          }
 
           function setMode(mode) {
             urlRow.classList.toggle('hidden', mode !== 'url');
@@ -106,7 +125,7 @@
 
               switch (mode) {
                 case 'url':
-                  endpoint = '/music/lookup/urlList';
+                  endpoint = '/music/lookup/url';
                   payload = { uri: $('url').value };
                   break;
                 case 'isrc':
@@ -126,15 +145,35 @@
                   break;
               }
 
+              // Add API key header if available
+              const headers = { 'Content-Type': 'application/json' };
+              if (apiKey) {
+                headers['X-API-Key'] = apiKey;
+              }
+
               const res = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headers,
                 body: JSON.stringify(payload)
               });
 
-              const data = await res.json();
-              result.textContent = JSON.stringify(data, null, 2);
-              status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+              if (res.status === 401) {
+                result.textContent = JSON.stringify({ 
+                  error: 'Authentication required',
+                  message: 'Please login or register to use this endpoint',
+                  loginUrl: '/account/login',
+                  registerUrl: '/account/register'
+                }, null, 2);
+                status.textContent = 'HTTP 401 - Unauthorized';
+              } else if (res.status === 429) {
+                const data = await res.json();
+                result.textContent = JSON.stringify(data, null, 2);
+                status.textContent = 'HTTP 429 - Rate Limit Exceeded';
+              } else {
+                const data = await res.json();
+                result.textContent = JSON.stringify(data, null, 2);
+                status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+              }
             } catch (err) {
               status.textContent = 'Error';
               result.textContent = JSON.stringify({ error: String(err) }, null, 2);

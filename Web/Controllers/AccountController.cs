@@ -8,11 +8,9 @@ namespace TuneBridge.Web.Controllers;
 
 /// <summary>
 /// Controller for user authentication and account management.
-/// Provides endpoints for user registration, login, and API key generation.
+/// Provides both API endpoints and web UI for user registration, login, and API key generation.
 /// </summary>
-[ApiController]
-[Route( "account" )]
-public class AccountController : ControllerBase {
+public class AccountController : Controller {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly ILogger<AccountController> _logger;
@@ -30,15 +28,32 @@ public class AccountController : ControllerBase {
     }
 
     /// <summary>Request for user registration.</summary>
-    /// <param name="Email">User email address.</param>
+    /// <param name="Email">User email address (will be used as unique identifier).</param>
     /// <param name="Password">User password.</param>
-    /// <param name="Username">Optional username.</param>
-    public record RegisterRequest( string Email, string Password, string? Username );
+    public record RegisterRequest( string Email, string Password );
 
     /// <summary>Request for user login.</summary>
     /// <param name="Email">User email address.</param>
     /// <param name="Password">User password.</param>
     public record LoginRequest( string Email, string Password );
+
+    /// <summary>
+    /// Displays the registration page.
+    /// </summary>
+    [HttpGet]
+    [Route( "account/register" )]
+    public IActionResult RegisterPage( ) {
+        return View( "Register" );
+    }
+
+    /// <summary>
+    /// Displays the login page.
+    /// </summary>
+    [HttpGet]
+    [Route( "account/login" )]
+    public IActionResult LoginPage( ) {
+        return View( "Login" );
+    }
 
     /// <summary>
     /// Registers a new user account.
@@ -47,7 +62,8 @@ public class AccountController : ControllerBase {
     /// <returns>User details with API key on success.</returns>
     /// <response code="200">User successfully registered.</response>
     /// <response code="400">Registration failed (validation errors or duplicate user).</response>
-    [HttpPost( "register" )]
+    [HttpPost]
+    [Route( "account/register" )]
     public async Task<IActionResult> Register( [FromBody] RegisterRequest request ) {
         if (!ModelState.IsValid) {
             return BadRequest( ModelState );
@@ -58,7 +74,7 @@ public class AccountController : ControllerBase {
         string hashedApiKey = _hasher.HashApiKey( apiKey );
 
         ApplicationUser user = new() {
-            UserName = request.Username ?? request.Email,
+            UserName = request.Email,
             Email = request.Email,
             ApiKeyHash = hashedApiKey,
             CreatedAt = DateTime.UtcNow
@@ -89,7 +105,8 @@ public class AccountController : ControllerBase {
     /// <returns>User details with new API key on success.</returns>
     /// <response code="200">Login successful.</response>
     /// <response code="401">Invalid credentials.</response>
-    [HttpPost( "login" )]
+    [HttpPost]
+    [Route( "account/login" )]
     public async Task<IActionResult> Login( [FromBody] LoginRequest request ) {
         if (!ModelState.IsValid) {
             return BadRequest( ModelState );
@@ -131,7 +148,8 @@ public class AccountController : ControllerBase {
     /// <response code="200">API key regenerated successfully.</response>
     /// <response code="401">User not authenticated.</response>
     [Authorize]
-    [HttpPost( "regenerate-api-key" )]
+    [HttpPost]
+    [Route( "account/regenerate-api-key" )]
     public async Task<IActionResult> RegenerateApiKey( ) {
         ApplicationUser? user = await _userManager.GetUserAsync( User );
         if (user == null) {
