@@ -34,8 +34,14 @@ public class ApiKeyProvider : IApiKeyProvider {
             }
 
             return new ApiKey( key, user.UserName ?? user.Id, [ "User" ] );
+        } catch (DbUpdateException ex) {
+            _logger.LogError( ex, "Database error validating API key" );
+            return null;
+        } catch (InvalidOperationException ex) {
+            _logger.LogError( ex, "Invalid operation validating API key" );
+            return null;
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error validating API key" );
+            _logger.LogError( ex, "Unexpected error validating API key" );
             return null;
         }
     }

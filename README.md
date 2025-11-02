@@ -153,8 +153,7 @@ Content-Type: application/json
 
 {
   "email": "user@example.com",
-  "password": "SecurePassword123",
-  "username": "myusername"
+  "password": "SecurePassword123"
 }
 ```
 
@@ -162,8 +161,6 @@ Response:
 ```json
 {
   "userId": "...",
-  "email": "user@example.com",
-  "username": "myusername",
   "apiKey": "YOUR_API_KEY_HERE",
   "message": "Registration successful. Save your API key - it will not be shown again."
 }

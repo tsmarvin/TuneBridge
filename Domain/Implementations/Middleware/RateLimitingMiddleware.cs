@@ -76,9 +76,31 @@ public class RateLimitingMiddleware {
             return;
         }
 
-        // Increment request count atomically
-        user.RequestCount++;
-        _ = await userManager.UpdateAsync( user );
+        // Increment request count atomically using raw SQL to prevent race conditions
+        int rowsAffected = await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $@"UPDATE AspNetUsers 
+               SET RequestCount = RequestCount + 1 
+               WHERE Id = {user.Id} AND RequestCount < {_maxRequestsPerHour}"
+        );
+
+        // If no rows were updated, the rate limit was exceeded by a concurrent request
+        if (rowsAffected == 0) {
+            TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours( 1 ) - now;
+            _logger.LogWarning(
+                "Rate limit exceeded for user {Username} (concurrent check). Window resets in {Minutes} minutes.",
+                username,
+                Math.Ceiling( timeRemaining.TotalMinutes )
+            );
+
+            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            context.Response.Headers["Retry-After"] = ( (int)timeRemaining.TotalSeconds ).ToString( );
+            await context.Response.WriteAsJsonAsync( new {
+                error = "Rate limit exceeded",
+                message = $"Maximum {_maxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
+                retryAfter = (int)timeRemaining.TotalSeconds
+            } );
+            return;
+        }
 
         await _next( context );
     }
