@@ -66,7 +66,7 @@ public class AccountController : ControllerBase {
             return BadRequest( ModelState );
         }
 
-        _logger.LogInformation( "User {Email} registered successfully", request.Email );
+        _logger.LogInformation( "User registered successfully with ID: {UserId}", user.Id );
 
         return Ok( new {
             userId = user.Id,
@@ -111,7 +111,7 @@ public class AccountController : ControllerBase {
             await _userManager.UpdateAsync( user );
         }
 
-        _logger.LogInformation( "User {Email} logged in successfully", request.Email );
+        _logger.LogInformation( "User logged in successfully with ID: {UserId}", user.Id );
 
         return Ok( new {
             userId = user.Id,
