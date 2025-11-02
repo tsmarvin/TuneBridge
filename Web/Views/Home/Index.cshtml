@@ -16,13 +16,23 @@
             background: #0ea5e9; 
             color: white; 
             padding: 1rem 2rem; 
-            display: flex; 
-            justify-content: space-between; 
+            display: grid; 
+            grid-template-columns: 1fr auto 1fr; 
             align-items: center; 
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .header h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
-        .header-right { display: flex; gap: 1rem; align-items: center; }
+        .header-left { display: flex; gap: 1rem; align-items: center; justify-self: start; }
+        .header-center { justify-self: center; }
+        .header-center h1 { 
+            margin: 0; 
+            font-size: 1.5rem; 
+            font-weight: 600; 
+            cursor: pointer;
+            padding: .5rem 1rem;
+            border-radius: 6px;
+        }
+        .header-center h1:hover { background: rgba(255,255,255,0.1); }
+        .header-right { display: flex; gap: 1rem; align-items: center; justify-self: end; }
         .header-link { color: white; text-decoration: none; padding: .5rem .75rem; border-radius: 6px; }
         .header-link:hover { background: rgba(255,255,255,0.1); }
         .header-button { 
@@ -72,12 +82,14 @@
 </head>
 <body>
     <div class="header">
-        <h1>TuneBridge</h1>
-        <div class="header-right">
+        <div class="header-left">
             <a href="https://github.com/tsmarvin/TuneBridge" target="_blank" class="header-link">GitHub</a>
             <a href="https://docs.tunebridge.media/" target="_blank" class="header-link">Docs</a>
-            <span id="userArea"></span>
         </div>
+        <div class="header-center">
+            <h1 onclick="window.location.href='/'">TuneBridge</h1>
+        </div>
+        <div class="header-right" id="userArea"></div>
     </div>
 
     <div class="container">
@@ -135,36 +147,51 @@
           const titleRow = $('titleRow');
           const userArea = $('userArea');
 
-          // Check for stored API key
-          const apiKey = sessionStorage.getItem('apiKey');
-          const isAuthenticated = !!apiKey;
+          let isAuthenticated = false;
 
-          // Update header based on auth status
-          if (isAuthenticated) {
-            userArea.innerHTML = '<button class="header-button" id="logoutBtn">Logout</button>';
-            $('logoutBtn').addEventListener('click', () => {
-              sessionStorage.removeItem('apiKey');
-              window.location.reload();
+          // Check authentication status from server
+          fetch('/account/status')
+            .then(res => res.json())
+            .then(data => {
+              isAuthenticated = data.isAuthenticated;
+              updateUI();
+            })
+            .catch(() => {
+              isAuthenticated = false;
+              updateUI();
             });
-          } else {
-            userArea.innerHTML = '<a href="/account/login" class="header-button">Login</a>';
-          }
 
-          // Disable protected mode options if not authenticated
-          const protectedModes = ['isrc', 'upc', 'title'];
-          const modeLabels = {
-            isrc: $('isrcLabel'),
-            upc: $('upcLabel'),
-            title: $('titleLabel')
-          };
+          function updateUI() {
+            // Update header based on auth status
+            if (isAuthenticated) {
+              userArea.innerHTML = '<button class="header-button" id="logoutBtn">Logout</button>';
+              $('logoutBtn').addEventListener('click', async () => {
+                await fetch('/account/logout', { method: 'POST' });
+                window.location.reload();
+              });
+            } else {
+              userArea.innerHTML = `
+                <a href="/account/login" class="header-button">Login</a>
+                <a href="/account/register" class="header-button">Register</a>
+              `;
+            }
 
-          if (!isAuthenticated) {
-            protectedModes.forEach(mode => {
-              const label = modeLabels[mode];
-              const radio = label.querySelector('input');
-              label.classList.add('disabled');
-              radio.disabled = true;
-            });
+            // Disable protected mode options if not authenticated
+            const protectedModes = ['isrc', 'upc', 'title'];
+            const modeLabels = {
+              isrc: $('isrcLabel'),
+              upc: $('upcLabel'),
+              title: $('titleLabel')
+            };
+
+            if (!isAuthenticated) {
+              protectedModes.forEach(mode => {
+                const label = modeLabels[mode];
+                const radio = label.querySelector('input');
+                label.classList.add('disabled');
+                radio.disabled = true;
+              });
+            }
           }
 
           function setMode(mode) {
@@ -220,33 +247,22 @@
                   break;
               }
 
-              // Add API key header if available
+              // Cookie authentication is automatic - no headers needed for protected endpoints
               const headers = { 'Content-Type': 'application/json' };
-              if (apiKey) {
-                headers['X-API-Key'] = apiKey;
-              }
 
               const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: headers,
+                credentials: 'same-origin', // Include cookies
                 body: JSON.stringify(payload)
               });
 
               if (res.status === 401) {
-                const authError = apiKey 
-                  ? 'Authentication failed. Your API key may be invalid. Please <a href="/account/regenerate-api-key" style="color: #0ea5e9;">regenerate your API key</a>.'
-                  : 'Authentication required. Please <a href="/account/login" style="color: #0ea5e9;">login</a> or <a href="/account/register" style="color: #0ea5e9;">register</a>.';
-                
                 result.textContent = JSON.stringify({ 
                   error: 'Authentication required',
-                  message: authError
+                  message: 'Please login to access this endpoint.'
                 }, null, 2);
                 status.textContent = 'HTTP 401 - Unauthorized';
-                
-                // If user has a key but got 401, warn them
-                if (apiKey) {
-                  alert('Authentication failed. Your API key may be invalid. Please regenerate your API key.');
-                }
               } else if (res.status === 429) {
                 const data = await res.json();
                 result.textContent = JSON.stringify(data, null, 2);

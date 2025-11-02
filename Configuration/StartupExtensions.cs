@@ -80,13 +80,26 @@ namespace TuneBridge.Configuration {
             }
             _ = services.AddSingleton( new ApiKeyHasher( settings.ApiKeySalt ) );
 
-            // Configure API Key authentication
+            // Configure API Key authentication for API endpoints
             _ = services.AddTransient<IApiKeyProvider, ApiKeyProvider>( );
-            _ = services.AddAuthentication( ApiKeyDefaults.AuthenticationScheme )
+            _ = services.AddAuthentication( options => {
+                options.DefaultScheme = "MultiScheme";
+                options.DefaultChallengeScheme = "MultiScheme";
+            } )
+            .AddPolicyScheme( "MultiScheme", "API Key or Cookie", options => {
+                options.ForwardDefaultSelector = context => {
+                    // Use cookie authentication for web UI, API key for API endpoints
+                    if (context.Request.Headers.ContainsKey( "X-API-Key" )) {
+                        return ApiKeyDefaults.AuthenticationScheme;
+                    }
+                    return IdentityConstants.ApplicationScheme;
+                };
+            } )
             .AddApiKeyInHeader<ApiKeyProvider>( options => {
                 options.Realm = "TuneBridge API";
                 options.KeyName = "X-API-Key";
-            } );
+            } )
+            .AddIdentityCookies( ); // Add cookie authentication for web UI
 
             _ = services.AddAuthorization( );
 

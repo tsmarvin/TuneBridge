@@ -56,7 +56,7 @@ public class AccountController : Controller {
     }
 
     /// <summary>
-    /// Registers a new user account.
+    /// Registers a new user account and automatically signs them in.
     /// </summary>
     /// <param name="request">Registration details including email and password.</param>
     /// <returns>User details with API key on success.</returns>
@@ -89,6 +89,9 @@ public class AccountController : Controller {
             return BadRequest( ModelState );
         }
 
+        // Sign in the user automatically with a cookie for web UI
+        await _signInManager.SignInAsync( user, isPersistent: false );
+
         _logger.LogInformation( "User registered successfully with ID: {UserId}", user.Id );
 
         return Ok( new {
@@ -99,7 +102,7 @@ public class AccountController : Controller {
     }
 
     /// <summary>
-    /// Authenticates a user and returns their existing API key.
+    /// Authenticates a user and signs them in with a cookie for web UI.
     /// </summary>
     /// <param name="request">Login credentials.</param>
     /// <returns>User details with API key on success.</returns>
@@ -127,6 +130,9 @@ public class AccountController : Controller {
             return Unauthorized( new { message = "Invalid email or password" } );
         }
 
+        // Sign in the user with a cookie for web UI
+        await _signInManager.SignInAsync( user, isPersistent: false );
+
         // Generate new API key only if user doesn't have one
         string apiKey;
         if (string.IsNullOrEmpty( user.ApiKeyHash )) {
@@ -148,6 +154,33 @@ public class AccountController : Controller {
                 ? "Login successful. Use /account/regenerate-api-key to get a new API key if needed." 
                 : "Login successful. New API key generated."
         } );
+    }
+
+    /// <summary>
+    /// Logs out the currently authenticated user.
+    /// </summary>
+    [HttpPost]
+    [Route( "account/logout" )]
+    public async Task<IActionResult> Logout( ) {
+        await _signInManager.SignOutAsync( );
+        return Ok( new { message = "Logged out successfully" } );
+    }
+
+    /// <summary>
+    /// Checks if the current user is authenticated (for web UI).
+    /// </summary>
+    [HttpGet]
+    [Route( "account/status" )]
+    public async Task<IActionResult> GetAuthStatus( ) {
+        if (User.Identity?.IsAuthenticated == true) {
+            ApplicationUser? user = await _userManager.GetUserAsync( User );
+            return Ok( new { 
+                isAuthenticated = true,
+                userId = user?.Id,
+                email = user?.Email
+            } );
+        }
+        return Ok( new { isAuthenticated = false } );
     }
 
     /// <summary>
