@@ -17,7 +17,6 @@
 
   <ItemGroup>
     <PackageReference Include="AspNetCore.Authentication.ApiKey" Version="9.0.0" />
-    <PackageReference Include="AspNetCoreRateLimit" Version="5.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.10" />

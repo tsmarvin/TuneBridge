@@ -20,11 +20,9 @@ public class ApiKeyProvider : IApiKeyProvider {
 
     public async Task<IApiKey?> ProvideAsync( string key ) {
         try {
-            // Find user by API key
-            ApplicationUser? user = ( await _userManager.Users
-                .Where( u => u.ApiKey == key )
-                .ToListAsync( ) )
-                .FirstOrDefault( );
+            // Find user by API key directly in the database
+            ApplicationUser? user = await _userManager.Users
+                .FirstOrDefaultAsync( u => u.ApiKey == key );
 
             if (user == null) {
                 return null;

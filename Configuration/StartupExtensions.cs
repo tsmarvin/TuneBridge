@@ -161,7 +161,8 @@ namespace TuneBridge.Configuration {
                 logger.LogInformation( "TuneBridge: Music lookup service for Tidal disabled due to invalid input credentials." );
             }
 
-            // Validate that at least one provider is enabled (skip validation if only testing auth endpoints)
+            // When no music providers are configured, add a stub service to allow authentication endpoints to work.
+            // Note: Music lookup endpoints will return empty results since no providers are available.
             if (enabledProviders.Count == 0) {
                 logger.LogWarning( "TuneBridge: No music provider services configured. Music lookup endpoints will not be available." );
 

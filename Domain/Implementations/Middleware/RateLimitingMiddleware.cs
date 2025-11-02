@@ -17,7 +17,7 @@ public class RateLimitingMiddleware {
         _logger = logger;
     }
 
-    public async Task InvokeAsync( HttpContext context, UserManager<ApplicationUser> userManager ) {
+    public async Task InvokeAsync( HttpContext context, UserManager<ApplicationUser> userManager, ApplicationDbContext dbContext ) {
         // Skip rate limiting for the public /music/lookup/url endpoint (but not /music/lookup/urlList)
         string path = context.Request.Path.Value ?? string.Empty;
         if (path.Equals( "/music/lookup/url", StringComparison.OrdinalIgnoreCase )) {
@@ -38,10 +38,9 @@ public class RateLimitingMiddleware {
             return;
         }
 
-        // Get the user from database by username
+        // Get the user from database by username with tracking enabled for updates
         ApplicationUser? user = await userManager.Users
-            .Where( u => u.UserName == username )
-            .FirstOrDefaultAsync( );
+            .FirstOrDefaultAsync( u => u.UserName == username );
 
         if (user == null) {
             await _next( context );
@@ -50,35 +49,50 @@ public class RateLimitingMiddleware {
 
         DateTime now = DateTime.UtcNow;
 
-        // Initialize or reset rate limit window if needed
-        if (user.RateLimitWindowStart == null ||
-            ( now - user.RateLimitWindowStart.Value ).TotalHours >= 1) {
-            user.RateLimitWindowStart = now;
-            user.RequestCount = 0;
+        // Use a database transaction to ensure atomic updates and prevent race conditions
+        using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync( );
+        try {
+            // Reload user with lock to prevent race conditions
+            await dbContext.Entry( user ).ReloadAsync( );
+
+            // Initialize or reset rate limit window if needed
+            if (user.RateLimitWindowStart == null ||
+                ( now - user.RateLimitWindowStart.Value ).TotalHours >= 1) {
+                user.RateLimitWindowStart = now;
+                user.RequestCount = 0;
+            }
+
+            // Check if rate limit is exceeded
+            if (user.RequestCount >= MaxRequestsPerHour) {
+                TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours( 1 ) - now;
+                _logger.LogWarning(
+                    "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
+                    username,
+                    Math.Ceiling( timeRemaining.TotalMinutes )
+                );
+
+                await transaction.RollbackAsync( );
+
+                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                context.Response.Headers["Retry-After"] = ( (int)timeRemaining.TotalSeconds ).ToString( );
+                await context.Response.WriteAsJsonAsync( new {
+                    error = "Rate limit exceeded",
+                    message = $"Maximum {MaxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
+                    retryAfter = (int)timeRemaining.TotalSeconds
+                } );
+                return;
+            }
+
+            // Increment request count atomically
+            user.RequestCount++;
+            _ = await userManager.UpdateAsync( user );
+            await dbContext.SaveChangesAsync( );
+
+            await transaction.CommitAsync( );
+        } catch {
+            await transaction.RollbackAsync( );
+            throw;
         }
-
-        // Check if rate limit is exceeded
-        if (user.RequestCount >= MaxRequestsPerHour) {
-            TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours( 1 ) - now;
-            _logger.LogWarning(
-                "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
-                username,
-                Math.Ceiling( timeRemaining.TotalMinutes )
-            );
-
-            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            context.Response.Headers["Retry-After"] = ( (int)timeRemaining.TotalSeconds ).ToString( );
-            await context.Response.WriteAsJsonAsync( new {
-                error = "Rate limit exceeded",
-                message = $"Maximum {MaxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
-                retryAfter = (int)timeRemaining.TotalSeconds
-            } );
-            return;
-        }
-
-        // Increment request count
-        user.RequestCount++;
-        _ = await userManager.UpdateAsync( user );
 
         await _next( context );
     }
