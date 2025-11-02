@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using TuneBridge.Domain.Models;
 
 namespace TuneBridge.Domain.Implementations.Middleware;
@@ -17,9 +18,9 @@ public class RateLimitingMiddleware {
     }
 
     public async Task InvokeAsync( HttpContext context, UserManager<ApplicationUser> userManager ) {
-        // Skip rate limiting for the public /music/lookup/url endpoint
-        if (context.Request.Path.StartsWithSegments( "/music/lookup/url" ) &&
-            !context.Request.Path.StartsWithSegments( "/music/lookup/urlList" )) {
+        // Skip rate limiting for the public /music/lookup/url endpoint (but not /music/lookup/urlList)
+        string path = context.Request.Path.Value ?? string.Empty;
+        if (path.Equals( "/music/lookup/url", StringComparison.OrdinalIgnoreCase )) {
             await _next( context );
             return;
         }
@@ -30,8 +31,18 @@ public class RateLimitingMiddleware {
             return;
         }
 
-        // Get the current user
-        ApplicationUser? user = await userManager.GetUserAsync( context.User );
+        // Get the username from the authenticated user
+        string? username = context.User.Identity?.Name;
+        if (string.IsNullOrEmpty( username )) {
+            await _next( context );
+            return;
+        }
+
+        // Get the user from database by username
+        ApplicationUser? user = await userManager.Users
+            .Where( u => u.UserName == username )
+            .FirstOrDefaultAsync( );
+
         if (user == null) {
             await _next( context );
             return;
@@ -50,8 +61,8 @@ public class RateLimitingMiddleware {
         if (user.RequestCount >= MaxRequestsPerHour) {
             TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours( 1 ) - now;
             _logger.LogWarning(
-                "Rate limit exceeded for user {UserId}. Window resets in {Minutes} minutes.",
-                user.Id,
+                "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
+                username,
                 Math.Ceiling( timeRemaining.TotalMinutes )
             );
 

@@ -57,8 +57,8 @@ namespace TuneBridge.Configuration {
                 options.UseSqlite( settings.ConnectionString )
             );
 
-            // Configure ASP.NET Identity
-            _ = services.AddIdentity<ApplicationUser, IdentityRole>( options => {
+            // Configure ASP.NET Identity with custom user
+            _ = services.AddIdentityCore<ApplicationUser>( options => {
                 // Password settings
                 options.Password.RequireDigit = true;
                 options.Password.RequireLowercase = true;
@@ -69,14 +69,14 @@ namespace TuneBridge.Configuration {
                 // User settings
                 options.User.RequireUniqueEmail = true;
             } )
+            .AddRoles<IdentityRole>( )
             .AddEntityFrameworkStores<ApplicationDbContext>( )
+            .AddSignInManager( )
             .AddDefaultTokenProviders( );
 
             // Configure API Key authentication
             _ = services.AddTransient<IApiKeyProvider, ApiKeyProvider>( );
-            _ = services.AddAuthentication( options => {
-                options.DefaultScheme = ApiKeyDefaults.AuthenticationScheme;
-            } )
+            _ = services.AddAuthentication( ApiKeyDefaults.AuthenticationScheme )
             .AddApiKeyInHeader<ApiKeyProvider>( options => {
                 options.Realm = "TuneBridge API";
                 options.KeyName = "X-API-Key";
@@ -161,17 +161,25 @@ namespace TuneBridge.Configuration {
                 logger.LogInformation( "TuneBridge: Music lookup service for Tidal disabled due to invalid input credentials." );
             }
 
-            // Validate that at least one provider is enabled.
+            // Validate that at least one provider is enabled (skip validation if only testing auth endpoints)
             if (enabledProviders.Count == 0) {
-                throw new InvalidOperationException( "Required settings are missing. Cannot add TuneBridge services if no IMusicLookupService(s) are available." );
+                logger.LogWarning( "TuneBridge: No music provider services configured. Music lookup endpoints will not be available." );
+
+                // Add a stub media link service for when no providers are configured
+                _ = services.AddTransient<IMediaLinkService>( s => new DefaultMediaLinkService(
+                    new Dictionary<SupportedProviders, IMusicLookupService>( ),
+                    s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
+                    s.GetRequiredService<JsonSerializerOptions>( )
+                ) );
+            } else {
+                // Add the DefaultMediaLinkService with enabled IMusicLookupService(s).
+                _ = services.AddTransient<IMediaLinkService>( s => new DefaultMediaLinkService(
+                    GetEnabledProviderServices( enabledProviders, s ),
+                    s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
+                    s.GetRequiredService<JsonSerializerOptions>( )
+                ) );
             }
 
-            // Add the DefaultMediaLinkService with enabled IMusicLookupService(s).
-            _ = services.AddTransient<IMediaLinkService>( s => new DefaultMediaLinkService(
-                GetEnabledProviderServices( enabledProviders, s ),
-                s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
-                s.GetRequiredService<JsonSerializerOptions>( )
-            ) );
             _ = services.AddSingleton( enabledProviders );
 
 
