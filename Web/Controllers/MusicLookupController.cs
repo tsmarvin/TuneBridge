@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
 
@@ -45,6 +46,8 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Successfully parsed and looked up all URLs.</response>
     /// <response code="400">Invalid request body or malformed URLs.</response>
+    /// <response code="401">Unauthorized - authentication required.</response>
+    [Authorize]
     [HttpPost( "urlList" )]
     public async Task<IActionResult> ByUrlList( [FromBody] UrlReq req ) {
         List<MediaLinkResult> results = [];
@@ -84,6 +87,8 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Lookup completed (result may be null if ISRC not found).</response>
     /// <response code="400">Invalid ISRC format in request body.</response>
+    /// <response code="401">Unauthorized - authentication required.</response>
+    [Authorize]
     [HttpPost( "isrc" )]
     public async Task<IActionResult> ByIsrc( [FromBody] IsrcReq req )
         => Ok( await _svc.GetInfoByISRCAsync( req.Isrc ) );
@@ -100,6 +105,8 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Lookup completed (result may be null if UPC not found).</response>
     /// <response code="400">Invalid UPC format in request body.</response>
+    /// <response code="401">Unauthorized - authentication required.</response>
+    [Authorize]
     [HttpPost( "upc" )]
     public async Task<IActionResult> ByUpc( [FromBody] UpcReq req )
         => Ok( await _svc.GetInfoByUPCAsync( req.Upc ) );
@@ -115,6 +122,8 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Search completed (result may be null if no matches found).</response>
     /// <response code="400">Missing or invalid title/artist in request body.</response>
+    /// <response code="401">Unauthorized - authentication required.</response>
+    [Authorize]
     [HttpPost( "title" )]
     public async Task<IActionResult> ByTitle( [FromBody] TitleReq req )
         => Ok( await _svc.GetInfoAsync( req.Title, req.Artist ) );

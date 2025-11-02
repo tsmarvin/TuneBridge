@@ -66,5 +66,10 @@
         /// </summary>
         public string DiscordToken { get; set; } = string.Empty;
 
+        /// <summary>
+        /// The database connection string for SQLite.
+        /// </summary>
+        public string ConnectionString { get; set; } = "Data Source=tunebridge.db";
+
     }
 }

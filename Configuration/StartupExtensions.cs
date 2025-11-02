@@ -1,4 +1,7 @@
 ﻿using System.Text.Json;
+using AspNetCore.Authentication.ApiKey;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Http.Resilience;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
@@ -6,6 +9,7 @@ using Polly;
 using TuneBridge.Domain.Implementations.Auth;
 using TuneBridge.Domain.Implementations.Services;
 using TuneBridge.Domain.Interfaces;
+using TuneBridge.Domain.Models;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Configuration {
@@ -47,6 +51,38 @@ namespace TuneBridge.Configuration {
             AppSettings settings = new();
             config.GetRequiredSection( "TuneBridge" ).Bind( settings );
             _ = services.AddSingleton( new JsonSerializerOptions { WriteIndented = true } );
+
+            // Configure SQLite database for Identity
+            _ = services.AddDbContext<ApplicationDbContext>( options =>
+                options.UseSqlite( settings.ConnectionString )
+            );
+
+            // Configure ASP.NET Identity
+            _ = services.AddIdentity<ApplicationUser, IdentityRole>( options => {
+                // Password settings
+                options.Password.RequireDigit = true;
+                options.Password.RequireLowercase = true;
+                options.Password.RequireUppercase = true;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequiredLength = 8;
+
+                // User settings
+                options.User.RequireUniqueEmail = true;
+            } )
+            .AddEntityFrameworkStores<ApplicationDbContext>( )
+            .AddDefaultTokenProviders( );
+
+            // Configure API Key authentication
+            _ = services.AddTransient<IApiKeyProvider, ApiKeyProvider>( );
+            _ = services.AddAuthentication( options => {
+                options.DefaultScheme = ApiKeyDefaults.AuthenticationScheme;
+            } )
+            .AddApiKeyInHeader<ApiKeyProvider>( options => {
+                options.Realm = "TuneBridge API";
+                options.KeyName = "X-API-Key";
+            } );
+
+            _ = services.AddAuthorization( );
 
             HashSet<SupportedProviders> enabledProviders = [];
 

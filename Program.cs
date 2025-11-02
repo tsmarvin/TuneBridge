@@ -1,4 +1,5 @@
 ﻿using TuneBridge.Configuration;
+using TuneBridge.Domain.Implementations.Middleware;
 
 namespace TuneBridge {
     /// <summary>
@@ -37,6 +38,9 @@ namespace TuneBridge {
 
             WebApplication app = builder.Build();
 
+            // Initialize database
+            _ = app.InitializeDatabase( );
+
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment( )) {
                 _ = app.UseExceptionHandler( "/Home/Error" );
@@ -45,6 +49,12 @@ namespace TuneBridge {
 
             _ = app.UseHttpsRedirection( );
             _ = app.UseRouting( );
+
+            _ = app.UseAuthentication( );
+            _ = app.UseAuthorization( );
+
+            // Add rate limiting middleware
+            _ = app.UseMiddleware<RateLimitingMiddleware>( );
 
             _ = app.MapStaticAssets( );
             _ = app.MapControllerRoute(
