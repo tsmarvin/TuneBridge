@@ -53,6 +53,9 @@ namespace TuneBridge.Configuration {
             config.GetRequiredSection( "TuneBridge" ).Bind( settings );
             _ = services.AddSingleton( new JsonSerializerOptions { WriteIndented = true } );
 
+            // Add in-memory cache for rate limiting and general caching scenarios
+            _ = services.AddMemoryCache( );
+
             // Configure SQLite database for Identity
             _ = services.AddDbContext<ApplicationDbContext>( options =>
                 options.UseSqlite( settings.ConnectionString )
