@@ -96,7 +96,7 @@
               protectedModes.forEach(mode => {
                 const label = modeLabels[mode];
                 const radio = label?.querySelector('input');
-                if(label){ label.classList.add('disabled'); label.style.opacity = '0.5'; }
+                if(label){ label.classList.add('disabled'); }
                 if(radio){ radio.disabled = true; }
               });
             }
