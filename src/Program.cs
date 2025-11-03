@@ -48,6 +48,7 @@ namespace TuneBridge {
             }
 
             _ = app.UseHttpsRedirection( );
+            _ = app.UseStaticFiles( ); // Serve static files from wwwroot
             _ = app.UseRouting( );
 
             _ = app.UseAuthentication( );
