@@ -3,6 +3,7 @@ using AspNetCore.Authentication.ApiKey;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Http.Resilience;
+using Microsoft.OpenApi.Models;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using Polly;
@@ -101,6 +102,51 @@ namespace TuneBridge.Configuration {
             .AddIdentityCookies( ); // Add cookie authentication for web UI
 
             _ = services.AddAuthorization( );
+
+            // Configure Swagger/OpenAPI
+            _ = services.AddEndpointsApiExplorer( );
+            _ = services.AddSwaggerGen( options => {
+                options.SwaggerDoc( "v1", new OpenApiInfo {
+                    Title = "TuneBridge API",
+                    Version = "v1",
+                    Description = "Cross-platform music link converter and lookup service for Apple Music, Spotify, and Tidal. Convert music links between platforms, search by URL, ISRC, UPC, or title/artist.",
+                    Contact = new OpenApiContact {
+                        Name = "Taylor Marvin",
+                        Url = new Uri( "https://github.com/tsmarvin/TuneBridge" )
+                    },
+                    License = new OpenApiLicense {
+                        Name = "MIT License",
+                        Url = new Uri( "https://github.com/tsmarvin/TuneBridge/blob/main/LICENSE" )
+                    }
+                } );
+
+                // Add API Key authentication to Swagger
+                options.AddSecurityDefinition( "ApiKey", new OpenApiSecurityScheme {
+                    Type = SecuritySchemeType.ApiKey,
+                    In = ParameterLocation.Header,
+                    Name = "X-API-Key",
+                    Description = "API Key authentication. Get your API key by registering at /account/register"
+                } );
+
+                options.AddSecurityRequirement( new OpenApiSecurityRequirement {
+                    {
+                        new OpenApiSecurityScheme {
+                            Reference = new OpenApiReference {
+                                Type = ReferenceType.SecurityScheme,
+                                Id = "ApiKey"
+                            }
+                        },
+                        Array.Empty<string>( )
+                    }
+                } );
+
+                // Include XML comments if available
+                string xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly( ).GetName( ).Name}.xml";
+                string xmlPath = Path.Combine( AppContext.BaseDirectory, xmlFile );
+                if (File.Exists( xmlPath )) {
+                    options.IncludeXmlComments( xmlPath );
+                }
+            } );
 
             HashSet<SupportedProviders> enabledProviders = [];
 
