@@ -3,156 +3,162 @@
 }
 
 <div class="card mb-4">
-    <div class="card-body">
-        <h2 class="card-title">Music Lookup</h2>
+ <div class="card-body">
+ <h2 class="card-title">Music Lookup</h2>
 
-        <fieldset class="mb-3">
-            <legend>Mode</legend>
-            <div class="d-flex gap-3 flex-wrap">
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="mode" id="urlLabel" value="url" checked />
-                    <label class="form-check-label" for="urlLabel">URL</label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="mode" id="isrcLabel" value="isrc" />
-                    <label class="form-check-label" for="isrcLabel">ISRC <span class="badge bg-secondary">Login required</span></label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="mode" id="upcLabel" value="upc" />
-                    <label class="form-check-label" for="upcLabel">UPC <span class="badge bg-secondary">Login required</span></label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="mode" id="titleLabel" value="title" />
-                    <label class="form-check-label" for="titleLabel">Title <span class="badge bg-secondary">Login required</span></label>
-                </div>
-            </div>
-        </fieldset>
+ <fieldset class="mb-3">
+ <legend>Mode</legend>
+ <div class="d-flex gap-3 flex-wrap">
+ <div class="form-check">
+ <input class="form-check-input" type="radio" name="mode" id="urlRadio" value="url" checked />
+ <label class="form-check-label" for="urlRadio">URL</label>
+ </div>
+ <div class="form-check">
+ <input class="form-check-input" type="radio" name="mode" id="isrcRadio" value="isrc" />
+ <label class="form-check-label" for="isrcRadio">ISRC <span class="badge bg-secondary login-required">Login required</span></label>
+ </div>
+ <div class="form-check">
+ <input class="form-check-input" type="radio" name="mode" id="upcRadio" value="upc" />
+ <label class="form-check-label" for="upcRadio">UPC <span class="badge bg-secondary login-required">Login required</span></label>
+ </div>
+ <div class="form-check">
+ <input class="form-check-input" type="radio" name="mode" id="titleRadio" value="title" />
+ <label class="form-check-label" for="titleRadio">Title <span class="badge bg-secondary login-required">Login required</span></label>
+ </div>
+ </div>
+ </fieldset>
 
-        <div id="inputs" class="mb-3">
-            <div id="urlRow" class="mb-3">
-                <input id="url" type="text" class="form-control" placeholder="Url" />
-            </div>
+ <div id="inputs" class="mb-3">
+ <div id="urlRow" class="mb-3">
+ <input id="url" type="text" class="form-control" placeholder="Url" />
+ </div>
 
-            <div id="isrcRow" class="mb-3 d-none">
-                <input id="isrc" type="text" class="form-control" placeholder="ISRC (e.g., USVI20000123)" />
-            </div>
+ <div id="isrcRow" class="mb-3 d-none">
+ <input id="isrc" type="text" class="form-control" placeholder="ISRC (e.g., USVI20000123)" />
+ </div>
 
-            <div id="upcRow" class="mb-3 d-none">
-                <input id="upc" type="text" class="form-control" placeholder="UPC (12–14 digits)" />
-            </div>
+ <div id="upcRow" class="mb-3 d-none">
+ <input id="upc" type="text" class="form-control" placeholder="UPC (12–14 digits)" />
+ </div>
 
-            <div id="titleRow" class="mb-3 d-none">
-                <input id="title" type="text" class="form-control mb-2" placeholder="Title" />
-                <input id="artist" type="text" class="form-control" placeholder="Artist" />
-            </div>
+ <div id="titleRow" class="mb-3 d-none">
+ <div class="row g-2">
+ <div class="col-12 col-md-6">
+ <input id="title" type="text" class="form-control" placeholder="Title" />
+ </div>
+ <div class="col-12 col-md-6">
+ <input id="artist" type="text" class="form-control" placeholder="Artist" />
+ </div>
+ </div>
+ </div>
 
-            <div class="d-flex gap-2 align-items-center">
-                <button id="go" class="btn btn-primary">Go</button>
-                <span id="status" class="text-muted"></span>
-            </div>
-        </div>
+ <div class="d-flex gap-2 align-items-center">
+ <button id="go" class="btn btn-primary">Go</button>
+ <span id="status" class="text-muted"></span>
+ </div>
+ </div>
 
-        <div>
-            <h3>Result</h3>
-            <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
-        </div>
-    </div>
+ <div>
+ <h3>Result</h3>
+ <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
+ </div>
+ </div>
 </div>
 
 @section Scripts {
 <script>
-        (() => {
-          const $ = (id) => document.getElementById(id);
-          const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
-          
-          // Bootstrap utility class constants
-          const HIDDEN_CLASS = 'd-none';
+ (() => {
+ const $ = (id) => document.getElementById(id);
+ const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
+ const protectedModes = ['isrc', 'upc', 'title'];
+ const radioIds = { url: 'urlRadio', isrc: 'isrcRadio', upc: 'upcRadio', title: 'titleRadio' };
 
-          const urlRow = $('urlRow');
-          const isrcRow = $('isrcRow');
-          const upcRow = $('upcRow');
-          const titleRow = $('titleRow');
-          const protectedModes = ['isrc', 'upc', 'title'];
+ const HIDDEN_CLASS = 'd-none';
 
-          let isAuthenticated = false;
-          const userArea = document.querySelector('.header-right #userArea') || document.getElementById('userArea');
+ const urlRow = $('urlRow');
+ const isrcRow = $('isrcRow');
+ const upcRow = $('upcRow');
+ const titleRow = $('titleRow');
 
-          fetch('/account/status')
-            .then(res => res.json())
-            .then(data => { isAuthenticated = data.isAuthenticated; updateUI(); })
-            .catch(() => { isAuthenticated = false; updateUI(); });
+ let isAuthenticated = false;
+ const userArea = document.getElementById('userArea');
 
-          function updateUI() {
-            if (!userArea) return;
-            if (isAuthenticated) {
-              userArea.innerHTML = '<button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
-              document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-                await fetch('/account/logout', { method: 'POST' });
-                window.location.reload();
-              });
-            } else {
-              userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
-            }
+ fetch('/account/status')
+ .then(res => res.json())
+ .then(data => { isAuthenticated = data.isAuthenticated; updateUI(); })
+ .catch(() => { isAuthenticated = false; updateUI(); });
 
-            const modeLabels = { isrc: $('isrcLabel'), upc: $('upcLabel'), title: $('titleLabel') };
-            if (!isAuthenticated) {
-              protectedModes.forEach(mode => {
-                const label = modeLabels[mode];
-                const radio = label?.querySelector('input');
-                if(label){ label.classList.add('disabled'); }
-                if(radio){ radio.disabled = true; }
-              });
-            }
-          }
+ function updateUI() {
+ if (userArea) {
+ if (isAuthenticated) {
+ userArea.innerHTML = '<button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
+ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+ await fetch('/account/logout', { method: 'POST' });
+ window.location.reload();
+ });
+ } else {
+ userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
+ }
+ }
 
-          function setMode(mode) {
-            if (!isAuthenticated && protectedModes.includes(mode)) { modeRadios[0].checked = true; return; }
-            urlRow.classList.toggle(HIDDEN_CLASS, mode !== 'url');
-            isrcRow.classList.toggle(HIDDEN_CLASS, mode !== 'isrc');
-            upcRow.classList.toggle(HIDDEN_CLASS, mode !== 'upc');
-            titleRow.classList.toggle(HIDDEN_CLASS, mode !== 'title');
-          }
+ // disable protected radios + show hover hint when logged out
+ ['isrc','upc','title'].forEach(mode => {
+ const radio = document.getElementById(radioIds[mode]);
+ const label = document.querySelector(`label[for="${radioIds[mode]}"]`);
+ if (!radio || !label) return;
+ radio.disabled = !isAuthenticated;
+ label.classList.toggle('disabled', !isAuthenticated);
+ });
+ }
 
-          modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
-          setMode('url');
+ function setMode(mode) {
+ if (!isAuthenticated && protectedModes.includes(mode)) { $(radioIds.url).checked = true; mode = 'url'; }
+ urlRow.classList.toggle(HIDDEN_CLASS, mode !== 'url');
+ isrcRow.classList.toggle(HIDDEN_CLASS, mode !== 'isrc');
+ upcRow.classList.toggle(HIDDEN_CLASS, mode !== 'upc');
+ titleRow.classList.toggle(HIDDEN_CLASS, mode !== 'title');
+ }
 
-          $('go').addEventListener('click', async () => {
-            const mode = (modeRadios.find(r => r.checked) || {}).value;
-            const status = $('status');
-            const result = $('result');
-            status.textContent = 'Working...';
-            $('go').disabled = true;
-            result.textContent = '{}';
-            try {
-              let endpoint = '';
-              let payload = {};
-              switch (mode) {
-                case 'url': endpoint = '/music/lookup/url'; payload = { uri: $('url').value }; break;
-                case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
-                case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
-                case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
-              }
-              const headers = { 'Content-Type': 'application/json' };
-              const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
-              if (res.status ===401) {
-                result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null,2);
-                status.textContent = 'HTTP401 - Unauthorized';
-              } else if (res.status ===429) {
-                const data = await res.json();
-                result.textContent = JSON.stringify(data, null,2);
-                status.textContent = 'HTTP429 - Rate Limit Exceeded';
-              } else {
-                const data = await res.json();
-                result.textContent = JSON.stringify(data, null,2);
-                status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
-              }
-            } catch (err) {
-              status.textContent = 'Error';
-              result.textContent = JSON.stringify({ error: String(err) }, null,2);
-            } finally {
-              $('go').disabled = false;
-            }
-          });
-        })();
-    </script>
+ modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
+ setMode('url');
+
+ $('go').addEventListener('click', async () => {
+ const mode = (modeRadios.find(r => r.checked) || {}).value;
+ const status = $('status');
+ const result = $('result');
+ status.textContent = 'Working...';
+ $('go').disabled = true;
+ result.textContent = '{}';
+ try {
+ let endpoint = '';
+ let payload = {};
+ switch (mode) {
+ case 'url': endpoint = '/music/lookup/url'; payload = { uri: $('url').value }; break;
+ case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
+ case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
+ case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
+ }
+ const headers = { 'Content-Type': 'application/json' };
+ const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
+ if (res.status ===401) {
+ result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null,2);
+ status.textContent = 'HTTP401 - Unauthorized';
+ } else if (res.status ===429) {
+ const data = await res.json();
+ result.textContent = JSON.stringify(data, null,2);
+ status.textContent = 'HTTP429 - Rate Limit Exceeded';
+ } else {
+ const data = await res.json();
+ result.textContent = JSON.stringify(data, null,2);
+ status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+ }
+ } catch (err) {
+ status.textContent = 'Error';
+ result.textContent = JSON.stringify({ error: String(err) }, null,2);
+ } finally {
+ $('go').disabled = false;
+ }
+ });
+ })();
+ </script>
 }

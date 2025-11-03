@@ -9,8 +9,30 @@
         TuneBridge
       </a>
       <div class="d-flex align-items-center gap-2 ms-auto">
+        <button id="themeToggle" class="btn btn-sm btn-outline-secondary" type="button" title="Change theme">Theme</button>
         <div id="userArea"></div>
       </div>
     </div>
   </nav>
 </header>
+
+<script>
+(function(){
+ const btn = document.getElementById('themeToggle');
+ if(!btn) return;
+ const order = ['auto','light','dark'];
+ function get() { return localStorage.getItem('theme') || 'auto'; }
+ function set(t){ localStorage.setItem('theme', t); apply(t); }
+ function apply(t){
+ const val = t === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : t;
+ document.documentElement.setAttribute('data-bs-theme', val);
+ btn.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+ }
+ btn.addEventListener('click', () => {
+ const cur = get();
+ const next = order[(order.indexOf(cur)+1)%order.length];
+ set(next);
+ });
+ apply(get());
+})();
+</script>

@@ -83,15 +83,17 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// <param name="req">Request containing the 12-character ISRC code (hyphens optional).</param>
     /// <returns>
     /// HTTP 200 with <see cref="MediaLinkResult"/> containing provider URLs if the track was found,
-    /// or HTTP 200 with null if the ISRC doesn't exist in any provider's catalog.
+    /// or HTTP 200 with an empty object and message if the ISRC doesn't exist in any provider's catalog.
     /// </returns>
-    /// <response code="200">Lookup completed (result may be null if ISRC not found).</response>
+    /// <response code="200">Lookup completed.</response>
     /// <response code="400">Invalid ISRC format in request body.</response>
     /// <response code="401">Unauthorized - authentication required.</response>
     [Authorize]
     [HttpPost( "isrc" )]
-    public async Task<IActionResult> ByIsrc( [FromBody] IsrcReq req )
-        => Ok( await _svc.GetInfoByISRCAsync( req.Isrc ) );
+    public async Task<IActionResult> ByIsrc( [FromBody] IsrcReq req ) {
+        MediaLinkResult? result = await _svc.GetInfoByISRCAsync( req.Isrc );
+        return Ok( result ?? new MediaLinkResult { Messages = ["No results found for ISRC."] } );
+    }
 
     /// <summary>
     /// Performs an exact album lookup using UPC (Universal Product Code). Particularly useful for
@@ -101,15 +103,17 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// <param name="req">Request containing the UPC barcode number (typically 12-13 digits).</param>
     /// <returns>
     /// HTTP 200 with <see cref="MediaLinkResult"/> containing provider URLs if the album was found,
-    /// or HTTP 200 with null if the UPC doesn't exist in any provider's catalog.
+    /// or HTTP 200 with an empty object and message if the UPC doesn't exist in any provider's catalog.
     /// </returns>
-    /// <response code="200">Lookup completed (result may be null if UPC not found).</response>
+    /// <response code="200">Lookup completed.</response>
     /// <response code="400">Invalid UPC format in request body.</response>
     /// <response code="401">Unauthorized - authentication required.</response>
     [Authorize]
     [HttpPost( "upc" )]
-    public async Task<IActionResult> ByUpc( [FromBody] UpcReq req )
-        => Ok( await _svc.GetInfoByUPCAsync( req.Upc ) );
+    public async Task<IActionResult> ByUpc( [FromBody] UpcReq req ) {
+        MediaLinkResult? result = await _svc.GetInfoByUPCAsync( req.Upc );
+        return Ok( result ?? new MediaLinkResult { Messages = ["No results found for UPC."] } );
+    }
 
     /// <summary>
     /// Searches for tracks or albums by title and artist name across all configured providers.
@@ -117,14 +121,16 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </summary>
     /// <param name="req">Request containing the title and artist to search for.</param>
     /// <returns>
-    /// HTTP 200 with <see cref="MediaLinkResult"/> containing provider URLs if matches were found,
-    /// or HTTP 200 with null if no matches were found on any platform.
+    /// HTTP200 with <see cref="MediaLinkResult"/> containing provider URLs if matches were found,
+    /// or HTTP200 with an empty object and message if no matches were found on any platform.
     /// </returns>
-    /// <response code="200">Search completed (result may be null if no matches found).</response>
+    /// <response code="200">Search completed.</response>
     /// <response code="400">Missing or invalid title/artist in request body.</response>
     /// <response code="401">Unauthorized - authentication required.</response>
     [Authorize]
     [HttpPost( "title" )]
-    public async Task<IActionResult> ByTitle( [FromBody] TitleReq req )
-        => Ok( await _svc.GetInfoAsync( req.Title, req.Artist ) );
+    public async Task<IActionResult> ByTitle( [FromBody] TitleReq req ) {
+        MediaLinkResult? result = await _svc.GetInfoAsync( req.Title, req.Artist );
+        return Ok( result ?? new MediaLinkResult { Messages = ["No results found for title/artist."] } );
+    }
 }

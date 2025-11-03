@@ -2,41 +2,58 @@
 
 /* Fix header layout */
 .navbar .container-xxl {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 1rem;
+ position: relative;
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ padding: 0.5rem 1rem;
 }
 
 /* Ensure centered brand doesn't break on small screens */
-@media (max-width: 768px) {
-  .navbar-brand.position-absolute {
-    position: static !important;
-    transform: none !important;
-  }
+@media (max-width:768px) {
+ .navbar-brand.position-absolute {
+ position: static !important;
+ transform: none !important;
+ }
 }
 
 /* Make footer sticky at bottom */
 body {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+ display: flex;
+ flex-direction: column;
+ min-height:100vh;
 }
 
 main {
-  flex: 1;
+ flex:1;
 }
 
 /* Fix badge display for login required tooltips */
 .badge.bg-secondary {
-  font-size: 0.75rem;
-  padding: 0.25em 0.5em;
-  vertical-align: middle;
+ font-size:0.75rem;
+ padding:0.25em 0.5em;
+ vertical-align: middle;
 }
 
 /* Disabled form label styling */
 .form-check-label.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+ opacity:0.8;
+ cursor: not-allowed;
+}
+
+/* Show "Login required" hint only on hover when label is disabled */
+.form-check-label .login-required { display: none; }
+.form-check-label.disabled:hover .login-required,
+.form-check-label.disabled:focus-within .login-required {
+ display: inline-block;
+}
+
+/* Ensure Razor/MVC content renders with DocFX styles applied.
+ DocFX hides non-<article> children under main.content by default. */
+body > main > .content > :not(article),
+body[data-layout=""] > main > .content > :not(article),
+body[data-layout=conceptual] > main > .content > :not(article),
+body:not([data-search])[data-layout=""] > main > .content > :not(article),
+body:not([data-search])[data-layout=conceptual] > main > .content > :not(article) {
+ display: block;
 }

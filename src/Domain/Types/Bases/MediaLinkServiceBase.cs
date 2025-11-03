@@ -84,8 +84,13 @@ namespace TuneBridge.Domain.Types.Bases {
                 if (string.IsNullOrWhiteSpace( title ) || string.IsNullOrWhiteSpace( artist )) { return null; }
 
                 foreach ((SupportedProviders provider, IMusicLookupService svc) in EnabledProviders) {
-                    MusicLookupResultDto? lookup = await svc.GetInfoAsync( title, artist );
-                    if (lookup is not null) { return (lookup, provider); }
+                    try {
+                        MusicLookupResultDto? lookup = await svc.GetInfoAsync( title, artist );
+                        if (lookup is not null) { return (lookup, provider); }
+                    } catch (Exception ex) {
+                        Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title for {provider}.", provider );
+                        Logger.LogTrace( "title: '{title}', artist: '{artist}'", SanitizeForLogging( title ), SanitizeForLogging( artist ) );
+                    }
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
@@ -105,11 +110,16 @@ namespace TuneBridge.Domain.Types.Bases {
                 if (string.IsNullOrWhiteSpace( externalId )) { return null; }
 
                 foreach ((SupportedProviders provider, IMusicLookupService svc) in EnabledProviders) {
-                    MusicLookupResultDto? lookup = isAlbum
-                                                    ? await svc.GetInfoByUPCAsync( externalId )
-                                                    : await svc.GetInfoByISRCAsync( externalId );
+                    try {
+                        MusicLookupResultDto? lookup = isAlbum
+                                                        ? await svc.GetInfoByUPCAsync( externalId )
+                                                        : await svc.GetInfoByISRCAsync( externalId );
 
-                    if (lookup is not null) { return (lookup, provider); }
+                        if (lookup is not null) { return (lookup, provider); }
+                    } catch (Exception ex) {
+                        Logger.LogError( ex, "Failed while getting initial media link lookup data by externalId for {provider}.", provider );
+                        Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", SanitizeForLogging( externalId ), isAlbum );
+                    }
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
@@ -200,7 +210,7 @@ namespace TuneBridge.Domain.Types.Bases {
                         "Error during secondary lookup via {additionalProvider} for artist '{artist}', title " +
                         "'{title}' externalId '{externalId}' isAlbum={isAlbum} originalProvider(s)={provider}",
                         provider, firstValue.Artist, firstValue.Title, firstValue.ExternalId, firstValue.IsAlbum,
-                        string.Join( ", ", completedList.Select( l => l.ToString( ).ToArray( ) ) )
+                        string.Join( ", ", completedList.Select( l => l.ToString( ) ) )
                     );
                     Logger.LogTrace( JsonSerializer.Serialize( input, SerializerOptions ) );
                 }

@@ -187,8 +187,16 @@ namespace TuneBridge.Domain.Implementations.Services {
             bool result2 = false;
 
             if (root.TryGetProperty( "data", out JsonElement dataProps )) {
-                dataOutput = dataProps.ValueKind == JsonValueKind.Array ? dataProps.EnumerateArray( ).First( ) : dataProps;
-                result1 = true;
+                if (dataProps.ValueKind == JsonValueKind.Array) {
+                    using JsonElement.ArrayEnumerator enumerator = dataProps.EnumerateArray();
+                    if (enumerator.MoveNext( )) {
+                        dataOutput = enumerator.Current;
+                        result1 = true;
+                    }
+                } else {
+                    dataOutput = dataProps;
+                    result1 = true;
+                }
             }
 
             if (root.TryGetProperty( "included", out JsonElement includedProps )) {
