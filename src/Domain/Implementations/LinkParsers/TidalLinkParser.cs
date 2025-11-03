@@ -74,6 +74,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <summary>
         /// Constructs an API URI for searching artists by name.
         /// </summary>
+        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
         /// <param name="artist">The artist name to search for.</param>
         /// <returns>The API URI for artist search.</returns>
         public static string GetArtistSearchUri( string storefront, string artist )
@@ -84,6 +85,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <summary>
         /// Constructs an API URI for searching artists track titles by name.
         /// </summary>
+        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
         /// <param name="artistId">The artist to get tracks for.</param>
         /// <returns>The API URI for artist tracks to search.</returns>
         public static string GetArtistTracksUri( string storefront, string artistId )
@@ -94,6 +96,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <summary>
         /// Constructs an API URI for searching artists album titles by name.
         /// </summary>
+        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
         /// <param name="artistId">The artist to get albums for.</param>
         /// <returns>The API URI for artist albums to search.</returns>
         public static string GetArtistAlbumsUri( string storefront, string artistId )
@@ -104,6 +107,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <summary>
         /// Constructs an API URI for looking up a track by ISRC.
         /// </summary>
+        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
         /// <param name="isrc">The ISRC code.</param>
         /// <returns>The API URI for ISRC lookup.</returns>
         public static string GetTracksIsrcURI( string storefront, string isrc )
@@ -114,6 +118,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <summary>
         /// Constructs an API URI for looking up an album by UPC.
         /// </summary>
+        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
         /// <param name="upc">The UPC code.</param>
         /// <returns>The API URI for UPC lookup.</returns>
         public static string GetAlbumUpcURI( string storefront, string upc )
@@ -124,6 +129,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <summary>
         /// Constructs an API URI for looking up an album by its Tidal Id.
         /// </summary>
+        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
         /// <param name="albumId">The tidal album id to search for.</param>
         /// <returns>The API URI for album lookup by id.</returns>
         public static string GetAlbumIdURI( string storefront, string albumId )
@@ -134,6 +140,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// <summary>
         /// Constructs an API URI for looking up a track by its Tidal Id.
         /// </summary>
+        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
         /// <param name="trackId">The tidal track id to search for.</param>
         /// <returns>The API URI for track lookup by id.</returns>
         public static string GetTrackIdURI( string storefront, string trackId )
