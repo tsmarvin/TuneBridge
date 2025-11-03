@@ -14,18 +14,16 @@ public class SwaggerAuthorizationMiddleware {
     }
 
     public async Task InvokeAsync( HttpContext context ) {
-        // Check if the request is for Swagger UI or the Swagger JSON endpoint
-        if (context.Request.Path.StartsWithSegments( "/swagger" )) {
-            // Allow access to swagger.json even without authentication (needed for UI to work)
-            // but require authentication for the UI itself
-            if (!(context.Request.Path.Value?.EndsWith( ".json" ) ?? false)) {
-                // Check if user is authenticated via cookie
-                if (context.User?.Identity?.IsAuthenticated != true) {
-                    // Redirect to login page
-                    context.Response.Redirect( "/account/login" );
-                    return;
-                }
-            }
+        // Allow access to swagger.json even without authentication (needed for UI to work)
+        // but require authentication for the UI itself
+        if (
+            context.Request.Path.StartsWithSegments( "/swagger" ) &&
+            !(context.Request.Path.Value?.EndsWith( ".json" ) ?? false) &&
+            context.User?.Identity?.IsAuthenticated != true
+        ) {
+            // Redirect to login page
+            context.Response.Redirect( "/account/login" );
+            return;
         }
 
         await _next( context );
