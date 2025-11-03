@@ -1,0 +1,217 @@
+@{
+    ViewData["Title"] = "User Settings";
+}
+
+<div class="card mb-4">
+ <div class="card-body">
+ <h2 class="card-title">User Settings</h2>
+ 
+ <div id="userInfo" class="mb-4">
+ <h5>Account Information</h5>
+ <div class="mb-2">
+ <strong>Email:</strong> <span id="userEmail">Loading...</span>
+ </div>
+ <div class="mb-2">
+ <strong>User ID:</strong> <span id="userId" class="font-monospace">Loading...</span>
+ </div>
+ </div>
+
+ <hr />
+
+ <div id="apiKeySection">
+ <h5>API Key Management</h5>
+ <p class="text-muted">
+ Your API key is used to authenticate API requests. Keep it secure and never share it publicly.
+ </p>
+ 
+ <div id="apiKeyDisplay" class="d-none mb-3">
+ <div class="alert alert-success">
+ <strong>New API Key Generated Successfully!</strong>
+ </div>
+ <p><strong>Your New API Key:</strong></p>
+ <div class="bg-body-secondary p-3 rounded font-monospace mb-3" id="newApiKey"></div>
+ <div class="alert alert-warning">
+ <strong>⚠️ Important Security Information:</strong>
+ <ul class="mb-0">
+ <li>Save this API key now - it will not be shown again</li>
+ <li>Your old API key has been invalidated and will no longer work</li>
+ <li>Update all applications using the old key with this new key</li>
+ <li>Use the header <code>X-API-Key: [your-key]</code> for authentication</li>
+ <li>Never commit API keys to source code or share them publicly</li>
+ </ul>
+ </div>
+ </div>
+
+ <div id="resetSection">
+ <button id="resetApiKeyBtn" class="btn btn-warning">
+ Reset API Key
+ </button>
+ <div class="form-text">
+ Generate a new API key and invalidate the current one. Use this if your key is compromised.
+ </div>
+ </div>
+
+ <div id="error" class="alert alert-danger d-none mt-3"></div>
+ </div>
+ </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="confirmModal" class="modal" tabindex="-1" role="dialog" aria-labelledby="confirmModalTitle" aria-hidden="true" style="display: none;">
+ <div class="modal-dialog" role="document">
+ <div class="modal-content">
+ <div class="modal-header">
+ <h5 id="confirmModalTitle" class="modal-title">Confirm API Key Reset</h5>
+ <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close" id="modalCloseBtn">
+ <span aria-hidden="true">&times;</span>
+ </button>
+ </div>
+ <div class="modal-body">
+ <p><strong>Are you sure you want to reset your API key?</strong></p>
+ <p>This action will:</p>
+ <ul>
+ <li>Generate a new API key</li>
+ <li>Invalidate your current API key immediately</li>
+ <li>Require you to update all applications using the old key</li>
+ </ul>
+ <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+ </div>
+ <div class="modal-footer">
+ <button type="button" class="btn btn-secondary" data-dismiss="modal" id="modalCancelBtn">Cancel</button>
+ <button type="button" class="btn btn-danger" id="modalConfirmBtn">Reset API Key</button>
+ </div>
+ </div>
+ </div>
+</div>
+
+@section Scripts {
+<script>
+const userEmailEl = document.getElementById('userEmail');
+const userIdEl = document.getElementById('userId');
+const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');
+const error = document.getElementById('error');
+const apiKeyDisplay = document.getElementById('apiKeyDisplay');
+const newApiKeyEl = document.getElementById('newApiKey');
+const resetSection = document.getElementById('resetSection');
+
+// Modal elements
+const confirmModal = document.getElementById('confirmModal');
+const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+const modalCancelBtn = document.getElementById('modalCancelBtn');
+const modalCloseBtn = document.getElementById('modalCloseBtn');
+
+// Load user info
+async function loadUserInfo() {
+ try {
+ const response = await fetch('/account/status', { credentials: 'same-origin' });
+ const data = await response.json();
+ 
+ if (!data.isAuthenticated) {
+ window.location.href = '/account/login';
+ return;
+ }
+ 
+ userEmailEl.textContent = data.email || 'N/A';
+ userIdEl.textContent = data.userId || 'N/A';
+ } catch (err) {
+ error.textContent = 'Failed to load user information: ' + err.message;
+ error.classList.remove('d-none');
+ }
+}
+
+// Modal functions
+function showModal() {
+ confirmModal.style.display = 'block';
+ confirmModal.setAttribute('aria-hidden', 'false');
+ // Focus the confirm button for keyboard accessibility
+ setTimeout(() => modalConfirmBtn.focus(),100);
+ // Prevent body scroll
+ document.body.style.overflow = 'hidden';
+}
+
+function hideModal() {
+ confirmModal.style.display = 'none';
+ confirmModal.setAttribute('aria-hidden', 'true');
+ // Restore body scroll
+ document.body.style.overflow = '';
+ // Return focus to the reset button
+ resetApiKeyBtn.focus();
+}
+
+// Show confirmation modal
+resetApiKeyBtn.addEventListener('click', () => {
+ error.classList.add('d-none');
+ showModal();
+});
+
+// Modal event handlers
+modalConfirmBtn.addEventListener('click', () => {
+ hideModal();
+ resetApiKey();
+});
+
+modalCancelBtn.addEventListener('click', hideModal);
+modalCloseBtn.addEventListener('click', hideModal);
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+ if (e.key === 'Escape' && confirmModal.style.display === 'block') {
+ hideModal();
+ }
+});
+
+// Close modal when clicking outside
+confirmModal.addEventListener('click', (e) => {
+ if (e.target === confirmModal) {
+ hideModal();
+ }
+});
+
+// Reset API key
+async function resetApiKey() {
+ error.classList.add('d-none');
+ resetApiKeyBtn.disabled = true;
+ resetApiKeyBtn.textContent = 'Resetting...';
+ 
+ try {
+ const response = await fetch('/account/regenerate-api-key', {
+ method: 'POST',
+ credentials: 'same-origin'
+ });
+ 
+ const data = await response.json();
+ 
+ if (!response.ok) {
+ error.textContent = data.message || 'Failed to reset API key';
+ error.classList.remove('d-none');
+ resetApiKeyBtn.disabled = false;
+ resetApiKeyBtn.textContent = 'Reset API Key';
+ return;
+ }
+ 
+ // Show new API key
+ newApiKeyEl.textContent = data.apiKey;
+ apiKeyDisplay.classList.remove('d-none');
+ resetSection.classList.add('d-none');
+ 
+ // Scroll to show the new key with fallback for older browsers
+ try {
+ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ apiKeyDisplay.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'nearest' });
+ } catch (e) {
+ // Fallback for older browsers
+ apiKeyDisplay.scrollIntoView();
+ }
+ 
+ } catch (err) {
+ error.textContent = 'Network error: ' + err.message;
+ error.classList.remove('d-none');
+ resetApiKeyBtn.disabled = false;
+ resetApiKeyBtn.textContent = 'Reset API Key';
+ }
+}
+
+// Initialize
+loadUserInfo();
+</script>
+}

@@ -45,7 +45,7 @@
  const res = await fetch('/account/status', { credentials: 'same-origin' });
  const data = await res.json();
  if(data.isAuthenticated){
- userArea.innerHTML = '<button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
+ userArea.innerHTML = '<a href="/account/user" class="btn btn-sm btn-outline-secondary me-2">User</a><button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
  try { await fetch('/account/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
  location.reload();

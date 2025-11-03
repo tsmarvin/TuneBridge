@@ -128,10 +128,10 @@
  }
  const headers = { 'Content-Type': 'application/json' };
  const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
- if (res.status ===401) {
+ if (res.status === 401) {
  result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null,2);
  status.textContent = 'HTTP401 - Unauthorized';
- } else if (res.status ===429) {
+ } else if (res.status === 429) {
  const data = await res.json();
  result.textContent = JSON.stringify(data, null,2);
  status.textContent = 'HTTP429 - Rate Limit Exceeded';
