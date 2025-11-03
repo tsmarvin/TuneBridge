@@ -37,9 +37,6 @@ public class ApiKeyProvider : IApiKeyProvider {
         } catch (InvalidOperationException ex) {
             _logger.LogError( ex, "Invalid operation while validating API key" );
             return null;
-        } catch (Exception ex) {
-            _logger.LogError( ex, "Unexpected error while validating API key" );
-            return null;
         }
     }
 
