@@ -46,62 +46,62 @@
                 <code>X-API-Key: [your-key]</code>
             </p>
             <div>
-              <button onclick="window.location.href='/'" class="btn btn-primary">Go to Music Lookup</button>
-              <a href="/swagger">View API Documentation (Swagger)</a>
+                <button onclick="window.location.href='/'" class="btn btn-primary">Go to Music Lookup</button>
+                <a href="/swagger">View API Documentation (Swagger)</a>
             </div>
         </div>
     </div>
 </div>
 
 @section Scripts {
-<script>
-const email = document.getElementById('email');
-const password = document.getElementById('password');
-const confirmPassword = document.getElementById('confirmPassword');
-const registerBtn = document.getElementById('registerBtn');
-const error = document.getElementById('error');
-const registerForm = document.getElementById('registerForm');
-const successMessage = document.getElementById('successMessage');
-const apiKeyEl = document.getElementById('apiKey');
+    <script>
+        const email = document.getElementById('email');
+        const password = document.getElementById('password');
+        const confirmPassword = document.getElementById('confirmPassword');
+        const registerBtn = document.getElementById('registerBtn');
+        const error = document.getElementById('error');
+        const registerForm = document.getElementById('registerForm');
+        const successMessage = document.getElementById('successMessage');
+        const apiKeyEl = document.getElementById('apiKey');
 
-registerBtn.addEventListener('click', async () => {
- error.classList.add('d-none');
- error.textContent = '';
- if (!email.value || !password.value || !confirmPassword.value) {
- error.textContent = 'Please fill in all fields';
- error.classList.remove('d-none');
- return;
- }
- if (password.value !== confirmPassword.value) {
- error.textContent = 'Passwords do not match';
- error.classList.remove('d-none');
- return;
- }
- registerBtn.disabled = true;
- registerBtn.textContent = 'Creating account...';
- try {
- const response = await fetch('/account/register', {
- method: 'POST', headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ email: email.value, password: password.value })
- });
- const data = await response.json();
- if (!response.ok) {
- let errorMsg = 'Registration failed';
- if (data.errors) errorMsg = Object.values(data.errors).flat().join('. ');
- else if (data.message) errorMsg = data.message;
- error.textContent = errorMsg;
- error.classList.remove('d-none');
- registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
- return;
- }
- apiKeyEl.textContent = data.apiKey;
- registerForm.classList.add('d-none');
- successMessage.classList.remove('d-none');
- } catch (err) {
- error.textContent = 'Network error: ' + (err?.message || String(err));
- error.classList.remove('d-none');
- registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
- }
-});
-</script>
+        registerBtn.addEventListener('click', async () => {
+            error.classList.add('d-none');
+            error.textContent = '';
+            if (!email.value || !password.value || !confirmPassword.value) {
+            error.textContent = 'Please fill in all fields';
+            error.classList.remove('d-none');
+            return;
+            }
+            if (password.value !== confirmPassword.value) {
+            error.textContent = 'Passwords do not match';
+            error.classList.remove('d-none');
+            return;
+            }
+            registerBtn.disabled = true;
+            registerBtn.textContent = 'Creating account...';
+            try {
+            const response = await fetch('/account/register', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.value, password: password.value })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+            let errorMsg = 'Registration failed';
+            if (data.errors) errorMsg = Object.values(data.errors).flat().join('. ');
+            else if (data.message) errorMsg = data.message;
+            error.textContent = errorMsg;
+            error.classList.remove('d-none');
+            registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
+            return;
+            }
+            apiKeyEl.textContent = data.apiKey;
+            registerForm.classList.add('d-none');
+            successMessage.classList.remove('d-none');
+            } catch (err) {
+            error.textContent = 'Network error: ' + (err?.message || String(err));
+            error.classList.remove('d-none');
+            registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
+            }
+        });
+    </script>
 }
