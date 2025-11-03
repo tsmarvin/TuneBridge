@@ -196,7 +196,8 @@ async function resetApiKey() {
  
  // Scroll to show the new key with fallback for older browsers
  try {
- apiKeyDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ apiKeyDisplay.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'nearest' });
  } catch (e) {
  // Fallback for older browsers
  apiKeyDisplay.scrollIntoView();
