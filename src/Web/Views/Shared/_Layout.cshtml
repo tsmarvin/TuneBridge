@@ -15,6 +15,9 @@
  <meta name="loc:changeTheme" content="Change theme">
  <script type="module" src="~/public/docfx.min.js"></script>
  <script>
+   // FOUC mitigation: Apply theme before page render
+   // NOTE: This logic must stay synchronized with docfx.min.js theme management
+   // If theme logic in docfx.min.js changes, update this inline script accordingly
    const theme = localStorage.getItem('theme') || 'auto'
    document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
  </script>

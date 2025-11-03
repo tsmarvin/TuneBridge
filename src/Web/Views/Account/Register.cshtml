@@ -10,12 +10,12 @@
         <div id="registerForm">
             <div class="mb-3">
                 <label for="email" class="form-label">Email</label>
-                <input type="email" id="email" class="form-control" required />
+                <input type="email" id="email" class="form-control" required autocomplete="email" />
                 <div class="form-text">Your email will be your unique identifier</div>
             </div>
             <div class="mb-3">
                 <label for="password" class="form-label">Password</label>
-                <input type="password" id="password" class="form-control" required />
+                <input type="password" id="password" class="form-control" required autocomplete="new-password" />
                 @{
                     var pwd = IdentityOptionsAccessor.Value.Password;
                     var parts = new List<string>();
@@ -29,7 +29,7 @@
             </div>
             <div class="mb-3">
                 <label for="confirmPassword" class="form-label">Confirm Password</label>
-                <input type="password" id="confirmPassword" class="form-control" required />
+                <input type="password" id="confirmPassword" class="form-control" required autocomplete="new-password" />
             </div>
             <div id="error" class="alert alert-danger d-none"></div>
             <button id="registerBtn" class="btn btn-primary">Create Account</button>

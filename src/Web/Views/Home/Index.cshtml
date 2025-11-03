@@ -64,6 +64,9 @@
         (() => {
           const $ = (id) => document.getElementById(id);
           const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
+          
+          // Bootstrap utility class constants
+          const HIDDEN_CLASS = 'd-none';
 
           const urlRow = $('urlRow');
           const isrcRow = $('isrcRow');
@@ -104,10 +107,10 @@
 
           function setMode(mode) {
             if (!isAuthenticated && protectedModes.includes(mode)) { modeRadios[0].checked = true; return; }
-            urlRow.classList.toggle('d-none', mode !== 'url');
-            isrcRow.classList.toggle('d-none', mode !== 'isrc');
-            upcRow.classList.toggle('d-none', mode !== 'upc');
-            titleRow.classList.toggle('d-none', mode !== 'title');
+            urlRow.classList.toggle(HIDDEN_CLASS, mode !== 'url');
+            isrcRow.classList.toggle(HIDDEN_CLASS, mode !== 'isrc');
+            upcRow.classList.toggle(HIDDEN_CLASS, mode !== 'upc');
+            titleRow.classList.toggle(HIDDEN_CLASS, mode !== 'title');
           }
 
           modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
