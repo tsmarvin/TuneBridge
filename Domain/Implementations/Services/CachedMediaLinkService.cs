@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Utils;
@@ -13,6 +14,12 @@ namespace TuneBridge.Domain.Implementations.Services {
         private readonly IMediaLinkService _innerService;
         private readonly IMediaLinkCacheService _cacheService;
         private readonly ILogger<CachedMediaLinkService> _logger;
+        
+        // Static compiled regex for URL extraction (performance optimization)
+        private static readonly Regex UrlRegex = new Regex(
+            @"https?://[^\s]+",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase
+        );
 
         public CachedMediaLinkService(
             IMediaLinkService innerService,
@@ -166,8 +173,12 @@ namespace TuneBridge.Domain.Implementations.Services {
 
             foreach (System.Text.RegularExpressions.Match match in matches) {
                 if (match.Success) {
-                    // Use full match to preserve original scheme, then normalize
-                    string normalizedLink = LinkNormalizer.Normalize( match.Value );
+                    // Use full match to preserve original scheme
+                    string link = match.Value;
+                    // Trim common trailing punctuation to avoid false negatives at sentence boundaries
+                    link = link.TrimEnd('.', ',', '!', '?', ':', ';', ')', ']', '}');
+                    // Normalize the link
+                    string normalizedLink = LinkNormalizer.Normalize( link );
                     links.Add( normalizedLink );
                 }
             }

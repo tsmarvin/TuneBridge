@@ -24,6 +24,13 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// </summary>
         private static readonly Nsid MediaLinkResultCollection = new( "media.tunebridge.lookup.result" );
 
+        /// <summary>
+        /// Static cached dictionary mapping provider strings to SupportedProviders enum values.
+        /// Initialized once at startup for O(1) lookups.
+        /// </summary>
+        private static readonly Lazy<Dictionary<string, SupportedProviders>> _providerStringToEnum = 
+            new Lazy<Dictionary<string, SupportedProviders>>(CreateProviderMappings);
+
         private readonly BlueskyAgent _agent;
         private readonly string _identifier;
         private readonly string _password;
@@ -238,8 +245,34 @@ namespace TuneBridge.Domain.Implementations.Services {
         }
 
         /// <summary>
+        /// Creates a static dictionary mapping all possible provider string representations to their enum values.
+        /// Includes enum names, Description attribute values, and description values without spaces.
+        /// </summary>
+        /// <returns>A dictionary with case-insensitive string keys mapped to SupportedProviders enum values.</returns>
+        private static Dictionary<string, SupportedProviders> CreateProviderMappings() {
+            var dict = new Dictionary<string, SupportedProviders>(StringComparer.OrdinalIgnoreCase);
+            
+            foreach (SupportedProviders p in Enum.GetValues<SupportedProviders>()) {
+                // Add enum name (e.g., "Spotify")
+                dict[p.ToString()] = p;
+
+                // Add description (e.g., "Apple Music")
+                var description = p.GetDescription();
+                dict[description] = p;
+
+                // Add description without spaces (e.g., "AppleMusic")
+                var descriptionNoSpaces = description.Replace(" ", "", StringComparison.Ordinal);
+                if (descriptionNoSpaces != description) {
+                    dict[descriptionNoSpaces] = p;
+                }
+            }
+            
+            return dict;
+        }
+
+        /// <summary>
         /// Tries to parse a provider string into a <see cref="SupportedProviders"/> enum value.
-        /// Uses the enum's Description attribute for matching to ensure consistency with display names.
+        /// Uses a cached dictionary for O(1) lookup performance.
         /// </summary>
         /// <param name="providerString">The provider string to parse.</param>
         /// <param name="provider">The parsed provider enum value if successful.</param>
@@ -251,28 +284,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 return false;
             }
 
-            // Try parsing by enum name first (case-insensitive)
-            if (Enum.TryParse<SupportedProviders>(providerString, true, out provider)) {
-                return true;
-            }
-
-            // Try matching against Description attributes
-            foreach (SupportedProviders p in Enum.GetValues<SupportedProviders>()) {
-                var description = p.GetDescription();
-                if (string.Equals(description, providerString, StringComparison.OrdinalIgnoreCase)) {
-                    provider = p;
-                    return true;
-                }
-                
-                // Also try description without spaces (e.g., "AppleMusic" vs "Apple Music")
-                var descriptionNoSpaces = description.Replace(" ", "", StringComparison.Ordinal);
-                if (string.Equals(descriptionNoSpaces, providerString, StringComparison.OrdinalIgnoreCase)) {
-                    provider = p;
-                    return true;
-                }
-            }
-
-            return false;
+            return _providerStringToEnum.Value.TryGetValue(providerString, out provider);
         }
     }
 }
