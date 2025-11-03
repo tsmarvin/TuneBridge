@@ -1,11 +1,13 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using TuneBridge.Domain.Models;
 
 namespace TuneBridge.Domain.Implementations.Middleware;
 
 /// <summary>
 /// Middleware that enforces rate limiting on protected endpoints.
+/// Uses in-memory caching to reduce database load.
 /// </summary>
 public class RateLimitingMiddleware {
     private readonly RequestDelegate _next;
@@ -29,7 +31,7 @@ public class RateLimitingMiddleware {
         _maxRequestsPerHour = maxRequestsPerHour;
     }
 
-    public async Task InvokeAsync( HttpContext context, UserManager<ApplicationUser> userManager, ApplicationDbContext dbContext ) {
+    public async Task InvokeAsync( HttpContext context, UserManager<ApplicationUser> userManager, ApplicationDbContext dbContext, IMemoryCache cache ) {
         string path = context.Request.Path.Value ?? string.Empty;
 
         // Only enforce rate limiting on specific protected search endpoints and only for POST requests
@@ -51,9 +53,12 @@ public class RateLimitingMiddleware {
             return;
         }
 
-        // Get the user from database by username
-        ApplicationUser? user = await userManager.Users
- .FirstOrDefaultAsync( u => u.UserName == username );
+        // Try to get user from cache first, then database
+        string cacheKey = $"RateLimit_{username}";
+        ApplicationUser? user = await cache.GetOrCreateAsync( cacheKey, async entry => {
+            entry.SlidingExpiration = TimeSpan.FromMinutes( 5 ); // Cache for 5 minutes with sliding window
+            return await userManager.Users.FirstOrDefaultAsync( u => u.UserName == username );
+        } );
 
         if (user == null) {
             await _next( context );
@@ -71,7 +76,7 @@ public class RateLimitingMiddleware {
 
         // Check if rate limit is exceeded
         if (user.RequestCount >= _maxRequestsPerHour) {
-            TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1 ) - now;
+            TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1) - now;
             _logger.LogWarning(
             "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
             username,
@@ -91,13 +96,16 @@ public class RateLimitingMiddleware {
         // Increment request count atomically using raw SQL to prevent race conditions
         int rowsAffected = await dbContext.Database.ExecuteSqlInterpolatedAsync(
  $@"UPDATE AspNetUsers 
- SET RequestCount = RequestCount +1 
+ SET RequestCount = RequestCount + 1 
  WHERE Id = {user.Id} AND RequestCount < {_maxRequestsPerHour}"
  );
 
+        // Invalidate cache to ensure fresh data on next request
+        cache.Remove( cacheKey );
+
         // If no rows were updated, the rate limit was exceeded by a concurrent request
         if (rowsAffected == 0) {
-            TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1 ) - now;
+            TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1) - now;
             _logger.LogWarning(
             "Rate limit exceeded for user {Username} (concurrent check). Window resets in {Minutes} minutes.",
             username,
