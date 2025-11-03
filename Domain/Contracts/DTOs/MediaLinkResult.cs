@@ -17,6 +17,11 @@ namespace TuneBridge.Domain.Contracts.DTOs {
         /// </summary>
         public Dictionary<SupportedProviders, MusicLookupResultDto> Results { get; set; } = [];
 
+        /// <summary>
+        /// Optional user-facing messages associated with this result (e.g., guidance for unsupported links).
+        /// </summary>
+        public List<string>? Messages { get; set; }
+
         /// <inheritdoc/>
         public override bool Equals( object? obj ) {
             if (

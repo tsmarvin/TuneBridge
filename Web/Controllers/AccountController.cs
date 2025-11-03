@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Implementations.Auth;
@@ -138,7 +138,7 @@ public class AccountController : Controller {
         if (string.IsNullOrEmpty( user.ApiKeyHash )) {
             apiKey = ApiKeyHasher.GenerateApiKey( );
             user.ApiKeyHash = _hasher.HashApiKey( apiKey );
-            await _userManager.UpdateAsync( user );
+            _ = await _userManager.UpdateAsync( user );
         } else {
             // Return a message that the API key is already set
             // User should use regenerate-api-key endpoint if they need a new one
@@ -150,8 +150,8 @@ public class AccountController : Controller {
         return Ok( new {
             userId = user.Id,
             apiKey = apiKey,
-            message = apiKey == "***EXISTING_KEY***" 
-                ? "Login successful. Use /account/regenerate-api-key to get a new API key if needed." 
+            message = apiKey == "***EXISTING_KEY***"
+                ? "Login successful. Use /account/regenerate-api-key to get a new API key if needed."
                 : "Login successful. New API key generated."
         } );
     }
@@ -174,7 +174,7 @@ public class AccountController : Controller {
     public async Task<IActionResult> GetAuthStatus( ) {
         if (User.Identity?.IsAuthenticated == true) {
             ApplicationUser? user = await _userManager.GetUserAsync( User );
-            return Ok( new { 
+            return Ok( new {
                 isAuthenticated = true,
                 userId = user?.Id,
                 email = user?.Email

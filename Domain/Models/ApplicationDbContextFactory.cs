@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
 namespace TuneBridge.Domain.Models;
@@ -9,7 +9,7 @@ namespace TuneBridge.Domain.Models;
 public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext> {
     public ApplicationDbContext CreateDbContext( string[] args ) {
         DbContextOptionsBuilder<ApplicationDbContext> optionsBuilder = new();
-        optionsBuilder.UseSqlite( "Data Source=tunebridge.db" );
+        _ = optionsBuilder.UseSqlite( "Data Source=tunebridge.db" );
 
         return new ApplicationDbContext( optionsBuilder.Options );
     }

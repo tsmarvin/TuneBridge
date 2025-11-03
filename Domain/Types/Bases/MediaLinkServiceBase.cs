@@ -152,7 +152,12 @@ namespace TuneBridge.Domain.Types.Bases {
                 MediaLinkResult result = new();
                 lookup.IsPrimary = true;
                 result._inputLinks.Add( $"https://{inputlink}" );
-                result.Results.Add( provider, lookup );
+                if (lookup.ExternalId == "prerelease") {
+                    result.Messages ??= [];
+                    result.Messages.Add( "Prerelease links aren't supported at the moment. Try a Title/Artist search to check other platforms." );
+                } else {
+                    result.Results.Add( provider, lookup );
+                }
 
                 foreach ((SupportedProviders alternateProvider, IEnumerable<MusicLookupResultDto> altProviderResults) in resultsByProvider) {
                     if ((int)alternateProvider == (int)provider) { continue; }

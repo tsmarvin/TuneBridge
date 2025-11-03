@@ -102,7 +102,15 @@ namespace TuneBridge.Domain.Implementations.Services {
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
             (bool result, SpotifyEntity kind, string id) = await SpotifyLinkParser.TryParseUriAsync( uri );
             if (result) {
-                if (kind == SpotifyEntity.Album) {
+                if (kind == SpotifyEntity.PreRelease) {
+                    return new( ) {
+                        Artist = string.Empty,
+                        Title = string.Empty,
+                        ExternalId = "prerelease",
+                        URL = string.Empty,
+                        IsAlbum = true
+                    };
+                } else if (kind == SpotifyEntity.Album) {
                     string? body = await NewMusicApiRequest( $"albums/{id}", AlbumLookupKey );
                     if (body != null) {
                         using JsonDocument jsonDoc = JsonDocument.Parse(body);
@@ -179,10 +187,10 @@ namespace TuneBridge.Domain.Implementations.Services {
             if (element.TryGetProperty( "artists", out JsonElement artistsProps )) {
                 if (artistsProps.GetArrayLength( ) > 0) {
                     result = artistsProps
-                                .EnumerateArray( )
-                                .First( )
-                                .GetProperty( "name" )
-                                .GetString( ) ?? string.Empty;
+ .EnumerateArray( )
+ .First( )
+ .GetProperty( "name" )
+ .GetString( ) ?? string.Empty;
                 }
             }
             return result;
@@ -204,15 +212,15 @@ namespace TuneBridge.Domain.Implementations.Services {
                 result.Artist = GetArtistName( element );
 
                 result.Title = element
-                                .GetProperty( "name" )
-                                .GetString( ) ?? string.Empty;
+ .GetProperty( "name" )
+ .GetString( ) ?? string.Empty;
 
                 result.ExternalId = GetExternalIdFromJson( element, isAlbum );
 
                 result.URL = element
-                                .GetProperty( "external_urls" )
-                                .GetProperty( "spotify" )
-                                .GetString( ) ?? string.Empty;
+ .GetProperty( "external_urls" )
+ .GetProperty( "spotify" )
+ .GetString( ) ?? string.Empty;
 
                 switch (kind) {
                     case SpotifyEntity.Album:
@@ -236,10 +244,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         private static string GetAlbumArtUrl( JsonElement element ) {
             if (element.TryGetProperty( "images", out JsonElement imagesProps )) {
                 if (imagesProps.GetArrayLength( ) > 0 && imagesProps
-                                .EnumerateArray( )
-                                .First( )
-                                .TryGetProperty( "url", out JsonElement urlProps )
-                ) {
+ .EnumerateArray( )
+ .First( )
+ .TryGetProperty( "url", out JsonElement urlProps )
+ ) {
                     return urlProps.GetString( ) ?? string.Empty;
                 }
             }
@@ -254,14 +262,14 @@ namespace TuneBridge.Domain.Implementations.Services {
                 using JsonDocument jsonDoc = JsonDocument.Parse(body);
                 JsonElement root = jsonDoc.RootElement;
                 if (root.TryGetProperty( "artists", out JsonElement artistsProps ) &&
-                    artistsProps.TryGetProperty( "items", out JsonElement itemsProps )
+                artistsProps.TryGetProperty( "items", out JsonElement itemsProps )
                 ) {
                     if (itemsProps.GetArrayLength( ) == 0) { return null; }
 
                     foreach (JsonElement artist in itemsProps.EnumerateArray( )) {
                         results.Add(
-                            (artist.GetProperty( "id" ).GetString( )!,
-                            artist.GetProperty( "name" ).GetString( )!)
+                        (artist.GetProperty( "id" ).GetString( )!,
+                        artist.GetProperty( "name" ).GetString( )!)
                         );
                     }
                     return results;
@@ -275,8 +283,8 @@ namespace TuneBridge.Domain.Implementations.Services {
         }
 
         private IEnumerable<(string id, MusicLookupResultDto album)> ParseArtistAlbumLists(
-            string? body,
-            string lookupKey
+        string? body,
+        string lookupKey
         ) {
             if (body == null) { yield break; }
 
@@ -292,9 +300,9 @@ namespace TuneBridge.Domain.Implementations.Services {
         }
 
         private async Task<MusicLookupResultDto?> ParseAlbumTrackListsAsync(
-            string? body,
-            string sanitizedSongTitle,
-            string lookupKey
+        string? body,
+        string sanitizedSongTitle,
+        string lookupKey
         ) {
             if (body == null) { return null; }
 
@@ -308,7 +316,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                         string name = (item.GetProperty("name").GetString() ?? string.Empty).Trim();
 
                         if (SanitizeSongTitle( name ).Equals( sanitizedSongTitle, StringComparison.InvariantCultureIgnoreCase ) &&
-                            CanParseJsonElement( item, out JsonElement element )
+                        CanParseJsonElement( item, out JsonElement element )
                         ) {
                             string trackId = item.GetProperty("id").GetString()!;
 
@@ -321,10 +329,10 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                             using JsonDocument trackJson = JsonDocument.Parse( trackBody );
                             return ParseSpotifyResponse(
-                                trackJson.RootElement,
-                                lookupKey,
-                                SpotifyEntity.Track,
-                                null
+                            trackJson.RootElement,
+                            lookupKey,
+                            SpotifyEntity.Track,
+                            null
                             );
                         }
                     }

@@ -1,7 +1,6 @@
-using AspNetCore.Authentication.ApiKey;
+﻿using AspNetCore.Authentication.ApiKey;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using TuneBridge.Domain.Models;
 
 namespace TuneBridge.Domain.Implementations.Auth;
@@ -29,19 +28,17 @@ public class ApiKeyProvider : IApiKeyProvider {
             ApplicationUser? user = await _userManager.Users
                 .FirstOrDefaultAsync( u => u.ApiKeyHash == hashedKey );
 
-            if (user == null) {
-                return null;
-            }
-
-            return new ApiKey( key, user.UserName ?? user.Id, [ "User" ] );
+            return user == null
+                ? null
+                : (IApiKey)new ApiKey( key, user.UserName ?? user.Id, ["User"] );
         } catch (DbUpdateException ex) {
-            _logger.LogError( ex, "Database error validating API key" );
+            _logger.LogError( ex, "Database error while validating API key" );
             return null;
         } catch (InvalidOperationException ex) {
-            _logger.LogError( ex, "Invalid operation validating API key" );
+            _logger.LogError( ex, "Invalid operation while validating API key" );
             return null;
         } catch (Exception ex) {
-            _logger.LogError( ex, "Unexpected error validating API key" );
+            _logger.LogError( ex, "Unexpected error while validating API key" );
             return null;
         }
     }

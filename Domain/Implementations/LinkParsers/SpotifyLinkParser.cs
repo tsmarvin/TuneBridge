@@ -65,6 +65,8 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
                     kind = match.Groups["type"].Value.ToLowerInvariant( ) switch {
                         "track" => SpotifyEntity.Track,
                         "album" => SpotifyEntity.Album,
+                        "prerelease" => SpotifyEntity.PreRelease,
+                        "playlists" => SpotifyEntity.Playlist,
                         _ => SpotifyEntity.Unknown
                     };
                 }
@@ -91,7 +93,7 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         }
 
         private static readonly Regex s_spotifyLink = SpotifyMusicLink();
-        [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+        [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album|prerelease)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex SpotifyMusicLink( );
 
         private static readonly Regex s_spotifyShortLink = SpotifyShortLinkPattern();

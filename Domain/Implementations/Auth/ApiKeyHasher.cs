@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 
 namespace TuneBridge.Domain.Implementations.Auth;
@@ -21,10 +21,7 @@ public class ApiKeyHasher {
     /// </summary>
     /// <returns>Base64-encoded API key string.</returns>
     public static string GenerateApiKey( ) {
-        byte[] randomBytes = new byte[32];
-        using (RandomNumberGenerator rng = RandomNumberGenerator.Create( )) {
-            rng.GetBytes( randomBytes );
-        }
+        byte[] randomBytes = RandomNumberGenerator.GetBytes(32 );
         return Convert.ToBase64String( randomBytes );
     }
 

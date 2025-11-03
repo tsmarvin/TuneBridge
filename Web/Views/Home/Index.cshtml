@@ -1,142 +1,52 @@
 ﻿@{
     ViewData["Title"] = "Music Lookup";
-    Layout = null; // remove this if you want to use your _Layout.cshtml
 }
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>@ViewData["Title"] - TuneBridge</title>
-    <style>
-        :root { font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; }
-        body { margin: 0; padding: 0; }
-        .header { 
-            background: #0ea5e9; 
-            color: white; 
-            padding: 1rem 2rem; 
-            display: grid; 
-            grid-template-columns: 1fr auto 1fr; 
-            align-items: center; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .header-left { display: flex; gap: 1rem; align-items: center; justify-self: start; }
-        .header-center { justify-self: center; }
-        .header-center h1 { 
-            margin: 0; 
-            font-size: 1.5rem; 
-            font-weight: 600; 
-            cursor: pointer;
-            padding: .5rem 1rem;
-            border-radius: 6px;
-        }
-        .header-center h1:hover { background: rgba(255,255,255,0.1); }
-        .header-right { display: flex; gap: 1rem; align-items: center; justify-self: end; }
-        .header-link { color: white; text-decoration: none; padding: .5rem .75rem; border-radius: 6px; }
-        .header-link:hover { background: rgba(255,255,255,0.1); }
-        .header-button { 
-            background: rgba(255,255,255,0.2); 
-            border: 1px solid white; 
-            color: white; 
-            padding: .5rem 1rem; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            text-decoration: none;
-            display: inline-block;
-        }
-        .header-button:hover { background: rgba(255,255,255,0.3); }
-        .container { padding: 2rem; max-width: 1200px; margin: 0 auto; }
-        .card { max-width: 800px; margin: 0 auto; padding: 1.25rem; border: 1px solid #e5e7eb; border-radius: 12px; background: white; }
-        .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-        .stack { display: grid; gap: .5rem; }
-        .muted { color: #6b7280; font-size: .9rem; }
-        input[type="text"] { padding: .6rem .7rem; border: 1px solid #cbd5e1; border-radius: 8px; min-width: 260px; }
-        button { padding: .6rem 1rem; border-radius: 8px; border: 1px solid #0ea5e9; background: #0ea5e9; color: white; cursor: pointer; }
-        button:disabled{ opacity:.6; cursor:default; }
-        fieldset { border: none; padding: 0; margin: 0; }
-        legend { font-weight: 600; margin-bottom: .25rem; }
-        pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: 10px; overflow: auto; }
-        .hidden { display: none; }
-        label { display: inline-flex; align-items: center; gap: .35rem; position: relative; }
-        label.disabled { opacity: 0.5; cursor: not-allowed; }
-        label.disabled input { cursor: not-allowed; }
-        .tooltip { 
-            position: absolute; 
-            bottom: 100%; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            background: #1f2937; 
-            color: white; 
-            padding: .5rem .75rem; 
-            border-radius: 6px; 
-            font-size: .75rem; 
-            white-space: nowrap; 
-            opacity: 0; 
-            pointer-events: none; 
-            transition: opacity 0.2s;
-            margin-bottom: .25rem;
-        }
-        label.disabled:hover .tooltip { opacity: 1; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="header-left">
-            <a href="https://github.com/tsmarvin/TuneBridge" target="_blank" class="header-link">GitHub</a>
-            <a href="https://docs.tunebridge.media/" target="_blank" class="header-link">Docs</a>
+<div class="card stack">
+    <h2>Music Lookup</h2>
+
+    <fieldset class="stack">
+        <legend>Mode</legend>
+        <div class="row">
+            <label id="urlLabel"><input type="radio" name="mode" value="url" checked /> URL</label>
+            <label id="isrcLabel"><input type="radio" name="mode" value="isrc" /> ISRC<span class="tooltip">Login required</span></label>
+            <label id="upcLabel"><input type="radio" name="mode" value="upc" /> UPC<span class="tooltip">Login required</span></label>
+            <label id="titleLabel"><input type="radio" name="mode" value="title" /> Title<span class="tooltip">Login required</span></label>
         </div>
-        <div class="header-center">
-            <h1 onclick="window.location.href='/'">TuneBridge</h1>
-        </div>
-        <div class="header-right" id="userArea"></div>
-    </div>
+    </fieldset>
 
-    <div class="container">
-        <div class="card stack">
-            <h2>Music Lookup</h2>
-
-            <fieldset class="stack">
-                <legend>Mode</legend>
-                <div class="row">
-                    <label id="urlLabel"><input type="radio" name="mode" value="url" checked /> URL</label>
-                    <label id="isrcLabel"><input type="radio" name="mode" value="isrc" /> ISRC<span class="tooltip">Login required</span></label>
-                    <label id="upcLabel"><input type="radio" name="mode" value="upc" /> UPC<span class="tooltip">Login required</span></label>
-                    <label id="titleLabel"><input type="radio" name="mode" value="title" /> Title<span class="tooltip">Login required</span></label>
-                </div>
-            </fieldset>
-
-        <div class="stack" id="inputs">
-            <div id="urlRow" class="row">
-                <input id="url" type="text" placeholder="Url" />
-            </div>
-
-            <div id="isrcRow" class="row hidden">
-                <input id="isrc" type="text" placeholder="ISRC (e.g., USVI20000123)" />
-            </div>
-
-            <div id="upcRow" class="row hidden">
-                <input id="upc" type="text" placeholder="UPC (12–14 digits)" />
-            </div>
-
-            <div id="titleRow" class="row hidden">
-                <input id="title" type="text" placeholder="Title" />
-                <input id="artist" type="text" placeholder="Artist" />
-            </div>
-
-            <div class="row">
-                <button id="go">Go</button>
-                <span id="status" class="muted"></span>
-            </div>
+    <div class="stack" id="inputs">
+        <div id="urlRow" class="row">
+            <input id="url" type="text" placeholder="Url" />
         </div>
 
-        <div class="stack">
-            <h3>Result</h3>
-            <pre id="result" aria-live="polite">{}</pre>
+        <div id="isrcRow" class="row hidden">
+            <input id="isrc" type="text" placeholder="ISRC (e.g., USVI20000123)" />
+        </div>
+
+        <div id="upcRow" class="row hidden">
+            <input id="upc" type="text" placeholder="UPC (12–14 digits)" />
+        </div>
+
+        <div id="titleRow" class="row hidden">
+            <input id="title" type="text" placeholder="Title" />
+            <input id="artist" type="text" placeholder="Artist" />
+        </div>
+
+        <div class="row">
+            <button id="go">Go</button>
+            <span id="status" class="muted"></span>
         </div>
     </div>
 
-    <script>
+    <div class="stack">
+        <h3>Result</h3>
+        <pre id="result" aria-live="polite">{}</pre>
+    </div>
+</div>
+
+@section Scripts {
+<script>
         (() => {
           const $ = (id) => document.getElementById(id);
           const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
@@ -145,63 +55,41 @@
           const isrcRow = $('isrcRow');
           const upcRow = $('upcRow');
           const titleRow = $('titleRow');
-          const userArea = $('userArea');
+          const protectedModes = ['isrc', 'upc', 'title'];
 
           let isAuthenticated = false;
+          const userArea = document.querySelector('.header-right #userArea') || document.getElementById('userArea');
 
-          // Check authentication status from server
           fetch('/account/status')
             .then(res => res.json())
-            .then(data => {
-              isAuthenticated = data.isAuthenticated;
-              updateUI();
-            })
-            .catch(() => {
-              isAuthenticated = false;
-              updateUI();
-            });
+            .then(data => { isAuthenticated = data.isAuthenticated; updateUI(); })
+            .catch(() => { isAuthenticated = false; updateUI(); });
 
           function updateUI() {
-            // Update header based on auth status
+            if (!userArea) return;
             if (isAuthenticated) {
               userArea.innerHTML = '<button class="header-button" id="logoutBtn">Logout</button>';
-              $('logoutBtn').addEventListener('click', async () => {
+              document.getElementById('logoutBtn')?.addEventListener('click', async () => {
                 await fetch('/account/logout', { method: 'POST' });
                 window.location.reload();
               });
             } else {
-              userArea.innerHTML = `
-                <a href="/account/login" class="header-button">Login</a>
-                <a href="/account/register" class="header-button">Register</a>
-              `;
+              userArea.innerHTML = '<a href="/account/login" class="header-button">Login</a> <a href="/account/register" class="header-button">Register</a>';
             }
 
-            // Disable protected mode options if not authenticated
-            const protectedModes = ['isrc', 'upc', 'title'];
-            const modeLabels = {
-              isrc: $('isrcLabel'),
-              upc: $('upcLabel'),
-              title: $('titleLabel')
-            };
-
+            const modeLabels = { isrc: $('isrcLabel'), upc: $('upcLabel'), title: $('titleLabel') };
             if (!isAuthenticated) {
               protectedModes.forEach(mode => {
                 const label = modeLabels[mode];
-                const radio = label.querySelector('input');
-                label.classList.add('disabled');
-                radio.disabled = true;
+                const radio = label?.querySelector('input');
+                if(label){ label.classList.add('disabled'); }
+                if(radio){ radio.disabled = true; }
               });
             }
           }
 
           function setMode(mode) {
-            // Prevent switching to protected modes if not authenticated
-            if (!isAuthenticated && protectedModes.includes(mode)) {
-              // Switch back to URL mode
-              modeRadios[0].checked = true;
-              return;
-            }
-
+            if (!isAuthenticated && protectedModes.includes(mode)) { modeRadios[0].checked = true; return; }
             urlRow.classList.toggle('hidden', mode !== 'url');
             isrcRow.classList.toggle('hidden', mode !== 'isrc');
             upcRow.classList.toggle('hidden', mode !== 'upc');
@@ -218,68 +106,36 @@
             status.textContent = 'Working...';
             $('go').disabled = true;
             result.textContent = '{}';
-
             try {
               let endpoint = '';
               let payload = {};
-
               switch (mode) {
-                case 'url':
-                  // Use the public streaming endpoint for URL lookups
-                  // /music/lookup/url does not require authentication
-                  endpoint = '/music/lookup/url';
-                  payload = { uri: $('url').value };
-                  break;
-                case 'isrc':
-                  endpoint = '/music/lookup/isrc';
-                  payload = { isrc: $('isrc').value };
-                  break;
-                case 'upc':
-                  endpoint = '/music/lookup/upc';
-                  payload = { upc: $('upc').value };
-                  break;
-                case 'title':
-                  endpoint = '/music/lookup/title';
-                  payload = {
-                      title: $('title').value,
-                      artist: $('artist').value
-                  };
-                  break;
+                case 'url': endpoint = '/music/lookup/url'; payload = { uri: $('url').value }; break;
+                case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
+                case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
+                case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
               }
-
-              // Cookie authentication is automatic - no headers needed for protected endpoints
               const headers = { 'Content-Type': 'application/json' };
-
-              const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: headers,
-                credentials: 'same-origin', // Include cookies
-                body: JSON.stringify(payload)
-              });
-
-              if (res.status === 401) {
-                result.textContent = JSON.stringify({ 
-                  error: 'Authentication required',
-                  message: 'Please login to access this endpoint.'
-                }, null, 2);
-                status.textContent = 'HTTP 401 - Unauthorized';
-              } else if (res.status === 429) {
+              const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
+              if (res.status ===401) {
+                result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null,2);
+                status.textContent = 'HTTP401 - Unauthorized';
+              } else if (res.status ===429) {
                 const data = await res.json();
-                result.textContent = JSON.stringify(data, null, 2);
-                status.textContent = 'HTTP 429 - Rate Limit Exceeded';
+                result.textContent = JSON.stringify(data, null,2);
+                status.textContent = 'HTTP429 - Rate Limit Exceeded';
               } else {
                 const data = await res.json();
-                result.textContent = JSON.stringify(data, null, 2);
+                result.textContent = JSON.stringify(data, null,2);
                 status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
               }
             } catch (err) {
               status.textContent = 'Error';
-              result.textContent = JSON.stringify({ error: String(err) }, null, 2);
+              result.textContent = JSON.stringify({ error: String(err) }, null,2);
             } finally {
               $('go').disabled = false;
             }
           });
         })();
     </script>
-</body>
-</html>
+}

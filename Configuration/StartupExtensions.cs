@@ -89,10 +89,9 @@ namespace TuneBridge.Configuration {
             .AddPolicyScheme( "MultiScheme", "API Key or Cookie", options => {
                 options.ForwardDefaultSelector = context => {
                     // Use cookie authentication for web UI, API key for API endpoints
-                    if (context.Request.Headers.ContainsKey( "X-API-Key" )) {
-                        return ApiKeyDefaults.AuthenticationScheme;
-                    }
-                    return IdentityConstants.ApplicationScheme;
+                    return context.Request.Headers.ContainsKey( "X-API-Key" )
+                            ? ApiKeyDefaults.AuthenticationScheme
+                            : IdentityConstants.ApplicationScheme;
                 };
             } )
             .AddApiKeyInHeader<ApiKeyProvider>( options => {

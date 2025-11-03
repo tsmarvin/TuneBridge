@@ -35,6 +35,12 @@
         /// Spotify's /playlists API endpoint. Currently parsed but not fully supported for cross-platform
         /// matching as playlists are platform-specific.
         /// </summary>
-        Playlist = 8
+        Playlist = 8,
+
+        /// <summary>
+        /// PreRelease entity representing an album that has not been released yet. Maps to
+        /// Spotify's /prerelease API endpoint. Currently parsed but not fully supported.
+        /// </summary>
+        PreRelease = 16
     }
 }
