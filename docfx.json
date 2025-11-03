@@ -3,61 +3,50 @@
     {
       "src": [
         {
-          "src": ".",
-          "files": [
-            "**.csproj"
-          ]
+          "src": "src",
+          "files": [ "**.csproj" ]
         }
       ],
       "dest": "docs/api",
       "disableGitFeatures": false,
-      "disableDefaultFilter": false,
-      "properties": {
-        "TargetFramework": "net9.0"
-      }
+      "disableDefaultFilter": false
     }
   ],
   "build": {
     "content": [
       {
-        "files": [
-          "**.{md,yml}"
-        ],
+        "files": [ "**.{md,yml}" ],
         "src": "docs"
       },
       {
-        "files": [
-          "**.md"
-        ],
+        "files": [ "**.md" ],
         "src": ".",
-        "exclude": [
-          "_site/**"
-        ]
+        "exclude": [ "_site/**" ]
       }
     ],
     "resource": [
       {
-        "files": [
-          "images/**"
-        ],
+        "files": [ "images/**" ],
         "src": "docs"
+      },
+      {
+        "files": [ "favicon.ico" ],
+        "src": "src/Web/wwwroot",
+        "dest": "."
       }
     ],
-    "output": "_site",
     "globalMetadataFiles": [],
     "fileMetadataFiles": [],
-    "template": [
-      "default",
-      "modern"
-    ],
+    "template": [ "default", "modern" ],
     "postProcessors": [],
     "keepFileLink": false,
     "disableGitFeatures": false,
     "globalMetadata": {
       "_appTitle": "TuneBridge",
       "_appName": "TuneBridge API Documentation",
-      "_appFooter": "Copyright © 2025 Taylor Marvin",
-      "_enableSearch": true
+      "_appFooter": "Copyright © Taylor Marvin (2025)",
+      "_enableSearch": true,
+      "_appFaviconPath": "favicon.ico"
     }
   }
 }

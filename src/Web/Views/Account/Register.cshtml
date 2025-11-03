@@ -1,0 +1,102 @@
+@{
+    ViewData["Title"] = "Register";
+}
+@using Microsoft.AspNetCore.Identity
+@inject Microsoft.Extensions.Options.IOptions<IdentityOptions> IdentityOptionsAccessor
+
+<div class="card">
+    <h2>Create Account</h2>
+    <div id="registerForm" class="stack">
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" required />
+            <div class="info">Your email will be your unique identifier</div>
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" required />
+            @{
+                var pwd = IdentityOptionsAccessor.Value.Password;
+                var parts = new List<string>();
+                if (pwd.RequireUppercase) parts.Add("uppercase");
+                if (pwd.RequireLowercase) parts.Add("lowercase");
+                if (pwd.RequireDigit) parts.Add("digit");
+                if (pwd.RequireNonAlphanumeric) parts.Add("special character");
+                var infoText = $"Minimum {pwd.RequiredLength} characters" + (parts.Count >0 ? $" with {string.Join(", ", parts)}" : string.Empty);
+            }
+            <div class="info">@infoText</div>
+        </div>
+        <div class="form-group">
+            <label for="confirmPassword">Confirm Password</label>
+            <input type="password" id="confirmPassword" required />
+        </div>
+        <div id="error" class="error hidden"></div>
+        <button id="registerBtn">Create Account</button>
+        <div class="muted" style="text-align:center; margin-top:.5rem;">Already have an account? <a href="/account/login">Login</a></div>
+    </div>
+
+    <div id="successMessage" class="hidden stack">
+        <div class="success">Account created successfully!</div>
+        <p><strong>Your API Key:</strong></p>
+        <div class="api-key" id="apiKey"></div>
+        <p class="info" style="margin-top:1rem;">
+            <strong>Important:</strong> Save this API key now. It will not be shown again.
+            You can use it to authenticate API requests by including the header:
+            <code>X-API-Key: [your-key]</code>
+        </p>
+        <button onclick="window.location.href='/'">Go to Music Lookup</button>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const email = document.getElementById('email');
+const password = document.getElementById('password');
+const confirmPassword = document.getElementById('confirmPassword');
+const registerBtn = document.getElementById('registerBtn');
+const error = document.getElementById('error');
+const registerForm = document.getElementById('registerForm');
+const successMessage = document.getElementById('successMessage');
+const apiKeyEl = document.getElementById('apiKey');
+
+registerBtn.addEventListener('click', async () => {
+ error.classList.add('hidden');
+ error.textContent = '';
+ if (!email.value || !password.value || !confirmPassword.value) {
+ error.textContent = 'Please fill in all fields';
+ error.classList.remove('hidden');
+ return;
+ }
+ if (password.value !== confirmPassword.value) {
+ error.textContent = 'Passwords do not match';
+ error.classList.remove('hidden');
+ return;
+ }
+ registerBtn.disabled = true;
+ registerBtn.textContent = 'Creating account...';
+ try {
+ const response = await fetch('/account/register', {
+ method: 'POST', headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ email: email.value, password: password.value })
+ });
+ const data = await response.json();
+ if (!response.ok) {
+ let errorMsg = 'Registration failed';
+ if (data.errors) errorMsg = Object.values(data.errors).flat().join('. ');
+ else if (data.message) errorMsg = data.message;
+ error.textContent = errorMsg;
+ error.classList.remove('hidden');
+ registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
+ return;
+ }
+ apiKeyEl.textContent = data.apiKey;
+ registerForm.classList.add('hidden');
+ successMessage.classList.remove('hidden');
+ } catch (err) {
+ error.textContent = 'Network error: ' + (err?.message || String(err));
+ error.classList.remove('hidden');
+ registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
+ }
+});
+</script>
+}

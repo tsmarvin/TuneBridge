@@ -1,0 +1,141 @@
+﻿@{
+    ViewData["Title"] = "Music Lookup";
+}
+
+<div class="card stack">
+    <h2>Music Lookup</h2>
+
+    <fieldset class="stack">
+        <legend>Mode</legend>
+        <div class="row">
+            <label id="urlLabel"><input type="radio" name="mode" value="url" checked /> URL</label>
+            <label id="isrcLabel"><input type="radio" name="mode" value="isrc" /> ISRC<span class="tooltip">Login required</span></label>
+            <label id="upcLabel"><input type="radio" name="mode" value="upc" /> UPC<span class="tooltip">Login required</span></label>
+            <label id="titleLabel"><input type="radio" name="mode" value="title" /> Title<span class="tooltip">Login required</span></label>
+        </div>
+    </fieldset>
+
+    <div class="stack" id="inputs">
+        <div id="urlRow" class="row">
+            <input id="url" type="text" placeholder="Url" />
+        </div>
+
+        <div id="isrcRow" class="row hidden">
+            <input id="isrc" type="text" placeholder="ISRC (e.g., USVI20000123)" />
+        </div>
+
+        <div id="upcRow" class="row hidden">
+            <input id="upc" type="text" placeholder="UPC (12–14 digits)" />
+        </div>
+
+        <div id="titleRow" class="row hidden">
+            <input id="title" type="text" placeholder="Title" />
+            <input id="artist" type="text" placeholder="Artist" />
+        </div>
+
+        <div class="row">
+            <button id="go">Go</button>
+            <span id="status" class="muted"></span>
+        </div>
+    </div>
+
+    <div class="stack">
+        <h3>Result</h3>
+        <pre id="result" aria-live="polite">{}</pre>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+        (() => {
+          const $ = (id) => document.getElementById(id);
+          const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
+
+          const urlRow = $('urlRow');
+          const isrcRow = $('isrcRow');
+          const upcRow = $('upcRow');
+          const titleRow = $('titleRow');
+          const protectedModes = ['isrc', 'upc', 'title'];
+
+          let isAuthenticated = false;
+          const userArea = document.querySelector('.header-right #userArea') || document.getElementById('userArea');
+
+          fetch('/account/status')
+            .then(res => res.json())
+            .then(data => { isAuthenticated = data.isAuthenticated; updateUI(); })
+            .catch(() => { isAuthenticated = false; updateUI(); });
+
+          function updateUI() {
+            if (!userArea) return;
+            if (isAuthenticated) {
+              userArea.innerHTML = '<button class="header-button" id="logoutBtn">Logout</button>';
+              document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+                await fetch('/account/logout', { method: 'POST' });
+                window.location.reload();
+              });
+            } else {
+              userArea.innerHTML = '<a href="/account/login" class="header-button">Login</a> <a href="/account/register" class="header-button">Register</a>';
+            }
+
+            const modeLabels = { isrc: $('isrcLabel'), upc: $('upcLabel'), title: $('titleLabel') };
+            if (!isAuthenticated) {
+              protectedModes.forEach(mode => {
+                const label = modeLabels[mode];
+                const radio = label?.querySelector('input');
+                if(label){ label.classList.add('disabled'); }
+                if(radio){ radio.disabled = true; }
+              });
+            }
+          }
+
+          function setMode(mode) {
+            if (!isAuthenticated && protectedModes.includes(mode)) { modeRadios[0].checked = true; return; }
+            urlRow.classList.toggle('hidden', mode !== 'url');
+            isrcRow.classList.toggle('hidden', mode !== 'isrc');
+            upcRow.classList.toggle('hidden', mode !== 'upc');
+            titleRow.classList.toggle('hidden', mode !== 'title');
+          }
+
+          modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
+          setMode('url');
+
+          $('go').addEventListener('click', async () => {
+            const mode = (modeRadios.find(r => r.checked) || {}).value;
+            const status = $('status');
+            const result = $('result');
+            status.textContent = 'Working...';
+            $('go').disabled = true;
+            result.textContent = '{}';
+            try {
+              let endpoint = '';
+              let payload = {};
+              switch (mode) {
+                case 'url': endpoint = '/music/lookup/url'; payload = { uri: $('url').value }; break;
+                case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
+                case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
+                case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
+              }
+              const headers = { 'Content-Type': 'application/json' };
+              const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
+              if (res.status ===401) {
+                result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null,2);
+                status.textContent = 'HTTP401 - Unauthorized';
+              } else if (res.status ===429) {
+                const data = await res.json();
+                result.textContent = JSON.stringify(data, null,2);
+                status.textContent = 'HTTP429 - Rate Limit Exceeded';
+              } else {
+                const data = await res.json();
+                result.textContent = JSON.stringify(data, null,2);
+                status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+              }
+            } catch (err) {
+              status.textContent = 'Error';
+              result.textContent = JSON.stringify({ error: String(err) }, null,2);
+            } finally {
+              $('go').disabled = false;
+            }
+          });
+        })();
+    </script>
+}

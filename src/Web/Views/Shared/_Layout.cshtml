@@ -1,0 +1,29 @@
+﻿@{
+ var title = ViewData["Title"] as string ?? string.Empty;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="utf-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>@title - TuneBridge</title>
+</head>
+<body class="page">
+ @await Html.PartialAsync("_Header")
+
+ <main class="page-content">
+ <div class="container">
+ @RenderBody()
+ </div>
+ </main>
+
+ <footer class="site-footer">
+ <div class="footer-inner">
+ <span>&copy;2025 Taylor Marvin</span>
+ <a href="/Home/Privacy" style="color: var(--link); text-decoration: none;">Privacy</a>
+ </div>
+ </footer>
+
+ @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
