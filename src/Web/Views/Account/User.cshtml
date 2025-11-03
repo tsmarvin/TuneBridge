@@ -2,6 +2,100 @@
     ViewData["Title"] = "User Settings";
 }
 
+<style>
+/* Modal styling */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1050;
+    overflow-y: auto;
+}
+
+.modal-dialog {
+    position: relative;
+    width: auto;
+    max-width: 500px;
+    margin: 1.75rem auto;
+    pointer-events: none;
+}
+
+.modal-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    pointer-events: auto;
+    background-color: var(--bs-body-bg, #fff);
+    background-clip: padding-box;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 0.3rem;
+    outline: 0;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.modal-title {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.modal-body {
+    position: relative;
+    flex: 1 1 auto;
+    padding: 1rem;
+}
+
+.modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0.75rem;
+    border-top: 1px solid #dee2e6;
+}
+
+.modal-footer > * {
+    margin: 0.25rem;
+}
+
+.btn-close {
+    background: transparent;
+    border: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #000;
+    opacity: 0.5;
+    cursor: pointer;
+}
+
+.btn-close:hover {
+    opacity: 0.75;
+}
+
+/* Dark mode support */
+@@media (prefers-color-scheme: dark) {
+    .modal-content {
+        background-color: var(--bs-body-bg, #212529);
+        color: var(--bs-body-color, #fff);
+    }
+    
+    .btn-close {
+        color: #fff;
+    }
+}
+</style>
+
 <div class="card mb-4">
     <div class="card-body">
         <h2 class="card-title">User Settings</h2>
@@ -56,6 +150,34 @@
     </div>
 </div>
 
+<!-- Confirmation Modal -->
+<div id="confirmModal" class="modal" tabindex="-1" role="dialog" aria-labelledby="confirmModalTitle" aria-hidden="true" style="display: none;">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 id="confirmModalTitle" class="modal-title">Confirm API Key Reset</h5>
+                <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close" id="modalCloseBtn">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Are you sure you want to reset your API key?</strong></p>
+                <p>This action will:</p>
+                <ul>
+                    <li>Generate a new API key</li>
+                    <li>Invalidate your current API key immediately</li>
+                    <li>Require you to update all applications using the old key</li>
+                </ul>
+                <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal" id="modalCancelBtn">Cancel</button>
+                <button type="button" class="btn btn-danger" id="modalConfirmBtn">Reset API Key</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
 const userEmailEl = document.getElementById('userEmail');
@@ -65,6 +187,12 @@ const error = document.getElementById('error');
 const apiKeyDisplay = document.getElementById('apiKeyDisplay');
 const newApiKeyEl = document.getElementById('newApiKey');
 const resetSection = document.getElementById('resetSection');
+
+// Modal elements
+const confirmModal = document.getElementById('confirmModal');
+const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+const modalCancelBtn = document.getElementById('modalCancelBtn');
+const modalCloseBtn = document.getElementById('modalCloseBtn');
 
 // Load user info
 async function loadUserInfo() {
@@ -85,13 +213,51 @@ async function loadUserInfo() {
     }
 }
 
-// Show confirmation modal (using simple visibility toggle)
+// Modal functions
+function showModal() {
+    confirmModal.style.display = 'block';
+    confirmModal.setAttribute('aria-hidden', 'false');
+    // Focus the confirm button for keyboard accessibility
+    setTimeout(() => modalConfirmBtn.focus(), 100);
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
+}
+
+function hideModal() {
+    confirmModal.style.display = 'none';
+    confirmModal.setAttribute('aria-hidden', 'true');
+    // Restore body scroll
+    document.body.style.overflow = '';
+    // Return focus to the reset button
+    resetApiKeyBtn.focus();
+}
+
+// Show confirmation modal
 resetApiKeyBtn.addEventListener('click', () => {
     error.classList.add('d-none');
-    
-    // Use native confirm dialog for simplicity
-    if (confirm('Are you sure you want to reset your API key?\n\nThis action will:\n- Generate a new API key\n- Invalidate your current API key immediately\n- Require you to update all applications using the old key\n\nThis action cannot be undone.')) {
-        resetApiKey();
+    showModal();
+});
+
+// Modal event handlers
+modalConfirmBtn.addEventListener('click', () => {
+    hideModal();
+    resetApiKey();
+});
+
+modalCancelBtn.addEventListener('click', hideModal);
+modalCloseBtn.addEventListener('click', hideModal);
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && confirmModal.style.display === 'block') {
+        hideModal();
+    }
+});
+
+// Close modal when clicking outside
+confirmModal.addEventListener('click', (e) => {
+    if (e.target === confirmModal) {
+        hideModal();
     }
 });
 
@@ -122,8 +288,13 @@ async function resetApiKey() {
         apiKeyDisplay.classList.remove('d-none');
         resetSection.classList.add('d-none');
         
-        // Scroll to show the new key
-        apiKeyDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // Scroll to show the new key with fallback for older browsers
+        try {
+            apiKeyDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch (e) {
+            // Fallback for older browsers
+            apiKeyDisplay.scrollIntoView();
+        }
         
     } catch (err) {
         error.textContent = 'Network error: ' + err.message;
