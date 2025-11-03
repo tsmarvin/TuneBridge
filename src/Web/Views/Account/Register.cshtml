@@ -4,47 +4,49 @@
 @using Microsoft.AspNetCore.Identity
 @inject Microsoft.Extensions.Options.IOptions<IdentityOptions> IdentityOptionsAccessor
 
-<div class="card">
-    <h2>Create Account</h2>
-    <div id="registerForm" class="stack">
-        <div class="form-group">
-            <label for="email">Email</label>
-            <input type="email" id="email" required />
-            <div class="info">Your email will be your unique identifier</div>
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-title">Create Account</h2>
+        <div id="registerForm">
+            <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" id="email" class="form-control" required />
+                <div class="form-text">Your email will be your unique identifier</div>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" id="password" class="form-control" required />
+                @{
+                    var pwd = IdentityOptionsAccessor.Value.Password;
+                    var parts = new List<string>();
+                    if (pwd.RequireUppercase) parts.Add("uppercase");
+                    if (pwd.RequireLowercase) parts.Add("lowercase");
+                    if (pwd.RequireDigit) parts.Add("digit");
+                    if (pwd.RequireNonAlphanumeric) parts.Add("special character");
+                    var infoText = $"Minimum {pwd.RequiredLength} characters" + (parts.Count >0 ? $" with {string.Join(", ", parts)}" : string.Empty);
+                }
+                <div class="form-text">@infoText</div>
+            </div>
+            <div class="mb-3">
+                <label for="confirmPassword" class="form-label">Confirm Password</label>
+                <input type="password" id="confirmPassword" class="form-control" required />
+            </div>
+            <div id="error" class="alert alert-danger d-none"></div>
+            <button id="registerBtn" class="btn btn-primary">Create Account</button>
+            <div class="text-muted text-center mt-3">Already have an account? <a href="/account/login">Login</a></div>
         </div>
-        <div class="form-group">
-            <label for="password">Password</label>
-            <input type="password" id="password" required />
-            @{
-                var pwd = IdentityOptionsAccessor.Value.Password;
-                var parts = new List<string>();
-                if (pwd.RequireUppercase) parts.Add("uppercase");
-                if (pwd.RequireLowercase) parts.Add("lowercase");
-                if (pwd.RequireDigit) parts.Add("digit");
-                if (pwd.RequireNonAlphanumeric) parts.Add("special character");
-                var infoText = $"Minimum {pwd.RequiredLength} characters" + (parts.Count >0 ? $" with {string.Join(", ", parts)}" : string.Empty);
-            }
-            <div class="info">@infoText</div>
-        </div>
-        <div class="form-group">
-            <label for="confirmPassword">Confirm Password</label>
-            <input type="password" id="confirmPassword" required />
-        </div>
-        <div id="error" class="error hidden"></div>
-        <button id="registerBtn">Create Account</button>
-        <div class="muted" style="text-align:center; margin-top:.5rem;">Already have an account? <a href="/account/login">Login</a></div>
-    </div>
 
-    <div id="successMessage" class="hidden stack">
-        <div class="success">Account created successfully!</div>
-        <p><strong>Your API Key:</strong></p>
-        <div class="api-key" id="apiKey"></div>
-        <p class="info" style="margin-top:1rem;">
-            <strong>Important:</strong> Save this API key now. It will not be shown again.
-            You can use it to authenticate API requests by including the header:
-            <code>X-API-Key: [your-key]</code>
-        </p>
-        <button onclick="window.location.href='/'">Go to Music Lookup</button>
+        <div id="successMessage" class="d-none">
+            <div class="alert alert-success">Account created successfully!</div>
+            <p><strong>Your API Key:</strong></p>
+            <div class="bg-body-secondary p-3 rounded font-monospace" id="apiKey"></div>
+            <p class="alert alert-info mt-3">
+                <strong>Important:</strong> Save this API key now. It will not be shown again.
+                You can use it to authenticate API requests by including the header:
+                <code>X-API-Key: [your-key]</code>
+            </p>
+            <button onclick="window.location.href='/'" class="btn btn-primary">Go to Music Lookup</button>
+        </div>
     </div>
 </div>
 
@@ -60,16 +62,16 @@ const successMessage = document.getElementById('successMessage');
 const apiKeyEl = document.getElementById('apiKey');
 
 registerBtn.addEventListener('click', async () => {
- error.classList.add('hidden');
+ error.classList.add('d-none');
  error.textContent = '';
  if (!email.value || !password.value || !confirmPassword.value) {
  error.textContent = 'Please fill in all fields';
- error.classList.remove('hidden');
+ error.classList.remove('d-none');
  return;
  }
  if (password.value !== confirmPassword.value) {
  error.textContent = 'Passwords do not match';
- error.classList.remove('hidden');
+ error.classList.remove('d-none');
  return;
  }
  registerBtn.disabled = true;
@@ -85,16 +87,16 @@ registerBtn.addEventListener('click', async () => {
  if (data.errors) errorMsg = Object.values(data.errors).flat().join('. ');
  else if (data.message) errorMsg = data.message;
  error.textContent = errorMsg;
- error.classList.remove('hidden');
+ error.classList.remove('d-none');
  registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
  return;
  }
  apiKeyEl.textContent = data.apiKey;
- registerForm.classList.add('hidden');
- successMessage.classList.remove('hidden');
+ registerForm.classList.add('d-none');
+ successMessage.classList.remove('d-none');
  } catch (err) {
  error.textContent = 'Network error: ' + (err?.message || String(err));
- error.classList.remove('hidden');
+ error.classList.remove('d-none');
  registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
  }
 });
