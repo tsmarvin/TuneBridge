@@ -1,0 +1,62 @@
+<header class="bg-body border-bottom">
+  <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+    <div class="container-xxl">
+      <div class="d-flex align-items-center gap-3">
+        <a href="https://github.com/tsmarvin/TuneBridge" target="_blank" class="nav-link">GitHub</a>
+        <a href="https://docs.tunebridge.media/" target="_blank" class="nav-link">Docs</a>
+      </div>
+      <a class="navbar-brand position-absolute start-50 translate-middle-x" href="/">
+        TuneBridge
+      </a>
+      <div class="d-flex align-items-center gap-2 ms-auto">
+        <button id="themeToggle" class="btn btn-sm btn-outline-secondary" type="button" title="Change theme">Theme</button>
+        <div id="userArea"></div>
+      </div>
+    </div>
+  </nav>
+</header>
+
+<script>
+(function(){
+ const btn = document.getElementById('themeToggle');
+ if(!btn) return;
+ const order = ['auto','light','dark'];
+ function get() { return localStorage.getItem('theme') || 'auto'; }
+ function set(t){ localStorage.setItem('theme', t); apply(t); }
+ function apply(t){
+ const val = t === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : t;
+ document.documentElement.setAttribute('data-bs-theme', val);
+ btn.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+ }
+ btn.addEventListener('click', () => {
+ const cur = get();
+ const next = order[(order.indexOf(cur)+1)%order.length];
+ set(next);
+ });
+ apply(get());
+})();
+
+// Populate auth area (Login/Register or Logout) on every page
+(function(){
+ const userArea = document.getElementById('userArea');
+ if(!userArea) return;
+ async function refresh(){
+ try {
+ const res = await fetch('/account/status', { credentials: 'same-origin' });
+ const data = await res.json();
+ if(data.isAuthenticated){
+ userArea.innerHTML = '<a href="/account/user" class="btn btn-sm btn-outline-secondary me-2">User</a><button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
+ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+ try { await fetch('/account/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+ location.reload();
+ });
+ } else {
+ userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
+ }
+ } catch {
+ userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
+ }
+ }
+ refresh();
+})();
+</script>

@@ -26,6 +26,11 @@ BLUESKY_PASSWORD="${BLUESKY_PASSWORD:-}"
 CACHE_DAYS="${CACHE_DAYS:-7}"
 CACHE_DB_PATH="${CACHE_DB_PATH:-medialinkscache.db}"
 
+# Authentication and rate limiting configuration
+CONNECTION_STRING="${CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
+API_KEY_SALT="${API_KEY_SALT:-}"
+RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
+
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 
@@ -52,6 +57,9 @@ cat > /app/appsettings.json <<EOF
     "TidalClientId": "$TIDAL_CLIENT_ID",
     "TidalClientSecret": "$TIDAL_CLIENT_SECRET",
     "DiscordToken": "$DISCORD_TOKEN",
+    "ConnectionString": "$(escape_bs "$CONNECTION_STRING")",
+    "ApiKeySalt": "$API_KEY_SALT",
+    "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR
     "BlueskyPdsUrl": "$BLUESKY_PDS_URL",
     "BlueskyIdentifier": "$BLUESKY_IDENTIFIER",
     "BlueskyPassword": "$BLUESKY_PASSWORD",
