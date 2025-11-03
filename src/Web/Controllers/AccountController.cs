@@ -56,6 +56,16 @@ public class AccountController : Controller {
     }
 
     /// <summary>
+    /// Displays the user settings page (requires authentication).
+    /// </summary>
+    [Authorize]
+    [HttpGet]
+    [Route( "account/user" )]
+    public IActionResult UserPage( ) {
+        return View( "User" );
+    }
+
+    /// <summary>
     /// Registers a new user account and automatically signs them in.
     /// </summary>
     /// <param name="request">Registration details including email and password.</param>

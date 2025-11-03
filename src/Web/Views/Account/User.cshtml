@@ -1,0 +1,203 @@
+@{
+    ViewData["Title"] = "User Settings";
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-title">User Settings</h2>
+        
+        <div id="userInfo" class="mb-4">
+            <h5>Account Information</h5>
+            <div class="mb-2">
+                <strong>Email:</strong> <span id="userEmail">Loading...</span>
+            </div>
+            <div class="mb-2">
+                <strong>User ID:</strong> <span id="userId" class="font-monospace">Loading...</span>
+            </div>
+        </div>
+
+        <hr />
+
+        <div id="apiKeySection">
+            <h5>API Key Management</h5>
+            <p class="text-muted">
+                Your API key is used to authenticate API requests. Keep it secure and never share it publicly.
+            </p>
+            
+            <div id="apiKeyDisplay" class="d-none mb-3">
+                <div class="alert alert-success">
+                    <strong>New API Key Generated Successfully!</strong>
+                </div>
+                <p><strong>Your New API Key:</strong></p>
+                <div class="bg-body-secondary p-3 rounded font-monospace mb-3" id="newApiKey"></div>
+                <div class="alert alert-warning">
+                    <strong>⚠️ Important Security Information:</strong>
+                    <ul class="mb-0">
+                        <li>Save this API key now - it will not be shown again</li>
+                        <li>Your old API key has been invalidated and will no longer work</li>
+                        <li>Update all applications using the old key with this new key</li>
+                        <li>Use the header <code>X-API-Key: [your-key]</code> for authentication</li>
+                        <li>Never commit API keys to source code or share them publicly</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="resetSection">
+                <button id="resetApiKeyBtn" class="btn btn-warning">
+                    Reset API Key
+                </button>
+                <div class="form-text">
+                    Generate a new API key and invalidate the current one. Use this if your key is compromised.
+                </div>
+            </div>
+
+            <div id="error" class="alert alert-danger d-none mt-3"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmModalLabel">Confirm API Key Reset</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Are you sure you want to reset your API key?</strong></p>
+                <p>This action will:</p>
+                <ul>
+                    <li>Generate a new API key</li>
+                    <li>Invalidate your current API key immediately</li>
+                    <li>Require you to update all applications using the old key</li>
+                </ul>
+                <p class="text-danger">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmResetBtn">Reset API Key</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+// Load Bootstrap modal (from CDN if needed)
+if (typeof bootstrap === 'undefined') {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css';
+    document.head.appendChild(link);
+    
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js';
+    document.head.appendChild(script);
+}
+
+const userEmailEl = document.getElementById('userEmail');
+const userIdEl = document.getElementById('userId');
+const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');
+const confirmResetBtn = document.getElementById('confirmResetBtn');
+const error = document.getElementById('error');
+const apiKeyDisplay = document.getElementById('apiKeyDisplay');
+const newApiKeyEl = document.getElementById('newApiKey');
+const resetSection = document.getElementById('resetSection');
+
+let confirmModal;
+
+// Load user info
+async function loadUserInfo() {
+    try {
+        const response = await fetch('/account/status', { credentials: 'same-origin' });
+        const data = await response.json();
+        
+        if (!data.isAuthenticated) {
+            window.location.href = '/account/login';
+            return;
+        }
+        
+        userEmailEl.textContent = data.email || 'N/A';
+        userIdEl.textContent = data.userId || 'N/A';
+    } catch (err) {
+        error.textContent = 'Failed to load user information: ' + err.message;
+        error.classList.remove('d-none');
+    }
+}
+
+// Initialize modal when Bootstrap is loaded
+function initModal() {
+    const modalEl = document.getElementById('confirmModal');
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        confirmModal = new bootstrap.Modal(modalEl);
+    } else {
+        // Fallback if Bootstrap is not available
+        setTimeout(initModal, 100);
+    }
+}
+
+// Show confirmation modal
+resetApiKeyBtn.addEventListener('click', () => {
+    error.classList.add('d-none');
+    if (confirmModal) {
+        confirmModal.show();
+    } else {
+        // Fallback: direct confirmation
+        if (confirm('Are you sure you want to reset your API key? This will invalidate your current key.')) {
+            resetApiKey();
+        }
+    }
+});
+
+// Confirm reset
+confirmResetBtn.addEventListener('click', async () => {
+    if (confirmModal) {
+        confirmModal.hide();
+    }
+    await resetApiKey();
+});
+
+// Reset API key
+async function resetApiKey() {
+    error.classList.add('d-none');
+    resetApiKeyBtn.disabled = true;
+    resetApiKeyBtn.textContent = 'Resetting...';
+    
+    try {
+        const response = await fetch('/account/regenerate-api-key', {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            error.textContent = data.message || 'Failed to reset API key';
+            error.classList.remove('d-none');
+            resetApiKeyBtn.disabled = false;
+            resetApiKeyBtn.textContent = 'Reset API Key';
+            return;
+        }
+        
+        // Show new API key
+        newApiKeyEl.textContent = data.apiKey;
+        apiKeyDisplay.classList.remove('d-none');
+        resetSection.classList.add('d-none');
+        
+        // Scroll to show the new key
+        apiKeyDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        
+    } catch (err) {
+        error.textContent = 'Network error: ' + err.message;
+        error.classList.remove('d-none');
+        resetApiKeyBtn.disabled = false;
+        resetApiKeyBtn.textContent = 'Reset API Key';
+    }
+}
+
+// Initialize
+loadUserInfo();
+initModal();
+</script>
+}
