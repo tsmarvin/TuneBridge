@@ -18,7 +18,7 @@ public class SwaggerAuthorizationMiddleware {
         // but require authentication for the UI itself
         if (
             context.Request.Path.StartsWithSegments( "/swagger" ) &&
-            !(context.Request.Path.Value?.EndsWith( ".json" ) ?? false) &&
+            !string.Equals( context.Request.Path.Value, "/swagger/v1/swagger.json", System.StringComparison.OrdinalIgnoreCase ) &&
             context.User?.Identity?.IsAuthenticated != true
         ) {
             // Redirect to login page

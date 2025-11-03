@@ -140,11 +140,11 @@ namespace TuneBridge.Configuration {
                     }
                 } );
 
-                // Include XML comments if available
-                string xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly( ).GetName( ).Name}.xml";
-                string xmlPath = Path.Combine( AppContext.BaseDirectory, xmlFile );
-                if (File.Exists( xmlPath )) {
-                    options.IncludeXmlComments( xmlPath );
+                // Include XML comments from all assemblies if available
+                foreach (string xmlPath in Directory.GetFiles( AppContext.BaseDirectory, "*.xml" )) {
+                    if (File.Exists( xmlPath )) {
+                        options.IncludeXmlComments( xmlPath );
+                    }
                 }
             } );
 
