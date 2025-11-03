@@ -33,6 +33,11 @@
         "files": [ "favicon.ico" ],
         "src": "src/Web/wwwroot",
         "dest": "."
+      },
+      {
+        "files": [ "public/**" ],
+        "src": "src/Web/wwwroot",
+        "dest": "."
       }
     ],
     "globalMetadataFiles": [],

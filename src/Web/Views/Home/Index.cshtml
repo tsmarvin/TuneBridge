@@ -2,46 +2,60 @@
     ViewData["Title"] = "Music Lookup";
 }
 
-<div class="card stack">
-    <h2>Music Lookup</h2>
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-title">Music Lookup</h2>
 
-    <fieldset class="stack">
-        <legend>Mode</legend>
-        <div class="row">
-            <label id="urlLabel"><input type="radio" name="mode" value="url" checked /> URL</label>
-            <label id="isrcLabel"><input type="radio" name="mode" value="isrc" /> ISRC<span class="tooltip">Login required</span></label>
-            <label id="upcLabel"><input type="radio" name="mode" value="upc" /> UPC<span class="tooltip">Login required</span></label>
-            <label id="titleLabel"><input type="radio" name="mode" value="title" /> Title<span class="tooltip">Login required</span></label>
+        <fieldset class="mb-3">
+            <legend>Mode</legend>
+            <div class="d-flex gap-3 flex-wrap">
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="mode" id="urlLabel" value="url" checked />
+                    <label class="form-check-label" for="urlLabel">URL</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="mode" id="isrcLabel" value="isrc" />
+                    <label class="form-check-label" for="isrcLabel">ISRC <span class="badge bg-secondary">Login required</span></label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="mode" id="upcLabel" value="upc" />
+                    <label class="form-check-label" for="upcLabel">UPC <span class="badge bg-secondary">Login required</span></label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="mode" id="titleLabel" value="title" />
+                    <label class="form-check-label" for="titleLabel">Title <span class="badge bg-secondary">Login required</span></label>
+                </div>
+            </div>
+        </fieldset>
+
+        <div id="inputs" class="mb-3">
+            <div id="urlRow" class="mb-3">
+                <input id="url" type="text" class="form-control" placeholder="Url" />
+            </div>
+
+            <div id="isrcRow" class="mb-3 d-none">
+                <input id="isrc" type="text" class="form-control" placeholder="ISRC (e.g., USVI20000123)" />
+            </div>
+
+            <div id="upcRow" class="mb-3 d-none">
+                <input id="upc" type="text" class="form-control" placeholder="UPC (12–14 digits)" />
+            </div>
+
+            <div id="titleRow" class="mb-3 d-none">
+                <input id="title" type="text" class="form-control mb-2" placeholder="Title" />
+                <input id="artist" type="text" class="form-control" placeholder="Artist" />
+            </div>
+
+            <div class="d-flex gap-2 align-items-center">
+                <button id="go" class="btn btn-primary">Go</button>
+                <span id="status" class="text-muted"></span>
+            </div>
         </div>
-    </fieldset>
 
-    <div class="stack" id="inputs">
-        <div id="urlRow" class="row">
-            <input id="url" type="text" placeholder="Url" />
+        <div>
+            <h3>Result</h3>
+            <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
         </div>
-
-        <div id="isrcRow" class="row hidden">
-            <input id="isrc" type="text" placeholder="ISRC (e.g., USVI20000123)" />
-        </div>
-
-        <div id="upcRow" class="row hidden">
-            <input id="upc" type="text" placeholder="UPC (12–14 digits)" />
-        </div>
-
-        <div id="titleRow" class="row hidden">
-            <input id="title" type="text" placeholder="Title" />
-            <input id="artist" type="text" placeholder="Artist" />
-        </div>
-
-        <div class="row">
-            <button id="go">Go</button>
-            <span id="status" class="muted"></span>
-        </div>
-    </div>
-
-    <div class="stack">
-        <h3>Result</h3>
-        <pre id="result" aria-live="polite">{}</pre>
     </div>
 </div>
 
@@ -50,6 +64,9 @@
         (() => {
           const $ = (id) => document.getElementById(id);
           const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
+          
+          // Bootstrap utility class constants
+          const HIDDEN_CLASS = 'd-none';
 
           const urlRow = $('urlRow');
           const isrcRow = $('isrcRow');
@@ -68,13 +85,13 @@
           function updateUI() {
             if (!userArea) return;
             if (isAuthenticated) {
-              userArea.innerHTML = '<button class="header-button" id="logoutBtn">Logout</button>';
+              userArea.innerHTML = '<button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
               document.getElementById('logoutBtn')?.addEventListener('click', async () => {
                 await fetch('/account/logout', { method: 'POST' });
                 window.location.reload();
               });
             } else {
-              userArea.innerHTML = '<a href="/account/login" class="header-button">Login</a> <a href="/account/register" class="header-button">Register</a>';
+              userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
             }
 
             const modeLabels = { isrc: $('isrcLabel'), upc: $('upcLabel'), title: $('titleLabel') };
@@ -90,10 +107,10 @@
 
           function setMode(mode) {
             if (!isAuthenticated && protectedModes.includes(mode)) { modeRadios[0].checked = true; return; }
-            urlRow.classList.toggle('hidden', mode !== 'url');
-            isrcRow.classList.toggle('hidden', mode !== 'isrc');
-            upcRow.classList.toggle('hidden', mode !== 'upc');
-            titleRow.classList.toggle('hidden', mode !== 'title');
+            urlRow.classList.toggle(HIDDEN_CLASS, mode !== 'url');
+            isrcRow.classList.toggle(HIDDEN_CLASS, mode !== 'isrc');
+            upcRow.classList.toggle(HIDDEN_CLASS, mode !== 'upc');
+            titleRow.classList.toggle(HIDDEN_CLASS, mode !== 'title');
           }
 
           modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));

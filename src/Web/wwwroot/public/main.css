@@ -1,0 +1,42 @@
+/* Custom styles for TuneBridge main site using DocFX theming */
+
+/* Fix header layout */
+.navbar .container-xxl {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+}
+
+/* Ensure centered brand doesn't break on small screens */
+@media (max-width: 768px) {
+  .navbar-brand.position-absolute {
+    position: static !important;
+    transform: none !important;
+  }
+}
+
+/* Make footer sticky at bottom */
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1;
+}
+
+/* Fix badge display for login required tooltips */
+.badge.bg-secondary {
+  font-size: 0.75rem;
+  padding: 0.25em 0.5em;
+  vertical-align: middle;
+}
+
+/* Disabled form label styling */
+.form-check-label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
