@@ -27,6 +27,16 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.10.0" />
+    <InternalsVisibleTo Include="TuneBridge.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="TuneBridge.Tests/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.9.0" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
     <PackageReference Include="NetCord" Version="1.0.0-alpha.444" />
     <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.444" />
