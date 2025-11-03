@@ -18,7 +18,7 @@ public class SwaggerAuthorizationMiddleware {
         if (context.Request.Path.StartsWithSegments( "/swagger" )) {
             // Allow access to swagger.json even without authentication (needed for UI to work)
             // but require authentication for the UI itself
-            if (!context.Request.Path.Value?.EndsWith( ".json" ) == true) {
+            if (!(context.Request.Path.Value?.EndsWith( ".json" ) ?? false)) {
                 // Check if user is authenticated via cookie
                 if (context.User?.Identity?.IsAuthenticated != true) {
                     // Redirect to login page
