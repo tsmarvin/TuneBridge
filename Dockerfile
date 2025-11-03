@@ -9,7 +9,7 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["src/TuneBridge.csproj", "TuneBridge.csproj"]
+COPY src/TuneBridge.csproj TuneBridge.csproj
 RUN dotnet restore "TuneBridge.csproj"
 COPY src/ .
 RUN dotnet build "TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/build
