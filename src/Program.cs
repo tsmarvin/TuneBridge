@@ -53,6 +53,9 @@ namespace TuneBridge {
             _ = app.UseAuthentication( );
             _ = app.UseAuthorization( );
 
+            // Restrict Swagger UI access to authenticated users
+            _ = app.UseMiddleware<SwaggerAuthorizationMiddleware>( );
+
             // Enable Swagger middleware
             _ = app.UseSwagger( );
             _ = app.UseSwaggerUI( options => {
@@ -60,9 +63,6 @@ namespace TuneBridge {
                 options.RoutePrefix = "swagger";
                 options.DocumentTitle = "TuneBridge API Documentation";
             } );
-
-            // Restrict Swagger UI access to authenticated users
-            _ = app.UseMiddleware<SwaggerAuthorizationMiddleware>( );
 
             // Add rate limiting middleware with configured rate limit
             int rateLimitRequestsPerHour = builder.Configuration.GetSection( "TuneBridge" ).GetValue<int>( "RateLimitRequestsPerHour" );

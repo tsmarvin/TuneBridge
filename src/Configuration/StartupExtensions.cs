@@ -142,9 +142,7 @@ namespace TuneBridge.Configuration {
 
                 // Include XML comments from all assemblies if available
                 foreach (string xmlPath in Directory.GetFiles( AppContext.BaseDirectory, "*.xml" )) {
-                    if (File.Exists( xmlPath )) {
-                        options.IncludeXmlComments( xmlPath );
-                    }
+                    options.IncludeXmlComments( xmlPath );
                 }
             } );
 
