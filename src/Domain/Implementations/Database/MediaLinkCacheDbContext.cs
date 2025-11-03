@@ -8,6 +8,10 @@ namespace TuneBridge.Domain.Implementations.Database {
     /// </summary>
     public class MediaLinkCacheDbContext : DbContext {
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MediaLinkCacheDbContext"/> class.
+        /// </summary>
+        /// <param name="options">The database context configuration options.</param>
         public MediaLinkCacheDbContext( DbContextOptions<MediaLinkCacheDbContext> options )
             : base( options ) {
         }
@@ -22,6 +26,7 @@ namespace TuneBridge.Domain.Implementations.Database {
         /// </summary>
         public DbSet<InputLinkEntry> InputLinks { get; set; }
 
+        /// <inheritdoc/>
         protected override void OnModelCreating( ModelBuilder modelBuilder ) {
             base.OnModelCreating( modelBuilder );
 
