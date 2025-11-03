@@ -35,4 +35,28 @@
  });
  apply(get());
 })();
+
+// Populate auth area (Login/Register or Logout) on every page
+(function(){
+ const userArea = document.getElementById('userArea');
+ if(!userArea) return;
+ async function refresh(){
+ try {
+ const res = await fetch('/account/status', { credentials: 'same-origin' });
+ const data = await res.json();
+ if(data.isAuthenticated){
+ userArea.innerHTML = '<button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
+ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+ try { await fetch('/account/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+ location.reload();
+ });
+ } else {
+ userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
+ }
+ } catch {
+ userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
+ }
+ }
+ refresh();
+})();
 </script>

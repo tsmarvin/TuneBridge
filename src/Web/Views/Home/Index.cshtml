@@ -81,27 +81,15 @@
  const titleRow = $('titleRow');
 
  let isAuthenticated = false;
- const userArea = document.getElementById('userArea');
 
- fetch('/account/status')
+ // Check auth status to enable/disable protected modes
+ fetch('/account/status', { credentials: 'same-origin' })
  .then(res => res.json())
  .then(data => { isAuthenticated = data.isAuthenticated; updateUI(); })
  .catch(() => { isAuthenticated = false; updateUI(); });
 
  function updateUI() {
- if (userArea) {
- if (isAuthenticated) {
- userArea.innerHTML = '<button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
- document.getElementById('logoutBtn')?.addEventListener('click', async () => {
- await fetch('/account/logout', { method: 'POST' });
- window.location.reload();
- });
- } else {
- userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
- }
- }
-
- // disable protected radios + show hover hint when logged out
+ // disable protected radios + show hint when logged out
  ['isrc','upc','title'].forEach(mode => {
  const radio = document.getElementById(radioIds[mode]);
  const label = document.querySelector(`label[for="${radioIds[mode]}"]`);
