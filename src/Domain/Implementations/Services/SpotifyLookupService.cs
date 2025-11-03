@@ -23,8 +23,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         JsonSerializerOptions serializerOptions
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
 
+        /// <inheritdoc/>
         public override SupportedProviders Provider => SupportedProviders.Spotify;
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc )
             => ParseSpotifyResponse(
                 await NewMusicApiRequest( SpotifyLinkParser.GetTracksIsrcURI( isrc ), IsrcLookupKey ),
@@ -33,6 +35,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
             => ParseSpotifyResponse(
                 await NewMusicApiRequest( SpotifyLinkParser.GetAlbumUpcURI( upc ), UpcLookupKey ),
@@ -41,6 +44,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseSpotifyArtistList(
                 await NewMusicApiRequest(
@@ -99,6 +103,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
             (bool result, SpotifyEntity kind, string id) = await SpotifyLinkParser.TryParseUriAsync( uri );
             if (result) {

@@ -38,6 +38,14 @@ namespace TuneBridge.Domain.Implementations.Services {
         private readonly SemaphoreSlim _authLock = new( 1, 1 );
         private bool _isAuthenticated;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="BlueskyStorageService"/> class.
+        /// </summary>
+        /// <param name="pdsUrl">The Bluesky PDS URL (currently only https://bsky.social is supported).</param>
+        /// <param name="identifier">The Bluesky account identifier (handle or DID).</param>
+        /// <param name="password">The Bluesky app password.</param>
+        /// <param name="logger">Logger for diagnostic information.</param>
+        /// <exception cref="NotSupportedException">Thrown if pdsUrl is not the default Bluesky PDS.</exception>
         public BlueskyStorageService(
             string pdsUrl,
             string identifier,

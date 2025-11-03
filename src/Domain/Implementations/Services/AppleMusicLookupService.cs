@@ -28,10 +28,12 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// </summary>
         public const string DefaultStorefront = "us";
 
+        /// <inheritdoc/>
         public override SupportedProviders Provider => SupportedProviders.AppleMusic;
 
         #region IMusicLookupService Public
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc ) =>
             ParseAppleMusicResponse(
                 await NewMusicApiRequest( AppleMusicLinkParser.GetSongsIsrcURI( DefaultStorefront, isrc ), IsrcLookupKey ),
@@ -41,6 +43,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
             => ParseAppleMusicResponse(
                 await NewMusicApiRequest( AppleMusicLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), UpcLookupKey ),
@@ -50,6 +53,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseAppleMusicArtistList(
                 await NewMusicApiRequest(
@@ -91,6 +95,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri )
             => AppleMusicLinkParser.TryParseUri( uri, out string requestUri, out string storefront, out bool isAlbum )
                 ? ParseAppleMusicResponse(
