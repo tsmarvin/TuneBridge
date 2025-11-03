@@ -50,19 +50,100 @@ namespace TuneBridge.Configuration {
             this IServiceCollection services,
             IConfiguration config
         ) {
-            AppSettings settings = new();
+            AppSettings settings = new( );
             config.GetRequiredSection( "TuneBridge" ).Bind( settings );
-            _ = services.AddSingleton( new JsonSerializerOptions { WriteIndented = true } );
 
-            // Add in-memory cache for rate limiting and general caching scenarios
+            // Common singletons and caching
+            _ = services.AddSingleton( new JsonSerializerOptions { WriteIndented = true } );
             _ = services.AddMemoryCache( );
 
-            // Configure SQLite database for Identity
+            ConfigureDatabases( services, settings );
+            ConfigureIdentity( services );
+            ConfigureApiKeyAuth( services, settings );
+            ConfigureSwagger( services );
+
+            // Misc domain services
+            _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>( );
+
+            // Optional Bluesky storage and cache services
+            ConfigureBlueskyIfEnabled( services, settings );
+
+            // Provider registrations (Apple/Spotify/Tidal)
+            HashSet<SupportedProviders> enabledProviders = RegisterMusicProviders( services, settings );
+
+            // Validate at least one provider
+            if (enabledProviders.Count == 0) {
+                throw new InvalidOperationException( "Required settings are missing. Cannot add TuneBridge services if no IMusicLookupService(s) are available." );
+            }
+
+            // MediaLink services (base + optional cache wrapper)
+            RegisterMediaLinkService( services, enabledProviders, settings );
+            _ = services.AddSingleton( enabledProviders );
+
+            // Discord configuration
+            _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
+            ConfigureDiscordIfEnabled( services, settings );
+
+            return services;
+        }
+
+        /// <summary>
+        /// Initializes the SQLite database for caching if Bluesky PDS is configured.
+        /// </summary>
+        /// <param name="serviceProvider">The service provider to use for resolving services.</param>
+        public static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
+            try {
+                // Create a scope to resolve services properly
+                using IServiceScope scope = serviceProvider.CreateScope( );
+                IDbContextFactory<MediaLinkCacheDbContext>? factory = scope.ServiceProvider.GetService<IDbContextFactory<MediaLinkCacheDbContext>>( );
+                if (factory is not null) {
+                    using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
+                    _ = dbContext.Database.EnsureCreated( );
+                    ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                    logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
+                }
+            } catch (Exception ex) {
+                ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                logger.LogError( ex, "Failed to initialize SQLite cache database" );
+            }
+        }
+
+        /// <summary>
+        /// Adds a standard http client resilience pipeline to the builder, configuring retry and timeout policies.
+        /// </summary>
+        /// <param name="builder">The HTTP client builder to configure.</param>
+        /// <returns>The configured <see cref="IHttpStandardResiliencePipelineBuilder"/>.</returns>
+        internal static IHttpStandardResiliencePipelineBuilder AddStandardResilience( this IHttpClientBuilder builder ) {
+            return builder.AddStandardResilienceHandler( options => {
+                options.Retry.BackoffType = DelayBackoffType.Exponential;
+                options.Retry.UseJitter = true;
+                options.Retry.MaxRetryAttempts = 5;
+                options.Retry.Delay = TimeSpan.FromSeconds( 1 );
+                options.Retry.MaxDelay = TimeSpan.FromSeconds( 30 );
+                options.Retry.ShouldRetryAfterHeader = true; // honor Retry-After
+
+                options.Retry.DisableForUnsafeHttpMethods( ); // Disables retry on POST/PUT/PATCH/DELETE/CONNECT
+
+                // Timeouts (outer total, inner per-attempt)
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds( 20 );
+                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 10 );
+            } );
+        }
+
+        // ===== Private helpers =====
+
+        private static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
             _ = services.AddDbContext<ApplicationDbContext>( options =>
                 options.UseSqlite( settings.ConnectionString )
             );
 
-            // Configure ASP.NET Identity with custom user
+            // Register a factory for MediaLinkCacheDbContext to be consumed from singleton services safely
+            _ = services.AddDbContextFactory<MediaLinkCacheDbContext>(
+                opts => opts.UseSqlite( settings.CacheDbPath )
+            );
+        }
+
+        private static void ConfigureIdentity( IServiceCollection services ) {
             _ = services.AddIdentityCore<ApplicationUser>( options => {
                 // Password settings
                 options.Password.RequireDigit = true;
@@ -78,7 +159,9 @@ namespace TuneBridge.Configuration {
             .AddEntityFrameworkStores<ApplicationDbContext>( )
             .AddSignInManager( )
             .AddDefaultTokenProviders( );
+        }
 
+        private static void ConfigureApiKeyAuth( IServiceCollection services, AppSettings settings ) {
             // Configure API Key hashing
             if (string.IsNullOrWhiteSpace( settings.ApiKeySalt )) {
                 throw new InvalidOperationException( "ApiKeySalt is required in configuration for secure API key storage." );
@@ -106,8 +189,9 @@ namespace TuneBridge.Configuration {
             .AddIdentityCookies( ); // Add cookie authentication for web UI
 
             _ = services.AddAuthorization( );
+        }
 
-            // Configure Swagger/OpenAPI
+        private static void ConfigureSwagger( IServiceCollection services ) {
             _ = services.AddEndpointsApiExplorer( );
             _ = services.AddSwaggerGen( options => {
                 options.SwaggerDoc( "v1", new OpenApiInfo {
@@ -149,26 +233,53 @@ namespace TuneBridge.Configuration {
                     options.IncludeXmlComments( xmlPath );
                 }
             } );
+        }
 
-            HashSet<SupportedProviders> enabledProviders = [];
+        private static void ConfigureBlueskyIfEnabled( IServiceCollection services, AppSettings settings ) {
+            if (!string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
+                !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
+                !string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
+                _ = services.AddSingleton<IBlueskyStorageService>( s =>
+                    new BlueskyStorageService(
+                        settings.BlueskyPdsUrl,
+                        settings.BlueskyIdentifier,
+                        settings.BlueskyPassword,
+                        s.GetRequiredService<ILogger<BlueskyStorageService>>( )
+                    )
+                );
 
-            // Build a temporary service provider to get ILogger for startup messages
-            using ServiceProvider tempProvider = services.BuildServiceProvider();
-            ILoggerFactory loggerFactory = tempProvider.GetRequiredService<ILoggerFactory>( );
-            ILogger logger = loggerFactory.CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                // Register cache service as singleton using DbContextFactory so it is root-safe
+                _ = services.AddSingleton<IMediaLinkCacheService>( s => new MediaLinkCacheService(
+                    s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
+                    s.GetRequiredService<IBlueskyStorageService>( ),
+                    s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
+                    settings.CacheDays
+                ) );
+            }
+        }
 
-            // Register Apple Music if credentials are present.
+        private static HashSet<SupportedProviders> RegisterMusicProviders( IServiceCollection services, AppSettings settings ) {
+            HashSet<SupportedProviders> enabledProviders = [ ];
+
+            RegisterAppleIfConfigured( services, settings, enabledProviders );
+            RegisterSpotifyIfConfigured( services, settings, enabledProviders );
+            RegisterTidalIfConfigured( services, settings, enabledProviders );
+
+            return enabledProviders;
+        }
+
+        private static void RegisterAppleIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
             if (string.IsNullOrWhiteSpace( settings.AppleTeamId ) == false &&
-                string.IsNullOrWhiteSpace( settings.AppleKeyId ) == false
-            ) {
+                string.IsNullOrWhiteSpace( settings.AppleKeyId ) == false) {
+
                 // Fail fast if missing required apple key file.
-                FileInfo keyPath = new(settings.AppleKeyPath);
+                FileInfo keyPath = new( settings.AppleKeyPath );
                 if (!keyPath.Exists) {
                     throw new FileNotFoundException( $"Missing .p8 file at: {keyPath.FullName}" );
                 }
 
                 // Fail fast if apple key file is empty.
-                string keyContents = File.ReadAllText(keyPath.FullName);
+                string keyContents = File.ReadAllText( keyPath.FullName );
                 if (string.IsNullOrWhiteSpace( keyContents )) {
                     throw new InvalidDataException( $".p8 file missing contents at: {keyPath.FullName}" );
                 }
@@ -181,14 +292,13 @@ namespace TuneBridge.Configuration {
                 _ = services.AddTransient<AppleMusicLookupService>( );
 
                 _ = enabledProviders.Add( SupportedProviders.AppleMusic );
-            } else {
-                logger.LogInformation( "TuneBridge: Music lookup service for Apple Music disabled due to invalid input credentials." );
             }
+        }
 
-            // Register Spotify if credentials are present.
+        private static void RegisterSpotifyIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
             if (string.IsNullOrWhiteSpace( settings.SpotifyClientId ) == false &&
-                string.IsNullOrWhiteSpace( settings.SpotifyClientSecret ) == false
-            ) {
+                string.IsNullOrWhiteSpace( settings.SpotifyClientSecret ) == false) {
+
                 _ = services.AddHttpClient( "spotify-auth", c => {
                     c.BaseAddress = new Uri( "https://accounts.spotify.com/" );
                 } ).AddStandardResilience( );
@@ -202,14 +312,13 @@ namespace TuneBridge.Configuration {
                 _ = services.AddTransient<SpotifyLookupService>( );
 
                 _ = enabledProviders.Add( SupportedProviders.Spotify );
-            } else {
-                logger.LogInformation( "TuneBridge: Music lookup service for Spotify disabled due to invalid input credentials." );
             }
+        }
 
-            // Register Tidal if credentials are present.
+        private static void RegisterTidalIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
             if (string.IsNullOrWhiteSpace( settings.TidalClientId ) == false &&
-                string.IsNullOrWhiteSpace( settings.TidalClientSecret ) == false
-            ) {
+                string.IsNullOrWhiteSpace( settings.TidalClientSecret ) == false) {
+
                 _ = services.AddHttpClient( "tidal-auth", c => {
                     c.BaseAddress = new Uri( "https://auth.tidal.com/" );
                 } ).AddStandardResilience( );
@@ -223,16 +332,10 @@ namespace TuneBridge.Configuration {
                 _ = services.AddTransient<TidalLookupService>( );
 
                 _ = enabledProviders.Add( SupportedProviders.Tidal );
-            } else {
-                logger.LogInformation( "TuneBridge: Music lookup service for Tidal disabled due to invalid input credentials." );
             }
+        }
 
-            // Validate that at least one provider is enabled.
-            if (enabledProviders.Count == 0) {
-                throw new InvalidOperationException( "Required settings are missing. Cannot add TuneBridge services if no IMusicLookupService(s) are available." );
-            }
-
-            // Add the DefaultMediaLinkService with enabled IMusicLookupService(s).
+        private static void RegisterMediaLinkService( IServiceCollection services, HashSet<SupportedProviders> enabledProviders, AppSettings settings ) {
             _ = services.AddTransient<IMediaLinkService>( s => {
                 DefaultMediaLinkService baseService = new(
                     GetEnabledProviderServices( enabledProviders, s ),
@@ -241,92 +344,25 @@ namespace TuneBridge.Configuration {
                 );
 
                 // Wrap with caching if Bluesky is configured
-                if (!string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
+                return !string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
                     !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
-                    !string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
-
-                    MediaLinkCacheDbContext dbContext = s.GetRequiredService<MediaLinkCacheDbContext>( );
-                    IBlueskyStorageService blueskyStorage = s.GetRequiredService<IBlueskyStorageService>( );
-                    MediaLinkCacheService cacheService = new(
-                        dbContext,
-                        blueskyStorage,
-                        s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
-                        settings.CacheDays
-                    );
-
-                    return new CachedMediaLinkService(
+                    !string.IsNullOrWhiteSpace( settings.BlueskyPassword )
+                    ? new CachedMediaLinkService(
                         baseService,
-                        cacheService,
+                        s.GetRequiredService<IMediaLinkCacheService>( ),
                         s.GetRequiredService<ILogger<CachedMediaLinkService>>( )
-                    );
-                } else {
-                    logger.LogInformation( "TuneBridge: Bluesky PDS storage and caching disabled due to missing credentials." );
-                    return baseService;
-                }
-            } );
-            _ = services.AddSingleton( enabledProviders );
-
-            // Register OpenGraph card service
-            _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>( );
-
-            // Configure SQLite database for caching if Bluesky is enabled
-            if (!string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
-                !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
-                !string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
-
-                string dbPath = Path.IsPathRooted( settings.CacheDbPath )
-                    ? settings.CacheDbPath
-                    : Path.Combine( Path.GetDirectoryName( Environment.ProcessPath ) ?? ".", settings.CacheDbPath );
-
-                _ = services.AddDbContext<MediaLinkCacheDbContext>( options =>
-                    options.UseSqlite( $"Data Source={dbPath}" )
-                );
-
-                _ = services.AddSingleton<IBlueskyStorageService>( s =>
-                    new BlueskyStorageService(
-                        settings.BlueskyPdsUrl,
-                        settings.BlueskyIdentifier,
-                        settings.BlueskyPassword,
-                        s.GetRequiredService<ILogger<BlueskyStorageService>>( )
                     )
-                );
+                    : baseService;
+            } );
+        }
 
-                logger.LogInformation( "TuneBridge: Bluesky PDS storage and caching configured with database at: {path}", dbPath );
-            }
-
-            _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
-
-            // Register Discord if credentials are present.
+        private static void ConfigureDiscordIfEnabled( IServiceCollection services, AppSettings settings ) {
             if (string.IsNullOrWhiteSpace( settings.DiscordToken ) == false) {
                 _ = services.AddDiscordShardedGateway( options => {
                     options.Token = settings.DiscordToken;
                     options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
                 } );
                 _ = services.AddShardedGatewayHandlers( typeof( Program ).Assembly );
-            } else {
-                logger.LogInformation( "TuneBridge: Discord services disabled due to invalid input credentials." );
-            }
-
-            return services;
-        }
-
-        /// <summary>
-        /// Initializes the SQLite database for caching if Bluesky PDS is configured.
-        /// </summary>
-        /// <param name="serviceProvider">The service provider to use for resolving services.</param>
-        public static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
-            try {
-                // Create a scope to resolve scoped services properly
-                using IServiceScope scope = serviceProvider.CreateScope( );
-                MediaLinkCacheDbContext? dbContext = scope.ServiceProvider.GetService<MediaLinkCacheDbContext>( );
-                if (dbContext is not null) {
-                    _ = dbContext.Database.EnsureCreated( );
-                    ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
-                    logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
-                }
-            } catch (Exception ex) {
-                ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
-                logger.LogError( ex, "Failed to initialize SQLite cache database" );
             }
         }
 
@@ -343,7 +379,7 @@ namespace TuneBridge.Configuration {
             HashSet<SupportedProviders> enabledProviders,
             IServiceProvider serviceProvider
         ) {
-            Dictionary<SupportedProviders, IMusicLookupService> results = [];
+            Dictionary<SupportedProviders, IMusicLookupService> results = [ ];
             foreach (SupportedProviders provider in enabledProviders) {
                 switch (provider) {
                     case SupportedProviders.AppleMusic:
@@ -358,28 +394,6 @@ namespace TuneBridge.Configuration {
                 }
             }
             return results;
-        }
-
-        /// <summary>
-        /// Adds a standard http client resilience pipeline to the builder, configuring retry and timeout policies.
-        /// </summary>
-        /// <param name="builder">The HTTP client builder to configure.</param>
-        /// <returns>The configured <see cref="IHttpStandardResiliencePipelineBuilder"/>.</returns>
-        internal static IHttpStandardResiliencePipelineBuilder AddStandardResilience( this IHttpClientBuilder builder ) {
-            return builder.AddStandardResilienceHandler( options => {
-                options.Retry.BackoffType = DelayBackoffType.Exponential;
-                options.Retry.UseJitter = true;
-                options.Retry.MaxRetryAttempts = 5;
-                options.Retry.Delay = TimeSpan.FromSeconds( 1 );
-                options.Retry.MaxDelay = TimeSpan.FromSeconds( 30 );
-                options.Retry.ShouldRetryAfterHeader = true; // honor Retry-After
-
-                options.Retry.DisableForUnsafeHttpMethods( ); // Disables retry on POST/PUT/PATCH/DELETE/CONNECT
-
-                // Timeouts (outer total, inner per-attempt)
-                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds( 20 );
-                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 10 );
-            } );
         }
     }
 }

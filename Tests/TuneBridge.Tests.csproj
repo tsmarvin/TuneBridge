@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TuneBridge.csproj" />
+    <ProjectReference Include="..\src\TuneBridge.csproj" />
   </ItemGroup>
 
 </Project>

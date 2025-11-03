@@ -15,14 +15,14 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// </summary>
     /// <remarks>
     /// This service uses the idunno.Bluesky library to interact with Bluesky PDS.
-    /// MediaLinkResults are stored as custom media.tunebridge.lookup.result lexicon records.
+    /// MediaLinkResults are stored as custom media.tunebridge.dev.lookup.result lexicon records.
     /// </remarks>
     public class BlueskyStorageService : IBlueskyStorageService {
 
         /// <summary>
         /// The NSID (Namespaced Identifier) for the TuneBridge MediaLinkResult lexicon.
         /// </summary>
-        private static readonly Nsid MediaLinkResultCollection = new( "media.tunebridge.lookup.result" );
+        private static readonly Nsid MediaLinkResultCollection = new( "media.tunebridge.dev.lookup.result" );
 
         /// <summary>
         /// Static cached dictionary mapping provider strings to SupportedProviders enum values.
@@ -78,11 +78,11 @@ namespace TuneBridge.Domain.Implementations.Services {
                 AtProtoHttpResult<bool> loginResult = await _agent.Login( _identifier, _password );
                 if (!loginResult.Succeeded) {
                     string errorMsg = loginResult.AtErrorDetail?.Message ?? $"HTTP {loginResult.StatusCode}";
-                    throw new InvalidOperationException( $"Failed to authenticate with Bluesky PDS: {errorMsg}" );
+                    throw new InvalidOperationException( $"Failed to authenticate to PDS: {errorMsg}" );
                 }
 
                 _isAuthenticated = true;
-                _logger.LogInformation( "Successfully authenticated with Bluesky PDS" );
+                _logger.LogInformation( "Successfully authenticated to PDS" );
             } finally {
                 _ = _authLock.Release( );
             }

@@ -1,4 +1,4 @@
-namespace TuneBridge.Domain.Contracts.Entities {
+﻿namespace TuneBridge.Domain.Contracts.Entities {
 
     /// <summary>
     /// Represents a cached MediaLinkResult entry stored in the SQLite database.
@@ -13,7 +13,7 @@ namespace TuneBridge.Domain.Contracts.Entities {
         public int Id { get; set; }
 
         /// <summary>
-        /// The AT-URI of the record on Bluesky PDS (e.g., at://did:plc:xxx/media.tunebridge.lookup.result/yyy).
+        /// The AT-URI of the record on Bluesky PDS (e.g., at://did:plc:xxx/media.tunebridge.dev.lookup.result/yyy).
         /// </summary>
         public string RecordUri { get; set; } = string.Empty;
 

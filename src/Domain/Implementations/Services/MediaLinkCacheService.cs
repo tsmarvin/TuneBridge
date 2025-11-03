@@ -14,18 +14,18 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// </summary>
     public class MediaLinkCacheService : IMediaLinkCacheService {
 
-        private readonly MediaLinkCacheDbContext _dbContext;
+        private readonly IDbContextFactory<MediaLinkCacheDbContext> _dbContextFactory;
         private readonly IBlueskyStorageService _blueskyStorage;
         private readonly ILogger<MediaLinkCacheService> _logger;
         private readonly int _cacheDays;
 
         public MediaLinkCacheService(
-            MediaLinkCacheDbContext dbContext,
+            IDbContextFactory<MediaLinkCacheDbContext> dbContextFactory,
             IBlueskyStorageService blueskyStorage,
             ILogger<MediaLinkCacheService> logger,
             int cacheDays
         ) {
-            _dbContext = dbContext;
+            _dbContextFactory = dbContextFactory;
             _blueskyStorage = blueskyStorage;
             _logger = logger;
             _cacheDays = cacheDays;
@@ -37,8 +37,10 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Normalize the input link
                 string normalizedLink = LinkNormalizer.Normalize( inputLink );
 
+                using MediaLinkCacheDbContext dbContext = _dbContextFactory.CreateDbContext( );
+
                 // Check if we have a cache entry for this input link
-                InputLinkEntry? inputLinkEntry = await _dbContext.InputLinks
+                InputLinkEntry? inputLinkEntry = await dbContext.InputLinks
                     .Include( il => il.MediaLinkCacheEntry )
                     .FirstOrDefaultAsync( il => il.Link == normalizedLink );
 
@@ -54,8 +56,8 @@ namespace TuneBridge.Domain.Implementations.Services {
                 if (result is null) {
                     _logger.LogWarning( "Record not found on PDS, removing cache entry: {uri}", cacheEntry.RecordUri );
                     // Remove the cache entry if the record no longer exists on PDS
-                    _ = _dbContext.CacheEntries.Remove( cacheEntry );
-                    _ = await _dbContext.SaveChangesAsync( );
+                    _ = dbContext.CacheEntries.Remove( cacheEntry );
+                    _ = await dbContext.SaveChangesAsync( );
                     return null;
                 }
 
@@ -79,6 +81,8 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// <inheritdoc/>
         public async Task<string> CacheResultAsync( MediaLinkResult result, IEnumerable<string> inputLinks ) {
             try {
+                using MediaLinkCacheDbContext dbContext = _dbContextFactory.CreateDbContext( );
+
                 // Store on Bluesky PDS first
                 string recordUri = await _blueskyStorage.StoreMediaLinkResultAsync( result );
 
@@ -89,11 +93,11 @@ namespace TuneBridge.Domain.Implementations.Services {
                     LastLookedUpAt = DateTime.UtcNow
                 };
 
-                _ = _dbContext.CacheEntries.Add( cacheEntry );
-                _ = await _dbContext.SaveChangesAsync( );
+                _ = dbContext.CacheEntries.Add( cacheEntry );
+                _ = await dbContext.SaveChangesAsync( );
 
                 // Add input links with conflict handling
-                await AddLinksToEntryAsync( cacheEntry.Id, inputLinks );
+                await AddLinksToEntryAsync( dbContext, cacheEntry.Id, inputLinks );
 
                 _logger.LogInformation( "Cached result with input links to Bluesky record: {uri}", recordUri );
 
@@ -107,6 +111,8 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// <inheritdoc/>
         public async Task UpdateCacheEntryAsync( string recordUri, MediaLinkResult result, IEnumerable<string> inputLinks ) {
             try {
+                using MediaLinkCacheDbContext dbContext = _dbContextFactory.CreateDbContext( );
+
                 // Update the record on Bluesky PDS
                 bool updated = await _blueskyStorage.UpdateMediaLinkResultAsync( recordUri, result );
 
@@ -116,7 +122,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 }
 
                 // Find the cache entry by record URI
-                MediaLinkCacheEntry? cacheEntry = await _dbContext.CacheEntries
+                MediaLinkCacheEntry? cacheEntry = await dbContext.CacheEntries
                     .FirstOrDefaultAsync( ce => ce.RecordUri == recordUri );
 
                 if (cacheEntry is null) {
@@ -126,10 +132,10 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                 // Update the LastLookedUpAt timestamp
                 cacheEntry.LastLookedUpAt = DateTime.UtcNow;
-                _ = await _dbContext.SaveChangesAsync( );
+                _ = await dbContext.SaveChangesAsync( );
 
                 // Add any new input links
-                await AddLinksToEntryAsync( cacheEntry.Id, inputLinks );
+                await AddLinksToEntryAsync( dbContext, cacheEntry.Id, inputLinks );
 
                 _logger.LogInformation( "Updated cache entry with fresh lookup: {uri}", recordUri );
             } catch (Exception ex) {
@@ -141,8 +147,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// <inheritdoc/>
         public async Task AddInputLinksAsync( string recordUri, IEnumerable<string> newLinks ) {
             try {
+                using MediaLinkCacheDbContext dbContext = _dbContextFactory.CreateDbContext( );
+
                 // Find the cache entry by record URI
-                MediaLinkCacheEntry? cacheEntry = await _dbContext.CacheEntries
+                MediaLinkCacheEntry? cacheEntry = await dbContext.CacheEntries
                     .FirstOrDefaultAsync( ce => ce.RecordUri == recordUri );
 
                 if (cacheEntry is null) {
@@ -152,7 +160,7 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                 // Add new input links to the SQLite cache for lookup
                 // Note: Input links are NOT stored on PDS for user privacy
-                await AddLinksToEntryAsync( cacheEntry.Id, newLinks );
+                await AddLinksToEntryAsync( dbContext, cacheEntry.Id, newLinks );
 
                 _logger.LogInformation( "Added new input links to cache entry: {uri}", recordUri );
             } catch (Exception ex) {
@@ -165,7 +173,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// Helper method to add links to a cache entry with conflict handling.
         /// Batches all adds and saves once to reduce database I/O.
         /// </summary>
-        private async Task AddLinksToEntryAsync( int cacheEntryId, IEnumerable<string> links ) {
+        private async Task AddLinksToEntryAsync( MediaLinkCacheDbContext dbContext, int cacheEntryId, IEnumerable<string> links ) {
             List<string> normalizedLinks = links
                 .Select( LinkNormalizer.Normalize )
                 .Where( link => !string.IsNullOrEmpty( link ) ) // Filter out empty/null normalized links
@@ -177,7 +185,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             }
 
             // Fetch existing links to avoid conflicts
-            List<string> existingLinks = await _dbContext.InputLinks
+            List<string> existingLinks = await dbContext.InputLinks
                 .Where( il => normalizedLinks.Contains( il.Link ) )
                 .Select( il => il.Link )
                 .ToListAsync( );
@@ -195,9 +203,9 @@ namespace TuneBridge.Domain.Implementations.Services {
                 .ToList( );
 
             if (newEntries.Count > 0) {
-                _dbContext.InputLinks.AddRange( newEntries );
+                dbContext.InputLinks.AddRange( newEntries );
                 try {
-                    _ = await _dbContext.SaveChangesAsync( );
+                    _ = await dbContext.SaveChangesAsync( );
                 } catch (DbUpdateException ex) {
                     // Log the conflict for diagnostics (without logging user input for security)
                     _logger.LogWarning( ex, "Unique constraint violation when adding {LinkCount} input links to cache entry {CacheEntryId}. This typically occurs due to concurrent requests for the same links.",
@@ -205,7 +213,7 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                     // Detach conflicting entries to avoid tracking issues
                     foreach (InputLinkEntry? entry in newEntries) {
-                        _dbContext.Entry( entry ).State = EntityState.Detached;
+                        dbContext.Entry( entry ).State = EntityState.Detached;
                     }
 
                     // Could optionally re-query and retry only non-conflicting links, but for now we accept the race condition

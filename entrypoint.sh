@@ -59,7 +59,7 @@ cat > /app/appsettings.json <<EOF
     "DiscordToken": "$DISCORD_TOKEN",
     "ConnectionString": "$(escape_bs "$CONNECTION_STRING")",
     "ApiKeySalt": "$API_KEY_SALT",
-    "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR
+    "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR,
     "BlueskyPdsUrl": "$BLUESKY_PDS_URL",
     "BlueskyIdentifier": "$BLUESKY_IDENTIFIER",
     "BlueskyPassword": "$BLUESKY_PASSWORD",

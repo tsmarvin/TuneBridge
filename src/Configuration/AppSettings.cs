@@ -104,7 +104,7 @@
         /// <summary>
         /// The SQLite database file path for the cache. Default is "medialinkscache.db".
         /// </summary>
-        public string CacheDbPath { get; set; } = "medialinkscache.db";
+        public string CacheDbPath { get; set; } = "Data Source=medialinkscache.db";
 
         /// <summary>
         /// The base URL for the application (e.g., https://tunebridge.example.com). Used for generating OpenGraph card URLs.
