@@ -19,6 +19,11 @@ TIDAL_CLIENT_SECRET="${TIDAL_CLIENT_SECRET:-}"
 # Optional Discord bot token
 DISCORD_TOKEN="${DISCORD_TOKEN:-}"
 
+# Authentication and rate limiting configuration
+CONNECTION_STRING="${CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
+API_KEY_SALT="${API_KEY_SALT:-}"
+RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
+
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 
@@ -44,7 +49,10 @@ cat > /app/appsettings.json <<EOF
     "SpotifyClientSecret": "$SPOTIFY_CLIENT_SECRET",
     "TidalClientId": "$TIDAL_CLIENT_ID",
     "TidalClientSecret": "$TIDAL_CLIENT_SECRET",
-    "DiscordToken": "$DISCORD_TOKEN"
+    "DiscordToken": "$DISCORD_TOKEN",
+    "ConnectionString": "$(escape_bs "$CONNECTION_STRING")",
+    "ApiKeySalt": "$API_KEY_SALT",
+    "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR
   },
   "Logging": {
     "LogLevel": {

@@ -62,6 +62,11 @@ nunit-*.xml
 # Apple Private Keys
 *.[Pp]8
 
+# SQLite Database Files
+*.db
+*.db-shm
+*.db-wal
+
 # DocFX output
 _site/
 docs/api/

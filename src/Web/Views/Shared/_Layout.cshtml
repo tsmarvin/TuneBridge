@@ -1,0 +1,46 @@
+﻿@{
+ var title = ViewData["Title"] as string ?? string.Empty;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="utf-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>@title - TuneBridge</title>
+ <link rel="stylesheet" href="~/public/docfx.min.css">
+ <link rel="stylesheet" href="~/public/main.css">
+ <link rel="stylesheet" href="~/TuneBridge.styles.css">
+ <meta name="loc:themeLight" content="Light">
+ <meta name="loc:themeDark" content="Dark">
+ <meta name="loc:themeAuto" content="Auto">
+ <meta name="loc:changeTheme" content="Change theme">
+ <script type="module" src="~/public/docfx.min.js"></script>
+ <script>
+ // FOUC mitigation: Apply theme before page render
+ // NOTE: This logic must stay synchronized with docfx.min.js theme management
+ // If theme logic in docfx.min.js changes, update this inline script accordingly
+ const theme = localStorage.getItem('theme') || 'auto'
+ document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+ </script>
+</head>
+<body class="tex2jax_ignore" data-layout="">
+ @await Html.PartialAsync("_Header")
+
+ <main class="container-xxl mt-4">
+ <div class="content">
+ @RenderBody()
+ </div>
+ </main>
+
+ <footer class="bg-body border-top mt-4">
+ <div class="container-xxl">
+ <div class="flex-fill p-3">
+ <span>&copy;2025 Taylor Marvin</span>
+ <a href="/Home/Privacy">Privacy</a>
+ </div>
+ </div>
+ </footer>
+
+ @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

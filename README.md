@@ -6,6 +6,8 @@
 
 - 🎵 **Music Link Conversion**: Convert music links between Apple Music, Spotify, and Tidal
 - 🔍 **Multiple Lookup Methods**: Search by URL, ISRC, UPC, or title/artist
+- 🔐 **User Authentication**: Secure API access with user accounts and API keys
+- ⏱️ **Rate Limiting**: Fair usage enforcement (20 requests/hour per user)
 - 🤖 **Discord Bot Integration**: Automatically detect and convert music links in Discord messages
 - 🌐 **Web API**: RESTful API endpoints for programmatic access
 - 🖥️ **Web Interface**: Simple browser-based UI for manual lookups
@@ -141,24 +143,61 @@ The application will start on the default ASP.NET Core ports (usually 5000/5001)
 
 ## API Endpoints
 
+### Authentication Endpoints
+
+#### Register
+Create a new user account and receive an API key:
+```http
+POST /account/register
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123"
+}
+```
+
+Response:
+```json
+{
+  "userId": "...",
+  "apiKey": "YOUR_API_KEY_HERE",
+  "message": "Registration successful. Save your API key - it will not be shown again."
+}
+```
+
+#### Login
+Authenticate and retrieve your API key:
+```http
+POST /account/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123"
+}
+```
+
+#### Regenerate API Key
+Generate a new API key (requires authentication):
+```http
+POST /account/regenerate-api-key
+X-API-Key: YOUR_CURRENT_API_KEY
+```
+
 ### Web Interface
 - `GET /` - Web-based lookup interface
 
 ### Music Lookup API
 
+**Authentication Required**: All music lookup endpoints except `/music/lookup/url` require authentication via the `X-API-Key` header.
+
+**Rate Limiting**: Authenticated endpoints are rate-limited to 20 requests per hour per user. The public `/music/lookup/url` endpoint is not rate-limited.
+
 All endpoints accept POST requests with JSON payloads:
 
-#### Lookup by URL (List)
-```http
-POST /music/lookup/urlList
-Content-Type: application/json
-
-{
-  "uri": "https://music.apple.com/us/album/..."
-}
-```
-
-#### Lookup by URL (Streaming)
+#### Lookup by URL (Streaming) - PUBLIC
+No authentication required:
 ```http
 POST /music/lookup/url
 Content-Type: application/json
@@ -168,34 +207,68 @@ Content-Type: application/json
 }
 ```
 
-#### Lookup by ISRC
+#### Lookup by URL (List) - PROTECTED
+Requires authentication:
+```http
+POST /music/lookup/urlList
+Content-Type: application/json
+X-API-Key: YOUR_API_KEY
+
+{
+  "uri": "https://music.apple.com/us/album/..."
+}
+```
+
+#### Lookup by ISRC - PROTECTED
+Requires authentication:
 ```http
 POST /music/lookup/isrc
 Content-Type: application/json
+X-API-Key: YOUR_API_KEY
 
 {
   "isrc": "USVI20000123"
 }
 ```
 
-#### Lookup by UPC
+#### Lookup by UPC - PROTECTED
+Requires authentication:
 ```http
 POST /music/lookup/upc
 Content-Type: application/json
+X-API-Key: YOUR_API_KEY
 
 {
   "upc": "123456789012"
 }
 ```
 
-#### Lookup by Title/Artist
+#### Lookup by Title/Artist - PROTECTED
+Requires authentication:
 ```http
 POST /music/lookup/title
 Content-Type: application/json
+X-API-Key: YOUR_API_KEY
 
 {
   "title": "Song Name",
   "artist": "Artist Name"
+}
+```
+
+### Rate Limiting
+
+- **Limit**: 20 requests per hour per authenticated user
+- **Applies to**: All protected endpoints (isrc, upc, title, urlList)
+- **Exempt**: Public `/music/lookup/url` endpoint
+- **Response**: When limit is exceeded, returns HTTP 429 with `Retry-After` header indicating seconds until reset
+
+Example rate limit response:
+```json
+{
+  "error": "Rate limit exceeded",
+  "message": "Maximum 20 requests per hour allowed. Please try again in 45 minutes.",
+  "retryAfter": 2700
 }
 ```
 
