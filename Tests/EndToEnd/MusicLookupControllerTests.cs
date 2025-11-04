@@ -1,10 +1,15 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Web.Controllers;
@@ -214,21 +219,21 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
 /// <summary>
 /// Test authentication handler that always succeeds for integration tests.
 /// </summary>
-public class TestAuthHandler : Microsoft.AspNetCore.Authentication.AuthenticationHandler<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions> {
+public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions> {
     public TestAuthHandler(
-        Microsoft.Extensions.Options.IOptionsMonitor<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions> options,
-        Microsoft.Extensions.Logging.ILoggerFactory logger,
-        System.Text.Encodings.Web.UrlEncoder encoder )
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder )
         : base( options, logger, encoder ) {
     }
 
-    protected override Task<Microsoft.AspNetCore.Authentication.AuthenticateResult> HandleAuthenticateAsync( ) {
-        System.Security.Claims.Claim[] claims = [ new System.Security.Claims.Claim( System.Security.Claims.ClaimTypes.Name, "TestUser" ) ];
-        System.Security.Claims.ClaimsIdentity identity = new( claims, "Test" );
-        System.Security.Claims.ClaimsPrincipal principal = new( identity );
-        Microsoft.AspNetCore.Authentication.AuthenticationTicket ticket = new( principal, "Test" );
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync( ) {
+        Claim[] claims = [ new Claim( ClaimTypes.Name, "TestUser" ) ];
+        ClaimsIdentity identity = new( claims, "Test" );
+        ClaimsPrincipal principal = new( identity );
+        AuthenticationTicket ticket = new( principal, "Test" );
 
-        Microsoft.AspNetCore.Authentication.AuthenticateResult result = Microsoft.AspNetCore.Authentication.AuthenticateResult.Success( ticket );
+        AuthenticateResult result = AuthenticateResult.Success( ticket );
 
         return Task.FromResult( result );
     }
