@@ -77,3 +77,15 @@ obj/.cache/
 medialinkscache.db
 medialinkscache.db-shm
 medialinkscache.db-wal
+
+# Docker and environment files
+.env
+docker-compose.override.yml
+
+# Secrets directory
+secrets/
+
+# Caddy data
+caddy-data/
+caddy-config/
+caddy-logs/

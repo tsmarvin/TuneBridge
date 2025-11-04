@@ -101,7 +101,40 @@ If you want to store lookup results on a Bluesky PDS for persistent caching:
 
 ## Running the Application
 
-### Using Docker (Recommended)
+### Using Docker Compose (Recommended)
+
+The easiest way to run TuneBridge is with Docker Compose, which includes Caddy as a secure reverse proxy with automatic HTTPS.
+
+1. **Quick setup:**
+   ```bash
+   # Clone the repository
+   git clone https://github.com/tsmarvin/TuneBridge.git
+   cd TuneBridge
+   
+   # Set up secrets directory and files
+   ./setup-secrets.sh
+   
+   # Edit secret files with your actual credentials
+   nano secrets/apple_key.p8
+   nano secrets/spotify_client_secret.txt
+   # ... etc
+   
+   # Configure environment variables
+   cp .env.example .env
+   nano .env
+   
+   # Start the application
+   docker-compose up -d
+   ```
+
+2. **Access the application:**
+   - HTTPS: `https://localhost` (or your configured domain)
+   - HTTP: `http://localhost` (redirects to HTTPS)
+   - Direct access: `http://localhost:10000`
+
+For detailed deployment instructions, security best practices, and troubleshooting, see [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md).
+
+### Using Docker (Manual)
 
 1. Set your environment variables:
 ```bash
