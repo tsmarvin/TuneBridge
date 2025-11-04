@@ -420,15 +420,59 @@ The bot now uses OpenGraph cards instead of Discord-specific embeds, making the 
 
 ## Deployment
 
-### Public Hosting
+### Docker Compose (Recommended)
 
-The application exposes port `10000` by default and is designed to be deployed behind a reverse proxy. Common deployment options include:
+TuneBridge includes a complete Docker Compose setup with Caddy as a secure reverse proxy:
 
-- Container platforms (Docker, Kubernetes)
-- Cloud services (Azure Container Apps, AWS ECS, Google Cloud Run)
-- Platform-as-a-Service (Heroku, Railway, Render)
+**Features:**
+- 🔒 Automatic HTTPS with Let's Encrypt
+- 🛡️ Security headers (HSTS, CSP, X-Frame-Options)
+- 🔑 Docker secrets for credential management
+- 📊 Health checks and monitoring
+- 📦 One-command deployment
 
-**Note**: Public hosting location is TBD.
+**Quick deployment:**
+```bash
+git clone https://github.com/tsmarvin/TuneBridge.git
+cd TuneBridge
+./setup-secrets.sh
+# Edit secrets/ with your credentials
+cp .env.example .env
+# Edit .env with your configuration
+docker-compose up -d
+```
+
+**Documentation:**
+- 📖 [Quick Start Guide](QUICKSTART.md) - Get running in 5 minutes
+- 📚 [Deployment Guide](DOCKER_DEPLOYMENT.md) - Production deployment, security, troubleshooting
+
+### Docker (Manual)
+
+For manual Docker deployments without Docker Compose:
+
+```bash
+docker build -t tunebridge .
+docker run -p 80:80 -p 443:443 \
+  -e DOMAIN=yourdomain.com \
+  -e APPLE_TEAM_ID=... \
+  -e SPOTIFY_CLIENT_ID=... \
+  -v /path/to/secrets:/run/secrets:ro \
+  tunebridge
+```
+
+The container includes both TuneBridge and Caddy, exposing:
+- Port 80: HTTP (redirects to HTTPS)
+- Port 443: HTTPS with automatic TLS
+- Port 10000: TuneBridge (internal only)
+
+### Kubernetes / Cloud Platforms
+
+The Docker image works with:
+- Kubernetes (use Secrets for credentials)
+- Azure Container Apps
+- AWS ECS / Fargate
+- Google Cloud Run
+- Any container platform supporting Docker
 
 ## Testing
 
