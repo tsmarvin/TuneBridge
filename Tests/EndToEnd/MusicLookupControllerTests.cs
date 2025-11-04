@@ -190,6 +190,13 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
 
             _ = config.AddInMemoryCollection( configData );
         } );
+
+        // Configure test services
+        _ = builder.ConfigureServices( services => {
+            // Add a fake authentication handler for tests to bypass authorization
+            _ = services.AddAuthentication( "Test" )
+                .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestAuthHandler>( "Test", options => { } );
+        } );
     }
 
     protected void RegisterUser( ) {
@@ -201,5 +208,28 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
 
         // return the apikey to the caller to be used in future requests.
 
+    }
+}
+
+/// <summary>
+/// Test authentication handler that always succeeds for integration tests.
+/// </summary>
+public class TestAuthHandler : Microsoft.AspNetCore.Authentication.AuthenticationHandler<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions> {
+    public TestAuthHandler(
+        Microsoft.Extensions.Options.IOptionsMonitor<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions> options,
+        Microsoft.Extensions.Logging.ILoggerFactory logger,
+        System.Text.Encodings.Web.UrlEncoder encoder )
+        : base( options, logger, encoder ) {
+    }
+
+    protected override Task<Microsoft.AspNetCore.Authentication.AuthenticateResult> HandleAuthenticateAsync( ) {
+        System.Security.Claims.Claim[] claims = [ new System.Security.Claims.Claim( System.Security.Claims.ClaimTypes.Name, "TestUser" ) ];
+        System.Security.Claims.ClaimsIdentity identity = new( claims, "Test" );
+        System.Security.Claims.ClaimsPrincipal principal = new( identity );
+        Microsoft.AspNetCore.Authentication.AuthenticationTicket ticket = new( principal, "Test" );
+
+        Microsoft.AspNetCore.Authentication.AuthenticateResult result = Microsoft.AspNetCore.Authentication.AuthenticateResult.Success( ticket );
+
+        return Task.FromResult( result );
     }
 }

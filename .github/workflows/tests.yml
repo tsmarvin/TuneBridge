@@ -50,10 +50,14 @@ jobs:
               -e 's/"{TidalClientId}"/"${{ secrets.TIDALCLIENTID }}"/g' \
               -e 's/"{TidalClientSecret}"/"${{ secrets.TIDALCLIENTSECRET }}"/g' \
               -e 's/"{DiscordToken}"/""/g' \
+              -e 's/"{ApiKeySalt}"/"${{ secrets.APIKEYSALT }}"/g' \
+              -e 's/"{BlueskyPdsUrl}"/""/g' \
+              -e 's/"{BlueskyIdentifier}"/""/g' \
+              -e 's/"{BlueskyPassword}"/""/g' \
               -e 's/"{Default_LogLevel}"/"Information"/g' \
               -e 's/"{Hosting_LogLevel}"/"Information"/g' \
               -e 's/"{Allowed_Hosts}"/"*"/g' \
-              appsettings.transform.json > TuneBridge.Tests/bin/Release/net9.0/appsettings.json
+              appsettings.transform.json > Tests/bin/Release/net9.0/appsettings.json
 
       - name: Run Unit Tests
         run: dotnet test TuneBridge.Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
