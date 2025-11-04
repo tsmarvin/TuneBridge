@@ -2,6 +2,24 @@
 
 **TuneBridge** is a cross-platform music link converter and lookup service that bridges Apple Music, Spotify, and Tidal. It provides both a web interface and a Discord bot for seamless music sharing across different streaming platforms.
 
+## Quick Start
+
+**Get started in 5 minutes with Docker Compose:**
+
+```bash
+git clone https://github.com/tsmarvin/TuneBridge.git
+cd TuneBridge
+./setup-secrets.sh
+# Edit secrets/ files with your credentials
+cp .env.example .env
+# Edit .env with your configuration
+docker-compose up -d
+```
+
+Then visit: **https://localhost**
+
+📖 **[Complete Quick Start Guide →](QUICKSTART.md)**
+
 ## Features
 
 - 🎵 **Music Link Conversion**: Convert music links between Apple Music, Spotify, and Tidal

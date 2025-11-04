@@ -61,10 +61,11 @@
 
     # Reverse proxy to TuneBridge application
     reverse_proxy localhost:10000 {
-        # Health check endpoint
-        health_uri /health
-        health_interval 10s
-        health_timeout 5s
+        # Health check endpoint (optional - comment out if /health endpoint doesn't exist)
+        # Uncomment the following lines to enable health checks:
+        # health_uri /health
+        # health_interval 10s
+        # health_timeout 5s
         
         # Pass real client IP
         header_up X-Real-IP {remote_host}
