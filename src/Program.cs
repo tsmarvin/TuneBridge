@@ -23,7 +23,7 @@ namespace TuneBridge {
 
             _ = builder
                 .Configuration
-                .ConfigureAppSettings( args );
+                .ConfigureAppSettings( args, builder.Environment.EnvironmentName );
 
             // Add services to the container.
             _ = builder

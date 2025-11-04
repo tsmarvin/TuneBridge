@@ -171,31 +171,25 @@ public class MusicLookupControllerTests {
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
-
-        // Arrange
-        Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:SpotifyClientId"] = "test",
-            ["TuneBridge:SpotifyClientSecret"] = "test",
-            ["TuneBridge:DiscordToken"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = $"Data Source=Identity_${Guid.NewGuid()};Mode=Memory",
-            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
-            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
-            ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
-        };
-
-        IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configData)
-            .Build();
-
-        ServiceCollection services = new();
-        _ = services.AddSingleton<IConfiguration>( configuration );
-        _ = services.AddLogging( );
-
         _ = builder.UseEnvironment( "Testing" );
 
-        _ = services.AddTuneBridgeServices( configuration );
+        // Override configuration to inject test values
+        _ = builder.ConfigureAppConfiguration( ( context, config ) => {
+            // Add in-memory configuration with test values at the end so it overrides appsettings.json
+            Dictionary<string, string?> configData = new( ) {
+                ["TuneBridge:SpotifyClientId"] = "test",
+                ["TuneBridge:SpotifyClientSecret"] = "test",
+                ["TuneBridge:DiscordToken"] = string.Empty,
+                ["TuneBridge:ConnectionString"] = $"Data Source=Identity_{Guid.NewGuid()};Mode=Memory;Cache=Shared",
+                ["TuneBridge:ApiKeySalt"] = "test_api_key_salt",
+                ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
+                ["TuneBridge:BlueskyIdentifier"] = string.Empty,
+                ["TuneBridge:BlueskyPassword"] = string.Empty,
+                ["TuneBridge:CacheDbPath"] = $"Data Source=LinkCache_{Guid.NewGuid()};Mode=Memory;Cache=Shared",
+            };
+
+            _ = config.AddInMemoryCollection( configData );
+        } );
     }
 
     protected void RegisterUser( ) {

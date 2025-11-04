@@ -26,18 +26,31 @@ namespace TuneBridge.Configuration {
         /// </summary>
         /// <param name="config">The configuration builder to extend.</param>
         /// <param name="args">Command line arguments passed to the application.</param>
+        /// <param name="environment">Optional environment name for loading environment-specific configuration.</param>
         /// <returns>The updated <see cref="IConfigurationBuilder"/>.</returns>
         public static IConfigurationBuilder ConfigureAppSettings(
             this IConfigurationBuilder config,
-            string[] args
+            string[] args,
+            string? environment = null
         ) {
-            return config.AddCommandLine( args )
+            _ = config.AddCommandLine( args )
                 .AddEnvironmentVariables( )
                 .AddJsonFile(
                     path: "appsettings.json",
                     optional: false,
                     reloadOnChange: true
                 );
+
+            // Add environment-specific appsettings if environment is specified
+            if (!string.IsNullOrWhiteSpace( environment )) {
+                _ = config.AddJsonFile(
+                    path: $"appsettings.{environment}.json",
+                    optional: true,
+                    reloadOnChange: true
+                );
+            }
+
+            return config;
         }
 
         /// <summary>
