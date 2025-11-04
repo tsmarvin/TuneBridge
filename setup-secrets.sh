@@ -64,7 +64,7 @@ create_secret_file "$SECRETS_DIR/bluesky_password.txt" \
 
 create_secret_file "$SECRETS_DIR/api_key_salt.txt" \
     "API key salt (random string for security)" \
-    "$(openssl rand -base64 32 2>/dev/null || echo 'your_random_salt_here')"
+    "$(openssl rand -base64 32 2>/dev/null || echo 'REPLACE_WITH_RANDOM_SALT_DO_NOT_USE_THIS_DEFAULT')"
 
 echo ""
 echo "=========================================="
@@ -73,8 +73,11 @@ echo "=========================================="
 echo ""
 echo "Next steps:"
 echo "1. Edit the secret files in $SECRETS_DIR/ with your actual credentials"
-echo "2. Copy .env.example to .env and configure your environment variables"
-echo "3. Run 'docker-compose up -d' to start TuneBridge"
+echo "2. IMPORTANT: Verify that api_key_salt.txt contains a random value"
+echo "   If it says 'REPLACE_WITH_RANDOM_SALT', generate a new salt:"
+echo "   openssl rand -base64 32 > $SECRETS_DIR/api_key_salt.txt"
+echo "3. Copy .env.example to .env and configure your environment variables"
+echo "4. Run 'docker-compose up -d' to start TuneBridge"
 echo ""
 echo "Important security notes:"
 echo "• The secrets directory is excluded from git via .gitignore"

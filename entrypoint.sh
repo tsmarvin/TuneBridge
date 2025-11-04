@@ -104,8 +104,17 @@ echo "Starting Caddy reverse proxy..."
 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
 CADDY_PID=$!
 
+# Set up signal handlers for graceful shutdown
+trap 'echo "Shutting down..."; kill -TERM $CADDY_PID 2>/dev/null; wait $CADDY_PID' SIGTERM SIGINT
+
 # Give Caddy a moment to start
 sleep 2
+
+# Check if Caddy is running
+if ! kill -0 $CADDY_PID 2>/dev/null; then
+    echo "ERROR: Caddy failed to start"
+    exit 1
+fi
 
 # 4) Launch the TuneBridge application
 echo "Starting TuneBridge application..."
