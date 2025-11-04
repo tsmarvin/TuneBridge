@@ -187,10 +187,10 @@ namespace TuneBridge.Domain.Implementations.Services {
             if (element.TryGetProperty( "artists", out JsonElement artistsProps )) {
                 if (artistsProps.GetArrayLength( ) > 0) {
                     result = artistsProps
- .EnumerateArray( )
- .First( )
- .GetProperty( "name" )
- .GetString( ) ?? string.Empty;
+                             .EnumerateArray( )
+                             .First( )
+                             .GetProperty( "name" )
+                             .GetString( ) ?? string.Empty;
                 }
             }
             return result;
@@ -212,15 +212,15 @@ namespace TuneBridge.Domain.Implementations.Services {
                 result.Artist = GetArtistName( element );
 
                 result.Title = element
- .GetProperty( "name" )
- .GetString( ) ?? string.Empty;
+                                 .GetProperty( "name" )
+                                 .GetString( ) ?? string.Empty;
 
                 result.ExternalId = GetExternalIdFromJson( element, isAlbum );
 
                 result.URL = element
- .GetProperty( "external_urls" )
- .GetProperty( "spotify" )
- .GetString( ) ?? string.Empty;
+                             .GetProperty( "external_urls" )
+                             .GetProperty( "spotify" )
+                             .GetString( ) ?? string.Empty;
 
                 switch (kind) {
                     case SpotifyEntity.Album:
@@ -244,10 +244,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         private static string GetAlbumArtUrl( JsonElement element ) {
             if (element.TryGetProperty( "images", out JsonElement imagesProps )) {
                 if (imagesProps.GetArrayLength( ) > 0 && imagesProps
- .EnumerateArray( )
- .First( )
- .TryGetProperty( "url", out JsonElement urlProps )
- ) {
+                                                         .EnumerateArray( )
+                                                         .First( )
+                                                         .TryGetProperty( "url", out JsonElement urlProps )
+                ) {
                     return urlProps.GetString( ) ?? string.Empty;
                 }
             }
@@ -342,6 +342,38 @@ namespace TuneBridge.Domain.Implementations.Services {
                 Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
+        }
+
+        // Fallback for unauthenticated environments using Spotify oEmbed
+        private static async Task<MusicLookupResultDto?> TryGetInfoFromOEmbedAsync( string uri, SpotifyEntity kind ) {
+            try {
+                string fullUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : $"https://{uri}";
+                string oembedUrl = $"https://open.spotify.com/oembed?url={Uri.EscapeDataString(fullUrl)}";
+
+                using HttpClient client = new();
+                using HttpResponseMessage resp = await client.GetAsync(oembedUrl);
+                if (!resp.IsSuccessStatusCode) { return null; }
+
+                using JsonDocument json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                JsonElement root = json.RootElement;
+                string title = root.TryGetProperty("title", out JsonElement t) ? (t.GetString() ?? string.Empty) : string.Empty;
+                string artist = root.TryGetProperty("author_name", out JsonElement a) ? (a.GetString() ?? string.Empty) : string.Empty;
+                string art = root.TryGetProperty("thumbnail_url", out JsonElement th) ? (th.GetString() ?? string.Empty) : string.Empty;
+
+                return string.IsNullOrWhiteSpace( title ) && string.IsNullOrWhiteSpace( artist )
+                    ? null
+                    : new MusicLookupResultDto {
+                        Artist = artist,
+                        Title = title,
+                        ExternalId = string.Empty,
+                        URL = fullUrl,
+                        ArtUrl = art,
+                        IsAlbum = kind == SpotifyEntity.Album ? true : kind == SpotifyEntity.Track ? false : null,
+                        IsPrimary = true
+                    };
+            } catch {
+                return null;
+            }
         }
 
     }

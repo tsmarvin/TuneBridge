@@ -40,9 +40,7 @@
             }
 
             // Remove trailing slash
-            normalized = normalized.TrimEnd( '/' );
-
-            return normalized.ToLowerInvariant( );
+            return normalized.TrimEnd( '/' );
         }
     }
 }

@@ -17,8 +17,14 @@ public class ConfigurationValidationTests {
             ["TuneBridge:AppleTeamId"] = "TEAM123456",
             ["TuneBridge:AppleKeyId"] = "KEY1234567",
             ["TuneBridge:AppleKeyPath"] = "/nonexistent/path/key.p8",
-            ["TuneBridge:SpotifyClientId"] = "",
-            ["TuneBridge:SpotifyClientSecret"] = ""
+            ["TuneBridge:SpotifyClientId"] = string.Empty,
+            ["TuneBridge:SpotifyClientSecret"] = string.Empty,
+            ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
+            ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
+            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
+            ["TuneBridge:BlueskyPassword"] = string.Empty,
+            ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -46,8 +52,14 @@ public class ConfigurationValidationTests {
                 ["TuneBridge:AppleTeamId"] = "TEAM123456",
                 ["TuneBridge:AppleKeyId"] = "KEY1234567",
                 ["TuneBridge:AppleKeyPath"] = emptyKeyPath,
-                ["TuneBridge:SpotifyClientId"] = "",
-                ["TuneBridge:SpotifyClientSecret"] = ""
+                ["TuneBridge:SpotifyClientId"] = string.Empty,
+                ["TuneBridge:SpotifyClientSecret"] = string.Empty,
+                ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+                ["TuneBridge:ApiKeySalt"] = "api_key_salt",
+                ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
+                ["TuneBridge:BlueskyIdentifier"] = string.Empty,
+                ["TuneBridge:BlueskyPassword"] = string.Empty,
+                ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
             };
 
             IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -73,12 +85,18 @@ public class ConfigurationValidationTests {
     public void AddTuneBridgeServices_WithNoProviders_ShouldThrowInvalidOperationException( ) {
         // Arrange
         Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:AppleTeamId"] = "",
-            ["TuneBridge:AppleKeyId"] = "",
-            ["TuneBridge:AppleKeyPath"] = "",
-            ["TuneBridge:SpotifyClientId"] = "",
-            ["TuneBridge:SpotifyClientSecret"] = "",
-            ["TuneBridge:DiscordToken"] = ""
+            ["TuneBridge:AppleTeamId"] = string.Empty,
+            ["TuneBridge:AppleKeyId"] = string.Empty,
+            ["TuneBridge:AppleKeyPath"] = string.Empty,
+            ["TuneBridge:SpotifyClientId"] = string.Empty,
+            ["TuneBridge:SpotifyClientSecret"] = string.Empty,
+            ["TuneBridge:DiscordToken"] = string.Empty,
+            ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
+            ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
+            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
+            ["TuneBridge:BlueskyPassword"] = string.Empty,
+            ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -99,12 +117,18 @@ public class ConfigurationValidationTests {
     public void AddTuneBridgeServices_WithOnlySpotifyCredentials_ShouldSucceed( ) {
         // Arrange
         Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:AppleTeamId"] = "",
-            ["TuneBridge:AppleKeyId"] = "",
-            ["TuneBridge:AppleKeyPath"] = "",
+            ["TuneBridge:AppleTeamId"] = string.Empty,
+            ["TuneBridge:AppleKeyId"] = string.Empty,
+            ["TuneBridge:AppleKeyPath"] = string.Empty,
             ["TuneBridge:SpotifyClientId"] = "spotify_client_id",
             ["TuneBridge:SpotifyClientSecret"] = "spotify_secret",
-            ["TuneBridge:DiscordToken"] = ""
+            ["TuneBridge:DiscordToken"] = string.Empty,
+            ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
+            ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
+            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
+            ["TuneBridge:BlueskyPassword"] = string.Empty,
+            ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()

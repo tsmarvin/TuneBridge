@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TuneBridge.Configuration;
+using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
 
 namespace TuneBridge.Tests.Integration;
@@ -46,12 +47,12 @@ public class MusicLookupServiceTests {
         string isrc = "GBUM71029604";
 
         // Act
-        Domain.Contracts.DTOs.MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( isrc );
+        MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( isrc );
 
         // Assert
         Assert.IsNotNull( result );
         Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
-        Domain.Contracts.DTOs.MusicLookupResultDto firstResult = result.Results.First( ).Value;
+        MusicLookupResultDto firstResult = result.Results.First( ).Value;
         Assert.IsFalse( firstResult.IsAlbum ?? true );
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
@@ -65,12 +66,12 @@ public class MusicLookupServiceTests {
         string upc = "00602547202307";
 
         // Act
-        Domain.Contracts.DTOs.MediaLinkResult? result = await mediaLinkService.GetInfoByUPCAsync( upc );
+        MediaLinkResult? result = await mediaLinkService.GetInfoByUPCAsync( upc );
 
         // Assert
         Assert.IsNotNull( result );
         Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
-        Domain.Contracts.DTOs.MusicLookupResultDto firstResult = result.Results.First( ).Value;
+        MusicLookupResultDto firstResult = result.Results.First( ).Value;
         Assert.IsTrue( firstResult.IsAlbum ?? false );
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
@@ -84,12 +85,12 @@ public class MusicLookupServiceTests {
         string artist = "Queen";
 
         // Act
-        Domain.Contracts.DTOs.MediaLinkResult? result = await mediaLinkService.GetInfoAsync( title, artist );
+        MediaLinkResult? result = await mediaLinkService.GetInfoAsync( title, artist );
 
         // Assert
         Assert.IsNotNull( result );
         Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
-        Domain.Contracts.DTOs.MusicLookupResultDto firstResult = result.Results.First( ).Value;
+        MusicLookupResultDto firstResult = result.Results.First( ).Value;
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
         Assert.IsTrue( firstResult.Title?.Contains( "Bohemian", StringComparison.OrdinalIgnoreCase ) == true, "Title should contain Bohemian" );
@@ -103,16 +104,16 @@ public class MusicLookupServiceTests {
         string appleUrl = "https://music.apple.com/us/album/a-night-at-the-opera-deluxe-remastered-version/1440806041";
 
         // Act
-        List<Domain.Contracts.DTOs.MediaLinkResult> results = new( );
-        await foreach (Domain.Contracts.DTOs.MediaLinkResult result in mediaLinkService.GetInfoAsync( appleUrl )) {
+        List<MediaLinkResult> results = [];
+        await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( appleUrl )) {
             results.Add( result );
         }
 
         // Assert
         Assert.IsTrue( results.Count > 0, "Results collection should not be empty" );
-        Domain.Contracts.DTOs.MediaLinkResult firstResult = results[0];
+        MediaLinkResult firstResult = results[0];
         Assert.IsTrue( firstResult.Results.Count > 0, "firstResult.Results should not be empty" );
-        Domain.Contracts.DTOs.MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
+        MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
     }
@@ -123,18 +124,17 @@ public class MusicLookupServiceTests {
         IMediaLinkService mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
         // Using Bohemian Rhapsody album URL
         string spotifyUrl = "https://open.spotify.com/album/6i6folBtxKV28WX3msQ4FE";
-
         // Act
-        List<Domain.Contracts.DTOs.MediaLinkResult> results = new( );
-        await foreach (Domain.Contracts.DTOs.MediaLinkResult result in mediaLinkService.GetInfoAsync( spotifyUrl )) {
+        List<MediaLinkResult> results = [];
+        await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( spotifyUrl )) {
             results.Add( result );
         }
 
         // Assert
         Assert.IsTrue( results.Count > 0, "Results collection should not be empty" );
-        Domain.Contracts.DTOs.MediaLinkResult firstResult = results[0];
+        MediaLinkResult firstResult = results[0];
         Assert.IsTrue( firstResult.Results.Count > 0, "firstResult.Results should not be empty" );
-        Domain.Contracts.DTOs.MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
+        MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
     }
@@ -146,7 +146,7 @@ public class MusicLookupServiceTests {
         string invalidIsrc = "INVALID12345";
 
         // Act
-        Domain.Contracts.DTOs.MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( invalidIsrc );
+        MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( invalidIsrc );
 
         // Assert - Should handle gracefully, either null or empty results
         Assert.IsTrue( result == null || result.Results.Count == 0 );
@@ -160,16 +160,16 @@ public class MusicLookupServiceTests {
         string tidalUrl = "https://tidal.com/track/96572657";
 
         // Act
-        List<Domain.Contracts.DTOs.MediaLinkResult> results = new( );
-        await foreach (Domain.Contracts.DTOs.MediaLinkResult result in mediaLinkService.GetInfoAsync( tidalUrl )) {
+        List<MediaLinkResult> results = [];
+        await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( tidalUrl )) {
             results.Add( result );
         }
 
         // Assert
         Assert.IsTrue( results.Count > 0, "Results collection should not be empty" );
-        Domain.Contracts.DTOs.MediaLinkResult firstResult = results[0];
+        MediaLinkResult firstResult = results[0];
         Assert.IsTrue( firstResult.Results.Count > 0, "firstResult.Results should not be empty" );
-        Domain.Contracts.DTOs.MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
+        MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
     }
