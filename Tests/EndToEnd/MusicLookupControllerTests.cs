@@ -2,7 +2,10 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Web.Controllers;
 
@@ -33,8 +36,8 @@ public class MusicLookupControllerTests {
     public async Task ByUrlList_WithValidAppleMusicUrl_ReturnsOkWithResults( ) {
         // Arrange
         MusicLookupController.UrlReq request = new(
-            "https://music.apple.com/us/album/bohemian-rhapsody/1440806041"
-        );
+ "https://music.apple.com/us/album/bohemian-rhapsody/1440806041"
+ );
 
         // Act
         HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
@@ -49,9 +52,7 @@ public class MusicLookupControllerTests {
     [TestMethod]
     public async Task ByUrlList_WithValidSpotifyUrl_ReturnsOkWithResults( ) {
         // Arrange
-        MusicLookupController.UrlReq request = new(
-            "https://open.spotify.com/album/6i6folBtxKV28WX3msQ4FE"
-        );
+        MusicLookupController.UrlReq request = new( "https://open.spotify.com/album/6i6folBtxKV28WX3msQ4FE"  );
 
         // Act
         HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
@@ -66,9 +67,7 @@ public class MusicLookupControllerTests {
     [TestMethod]
     public async Task ByUrlList_WithValidTidalUrl_ReturnsOkWithResults( ) {
         // Arrange
-        MusicLookupController.UrlReq request = new(
-            "https://tidal.com/track/96572657"
-        );
+        MusicLookupController.UrlReq request = new(  "https://tidal.com/track/96572657"  );
 
         // Act
         HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
@@ -84,8 +83,8 @@ public class MusicLookupControllerTests {
     public async Task ByUrlList_WithMultipleUrls_ReturnsMultipleResults( ) {
         // Arrange
         MusicLookupController.UrlReq request = new(
-            "https://open.spotify.com/album/6X9k3hgEYTUx6tD5FVx7hq " +
-            "https://music.apple.com/us/album/a-night-at-the-opera-deluxe-remastered-version/1440806041"
+          "https://open.spotify.com/album/6X9k3hgEYTUx6tD5FVx7hq " +
+          "https://music.apple.com/us/album/a-night-at-the-opera-deluxe-remastered-version/1440806041"
         );
 
         // Act
@@ -151,9 +150,7 @@ public class MusicLookupControllerTests {
     public async Task ByUrl_StreamingEndpoint_ReturnsResults( ) {
 
         // Arrange
-        MusicLookupController.UrlReq request = new(
-            "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv"
-        );
+        MusicLookupController.UrlReq request = new(  "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv"  );
 
         // Act
         HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/url", request);
@@ -174,23 +171,41 @@ public class MusicLookupControllerTests {
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
+
+        // Arrange
+        Dictionary<string, string?> configData = new( ) {
+            ["TuneBridge:SpotifyClientId"] = "test",
+            ["TuneBridge:SpotifyClientSecret"] = "test",
+            ["TuneBridge:DiscordToken"] = string.Empty,
+            ["TuneBridge:ConnectionString"] = $"Data Source=Identity_${Guid.NewGuid()};Mode=Memory",
+            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
+            ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
+            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
+            ["TuneBridge:BlueskyPassword"] = string.Empty,
+            ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
+        };
+
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configData)
+            .Build();
+
+        ServiceCollection services = new();
+        _ = services.AddSingleton<IConfiguration>( configuration );
+        _ = services.AddLogging( );
+
         _ = builder.UseEnvironment( "Testing" );
 
-        // Set content root to the test output directory where appsettings.json is located
-        string? testAssemblyPath = Path.GetDirectoryName( typeof( CustomWebApplicationFactory ).Assembly.Location );
-        if (testAssemblyPath != null) {
-            _ = builder.UseContentRoot( testAssemblyPath );
-        }
+        _ = services.AddTuneBridgeServices( configuration );
+    }
 
-        //Configure test-specific services (override Discord to prevent it from starting)
-        _ = builder.ConfigureServices( services => {
-            // Remove Discord hosted service if it was registered
-            List<ServiceDescriptor> descriptors = services.Where( d =>
-                d.ServiceType.FullName != null &&
-                d.ServiceType.FullName.Contains( "Discord" ) ).ToList( );
-            foreach (ServiceDescriptor? descriptor in descriptors) {
-                _ = services.Remove( descriptor );
-            }
-        } );
+    protected void RegisterUser( ) {
+        // Use the account controller to register a test user
+        //AccountController.
+
+        // Use the account controller to register an api key
+
+
+        // return the apikey to the caller to be used in future requests.
+
     }
 }

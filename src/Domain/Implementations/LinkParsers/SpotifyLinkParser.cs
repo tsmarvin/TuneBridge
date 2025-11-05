@@ -1,5 +1,4 @@
 ﻿using System.Text.RegularExpressions;
-using TuneBridge.Domain.Implementations.Extensions;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Implementations.LinkParsers {
@@ -50,20 +49,16 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
             }
 
             if (s_spotifyLink.IsMatch( link )) {
+                Match match = s_spotifyLink.Match(link);
 
-                string? uri = s_spotifyLink.GetGroupValues(link, "type").FirstOrDefault();
-                if (uri != null) {
-                    Match match = s_spotifyLink.Match(link);
-
-                    id = match.Groups["id"].Value;
-                    kind = match.Groups["type"].Value.ToLowerInvariant( ) switch {
-                        "track" => SpotifyEntity.Track,
-                        "album" => SpotifyEntity.Album,
-                        "prerelease" => SpotifyEntity.PreRelease,
-                        "playlists" => SpotifyEntity.Playlist,
-                        _ => SpotifyEntity.Unknown
-                    };
-                }
+                id = match.Groups["id"].Value;
+                kind = match.Groups["type"].Value.ToLowerInvariant( ) switch {
+                    "track" => SpotifyEntity.Track,
+                    "album" => SpotifyEntity.Album,
+                    "prerelease" => SpotifyEntity.PreRelease,
+                    "playlists" => SpotifyEntity.Playlist,
+                    _ => SpotifyEntity.Unknown
+                };
             }
 
             return (kind != SpotifyEntity.Unknown && !string.IsNullOrEmpty( id ), kind, id);

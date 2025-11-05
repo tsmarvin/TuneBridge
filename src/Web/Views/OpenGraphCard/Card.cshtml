@@ -11,7 +11,7 @@
     string musicType = metadata?.GetValueOrDefault("og:type")?.Replace("music.", "") ?? "track";
     
     // Parse description to get artist
-    string artist = "";
+    string artist = string.Empty;
     if (description.StartsWith("Artist: ")) {
         int lineEnd = description.IndexOf('\n');
         artist = lineEnd > 0 ? description.Substring(8, lineEnd - 8) : description.Substring(8);
