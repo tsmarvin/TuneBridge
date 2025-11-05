@@ -2,7 +2,7 @@
 
 **Music is universal. Your links should be too.**
 
-TuneBridge is a cross-platform music link converter that helps you share music effortlessly across Apple Music, Spotify, and Tidal. One link. Every listener.
+TuneBridge is a cross-platform music link converter that helps you share music effortlessly across supported music service platforms. Currently, the application supports Apple Music, Spotify, and Tidal. The goal for TuneBridge is to provide one link for every listener.
 
 ## ✨ Share once. Play anywhere.
 

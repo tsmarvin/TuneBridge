@@ -2,104 +2,6 @@
 
 TuneBridge is designed for easy deployment across various platforms. This guide covers deployment options and best practices.
 
-## Docker Deployment (Recommended)
-
-Docker provides the simplest deployment path with consistent behavior across environments.
-
-### Building the Docker Image
-
-```bash
-docker build -t tunebridge .
-```
-
-### Running with Docker
-
-#### Basic Setup
-
-```bash
-docker run -d \
-  --name tunebridge \
-  -p 10000:10000 \
-  -e APPLE_TEAM_ID="your_team_id" \
-  -e APPLE_KEY_ID="your_key_id" \
-  -e APPLE_KEY_PATH="/app/key.p8" \
-  -e SPOTIFY_CLIENT_ID="your_client_id" \
-  -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
-  tunebridge
-```
-
-#### With All Services
-
-```bash
-docker run -d \
-  --name tunebridge \
-  -p 10000:10000 \
-  -e APPLE_TEAM_ID="your_team_id" \
-  -e APPLE_KEY_ID="your_key_id" \
-  -e APPLE_KEY_PATH="/app/key.p8" \
-  -e SPOTIFY_CLIENT_ID="your_client_id" \
-  -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  -e TIDAL_CLIENT_ID="your_tidal_client_id" \
-  -e TIDAL_CLIENT_SECRET="your_tidal_client_secret" \
-  -e DISCORD_TOKEN="your_bot_token" \
-  -e BLUESKY_PDS_URL="https://bsky.social" \
-  -e BLUESKY_IDENTIFIER="your-handle.bsky.social" \
-  -e BLUESKY_PASSWORD="your-app-password" \
-  -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
-  tunebridge
-```
-
-#### With Persistent Cache
-
-```bash
-docker run -d \
-  --name tunebridge \
-  -p 10000:10000 \
-  -e SPOTIFY_CLIENT_ID="your_client_id" \
-  -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  -v /path/to/cache:/app/cache \
-  -e CACHE_DB_PATH="/app/cache/medialinkscache.db" \
-  tunebridge
-```
-
-### Docker Compose
-
-Create a `docker-compose.yml` file:
-
-```yaml
-version: '3.8'
-
-services:
-  tunebridge:
-    build: .
-    ports:
-      - "10000:10000"
-    environment:
-      - APPLE_TEAM_ID=${APPLE_TEAM_ID}
-      - APPLE_KEY_ID=${APPLE_KEY_ID}
-      - APPLE_KEY_PATH=/app/key.p8
-      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
-      - TIDAL_CLIENT_ID=${TIDAL_CLIENT_ID}
-      - TIDAL_CLIENT_SECRET=${TIDAL_CLIENT_SECRET}
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - TuneBridge__BaseUrl=https://your-domain.com
-    volumes:
-      - ./keys/AuthKey.p8:/app/key.p8:ro
-      - tunebridge-cache:/app/cache
-    restart: unless-stopped
-
-volumes:
-  tunebridge-cache:
-```
-
-Run with:
-
-```bash
-docker-compose up -d
-```
-
 ## Native Deployment
 
 For deployments without Docker, you can run TuneBridge as a native .NET application.
@@ -140,81 +42,11 @@ Supported runtime identifiers:
 - `win-arm64` - Windows (ARM64)
 - `osx-arm64` - macOS (ARM64)
 
+**Note**: After deploying the native build, you'll need to manually configure it as a system service if you want it to start automatically. The application does not automatically register as a systemd service.
+
 ## Cloud Platform Deployment
 
-### Azure Container Apps
-
-```bash
-# Create resource group
-az group create --name tunebridge-rg --location eastus
-
-# Create container app environment
-az containerapp env create \
-  --name tunebridge-env \
-  --resource-group tunebridge-rg \
-  --location eastus
-
-# Deploy container app
-az containerapp create \
-  --name tunebridge \
-  --resource-group tunebridge-rg \
-  --environment tunebridge-env \
-  --image your-registry/tunebridge:latest \
-  --target-port 10000 \
-  --ingress external \
-  --env-vars \
-    APPLE_TEAM_ID=secretref:apple-team-id \
-    APPLE_KEY_ID=secretref:apple-key-id \
-    SPOTIFY_CLIENT_ID=secretref:spotify-client-id \
-    SPOTIFY_CLIENT_SECRET=secretref:spotify-client-secret
-```
-
-### Google Cloud Run
-
-```bash
-# Build and push to Google Container Registry
-gcloud builds submit --tag gcr.io/PROJECT_ID/tunebridge
-
-# Deploy to Cloud Run
-gcloud run deploy tunebridge \
-  --image gcr.io/PROJECT_ID/tunebridge \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --port 10000 \
-  --set-env-vars SPOTIFY_CLIENT_ID=your_client_id \
-  --set-secrets SPOTIFY_CLIENT_SECRET=spotify-secret:latest
-```
-
-### AWS ECS (Fargate)
-
-1. Push image to ECR:
-```bash
-aws ecr create-repository --repository-name tunebridge
-docker tag tunebridge:latest ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/tunebridge:latest
-docker push ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/tunebridge:latest
-```
-
-2. Create task definition with environment variables
-3. Create ECS service with Fargate launch type
-4. Configure Application Load Balancer targeting port 10000
-
-### Heroku
-
-```bash
-# Login to Heroku
-heroku login
-
-# Create app
-heroku create your-tunebridge-app
-
-# Set config vars
-heroku config:set SPOTIFY_CLIENT_ID=your_client_id
-heroku config:set SPOTIFY_CLIENT_SECRET=your_client_secret
-
-# Deploy
-git push heroku main
-```
+Deployment to cloud platforms is currently being evaluated. Check back for updates on supported platforms.
 
 ## Reverse Proxy Configuration
 
@@ -225,7 +57,7 @@ TuneBridge should be deployed behind a reverse proxy for SSL/TLS termination and
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name tunebridge.example.com;
+    server_name tunebridge.media;
 
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
@@ -244,19 +76,11 @@ server {
 }
 ```
 
-### Caddy
-
-```caddy
-tunebridge.example.com {
-    reverse_proxy localhost:10000
-}
-```
-
 ### Apache
 
 ```apache
 <VirtualHost *:443>
-    ServerName tunebridge.example.com
+    ServerName tunebridge.media
     
     SSLEngine on
     SSLCertificateFile /path/to/cert.pem
@@ -275,7 +99,7 @@ tunebridge.example.com {
 Update `TuneBridge__BaseUrl` to your public domain:
 
 ```bash
--e TuneBridge__BaseUrl=https://tunebridge.example.com
+-e TuneBridge__BaseUrl=https://tunebridge.media
 ```
 
 This ensures OpenGraph cards generate correct URLs.
@@ -294,15 +118,7 @@ Set appropriate log levels for production:
 Restrict allowed hosts for security:
 
 ```bash
--e ALLOWED_HOSTS=tunebridge.example.com
-```
-
-## Health Checks
-
-TuneBridge doesn't currently expose a dedicated health endpoint. Configure health checks to verify the web server is responding:
-
-```bash
-curl -f http://localhost:10000/ || exit 1
+-e ALLOWED_HOSTS=tunebridge.media
 ```
 
 ## Monitoring
@@ -321,22 +137,11 @@ docker logs -f tunebridge
 kubectl logs -f deployment/tunebridge
 ```
 
-### Metrics
-
-Consider integrating with:
-- Application Insights (Azure)
-- CloudWatch (AWS)
-- Cloud Logging (Google Cloud)
-- Prometheus + Grafana (self-hosted)
-
 ## Scaling
 
 ### Horizontal Scaling
 
-TuneBridge is stateless (except for the optional SQLite cache) and can be horizontally scaled:
-
-1. **Without cache**: Deploy multiple instances behind a load balancer
-2. **With cache**: Use a shared cache backend or accept cache misses across instances
+TuneBridge is stateless (except for the optional SQLite cache) and can be horizontally scaled by deploying multiple instances behind a load balancer.
 
 ### Discord Bot Sharding
 
@@ -431,8 +236,10 @@ docker run -d --name tunebridge ...
 git pull
 
 # Rebuild
-dotnet build -c Release
+dotnet build --no-restore --configuration Release
 
-# Restart service
+# If using systemd, restart service
 systemctl restart tunebridge
 ```
+
+**Note**: The systemctl command assumes you have manually configured TuneBridge as a systemd service.
