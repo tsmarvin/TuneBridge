@@ -43,6 +43,12 @@ jobs:
           # Ensure test output directory exists
           mkdir -p Tests/bin/Release/net9.0
           
+          # Set default API key salt if not provided
+          API_KEY_SALT="${{ secrets.APIKEYSALT }}"
+          if [ -z "$API_KEY_SALT" ]; then
+            API_KEY_SALT="default_test_salt_for_ci"
+          fi
+          
           # Create appsettings.json for tests (with empty DiscordToken to disable Discord bot in tests)
           sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
               -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
@@ -53,7 +59,7 @@ jobs:
               -e 's/"{TidalClientId}"/"${{ secrets.TIDALCLIENTID }}"/g' \
               -e 's/"{TidalClientSecret}"/"${{ secrets.TIDALCLIENTSECRET }}"/g' \
               -e 's/"{DiscordToken}"/""/g' \
-              -e 's/"{ApiKeySalt}"/"${{ secrets.APIKEYSALT }}"/g' \
+              -e "s|\"{ApiKeySalt}\"|\"$API_KEY_SALT\"|g" \
               -e 's/"{BlueskyPdsUrl}"/""/g' \
               -e 's/"{BlueskyIdentifier}"/""/g' \
               -e 's/"{BlueskyPassword}"/""/g' \
