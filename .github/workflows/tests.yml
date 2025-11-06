@@ -60,13 +60,13 @@ jobs:
               appsettings.transform.json > Tests/bin/Release/net9.0/appsettings.json
 
       - name: Run Unit Tests
-        run: dotnet test TuneBridge.Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
+        run: dotnet test Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
 
       - name: Run Integration Tests
-        run: dotnet test TuneBridge.Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration-test-results.trx" --logger "console;verbosity=detailed"
+        run: dotnet test Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration-test-results.trx" --logger "console;verbosity=detailed"
 
       - name: Run End-to-End Tests
-        run: dotnet test TuneBridge.Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~EndToEnd" --logger "trx;LogFileName=e2e-test-results.trx" --logger "console;verbosity=detailed"
+        run: dotnet test Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~EndToEnd" --logger "trx;LogFileName=e2e-test-results.trx" --logger "console;verbosity=detailed"
 
       - name: Upload Test Results
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.5.0
