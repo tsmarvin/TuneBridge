@@ -2,9 +2,60 @@
 
 TuneBridge is designed for easy deployment across various platforms. This guide covers deployment options and best practices.
 
+## Quick Start with Docker Compose
+
+The easiest way to deploy TuneBridge is with Docker Compose, which includes Caddy as a secure reverse proxy with automatic HTTPS.
+
+```bash
+git clone https://github.com/tsmarvin/TuneBridge.git
+cd TuneBridge
+./setup-secrets.sh
+# Edit secrets/ with your credentials
+cp .env.example .env
+# Edit .env with your configuration
+docker-compose up -d
+```
+
+Visit `https://localhost` (or your configured domain) to access TuneBridge.
+
+For detailed Docker Compose deployment instructions, see the [Quick Start Guide](../QUICKSTART.md).
+
 ## Docker Deployment
 
-Docker images are automatically built and published via GitHub Actions to Docker Hub.
+### Using Docker Compose (Recommended)
+
+Docker Compose deployment includes:
+- **Caddy reverse proxy** - Automatic HTTPS with Let's Encrypt
+- **Security headers** - HSTS, CSP, X-Frame-Options, and more
+- **Docker secrets** - Secure credential management
+- **Health checks** - Automatic monitoring and restarts
+- **Persistent volumes** - Data and certificate storage
+
+#### Architecture
+
+The Docker Compose setup consists of:
+1. **TuneBridge Application** - .NET 9.0 web application (port 10000)
+2. **Caddy Reverse Proxy** - Automatic HTTPS with Let's Encrypt (ports 80/443)
+3. **Docker Secrets** - Secure credential management
+4. **Persistent Volumes** - Data and certificate storage
+
+#### Configuration
+
+Edit `.env` to configure your deployment:
+
+```bash
+# Domain for HTTPS certificates (use your actual domain in production)
+DOMAIN=yourdomain.com
+CADDY_ADMIN_EMAIL=admin@yourdomain.com
+
+# API credentials (at least one provider required)
+APPLE_TEAM_ID=your_team_id
+APPLE_KEY_ID=your_key_id
+SPOTIFY_CLIENT_ID=your_client_id
+TIDAL_CLIENT_ID=your_client_id
+```
+
+Sensitive values go in the `secrets/` directory (created by `setup-secrets.sh`).
 
 ### Using Pre-built Images
 
@@ -24,6 +75,21 @@ docker run -p 10000:10000 \
 ```
 
 **Note**: Images are built for `linux/arm64` platform as configured in the GitHub workflow.
+
+### Docker Secrets
+
+For production deployments, use Docker secrets instead of environment variables:
+
+```bash
+# Create secrets
+echo "your_spotify_secret" | docker secret create spotify_client_secret -
+echo "your_api_salt" | docker secret create api_key_salt -
+
+# Deploy with Docker Swarm
+docker stack deploy -c docker-compose.yml tunebridge
+```
+
+The entrypoint script automatically reads secrets from `/run/secrets/` and falls back to environment variables if secrets are not available.
 
 ## Environment Configuration
 

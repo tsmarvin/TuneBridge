@@ -19,6 +19,24 @@ Ever wanted to share your favorite song, only to realize your friend uses a diff
 
 ## 🚀 Quick Start
 
+### Using Docker Compose (Recommended)
+
+Get started in 5 minutes with automatic HTTPS:
+
+```bash
+git clone https://github.com/tsmarvin/TuneBridge.git
+cd TuneBridge
+./setup-secrets.sh
+# Edit secrets/ with your credentials
+cp .env.example .env
+# Edit .env with your configuration
+docker-compose up -d
+```
+
+Visit `https://localhost` to start converting links.
+
+📖 **[Complete Quick Start Guide →](QUICKSTART.md)**
+
 ### Using Docker
 
 ```bash
@@ -39,6 +57,7 @@ Visit `http://localhost:10000` to start converting links.
 
 ## 📖 Documentation
 
+- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Set up API credentials and environment variables
 - **[API Reference](docs/API.md)** - Integrate TuneBridge into your applications
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms

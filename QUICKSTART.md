@@ -182,10 +182,10 @@ For production deployment:
 3. Use the same steps above
 4. Caddy will automatically obtain Let's Encrypt certificates
 
-See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for detailed production deployment instructions.
+See the [Deployment Guide](docs/DEPLOYMENT.md) for detailed production deployment instructions.
 
 ## Getting Help
 
 - Documentation: [README.md](README.md)
-- Deployment Guide: [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)
+- Deployment Guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - Issues: https://github.com/tsmarvin/TuneBridge/issues

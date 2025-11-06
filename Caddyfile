@@ -42,6 +42,7 @@
         Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';"
         
         # Permissions policy (formerly Feature-Policy)
+        # Deny access to sensitive browser features (empty list = no origins allowed)
         Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
         
         # Remove server identification
