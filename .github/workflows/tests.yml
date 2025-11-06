@@ -49,13 +49,17 @@ jobs:
             API_KEY_SALT="default_test_salt_for_ci"
           fi
           
+          # Set Spotify credentials (required for tests)
+          SPOTIFY_CLIENT_ID="${{ secrets.SPOTIFYCLIENTID }}"
+          SPOTIFY_CLIENT_SECRET="${{ secrets.SPOTIFYCLIENTSECRET }}"
+          
           # Create appsettings.json for tests (with empty DiscordToken to disable Discord bot in tests)
           sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
               -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
               -e 's/"{AppleKeyId}"/"${{ secrets.APPLEKEYID }}"/g' \
               -e 's|"{AppleKeyPath}"|"/tmp/test-keys/apple_key.p8"|g' \
-              -e 's/"{SpotifyClientId}"/"${{ secrets.SPOTIFYCLIENTID }}"/g' \
-              -e 's/"{SpotifyClientSecret}"/"${{ secrets.SPOTIFYCLIENTSECRET }}"/g' \
+              -e "s|\"{SpotifyClientId}\"|\"$SPOTIFY_CLIENT_ID\"|g" \
+              -e "s|\"{SpotifyClientSecret}\"|\"$SPOTIFY_CLIENT_SECRET\"|g" \
               -e 's/"{TidalClientId}"/"${{ secrets.TIDALCLIENTID }}"/g' \
               -e 's/"{TidalClientSecret}"/"${{ secrets.TIDALCLIENTSECRET }}"/g' \
               -e 's/"{DiscordToken}"/""/g' \
@@ -68,6 +72,10 @@ jobs:
               -e 's/"{Hosting_LogLevel}"/"Information"/g' \
               -e 's/"{Allowed_Hosts}"/"*"/g' \
               appsettings.transform.json > Tests/bin/Release/net9.0/appsettings.json
+          
+          # Debug: Show the generated appsettings.json (masking sensitive values)
+          echo "Generated appsettings.json for tests:"
+          cat Tests/bin/Release/net9.0/appsettings.json | grep -v "ClientSecret\|TeamId\|KeyId\|ApiKeySalt" | head -20
 
       - name: Run Unit Tests
         run: dotnet test Tests/TuneBridge.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
