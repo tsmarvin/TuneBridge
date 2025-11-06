@@ -63,6 +63,7 @@ jobs:
               -e 's/"{BlueskyPdsUrl}"/""/g' \
               -e 's/"{BlueskyIdentifier}"/""/g' \
               -e 's/"{BlueskyPassword}"/""/g' \
+              -e 's|"medialinkscache.db"|"Data Source=LinkCache;Mode=Memory;Cache=Shared"|g' \
               -e 's/"{Default_LogLevel}"/"Information"/g' \
               -e 's/"{Hosting_LogLevel}"/"Information"/g' \
               -e 's/"{Allowed_Hosts}"/"*"/g' \
