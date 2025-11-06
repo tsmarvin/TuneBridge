@@ -21,6 +21,12 @@ namespace TuneBridge.Domain.Implementations.Services {
             RegexOptions.Compiled | RegexOptions.IgnoreCase
         );
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="CachedMediaLinkService"/> class.
+        /// </summary>
+        /// <param name="innerService">The underlying media link service to decorate with caching.</param>
+        /// <param name="cacheService">The cache service for storing and retrieving results.</param>
+        /// <param name="logger">Logger for diagnostic information.</param>
         public CachedMediaLinkService(
             IMediaLinkService innerService,
             IMediaLinkCacheService cacheService,

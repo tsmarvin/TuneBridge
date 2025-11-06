@@ -16,6 +16,13 @@ public class AccountController : Controller {
     private readonly ILogger<AccountController> _logger;
     private readonly ApiKeyHasher _hasher;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AccountController"/> class.
+    /// </summary>
+    /// <param name="userManager">User manager for ASP.NET Identity.</param>
+    /// <param name="signInManager">Sign-in manager for authentication.</param>
+    /// <param name="logger">Logger for diagnostic information.</param>
+    /// <param name="hasher">API key hasher for secure key generation and validation.</param>
     public AccountController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,

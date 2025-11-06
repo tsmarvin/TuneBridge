@@ -19,6 +19,13 @@ namespace TuneBridge.Domain.Implementations.Services {
         private readonly ILogger<MediaLinkCacheService> _logger;
         private readonly int _cacheDays;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MediaLinkCacheService"/> class.
+        /// </summary>
+        /// <param name="dbContextFactory">Factory for creating database contexts.</param>
+        /// <param name="blueskyStorage">Service for storing and retrieving results from Bluesky PDS.</param>
+        /// <param name="logger">Logger for diagnostic information.</param>
+        /// <param name="cacheDays">Number of days to consider cache entries fresh.</param>
         public MediaLinkCacheService(
             IDbContextFactory<MediaLinkCacheDbContext> dbContextFactory,
             IBlueskyStorageService blueskyStorage,
