@@ -2,95 +2,28 @@
 
 TuneBridge is designed for easy deployment across various platforms. This guide covers deployment options and best practices.
 
-## Native Deployment
+## Docker Deployment
 
-For deployments without Docker, you can run TuneBridge as a native .NET application.
+Docker images are automatically built and published via GitHub Actions to Docker Hub.
 
-### Prerequisites
+### Using Pre-built Images
 
-- [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- Linux, Windows, or macOS
-
-### Build and Run
+Pull the latest image from Docker Hub:
 
 ```bash
-# Clone the repository
-git clone https://github.com/tsmarvin/TuneBridge.git
-cd TuneBridge
-
-# Build the application
-dotnet build
-
-# Run the application
-dotnet run
+docker pull $DOCKERHUB_USERNAME/tunebridge-test:latest
 ```
 
-### Production Build
+Run the container:
 
 ```bash
-# Publish a self-contained executable
-dotnet publish -c Release -r linux-x64 --self-contained
-
-# The executable will be in:
-# src/bin/Release/net9.0/linux-x64/publish/TuneBridge
+docker run -p 10000:10000 \
+  -e SPOTIFY_CLIENT_ID="your_client_id" \
+  -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
+  $DOCKERHUB_USERNAME/tunebridge-test:latest
 ```
 
-Supported runtime identifiers:
-- `linux-x64` - Linux (x64)
-- `linux-arm64` - Linux (ARM64)
-- `win-x64` - Windows (x64)
-- `win-arm64` - Windows (ARM64)
-- `osx-arm64` - macOS (ARM64)
-
-**Note**: After deploying the native build, you'll need to manually configure it as a system service if you want it to start automatically. The application does not automatically register as a systemd service.
-
-## Cloud Platform Deployment
-
-Deployment to cloud platforms is currently being evaluated. Check back for updates on supported platforms.
-
-## Reverse Proxy Configuration
-
-TuneBridge should be deployed behind a reverse proxy for SSL/TLS termination and additional security.
-
-### Nginx
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name tunebridge.media;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    location / {
-        proxy_pass http://localhost:10000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection keep-alive;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-### Apache
-
-```apache
-<VirtualHost *:443>
-    ServerName tunebridge.media
-    
-    SSLEngine on
-    SSLCertificateFile /path/to/cert.pem
-    SSLCertificateKeyFile /path/to/key.pem
-    
-    ProxyPreserveHost On
-    ProxyPass / http://localhost:10000/
-    ProxyPassReverse / http://localhost:10000/
-</VirtualHost>
-```
+**Note**: Images are built for `linux/arm64` platform as configured in the GitHub workflow.
 
 ## Environment Configuration
 
@@ -218,8 +151,8 @@ Check:
 ### Docker
 
 ```bash
-# Pull latest image
-docker pull your-registry/tunebridge:latest
+# Pull latest image from Docker Hub
+docker pull $DOCKERHUB_USERNAME/tunebridge-test:latest
 
 # Stop and remove old container
 docker stop tunebridge
@@ -228,18 +161,3 @@ docker rm tunebridge
 # Start new container
 docker run -d --name tunebridge ...
 ```
-
-### Native
-
-```bash
-# Pull latest code
-git pull
-
-# Rebuild
-dotnet build --no-restore --configuration Release
-
-# If using systemd, restart service
-systemctl restart tunebridge
-```
-
-**Note**: The systemctl command assumes you have manually configured TuneBridge as a systemd service.
