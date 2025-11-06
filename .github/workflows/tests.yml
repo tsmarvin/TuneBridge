@@ -40,6 +40,9 @@ jobs:
             echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
           fi
           
+          # Ensure test output directory exists
+          mkdir -p Tests/bin/Release/net9.0
+          
           # Create appsettings.json for tests (with empty DiscordToken to disable Discord bot in tests)
           sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
               -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
