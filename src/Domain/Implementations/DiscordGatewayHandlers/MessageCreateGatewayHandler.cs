@@ -63,6 +63,7 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
         /// <summary>
         /// The primary handler method that is called when a new message is created in a channel the bot has access to.
         /// </summary>
+        /// <param name="client">The gateway client that received the message.</param>
         /// <param name="message">The input event message.</param>
         public async ValueTask HandleAsync( GatewayClient client, Message message ) {
             if (client.Shard.HasValue && client.Shard.Value.Id != _nodeNumber) { return; }

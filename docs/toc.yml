@@ -1,4 +1,14 @@
 - name: Home
   href: index.md
+- name: Configuration
+  href: CONFIGURATION.md
+- name: API Reference
+  href: API.md
+- name: Deployment
+  href: DEPLOYMENT.md
+- name: Testing
+  href: TESTING.md
+- name: Caching
+  href: CACHING.md
 - name: API Documentation
   href: api/

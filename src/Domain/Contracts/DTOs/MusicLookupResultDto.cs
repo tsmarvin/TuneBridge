@@ -82,6 +82,7 @@
         /// </remarks>
         internal bool IsPrimary { get; set; }
 
+        /// <inheritdoc/>
         public override bool Equals( object? obj ) {
             if (
                 obj is not null &&
@@ -100,6 +101,7 @@
             return false;
         }
 
+        /// <inheritdoc/>
         public override int GetHashCode( ) {
             return Artist.GetHashCode( ) +
             Title.GetHashCode( ) +

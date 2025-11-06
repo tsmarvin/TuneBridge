@@ -1,547 +1,137 @@
 # TuneBridge
 
-**TuneBridge** is a cross-platform music link converter and lookup service that bridges Apple Music, Spotify, and Tidal. It provides both a web interface and a Discord bot for seamless music sharing across different streaming platforms.
+**Music is universal. Your links should be too.**
 
-## Quick Start
+TuneBridge is a cross-platform music link converter that helps you share music effortlessly across streaming platforms. Share a link from Apple Music, Spotify, or Tidal, and TuneBridge finds the same track or album on all supported services—ensuring every listener can enjoy the music, regardless of their preferred platform.
 
-**Get started in 5 minutes with Docker Compose:**
+## ✨ Share once. Play anywhere.
+
+Ever wanted to share your favorite song, only to realize your friend uses a different streaming service? TuneBridge solves this by automatically finding the same track or album on all major platforms—so everyone can listen, no matter where they stream.
+
+## 🎵 Features
+
+- **Instant Conversion** - Drop a music link and get matches across Apple Music, Spotify, and Tidal
+- **Discord Bot** - Automatically converts music links in your Discord server
+- **Web Interface** - Simple browser-based tool for quick conversions
+- **RESTful API** - Integrate music link conversion into your own apps
+- **Accurate Matching** - Uses ISRC (tracks) and UPC (albums) for precise cross-platform matches
+- **Rich Previews** - OpenGraph cards that work everywhere—Discord, Slack, Twitter, and more
+
+## 🚀 Quick Start
+
+### Using Docker
 
 ```bash
-git clone https://github.com/tsmarvin/TuneBridge.git
-cd TuneBridge
-./setup-secrets.sh
-# Edit secrets/ files with your credentials
-cp .env.example .env
-# Edit .env with your configuration
-docker-compose up -d
-```
-
-Then visit: **https://localhost**
-
-📖 **[Complete Quick Start Guide →](QUICKSTART.md)**
-
-## Features
-
-- 🎵 **Music Link Conversion**: Convert music links between Apple Music, Spotify, and Tidal
-- 🔍 **Multiple Lookup Methods**: Search by URL, ISRC, UPC, or title/artist
-- 🔐 **User Authentication**: Secure API access with user accounts and API keys
-- ⏱️ **Rate Limiting**: Fair usage enforcement (20 requests/hour per user)
-- 🤖 **Discord Bot Integration**: Automatically detect and convert music links in Discord messages
-- 📇 **OpenGraph Cards**: Embeddable cards with rich previews for music links on any platform
-- 🌐 **Web API**: RESTful API endpoints for programmatic access
-- 🖥️ **Web Interface**: Simple browser-based UI for manual lookups
-- 🐳 **Docker Support**: Easy deployment with Docker containers
-
-## What It Does
-
-TuneBridge acts as a universal translator for music streaming services. When you share a music link (song or album) from Apple Music, Spotify, or Tidal, TuneBridge automatically finds the equivalent content on the other platforms.
-
-The application uses official APIs from all services to ensure accurate matching through standardized identifiers (ISRC for tracks, UPC for albums). When matches cannot be found via external IDs, the application performs fuzzy matching using metadata to find the equivalent content.
-
-## Configuration
-
-### Environment Variables
-
-TuneBridge requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord integration is optional.
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `APPLE_TEAM_ID` | Your Apple Developer Team ID | No* |
-| `APPLE_KEY_ID` | Your Apple Music API Key ID | No* |
-| `APPLE_KEY_PATH` | Path to your Apple Music private key (.p8 file) | No* |
-| `SPOTIFY_CLIENT_ID` | Your Spotify API Client ID | No* |
-| `SPOTIFY_CLIENT_SECRET` | Your Spotify API Client Secret | No* |
-| `TIDAL_CLIENT_ID` | Your Tidal API Client ID | No* |
-| `TIDAL_CLIENT_SECRET` | Your Tidal API Client Secret | No* |
-| `DISCORD_TOKEN` | Your Discord bot token | No** |
-| `BLUESKY_PDS_URL` | Bluesky PDS URL for storing lookup results | No*** |
-| `BLUESKY_IDENTIFIER` | Bluesky account identifier (handle or DID) | No*** |
-| `BLUESKY_PASSWORD` | Bluesky app password | No*** |
-
-\* At least one complete set of music provider credentials is required (Apple Music, Spotify, or Tidal)  
-\*\* Required only if using Discord integration  
-\*\*\* Required only if using Bluesky PDS storage for caching lookup results
-
-### Optional Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NODE_NUMBER` | Node number for Discord sharding | `0` |
-| `ALLOWED_HOSTS` | Allowed hosts for the web server | `*` |
-| `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
-| `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
-| `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
-| `CACHE_DB_PATH` | Path to SQLite database for cache lookups | `medialinkscache.db` |
-| `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `http://localhost:5000` |
-
-**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `TuneBridge__BaseUrl` maps to `TuneBridge:BaseUrl` in configuration).
-
-### Obtaining API Credentials
-
-#### Apple Music API Credentials
-
-1. Visit the [Apple Developer Portal](https://developer.apple.com/account)
-2. Follow the guide to [Create a Media Identifier and Private Key](https://developer.apple.com/help/account/configure-app-capabilities/create-a-media-identifier-and-private-key/)
-3. Download your `.p8` private key file
-4. Note your Team ID and Key ID
-
-#### Spotify API Credentials
-
-1. Visit the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Follow the guide to [Register Your App](https://developer.spotify.com/documentation/general/guides/app-settings/#register-your-app)
-3. Note your Client ID and Client Secret
-
-#### Tidal API Credentials
-
-1. Visit the [Tidal Developer Portal](https://developer.tidal.com/)
-2. Create a new application to get API access
-3. Note your Client ID and Client Secret
-
-#### Discord Bot Token
-
-1. Visit the [Discord Developer Portal](https://discord.com/developers/applications)
-2. Follow the [Getting Started Guide](https://discord.com/developers/docs/quick-start/getting-started)
-3. Create a bot and copy its token
-4. Invite the bot to your server with appropriate permissions (Read Messages, Send Messages, Embed Links, Manage Messages)
-
-#### Bluesky PDS Credentials (Optional - for caching)
-
-If you want to store lookup results on a Bluesky PDS for persistent caching:
-
-1. Create a Bluesky account at [bsky.app](https://bsky.app) if you don't have one
-2. Go to Settings → App Passwords
-3. Create a new app password for TuneBridge
-4. Use your handle (e.g., `yourname.bsky.social`) as `BLUESKY_IDENTIFIER`
-5. Use the generated app password as `BLUESKY_PASSWORD`
-6. Set `BLUESKY_PDS_URL` to `https://bsky.social` (or your custom PDS URL)
-
-**Note**: Lookup results are stored as custom AT Protocol lexicon records on your PDS. Input links with tracking parameters are kept private in a local SQLite database for privacy protection.
-
-## Running the Application
-
-### Using Docker Compose (Recommended)
-
-The easiest way to run TuneBridge is with Docker Compose, which includes Caddy as a secure reverse proxy with automatic HTTPS.
-
-1. **Quick setup:**
-   ```bash
-   # Clone the repository
-   git clone https://github.com/tsmarvin/TuneBridge.git
-   cd TuneBridge
-   
-   # Set up secrets directory and files
-   ./setup-secrets.sh
-   
-   # Edit secret files with your actual credentials
-   nano secrets/apple_key.p8
-   nano secrets/spotify_client_secret.txt
-   # ... etc
-   
-   # Configure environment variables
-   cp .env.example .env
-   nano .env
-   
-   # Start the application
-   docker-compose up -d
-   ```
-
-2. **Access the application:**
-   - HTTPS: `https://localhost` (or your configured domain)
-   - HTTP: `http://localhost` (redirects to HTTPS)
-   - Direct access: `http://localhost:10000`
-
-For detailed deployment instructions, security best practices, and troubleshooting, see [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md).
-
-### Using Docker (Manual)
-
-1. Set your environment variables:
-```bash
-export APPLE_TEAM_ID="your_team_id"
-export APPLE_KEY_ID="your_key_id"
-export APPLE_KEY_PATH="/app/key.p8"
-export SPOTIFY_CLIENT_ID="your_client_id"
-export SPOTIFY_CLIENT_SECRET="your_client_secret"
-export TIDAL_CLIENT_ID="your_tidal_client_id"
-export TIDAL_CLIENT_SECRET="your_tidal_client_secret"
-export DISCORD_TOKEN="your_bot_token"
-```
-
-2. Build and run with Docker:
-```bash
-docker build -t tunebridge .
 docker run -p 10000:10000 \
-  -e APPLE_TEAM_ID \
-  -e APPLE_KEY_ID \
-  -e APPLE_KEY_PATH \
-  -e SPOTIFY_CLIENT_ID \
-  -e SPOTIFY_CLIENT_SECRET \
-  -e TIDAL_CLIENT_ID \
-  -e TIDAL_CLIENT_SECRET \
-  -e DISCORD_TOKEN \
-  -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
-  tunebridge
+  -e SPOTIFY_CLIENT_ID="your_client_id" \
+  -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
+  ghcr.io/tsmarvin/tunebridge:latest
 ```
 
-**Important:** The `APPLE_KEY_PATH` environment variable must match the container mount path (`/app/key.p8` in this example).
-
-The application will be available at `http://localhost:10000`
+Visit `http://localhost:10000` to start converting links.
 
 ### Running Locally
 
 1. Install [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+2. Clone the repository
+3. Add your API credentials to `appsettings.json` (see [Configuration Guide](docs/CONFIGURATION.md))
+4. Run: `dotnet run`
 
-2. Update `appsettings.json` with your credentials:
-```json
-{
-  "TuneBridge": {
-    "NodeNumber": 0,
-    "AppleTeamId": "your_team_id",
-    "AppleKeyId": "your_key_id",
-    "AppleKeyPath": "/path/to/AuthKey.p8",
-    "SpotifyClientId": "your_client_id",
-    "SpotifyClientSecret": "your_client_secret",
-    "TidalClientId": "your_tidal_client_id",
-    "TidalClientSecret": "your_tidal_client_secret",
-    "DiscordToken": "your_bot_token"
-  }
-}
-```
+## 📖 Documentation
 
-3. Build and run:
-```bash
-dotnet build
-dotnet run
-```
+- **[Configuration Guide](docs/CONFIGURATION.md)** - Set up API credentials and environment variables
+- **[API Reference](docs/API.md)** - Integrate TuneBridge into your applications
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
+- **[Testing Guide](docs/TESTING.md)** - Run and write tests
+- **[Caching Guide](docs/CACHING.md)** - Configure Bluesky PDS caching
 
-The application will start on the default ASP.NET Core ports (usually 5000/5001).
+## 🎯 How It Works
 
-## OpenGraph Embeddable Cards
+TuneBridge connects to official APIs from music streaming services. When you provide a link:
 
-TuneBridge generates OpenGraph cards for music links that can be embedded on any platform supporting OpenGraph metadata (Discord, Slack, Twitter, Facebook, etc.). These cards provide:
+1. **Extract** - Identifies the track or album from the URL
+2. **Match** - Uses external IDs (ISRC/UPC) or metadata to find equivalents
+3. **Return** - Provides links for all available platforms
 
-- Rich previews with album/track artwork
-- Links to all available streaming platforms
-- Beautiful, responsive design
-- Automatic metadata extraction
+The result? You share the music, not the platform.
 
-### Using OpenGraph Cards
+## 🤖 Discord Bot
 
-#### From the API
+Add TuneBridge to your Discord server to automatically convert music links in conversations:
 
-When you use any of the lookup endpoints (URL, ISRC, UPC, or Title), the returned `MediaLinkResult` can be stored and accessed as an OpenGraph card:
+1. Get a Discord bot token (see [Configuration Guide](docs/CONFIGURATION.md#discord-bot-token))
+2. Set `DISCORD_TOKEN` environment variable
+3. Invite the bot to your server
 
-```csharp
-// Store a result and get a card URL
-var cardService = serviceProvider.GetRequiredService<IOpenGraphCardService>();
-string cardId = cardService.StoreResult(mediaLinkResult);
-string cardUrl = $"{baseUrl}/card/{cardId}";
-```
+When someone shares a Spotify link, TuneBridge responds with a card showing Apple Music and Tidal alternatives—and vice versa.
 
-#### With Discord Bot
+## 🛠️ Built With
 
-The Discord bot now automatically generates OpenGraph cards when music links are detected. Instead of sending Discord-specific embeds, the bot:
+- **.NET 9.0** - Modern, cross-platform framework
+- **Apple MusicKit API** - Apple Music integration
+- **Spotify Web API** - Spotify integration
+- **Tidal API** - Tidal integration
+- **NetCord** - Discord bot library
 
-1. Stores the lookup result
-2. Generates a unique card URL
-3. Sends the URL in a message
-4. Discord automatically renders the OpenGraph preview
+## 🔐 Privacy & Security
 
-This approach makes the cards:
-- Platform-independent (works on any service supporting OpenGraph)
-- Shareable beyond Discord
-- Consistent across different platforms
+- API keys are hashed and never stored in plain text
+- Input URLs with tracking parameters are kept private (not stored on Bluesky PDS)
+- Rate limiting ensures fair usage (20 requests/hour per user)
+- All credentials configured via environment variables
 
-#### Card Endpoints
+## 🌍 Deployment Options
 
-```http
-GET /card/{id}
-```
+TuneBridge can be deployed anywhere:
 
-Returns an HTML page with OpenGraph metadata and a beautiful UI displaying:
-- Track/album title and artist
-- Cover artwork
-- Links to all available streaming platforms (Spotify, Apple Music, Tidal)
-- Responsive design for mobile and desktop
+- **Docker** - Simple containerized deployment
+- **Cloud Services** - Azure Container Apps, AWS ECS, Google Cloud Run
+- **Kubernetes** - Scalable orchestration
+- **Self-hosted** - Run natively on Linux, Windows, or macOS
 
-Cards are cached for 24 hours and automatically expire to manage memory usage.
+See the [Deployment Guide](docs/DEPLOYMENT.md) for platform-specific instructions.
 
-### Example OpenGraph Metadata
+## 📊 API Usage
 
-The cards include standard OpenGraph tags:
-- `og:type`: `music.song` or `music.album`
-- `og:title`: Track or album title
-- `og:description`: Artist and available platforms
-- `og:image`: Album/track artwork
-- `music:musician`: Artist name
-
-This ensures proper rendering on all platforms that support OpenGraph previews.
-
-## API Endpoints
-
-### Authentication Endpoints
-
-#### Register
-Create a new user account and receive an API key:
-```http
-POST /account/register
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "SecurePassword123"
-}
-```
-
-Response:
-```json
-{
-  "userId": "...",
-  "apiKey": "YOUR_API_KEY_HERE",
-  "message": "Registration successful. Save your API key - it will not be shown again."
-}
-```
-
-#### Login
-Authenticate and retrieve your API key:
-```http
-POST /account/login
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "SecurePassword123"
-}
-```
-
-#### Regenerate API Key
-Generate a new API key (requires authentication):
-```http
-POST /account/regenerate-api-key
-X-API-Key: YOUR_CURRENT_API_KEY
-```
-
-### Web Interface
-- `GET /` - Web-based lookup interface
-
-### Music Lookup API
-
-**Authentication Required**: All music lookup endpoints except `/music/lookup/url` require authentication via the `X-API-Key` header.
-
-**Rate Limiting**: Authenticated endpoints are rate-limited to 20 requests per hour per user. The public `/music/lookup/url` endpoint is not rate-limited.
-
-All endpoints accept POST requests with JSON payloads:
-
-#### Lookup by URL (Streaming) - PUBLIC
-No authentication required:
-```http
-POST /music/lookup/url
-Content-Type: application/json
-
-{
-  "uri": "https://music.apple.com/us/album/..."
-}
-```
-
-#### Lookup by URL (List) - PROTECTED
-Requires authentication:
-```http
-POST /music/lookup/urlList
-Content-Type: application/json
-X-API-Key: YOUR_API_KEY
-
-{
-  "uri": "https://music.apple.com/us/album/..."
-}
-```
-
-#### Lookup by ISRC - PROTECTED
-Requires authentication:
-```http
-POST /music/lookup/isrc
-Content-Type: application/json
-X-API-Key: YOUR_API_KEY
-
-{
-  "isrc": "USVI20000123"
-}
-```
-
-#### Lookup by UPC - PROTECTED
-Requires authentication:
-```http
-POST /music/lookup/upc
-Content-Type: application/json
-X-API-Key: YOUR_API_KEY
-
-{
-  "upc": "123456789012"
-}
-```
-
-#### Lookup by Title/Artist - PROTECTED
-Requires authentication:
-```http
-POST /music/lookup/title
-Content-Type: application/json
-X-API-Key: YOUR_API_KEY
-
-{
-  "title": "Song Name",
-  "artist": "Artist Name"
-}
-```
-
-### Rate Limiting
-
-- **Limit**: 20 requests per hour per authenticated user
-- **Applies to**: All protected endpoints (isrc, upc, title, urlList)
-- **Exempt**: Public `/music/lookup/url` endpoint
-- **Response**: When limit is exceeded, returns HTTP 429 with `Retry-After` header indicating seconds until reset
-
-Example rate limit response:
-```json
-{
-  "error": "Rate limit exceeded",
-  "message": "Maximum 20 requests per hour allowed. Please try again in 45 minutes.",
-  "retryAfter": 2700
-}
-```
-
-## Discord Bot Usage
-
-Once invited to your Discord server, the bot will automatically:
-1. Monitor messages for Apple Music, Spotify, and Tidal links
-2. Look up the corresponding track/album on the other platforms
-3. Generate an OpenGraph card with links to all available services
-4. Reply with a shareable card URL that Discord automatically previews
-5. Delete the original message (if it only contained music links, keeping the channel clean)
-
-The bot now uses OpenGraph cards instead of Discord-specific embeds, making the shared links work on any platform that supports OpenGraph metadata.
-
-## Deployment
-
-### Docker Compose (Recommended)
-
-TuneBridge includes a complete Docker Compose setup with Caddy as a secure reverse proxy:
-
-**Features:**
-- 🔒 Automatic HTTPS with Let's Encrypt
-- 🛡️ Security headers (HSTS, CSP, X-Frame-Options)
-- 🔑 Docker secrets for credential management
-- 📊 Health checks and monitoring
-- 📦 One-command deployment
-
-**Quick deployment:**
-```bash
-git clone https://github.com/tsmarvin/TuneBridge.git
-cd TuneBridge
-./setup-secrets.sh
-# Edit secrets/ with your credentials
-cp .env.example .env
-# Edit .env with your configuration
-docker-compose up -d
-```
-
-**Documentation:**
-- 📖 [Quick Start Guide](QUICKSTART.md) - Get running in 5 minutes
-- 📚 [Deployment Guide](DOCKER_DEPLOYMENT.md) - Production deployment, security, troubleshooting
-
-### Docker (Manual)
-
-For manual Docker deployments without Docker Compose:
+Create an account to get your API key:
 
 ```bash
-docker build -t tunebridge .
-docker run -p 80:80 -p 443:443 \
-  -e DOMAIN=yourdomain.com \
-  -e APPLE_TEAM_ID=... \
-  -e SPOTIFY_CLIENT_ID=... \
-  -v /path/to/secrets:/run/secrets:ro \
-  tunebridge
+curl -X POST http://localhost:10000/account/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"SecurePassword123"}'
 ```
 
-The container includes both TuneBridge and Caddy, exposing:
-- Port 80: HTTP (redirects to HTTPS)
-- Port 443: HTTPS with automatic TLS
-- Port 10000: TuneBridge (internal only)
+Convert a link:
 
-### Kubernetes / Cloud Platforms
+```bash
+curl -X POST http://localhost:10000/music/lookup/urlList \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"uri":"https://open.spotify.com/track/..."}'
+```
 
-The Docker image works with:
-- Kubernetes (use Secrets for credentials)
-- Azure Container Apps
-- AWS ECS / Fargate
-- Google Cloud Run
-- Any container platform supporting Docker
+See the [API Reference](docs/API.md) for complete documentation.
 
-## Testing
-
-TuneBridge includes a comprehensive test suite with unit, integration, and end-to-end tests.
-
-- **Unit Tests**: Test individual components in isolation
-- **Integration Tests**: Test service integration with external APIs  
-- **End-to-End Tests**: Test complete application flows including API endpoints
-
-### Quick Start
+## 🧪 Testing
 
 ```bash
 # Run all tests
 dotnet test
 
-# Run only unit tests (no API credentials needed)
+# Run unit tests only (no API credentials needed)
 dotnet test --filter "FullyQualifiedName~Unit"
-
-# Run integration tests
-dotnet test --filter "FullyQualifiedName~Integration"
-
-# Run end-to-end tests
-dotnet test --filter "FullyQualifiedName~EndToEnd"
 ```
 
-### Configuration for Tests
+See the [Testing Guide](docs/TESTING.md) for more details.
 
-Tests read credentials from `appsettings.json`. In CI, the workflow creates this file from the `appsettings.transform.json` template using GitHub secrets.
-
-For local testing, create an `appsettings.json` in the test output directory with your credentials:
-
-```json
-{
-  "TuneBridge": {
-    "NodeNumber": 0,
-    "AppleTeamId": "your_team_id",
-    "AppleKeyId": "your_key_id",
-    "AppleKeyPath": "/path/to/AuthKey.p8",
-    "SpotifyClientId": "your_client_id",
-    "SpotifyClientSecret": "your_client_secret",
-    "TidalClientId": "your_tidal_client_id",
-    "TidalClientSecret": "your_tidal_client_secret",
-    "DiscordToken": ""
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Warning",
-      "Microsoft.Hosting.Lifetime": "Warning"
-    }
-  },
-  "AllowedHosts": "*"
-}
-```
-
-Tests automatically run in CI/CD pipelines when configured with appropriate GitHub secrets.
-
-## Technology Stack
-
-- **.NET 9.0** - Cross-platform framework
-- **ASP.NET Core** - Web framework
-- **NetCord** - Discord bot library
-- **Apple MusicKit API** - Apple Music integration
-- **Spotify Web API** - Spotify integration
-- **Tidal API** - Tidal integration
-
-## License
+## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Author
+## 👤 Author
 
-Taylor Marvin
+**Taylor Marvin**
+
+---
+
+*Because music connects us—no matter where we listen.*

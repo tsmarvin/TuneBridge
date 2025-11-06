@@ -28,8 +28,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// </summary>
         public const string DefaultStorefront = "US";
 
+        /// <inheritdoc/>
         public override SupportedProviders Provider => SupportedProviders.Tidal;
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc )
             => await ParseTidalResponse(
                 await NewMusicApiRequest( TidalLinkParser.GetTracksIsrcURI( DefaultStorefront, isrc ), IsrcLookupKey ),
@@ -38,6 +40,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
             => await ParseTidalResponse(
                 await NewMusicApiRequest( TidalLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), UpcLookupKey ),
@@ -46,6 +49,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseTidalArtistList(
                 await NewMusicApiRequest(
@@ -71,6 +75,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
             if (TidalLinkParser.TryParseUri( uri, out TidalEntity kind, out string id )) {
                 if (kind == TidalEntity.Album) {

@@ -7,10 +7,15 @@ namespace TuneBridge.Domain.Models;
 /// Database context for ASP.NET Identity with custom ApplicationUser.
 /// </summary>
 public class ApplicationDbContext : IdentityDbContext<ApplicationUser> {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ApplicationDbContext"/> class.
+    /// </summary>
+    /// <param name="options">The database context configuration options.</param>
     public ApplicationDbContext( DbContextOptions<ApplicationDbContext> options )
         : base( options ) {
     }
 
+    /// <inheritdoc/>
     protected override void OnModelCreating( ModelBuilder builder ) {
         base.OnModelCreating( builder );
 

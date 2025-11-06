@@ -6,10 +6,19 @@
 public class SwaggerAuthorizationMiddleware {
     private readonly RequestDelegate _next;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SwaggerAuthorizationMiddleware"/> class.
+    /// </summary>
+    /// <param name="next">The next middleware in the pipeline.</param>
     public SwaggerAuthorizationMiddleware( RequestDelegate next ) {
         _next = next;
     }
 
+    /// <summary>
+    /// Invokes the middleware to check Swagger authorization.
+    /// </summary>
+    /// <param name="context">The HTTP context for the current request.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public async Task InvokeAsync( HttpContext context ) {
         // Allow access to swagger.json even without authentication (needed for UI to work)
         // but require authentication for the UI itself

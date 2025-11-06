@@ -18,11 +18,17 @@ namespace TuneBridge.Domain.Types.Bases {
 
         #region IMusicLookupService Implementation
 
+        /// <inheritdoc/>
         public abstract SupportedProviders Provider { get; }
+        /// <inheritdoc/>
         public abstract Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc );
+        /// <inheritdoc/>
         public abstract Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc );
+        /// <inheritdoc/>
         public abstract Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist );
+        /// <inheritdoc/>
         public abstract Task<MusicLookupResultDto?> GetInfoAsync( string uri );
+        /// <inheritdoc/>
         public async Task<MusicLookupResultDto?> GetInfoAsync( MusicLookupResultDto lookup )
             => string.IsNullOrWhiteSpace( lookup.ExternalId ) || lookup.IsAlbum == null
                         ? await GetInfoAsync( lookup.Title, lookup.Artist )
@@ -42,14 +48,22 @@ namespace TuneBridge.Domain.Types.Bases {
 
         #region Base Class Defaults
 
+        /// <summary>Lookup key for ISRC-based song queries.</summary>
         protected const string IsrcLookupKey = "isrc song ";
+        /// <summary>Lookup key for UPC-based album queries.</summary>
         protected const string UpcLookupKey = "upc album ";
+        /// <summary>Lookup key for artist search queries.</summary>
         protected const string ArtistLookupKey = "artist search ";
+        /// <summary>Lookup key for URI-based queries.</summary>
         protected const string UriLookupKey = "by uri ";
+        /// <summary>Lookup key for album queries.</summary>
         protected const string AlbumLookupKey = "album ";
+        /// <summary>Lookup key for song queries.</summary>
         protected const string SongLookupKey = "song ";
 
+        /// <summary>Logger for recording errors and diagnostic information.</summary>
         protected readonly ILogger<MusicLookupServiceBase> Logger = logger;
+        /// <summary>JSON serialization options for logging API responses.</summary>
         protected readonly JsonSerializerOptions SerializerOptions = serializerOptions;
 
         private protected async Task<string?> NewMusicApiRequest(
@@ -66,6 +80,12 @@ namespace TuneBridge.Domain.Types.Bases {
             return await resp.Content.ReadAsStringAsync( );
         }
 
+        /// <summary>
+        /// Extracts the external ID (ISRC or UPC) from a JSON element.
+        /// </summary>
+        /// <param name="element">The JSON element to extract from.</param>
+        /// <param name="isAlbum">True to extract UPC (album), false to extract ISRC (track).</param>
+        /// <returns>The external ID if found, otherwise an empty string.</returns>
         protected static string GetExternalIdFromJson( JsonElement element, bool isAlbum ) {
             if (element.TryGetProperty( "external_ids", out JsonElement idProps )) {
                 element = idProps;
@@ -82,29 +102,63 @@ namespace TuneBridge.Domain.Types.Bases {
                             : string.Empty);
         }
 
+        /// <summary>
+        /// Validates if an album's title matches the expected title after sanitization.
+        /// </summary>
+        /// <param name="album">The album to validate.</param>
+        /// <param name="title">The expected title.</param>
+        /// <returns>True if the titles match after sanitization.</returns>
         protected static bool ValidateAlbumTitle( MusicLookupResultDto? album, string title )
             => album != null &&
                 SanitizeAlbumTitle( title )
                 .Equals( SanitizeAlbumTitle( album.Title ), StringComparison.InvariantCultureIgnoreCase );
 
+        /// <summary>
+        /// Validates if an album's title matches a pre-sanitized title.
+        /// </summary>
+        /// <param name="album">The album to validate.</param>
+        /// <param name="sanitizedTitle">The pre-sanitized expected title.</param>
+        /// <returns>True if the titles match.</returns>
         protected static bool ValidateSanitizedAlbumTitle( MusicLookupResultDto? album, string sanitizedTitle )
             => album != null &&
                 sanitizedTitle
                 .Equals( SanitizeAlbumTitle( album.Title ), StringComparison.InvariantCultureIgnoreCase );
 
+        /// <summary>
+        /// Validates if a song's title matches the expected title after sanitization.
+        /// </summary>
+        /// <param name="song">The song to validate.</param>
+        /// <param name="title">The expected title.</param>
+        /// <returns>True if the titles match after sanitization.</returns>
         protected static bool ValidateSongTitle( MusicLookupResultDto? song, string title )
             => song != null &&
                 SanitizeSongTitle( title )
                 .Equals( SanitizeSongTitle( song.Title ), StringComparison.InvariantCultureIgnoreCase );
 
+        /// <summary>
+        /// Validates if a song's title matches a pre-sanitized title.
+        /// </summary>
+        /// <param name="song">The song to validate.</param>
+        /// <param name="sanitizedTitle">The pre-sanitized expected title.</param>
+        /// <returns>True if the titles match.</returns>
         protected static bool ValidateSanitizedSongTitle( MusicLookupResultDto? song, string sanitizedTitle )
             => song != null &&
                 sanitizedTitle
                 .Equals( SanitizeSongTitle( song.Title ), StringComparison.InvariantCultureIgnoreCase );
 
+        /// <summary>
+        /// Sanitizes a title string by removing ignored characters for matching.
+        /// </summary>
+        /// <param name="input">The title to sanitize.</param>
+        /// <returns>The sanitized title.</returns>
         protected static string SanitizeTitleString( string input ) =>
             s_ignoredChars.Replace( input, string.Empty );
 
+        /// <summary>
+        /// Sanitizes a song title by removing addendums and ignored characters.
+        /// </summary>
+        /// <param name="title">The song title to sanitize.</param>
+        /// <returns>The sanitized song title.</returns>
         protected static string SanitizeSongTitle( string title )
             => SanitizeTitleString(
                 s_songTitleAddendum.IsMatch( title ) ?
@@ -113,6 +167,11 @@ namespace TuneBridge.Domain.Types.Bases {
                 : title
             );
 
+        /// <summary>
+        /// Sanitizes an album title by removing addendums and ignored characters.
+        /// </summary>
+        /// <param name="title">The album title to sanitize.</param>
+        /// <returns>The sanitized album title.</returns>
         protected static string SanitizeAlbumTitle( string title )
             => SanitizeTitleString(
                 s_albumTitleAddendum.IsMatch( title )

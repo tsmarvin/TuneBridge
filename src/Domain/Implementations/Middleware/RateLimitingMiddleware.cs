@@ -25,12 +25,26 @@ public class RateLimitingMiddleware {
  StringComparer.OrdinalIgnoreCase
  );
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="RateLimitingMiddleware"/> class.
+    /// </summary>
+    /// <param name="next">The next middleware in the pipeline.</param>
+    /// <param name="logger">Logger for rate limiting events.</param>
+    /// <param name="maxRequestsPerHour">Maximum number of requests allowed per hour per user.</param>
     public RateLimitingMiddleware( RequestDelegate next, ILogger<RateLimitingMiddleware> logger, int maxRequestsPerHour ) {
         _next = next;
         _logger = logger;
         _maxRequestsPerHour = maxRequestsPerHour;
     }
 
+    /// <summary>
+    /// Invokes the rate limiting middleware to check if the user has exceeded their hourly limit.
+    /// </summary>
+    /// <param name="context">The HTTP context for the current request.</param>
+    /// <param name="userManager">User manager for retrieving user information.</param>
+    /// <param name="dbContext">Database context for tracking request counts.</param>
+    /// <param name="cache">Memory cache for storing rate limit data.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public async Task InvokeAsync( HttpContext context, UserManager<ApplicationUser> userManager, ApplicationDbContext dbContext, IMemoryCache cache ) {
         string path = context.Request.Path.Value ?? string.Empty;
 
