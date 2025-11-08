@@ -186,6 +186,6 @@ See the [Deployment Guide](docs/DEPLOYMENT.md) for detailed production deploymen
 
 ## Getting Help
 
-- Documentation: [README.md](README.md)
-- Deployment Guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- Documentation: [README.md](../README.md)
+- Deployment Guide: [docs/DEPLOYMENT.md](DEPLOYMENT.md)
 - Issues: https://github.com/tsmarvin/TuneBridge/issues

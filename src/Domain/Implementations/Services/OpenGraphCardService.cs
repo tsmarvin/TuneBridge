@@ -7,8 +7,8 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// <summary>
     /// In-memory implementation of the OpenGraph card service for storing MediaLinkResult objects.
     /// </summary>
-    public class OpenGraphCardService : IOpenGraphCardService {
-
+    public class OpenGraphCardService( string baseUrl ) : IOpenGraphCardService {
+ 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
         private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 24 );
         private int _operationCounter;
@@ -22,7 +22,8 @@ namespace TuneBridge.Domain.Implementations.Services {
             DateTime expiry = DateTime.UtcNow.Add( _expirationTime );
             _store[id] = (result, expiry);
 
-            return id;
+            // Generate the OpenGraph card URL
+            return $"{baseUrl.TrimEnd( '/' )}/card/{id}";
         }
 
         /// <inheritdoc/>

@@ -85,7 +85,7 @@ Tests read credentials from `appsettings.json` in the test output directory. Cre
 
 ### CI/CD Configuration
 
-In CI pipelines, use the `appsettings.transform.json` template with GitHub secrets:
+The CI pipelines, uses the `appsettings.transform.json` template with GitHub secrets:
 
 ```bash
 # Example GitHub Actions workflow
@@ -358,27 +358,6 @@ Run tests by category:
 ```bash
 dotnet test --filter "TestCategory=Integration"
 dotnet test --filter "TestCategory!=Slow"
-```
-
-## Code Coverage
-
-Generate code coverage reports:
-
-```bash
-dotnet test --collect:"XPlat Code Coverage"
-```
-
-Install ReportGenerator to view coverage:
-
-```bash
-dotnet tool install -g dotnet-reportgenerator-globaltool
-
-reportgenerator \
-  -reports:"**/coverage.cobertura.xml" \
-  -targetdir:"coveragereport" \
-  -reporttypes:Html
-
-# Open coveragereport/index.html in browser
 ```
 
 ## Continuous Integration

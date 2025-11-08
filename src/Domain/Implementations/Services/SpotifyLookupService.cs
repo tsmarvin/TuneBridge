@@ -12,10 +12,10 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// <summary>
     /// An <see cref="IMusicLookupService"/> implementation for <see cref="SupportedProviders.Spotify"/>
     /// </summary>
-    /// <param name="handler">The <see cref="SpotifyTokenHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
+    /// <param name="handler">The <see cref="SpotifyTokenHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
     public sealed partial class SpotifyLookupService(
         SpotifyTokenHandler handler,
         IHttpClientFactory factory,

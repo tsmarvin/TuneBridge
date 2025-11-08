@@ -11,7 +11,7 @@ namespace TuneBridge.Domain.Interfaces {
         /// Stores a MediaLinkResult and returns a unique identifier for it.
         /// </summary>
         /// <param name="result">The media link result to store.</param>
-        /// <returns>A unique identifier that can be used to retrieve the result.</returns>
+        /// <returns>A link to the stored card.</returns>
         string StoreResult( MediaLinkResult result );
 
         /// <summary>

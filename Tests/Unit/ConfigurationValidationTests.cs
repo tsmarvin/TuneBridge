@@ -37,7 +37,7 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         FileNotFoundException exception = Assert.ThrowsException<FileNotFoundException>(() =>
-            services.AddTuneBridgeServices(configuration));
+            services.ConfigureTuneBridgeServices(configuration));
         Assert.IsTrue( exception.Message.Contains( ".p8" ) );
     }
 
@@ -72,7 +72,7 @@ public class ConfigurationValidationTests {
 
             // Act & Assert
             InvalidDataException exception = Assert.ThrowsException<InvalidDataException>(() =>
-                services.AddTuneBridgeServices(configuration));
+                services.ConfigureTuneBridgeServices(configuration));
             Assert.IsTrue( exception.Message.Contains( "missing contents" ) );
         } finally {
             if (File.Exists( emptyKeyPath )) {
@@ -109,7 +109,7 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         InvalidOperationException exception = Assert.ThrowsException<InvalidOperationException>(() =>
-            services.AddTuneBridgeServices(configuration));
+            services.ConfigureTuneBridgeServices(configuration));
         Assert.IsTrue( exception.Message.Contains( "Required settings are missing" ) );
     }
 
@@ -140,7 +140,7 @@ public class ConfigurationValidationTests {
         _ = services.AddLogging( );
 
         // Act - Should not throw
-        _ = services.AddTuneBridgeServices( configuration );
+        _ = services.ConfigureTuneBridgeServices( configuration );
         ServiceProvider serviceProvider = services.BuildServiceProvider();
 
         // Assert

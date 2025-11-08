@@ -35,9 +35,7 @@ public class MusicLookupControllerTests {
     [TestMethod]
     public async Task ByUrlList_WithValidAppleMusicUrl_ReturnsOkWithResults( ) {
         // Arrange
-        MusicLookupController.UrlReq request = new(
- "https://music.apple.com/us/album/bohemian-rhapsody/1440806041"
- );
+        MusicLookupController.UrlReq request = new("https://music.apple.com/us/album/bohemian-rhapsody/1440806041");
 
         // Act
         HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
@@ -189,23 +187,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
             .AddInMemoryCollection(configData)
             .Build();
 
-        ServiceCollection services = new();
+        ServiceCollection services = [];
         _ = services.AddSingleton<IConfiguration>( configuration );
         _ = services.AddLogging( );
 
         _ = builder.UseEnvironment( "Testing" );
 
-        _ = services.AddTuneBridgeServices( configuration );
-    }
-
-    protected void RegisterUser( ) {
-        // Use the account controller to register a test user
-        //AccountController.
-
-        // Use the account controller to register an api key
-
-
-        // return the apikey to the caller to be used in future requests.
-
+        _ = builder.ConfigureTuneBridgeServices( services, configuration );
     }
 }

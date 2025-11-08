@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
+using Microsoft.AspNetCore.Mvc.Testing;
+using TuneBridge.Tests.EndToEnd;
 
 namespace TuneBridge.Tests.Integration;
 
@@ -13,6 +15,8 @@ namespace TuneBridge.Tests.Integration;
 [TestClass]
 public class MusicLookupServiceTests {
     private IServiceProvider _serviceProvider = null!;
+
+    private static WebApplicationFactory<Program>? _factory;
 
     [TestInitialize]
     public void Initialize( ) {
@@ -25,9 +29,10 @@ public class MusicLookupServiceTests {
         _ = services.AddLogging( );
 
         // Add TuneBridge services - will throw if credentials are missing/invalid
-        _ = services.AddTuneBridgeServices( configuration );
+        _ = services.ConfigureTuneBridgeServices( configuration );
 
         _serviceProvider = services.BuildServiceProvider( );
+        _factory = new CustomWebApplicationFactory( );
     }
 
     [TestMethod]

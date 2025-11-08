@@ -107,11 +107,12 @@ For local development, you can use an `appsettings.json` file instead of environ
     "TidalClientId": "your_tidal_client_id",
     "TidalClientSecret": "your_tidal_client_secret",
     "DiscordToken": "your_bot_token",
+    "ConnectionString": "Data Source=tunebridge.db",
     "BlueskyPdsUrl": "https://bsky.social",
     "BlueskyIdentifier": "your-handle.bsky.social",
     "BlueskyPassword": "your-app-password",
     "CacheDays": 7,
-    "CacheDbPath": "medialinkscache.db",
+    "CacheDbPath": "tunebridge.db",
     "BaseUrl": "http://localhost:5000"
   },
   "Logging": {
@@ -120,7 +121,7 @@ For local development, you can use an `appsettings.json` file instead of environ
       "Microsoft.Hosting.Lifetime": "Information"
     }
   },
-  "AllowedHosts": "*"
+  "AllowedHosts": "localhost"
 }
 ```
 

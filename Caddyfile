@@ -1,6 +1,4 @@
 # Caddyfile for TuneBridge
-# Provides secure reverse proxy with automatic HTTPS
-
 {
     # Global options
     admin off
@@ -9,12 +7,11 @@
     # Enable auto HTTPS
     auto_https on
     # Email for Let's Encrypt notifications (override with CADDY_ADMIN_EMAIL env var)
-    email {$CADDY_ADMIN_EMAIL:admin@tunebridge.media}
+    email {$CADDY_ADMIN_EMAIL}
 }
 
 # Default site configuration
-# Override DOMAIN with environment variable for production
-{$DOMAIN:dev.tunebridge.media} {
+{$DOMAIN} {
     # Enable logging
     log {
         output file /var/log/caddy/access.log
@@ -41,24 +38,13 @@
         # Content Security Policy
         Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';"
         
-        # Permissions policy (formerly Feature-Policy)
-        # Deny access to sensitive browser features (empty list = no origins allowed)
+        # Permissions policy - Deny access to sensitive browser features
         Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
         
         # Remove server identification
         -Server
         -X-Powered-By
     }
-
-    # Rate limiting (optional, adjust as needed)
-    # Uncomment to enable rate limiting at the proxy level
-    # rate_limit {
-    #     zone dynamic {
-    #         key {remote_host}
-    #         events 100
-    #         window 1m
-    #     }
-    # }
 
     # Reverse proxy to TuneBridge application
     reverse_proxy localhost:10000 {
@@ -87,13 +73,5 @@
         handle @5xx {
             respond "Service temporarily unavailable. Please try again later." 503
         }
-        
-        @4xx expression `{err.status_code} >= 400 && {err.status_code} < 500`
-        handle @4xx {
-            respond "Request error. Please check your request and try again." {err.status_code}
-        }
     }
 }
-
-# HTTP to HTTPS redirect for production
-# This is handled automatically by Caddy when auto_https is enabled

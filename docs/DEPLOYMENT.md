@@ -18,7 +18,7 @@ docker-compose up -d
 
 Visit `https://localhost` (or your configured domain) to access TuneBridge.
 
-For detailed Docker Compose deployment instructions, see the [Quick Start Guide](../QUICKSTART.md).
+For detailed Docker Compose deployment instructions, see the [Quick Start Guide](QUICKSTART.md).
 
 ## Docker Deployment
 
@@ -62,7 +62,7 @@ Sensitive values go in the `secrets/` directory (created by `setup-secrets.sh`).
 Pull the latest image from Docker Hub:
 
 ```bash
-docker pull $DOCKERHUB_USERNAME/tunebridge-test:latest
+docker pull tsmarvin/tunebridge-test:latest
 ```
 
 Run the container:
@@ -98,7 +98,7 @@ The entrypoint script automatically reads secrets from `/run/secrets/` and falls
 Update `TuneBridge__BaseUrl` to your public domain:
 
 ```bash
--e TuneBridge__BaseUrl=https://tunebridge.media
+-e TuneBridge__BaseUrl=https://dev.tunebridge.media
 ```
 
 This ensures OpenGraph cards generate correct URLs.
@@ -117,7 +117,7 @@ Set appropriate log levels for production:
 Restrict allowed hosts for security:
 
 ```bash
--e ALLOWED_HOSTS=tunebridge.media
+-e ALLOWED_HOSTS=dev.tunebridge.media
 ```
 
 ## Monitoring
@@ -129,11 +129,6 @@ TuneBridge logs to stdout/stderr by default. Configure log aggregation based on 
 **Docker:**
 ```bash
 docker logs -f tunebridge
-```
-
-**Kubernetes:**
-```bash
-kubectl logs -f deployment/tunebridge
 ```
 
 ## Scaling
@@ -154,14 +149,16 @@ For large Discord deployments, use the `NODE_NUMBER` environment variable:
 -e NODE_NUMBER=1
 ```
 
+Note: If you do not increment this integer you could have multiple instances replying to the same events.
+
+
 ## Security Considerations
 
 1. **Use HTTPS** - Always deploy behind SSL/TLS
 2. **Secure secrets** - Use secret management systems (not environment variables in production)
-3. **Network isolation** - Deploy in private networks where possible
-4. **Rate limiting** - Configure reverse proxy rate limiting as an additional layer
-5. **API key rotation** - Regularly regenerate API keys
-6. **Minimal permissions** - Run containers with minimal privileges
+3. **Rate limiting** - Configure reverse proxy rate limiting as an additional layer
+4. **API key rotation** - Regularly regenerate API keys
+5. **Minimal permissions** - Run containers with minimal privileges
 
 ## Backup and Recovery
 
@@ -218,7 +215,7 @@ Check:
 
 ```bash
 # Pull latest image from Docker Hub
-docker pull $DOCKERHUB_USERNAME/tunebridge-test:latest
+docker pull tsmarvin/tunebridge-test:latest
 
 # Stop and remove old container
 docker stop tunebridge

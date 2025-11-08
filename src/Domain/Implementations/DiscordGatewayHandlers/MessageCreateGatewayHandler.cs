@@ -40,14 +40,10 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
             ulong channelId,
             MediaLinkResult result,
             ulong userId,
-            IOpenGraphCardService cardService,
-            string baseUrl ) {
-
+            IOpenGraphCardService cardService
+        ) {
             // Store the result and get a unique card ID
-            string cardId = cardService.StoreResult( result );
-
-            // Generate the OpenGraph card URL
-            string cardUrl = $"{baseUrl.TrimEnd( '/' )}/card/{cardId}";
+            string cardUrl = cardService.StoreResult( result );
 
             // Send a simple message with the card URL (Discord will auto-embed the OpenGraph preview)
             _ = await client.Rest.SendMessageAsync(
@@ -71,14 +67,11 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
 
             string content = message.Content.Trim();
 
-            // Get the base URL from configuration section, default to localhost for development
-            string baseUrl = _configuration.GetSection( "TuneBridge" )["BaseUrl"] ?? "http://localhost:5000";
-
             bool messageSent = false;
             List<string> inputLinks = [];
             await foreach (MediaLinkResult result in _linkLookupService.GetInfoAsync( content )) {
                 inputLinks.AddRange( result._inputLinks );
-                messageSent = await SendLinkMessage( client, message.ChannelId, result, message.Author.Id, _cardService, baseUrl );
+                messageSent = await SendLinkMessage( client, message.ChannelId, result, message.Author.Id, _cardService );
             }
 
             // If we sent an embed message and the input message only contained valid links, delete the input message
@@ -89,8 +82,8 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
             return;
         }
 
-        private static string CombinedInputLinksRegexEscaped( List<string> inputLinks ) {
-            return string.Join( @"\s*", inputLinks.Select( link => Regex.Escape( link ) ) );
-        }
+        private static string CombinedInputLinksRegexEscaped( List<string> inputLinks )
+            => string.Join( @"\s*", inputLinks.Select( Regex.Escape ) );
+
     }
 }

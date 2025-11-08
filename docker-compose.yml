@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tunebridge:latest
+    image: tsmarvin/tunebridge-test:latest
     container_name: tunebridge
     restart: unless-stopped
     
@@ -16,8 +16,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "10000:10000"  # Optional: Remove in production
-    
+
     # Environment variables
     # Override these in a .env file or docker-compose.override.yml
     environment:
@@ -36,21 +35,18 @@ services:
       - APPLE_KEY_ID=${APPLE_KEY_ID:-}
       - APPLE_KEY_PATH=${APPLE_KEY_PATH:-/run/secrets/apple_key}
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
       - TIDAL_CLIENT_ID=${TIDAL_CLIENT_ID:-}
-      - TIDAL_CLIENT_SECRET=${TIDAL_CLIENT_SECRET:-}
       
       # Optional Discord bot token
       - DISCORD_TOKEN=${DISCORD_TOKEN:-}
       
       # Optional Bluesky PDS configuration
-      - BLUESKY_PDS_URL=${BLUESKY_PDS_URL:-https://bsky.social}
+      - BLUESKY_PDS_URL=${BLUESKY_PDS_URL:-} # https://bsky.social is the default if you don't have a custom PDS
       - BLUESKY_IDENTIFIER=${BLUESKY_IDENTIFIER:-}
-      - BLUESKY_PASSWORD=${BLUESKY_PASSWORD:-}
       
       # Cache configuration
       - CACHE_DAYS=${CACHE_DAYS:-7}
-      - CACHE_DB_PATH=${CACHE_DB_PATH:-/app/data/medialinkscache.db}
+      - CACHE_DB_PATH=${CACHE_DB_PATH:-/app/data/tunebridge.db}
       
       # Database configuration
       - CONNECTION_STRING=${CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
