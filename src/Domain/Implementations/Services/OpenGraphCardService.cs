@@ -9,6 +9,9 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// </summary>
     public class OpenGraphCardService( string baseUrl ) : IOpenGraphCardService {
 
+        /// <inheritdoc/>
+        public bool IsEnabled => string.IsNullOrWhiteSpace( baseUrl ) == false && baseUrl.StartsWith( "http" );
+
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
         private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 24 );
         private int _operationCounter;
@@ -42,10 +45,9 @@ namespace TuneBridge.Domain.Implementations.Services {
             // Clean every Nth operation for predictable memory management
             if (Interlocked.Increment( ref _operationCounter ) % CleanupInterval == 0) {
                 DateTime now = DateTime.UtcNow;
-                List<string> expiredKeys = _store
+                List<string> expiredKeys = [.. _store
                     .Where( kv => kv.Value.Expiry <= now )
-                    .Select( kv => kv.Key )
-                    .ToList( );
+                    .Select( kv => kv.Key )];
 
                 foreach (string? key in expiredKeys) {
                     _ = _store.TryRemove( key, out _ );

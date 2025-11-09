@@ -4,6 +4,7 @@ using NetCord.Hosting.Gateway;
 using NetCord.Rest;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Implementations.Extensions;
 using TuneBridge.Domain.Interfaces;
 
 namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
@@ -13,17 +14,14 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
     /// </summary>
     /// <param name="discordConfig">Configuration containing the media link service and node identifier.</param>
     /// <param name="cardService">Service for storing MediaLinkResult objects for OpenGraph card generation.</param>
-    /// <param name="configuration">Application configuration for retrieving base URL.</param>
     public partial class MessageCreateGatewayHandler(
         DiscordNodeConfig discordConfig,
-        IOpenGraphCardService cardService,
-        IConfiguration configuration
+        IOpenGraphCardService cardService
     ) : IMessageCreateShardedGatewayHandler {
 
         private readonly int _nodeNumber = discordConfig.NodeNumber;
         private readonly IMediaLinkService _linkLookupService = discordConfig.LinkLookupService;
         private readonly IOpenGraphCardService _cardService = cardService;
-        private readonly IConfiguration _configuration = configuration;
 
         /// <summary>
         /// Sends a message with a link to the OpenGraph card for the media link result.
@@ -33,7 +31,6 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
         /// <param name="result">The media link result to create a card for.</param>
         /// <param name="userId">The user ID who shared the link.</param>
         /// <param name="cardService">Service for storing the result and generating a card ID.</param>
-        /// <param name="baseUrl">The base URL for the application.</param>
         /// <returns>True if the message was sent successfully.</returns>
         internal static async Task<bool> SendLinkMessage(
             GatewayClient client,
@@ -43,16 +40,23 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
             IOpenGraphCardService cardService
         ) {
             // Store the result and get a unique card ID
-            string cardUrl = cardService.StoreResult( result );
+            if (cardService.IsEnabled) {
+                string cardUrl = cardService.StoreResult( result );
 
-            // Send a simple message with the card URL (Discord will auto-embed the OpenGraph preview)
-            _ = await client.Rest.SendMessageAsync(
-                channelId,
-                new MessageProperties {
-                    Content = $"<@{userId}> Shared: {cardUrl}",
-                    AllowedMentions = AllowedMentionsProperties.None
-                }
-            );
+                // Send a simple message with the card URL (Discord will auto-embed the OpenGraph preview)
+                _ = await client.Rest.SendMessageAsync(
+                    channelId,
+                    new MessageProperties {
+                        Content = $"<@{userId}> Shared: {cardUrl}",
+                        AllowedMentions = AllowedMentionsProperties.None
+                    }
+                );
+            } else {
+                _ = await client.Rest.SendMessageAsync(
+                    channelId,
+                    result.ToDiscordMessageProperties( userId )
+                );
+            }
             return true;
         }
 
