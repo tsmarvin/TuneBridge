@@ -89,3 +89,6 @@ secrets/
 caddy-data/
 caddy-config/
 caddy-logs/
+
+# macOS file
+.DS_Store
