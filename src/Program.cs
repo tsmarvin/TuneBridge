@@ -11,11 +11,11 @@ namespace TuneBridge {
         /// </summary>
         /// <param name="args">Command-line arguments for configuration overrides.</param>
         public static void Main( string[] args ) =>
-            WebApplication.CreateBuilder( new WebApplicationOptions() {
+            WebApplication.CreateBuilder( new WebApplicationOptions( ) {
                 ApplicationName = "TuneBridge",
                 Args = args,
                 WebRootPath = "Web/wwwroot"
-            })
+            } )
             .ConfigureTuneBridgeServices( args )
             .ConfigureTuneBridge( )
             .Run( );

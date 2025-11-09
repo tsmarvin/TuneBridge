@@ -31,7 +31,7 @@ namespace TuneBridge.Configuration {
         public static WebApplicationBuilder ConfigureTuneBridgeServices(
             this WebApplicationBuilder builder,
             string[] args
-        ) {            
+        ) {
             _ = builder.Configuration
                 .ConfigureAppSettings( args );
 
@@ -108,12 +108,12 @@ namespace TuneBridge.Configuration {
             this WebApplicationBuilder builder
         ) {
             WebApplication app = builder.Build();
-            
+
             IConfiguration config = app.Configuration;
 
             AppSettings settings = new( );
             config.GetRequiredSection( "TuneBridge" ).Bind( settings );
-            
+
             // Initialize cache database if configured
             InitializeCacheDatabase( app.Services );
 
