@@ -13,6 +13,11 @@ namespace TuneBridge.Domain.Interfaces {
         bool IsEnabled { get; }
 
         /// <summary>
+        /// The base URL for the application (e.g., https://tunebridge.media).
+        /// </summary>
+        string BaseUrl { get; }
+
+        /// <summary>
         /// Stores a MediaLinkResult and returns a unique identifier for it.
         /// </summary>
         /// <param name="result">The media link result to store.</param>
