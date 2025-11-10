@@ -43,7 +43,7 @@ At least one complete set of music provider credentials is required:
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
 | `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
-| `TuneBridge__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=medialinkscache.db` |
+| `TuneBridge__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=tunebridge.db` |
 | `TuneBridge__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=tunebridge.db` |
 | `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
 
