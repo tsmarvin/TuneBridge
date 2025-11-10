@@ -47,10 +47,10 @@ BLUESKY_PASSWORD_FROM_SECRET=$(read_secret "bluesky_password")
 BLUESKY_PASSWORD="${BLUESKY_PASSWORD:-$BLUESKY_PASSWORD_FROM_SECRET}"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
-CACHE_DB_PATH="${CACHE_DB_PATH:-Data Source=/app/data/medialinkscache.db}"
+LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
 
 # Authentication and rate limiting configuration
-CONNECTION_STRING="${CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
+IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
 # Try to read API key salt from Docker secret
 API_KEY_SALT_FROM_SECRET=$(read_secret "api_key_salt")
 API_KEY_SALT="${API_KEY_SALT:-$API_KEY_SALT_FROM_SECRET}"
@@ -82,14 +82,14 @@ cat > /app/appsettings.json <<EOF
     "TidalClientId": "$TIDAL_CLIENT_ID",
     "TidalClientSecret": "$TIDAL_CLIENT_SECRET",
     "DiscordToken": "$DISCORD_TOKEN",
-    "ConnectionString": "$(escape_bs "$CONNECTION_STRING")",
+    "IdentityConnectionString": "$(escape_bs "$IDENTITY_CONNECTION_STRING")",
     "ApiKeySalt": "$API_KEY_SALT",
     "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR,
     "BlueskyPdsUrl": "$BLUESKY_PDS_URL",
     "BlueskyIdentifier": "$BLUESKY_IDENTIFIER",
     "BlueskyPassword": "$BLUESKY_PASSWORD",
     "CacheDays": $CACHE_DAYS,
-    "CacheDbPath": "$(escape_bs "$CACHE_DB_PATH")",
+    "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
     "BaseUrl": "$DOMAIN"
   },
   "Logging": {

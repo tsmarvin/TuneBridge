@@ -43,7 +43,8 @@ At least one complete set of music provider credentials is required:
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
 | `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
-| `CACHE_DB_PATH` | Path to SQLite database for cache lookups | `medialinkscache.db` |
+| `TuneBridge__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=tunebridge.db` |
+| `TuneBridge__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=tunebridge.db` |
 | `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
 
 **Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `TuneBridge__BaseUrl` maps to `TuneBridge:BaseUrl` in configuration).
@@ -107,12 +108,12 @@ For local development, you can use an `appsettings.json` file instead of environ
     "TidalClientId": "your_tidal_client_id",
     "TidalClientSecret": "your_tidal_client_secret",
     "DiscordToken": "your_bot_token",
-    "ConnectionString": "Data Source=tunebridge.db",
+    "IdentityConnectionString": "Data Source=tunebridge.db",
     "BlueskyPdsUrl": "https://bsky.social",
     "BlueskyIdentifier": "your-handle.bsky.social",
     "BlueskyPassword": "your-app-password",
     "CacheDays": 7,
-    "CacheDbPath": "tunebridge.db",
+    "LinkCacheConnectionString": "Data Source=tunebridge.db",
     "BaseUrl": "localhost"
   },
   "Logging": {
