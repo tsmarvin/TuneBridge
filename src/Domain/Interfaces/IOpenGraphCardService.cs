@@ -8,10 +8,15 @@ namespace TuneBridge.Domain.Interfaces {
     public interface IOpenGraphCardService {
 
         /// <summary>
+        /// An indicator whether the OpenGraph card service is enabled.
+        /// </summary>
+        bool IsEnabled { get; }
+
+        /// <summary>
         /// Stores a MediaLinkResult and returns a unique identifier for it.
         /// </summary>
         /// <param name="result">The media link result to store.</param>
-        /// <returns>A unique identifier that can be used to retrieve the result.</returns>
+        /// <returns>A link to the stored card.</returns>
         string StoreResult( MediaLinkResult result );
 
         /// <summary>

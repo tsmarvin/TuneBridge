@@ -41,8 +41,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
-    <PackageReference Include="NetCord" Version="1.0.0-alpha.444" />
-    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.444" />
+    <PackageReference Include="NetCord" Version="1.0.0-alpha.447" />
+    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.447" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
   </ItemGroup>
 

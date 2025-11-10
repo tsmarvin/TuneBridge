@@ -1,6 +1,16 @@
 ﻿#!/bin/sh
 set -eu
 
+# ---- Helper function to read Docker secrets ----
+read_secret() {
+    secret_path="/run/secrets/$1"
+    if [ -f "$secret_path" ]; then
+        cat "$secret_path"
+    else
+        echo ""
+    fi
+}
+
 # ---- Configure defaults ----
 NODE_NUMBER="${NODE_NUMBER:-0}"
 ALLOWED_HOSTS="${ALLOWED_HOSTS:-*}"
@@ -8,27 +18,40 @@ DEFAULT_LOGLEVEL="${DEFAULT_LOGLEVEL:-Information}"
 HOSTING_DEFAULT_LOGLEVEL="${HOSTING_DEFAULT_LOGLEVEL:-Information}"
 
 # Optional music provider credentials
+# Read from Docker secrets if available, otherwise use environment variables
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
 APPLE_KEY_ID="${APPLE_KEY_ID:-}"
 APPLE_KEY_PATH="${APPLE_KEY_PATH:-}"
-SPOTIFY_CLIENT_ID="${SPOTIFY_CLIENT_ID:-}"
-SPOTIFY_CLIENT_SECRET="${SPOTIFY_CLIENT_SECRET:-}"
-TIDAL_CLIENT_ID="${TIDAL_CLIENT_ID:-}"
-TIDAL_CLIENT_SECRET="${TIDAL_CLIENT_SECRET:-}"
 
-# Optional Discord bot token
-DISCORD_TOKEN="${DISCORD_TOKEN:-}"
+# Try to read Spotify client secret from Docker secret
+SPOTIFY_CLIENT_SECRET_FROM_SECRET=$(read_secret "spotify_client_secret")
+SPOTIFY_CLIENT_ID="${SPOTIFY_CLIENT_ID:-}"
+SPOTIFY_CLIENT_SECRET="${SPOTIFY_CLIENT_SECRET:-$SPOTIFY_CLIENT_SECRET_FROM_SECRET}"
+
+# Try to read Tidal client secret from Docker secret
+TIDAL_CLIENT_SECRET_FROM_SECRET=$(read_secret "tidal_client_secret")
+TIDAL_CLIENT_ID="${TIDAL_CLIENT_ID:-}"
+TIDAL_CLIENT_SECRET="${TIDAL_CLIENT_SECRET:-$TIDAL_CLIENT_SECRET_FROM_SECRET}"
+
+# Try to read Discord token from Docker secret
+DISCORD_TOKEN_FROM_SECRET=$(read_secret "discord_token")
+DISCORD_TOKEN="${DISCORD_TOKEN:-$DISCORD_TOKEN_FROM_SECRET}"
 
 # Optional Bluesky PDS configuration
 BLUESKY_PDS_URL="${BLUESKY_PDS_URL:-https://bsky.social}"
 BLUESKY_IDENTIFIER="${BLUESKY_IDENTIFIER:-}"
-BLUESKY_PASSWORD="${BLUESKY_PASSWORD:-}"
+# Try to read Bluesky password from Docker secret
+BLUESKY_PASSWORD_FROM_SECRET=$(read_secret "bluesky_password")
+BLUESKY_PASSWORD="${BLUESKY_PASSWORD:-$BLUESKY_PASSWORD_FROM_SECRET}"
+
 CACHE_DAYS="${CACHE_DAYS:-7}"
 CACHE_DB_PATH="${CACHE_DB_PATH:-medialinkscache.db}"
 
 # Authentication and rate limiting configuration
 CONNECTION_STRING="${CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
-API_KEY_SALT="${API_KEY_SALT:-}"
+# Try to read API key salt from Docker secret
+API_KEY_SALT_FROM_SECRET=$(read_secret "api_key_salt")
+API_KEY_SALT="${API_KEY_SALT:-$API_KEY_SALT_FROM_SECRET}"
 RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
 # escape backslashes (for path safety) ----
@@ -76,5 +99,23 @@ cat > /app/appsettings.json <<EOF
 }
 EOF
 
-# 3) Launch the app
+# 3) Start Caddy in the background
+echo "Starting Caddy reverse proxy..."
+caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
+CADDY_PID=$!
+
+# Set up signal handlers for graceful shutdown
+trap 'echo "Shutting down..."; kill -TERM $CADDY_PID 2>/dev/null; wait $CADDY_PID' SIGTERM SIGINT
+
+# Give Caddy a moment to start
+sleep 2
+
+# Check if Caddy is running
+if ! kill -0 $CADDY_PID 2>/dev/null; then
+    echo "ERROR: Caddy failed to start"
+    exit 1
+fi
+
+# 4) Launch the TuneBridge application
+echo "Starting TuneBridge application..."
 exec "/app/TuneBridge"

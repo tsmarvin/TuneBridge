@@ -16,14 +16,14 @@ public class RateLimitingMiddleware {
 
     // Only these endpoints are rate-limited (all are POST). Public URL streaming endpoint is excluded.
     private static readonly HashSet<string> s_rateLimitedRoutes = new(
- new[] {
- "/music/lookup/isrc",
- "/music/lookup/upc",
- "/music/lookup/title",
- "/music/lookup/urllist" // case-insensitive compare below
- },
- StringComparer.OrdinalIgnoreCase
- );
+        [
+            "/music/lookup/isrc",
+            "/music/lookup/upc",
+            "/music/lookup/title",
+            "/music/lookup/urllist" // case-insensitive compare below
+        ],
+        StringComparer.OrdinalIgnoreCase
+    );
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RateLimitingMiddleware"/> class.
@@ -31,7 +31,11 @@ public class RateLimitingMiddleware {
     /// <param name="next">The next middleware in the pipeline.</param>
     /// <param name="logger">Logger for rate limiting events.</param>
     /// <param name="maxRequestsPerHour">Maximum number of requests allowed per hour per user.</param>
-    public RateLimitingMiddleware( RequestDelegate next, ILogger<RateLimitingMiddleware> logger, int maxRequestsPerHour ) {
+    public RateLimitingMiddleware(
+        RequestDelegate next,
+        ILogger<RateLimitingMiddleware> logger,
+        int maxRequestsPerHour
+    ) {
         _next = next;
         _logger = logger;
         _maxRequestsPerHour = maxRequestsPerHour;
@@ -83,7 +87,8 @@ public class RateLimitingMiddleware {
 
         // Initialize or reset rate limit window if needed
         if (user.RateLimitWindowStart == null ||
-        (now - user.RateLimitWindowStart.Value).TotalHours >= 1) {
+            (now - user.RateLimitWindowStart.Value).TotalHours >= 1
+        ) {
             user.RateLimitWindowStart = now;
             user.RequestCount = 0;
         }
@@ -92,9 +97,9 @@ public class RateLimitingMiddleware {
         if (user.RequestCount >= _maxRequestsPerHour) {
             TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1) - now;
             _logger.LogWarning(
-            "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
-            username,
-            Math.Ceiling( timeRemaining.TotalMinutes )
+                "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
+                username,
+                Math.Ceiling( timeRemaining.TotalMinutes )
             );
 
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;

@@ -102,12 +102,12 @@
         public int CacheDays { get; set; } = 7;
 
         /// <summary>
-        /// The SQLite database file path for the cache. Default is "medialinkscache.db".
+        /// The SQLite database file path for the cache. Default is "tunebridge.db".
         /// </summary>
-        public string CacheDbPath { get; set; } = "Data Source=medialinkscache.db";
+        public string CacheDbPath { get; set; } = "Data Source=tunebridge.db";
 
         /// <summary>
-        /// The base URL for the application (e.g., https://tunebridge.example.com). Used for generating OpenGraph card URLs.
+        /// The base URL for the application (e.g., https://dev.tunebridge.media). Used for generating OpenGraph card URLs.
         /// </summary>
         public string BaseUrl { get; set; } = string.Empty;
 

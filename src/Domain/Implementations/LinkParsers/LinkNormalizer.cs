@@ -1,4 +1,4 @@
-﻿namespace TuneBridge.Domain.Utils {
+﻿namespace TuneBridge.Domain.Implementations.LinkParsers {
 
     /// <summary>
     /// Provides consistent link normalization across the application.

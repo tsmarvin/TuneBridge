@@ -9,6 +9,7 @@ using NetCord.Hosting.Gateway;
 using Polly;
 using TuneBridge.Domain.Implementations.Auth;
 using TuneBridge.Domain.Implementations.Database;
+using TuneBridge.Domain.Implementations.Middleware;
 using TuneBridge.Domain.Implementations.Services;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Models;
@@ -22,34 +23,45 @@ namespace TuneBridge.Configuration {
     internal static class StartupExtensions {
 
         /// <summary>
-        /// Configures the application settings by adding command line arguments, environment variables, and the appsettings.json file.
-        /// </summary>
-        /// <param name="config">The configuration builder to extend.</param>
-        /// <param name="args">Command line arguments passed to the application.</param>
-        /// <returns>The updated <see cref="IConfigurationBuilder"/>.</returns>
-        public static IConfigurationBuilder ConfigureAppSettings(
-            this IConfigurationBuilder config,
-            string[] args
-        ) {
-            return config.AddCommandLine( args )
-                .AddEnvironmentVariables( )
-                .AddJsonFile(
-                    path: "appsettings.json",
-                    optional: false,
-                    reloadOnChange: true
-                );
-        }
-
-        /// <summary>
         /// Registers TuneBridge services, authentication handlers, HTTP clients, and (optional) Discord services.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="config">The application configuration containing TuneBridge settings.</param>
-        /// <returns>The updated <see cref="IServiceCollection"/>.</returns>
-        public static IServiceCollection AddTuneBridgeServices(
-            this IServiceCollection services,
-            IConfiguration config
+        /// <param name="builder">The builder to configure.</param>
+        /// <param name="args">The commandline arguments.</param>
+        /// <returns>The configured builder.</returns>
+        public static WebApplicationBuilder ConfigureTuneBridgeServices(
+            this WebApplicationBuilder builder,
+            string[] args
         ) {
+            if (builder.Environment.EnvironmentName != "Testing") {
+                _ = builder.Configuration
+                .ConfigureAppSettings( args );
+            }
+
+            IServiceCollection services = builder.Services;
+            IConfiguration config = builder.Configuration;
+
+            _ = builder.WebHost.ConfigureTuneBridgeServices(
+                services,
+                config
+            );
+
+            return builder;
+        }
+
+        internal static TBuilder ConfigureTuneBridgeServices<TBuilder>(
+            this TBuilder builder,
+            IServiceCollection services,
+            IConfiguration config
+        ) where TBuilder : IWebHostBuilder {
+            // Add services to the container.
+            _ = services
+                .AddControllersWithViews( )
+                .AddRazorOptions( o => {
+                    o.ViewLocationFormats.Clear( );
+                    o.ViewLocationFormats.Add( "/Web/Views/{1}/{0}.cshtml" );
+                    o.ViewLocationFormats.Add( "/Web/Views/Shared/{0}.cshtml" );
+                } );
+
             AppSettings settings = new( );
             config.GetRequiredSection( "TuneBridge" ).Bind( settings );
 
@@ -63,7 +75,9 @@ namespace TuneBridge.Configuration {
             ConfigureSwagger( services );
 
             // Misc domain services
-            _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>( );
+            _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>(
+                p => new OpenGraphCardService( settings.BaseUrl )
+            );
 
             // Optional Bluesky storage and cache services
             ConfigureBlueskyIfEnabled( services, settings );
@@ -84,24 +98,97 @@ namespace TuneBridge.Configuration {
             _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
             ConfigureDiscordIfEnabled( services, settings );
 
-            return services;
+            return builder;
         }
+
+        /// <summary>
+        /// Registers TuneBridge services, authentication handlers, HTTP clients, and (optional) Discord services.
+        /// </summary>
+        /// <param name="builder">The builder to create a web application from.</param>
+        /// <returns>The configured application.</returns>
+        public static WebApplication ConfigureTuneBridge(
+            this WebApplicationBuilder builder
+        ) {
+            WebApplication app = builder.Build();
+
+            IConfiguration config = app.Configuration;
+
+            AppSettings settings = new( );
+            config.GetRequiredSection( "TuneBridge" ).Bind( settings );
+
+            // Initialize cache database if configured
+            InitializeCacheDatabase( app.Services );
+
+            // Initialize database
+            _ = app.InitializeDatabase( );
+
+            // Configure the HTTP request pipeline.
+            if (!app.Environment.IsDevelopment( )) {
+                _ = app.UseExceptionHandler( "/Home/Error" );
+                _ = app.UseHsts( );
+            }
+
+            _ = app.UseHttpsRedirection( );
+            _ = app.UseStaticFiles( ); // Serve static files from wwwroot
+            _ = app.UseRouting( );
+
+            _ = app.UseAuthentication( );
+            _ = app.UseAuthorization( );
+
+            // Enable Swagger middleware
+            _ = app.UseSwagger( );
+            _ = app.UseSwaggerUI( options => {
+                options.SwaggerEndpoint( "/swagger/v1/swagger.json", "TuneBridge API v1" );
+                options.RoutePrefix = "swagger";
+                options.DocumentTitle = "TuneBridge API Documentation";
+            } );
+
+            // Restrict Swagger UI access to authenticated users
+            _ = app.UseMiddleware<SwaggerAuthorizationMiddleware>( );
+
+            // Add rate limiting middleware with configured rate limit
+            _ = app.UseMiddleware<RateLimitingMiddleware>( settings.RateLimitRequestsPerHour );
+
+            _ = app.MapStaticAssets( );
+            _ = app.MapControllerRoute(
+                    name: "default",
+                    pattern: "{controller=Home}/{action=Index}/{id?}" )
+                .WithStaticAssets( );
+
+            return app;
+        }
+
+        /// <summary>
+        /// Configures the application settings by adding command line arguments, environment variables, and the appsettings.json file.
+        /// </summary>
+        /// <param name="config">The configuration builder to extend.</param>
+        /// <param name="args">Command line arguments passed to the application.</param>
+        /// <returns>The updated <see cref="IConfigurationBuilder"/>.</returns>
+        private static IConfigurationBuilder ConfigureAppSettings(
+            this IConfigurationBuilder config,
+            string[] args
+        ) => config.AddJsonFile(
+                    path: "appsettings.json",
+                    optional: false,
+                    reloadOnChange: false
+                ).AddCommandLine( args )
+                .AddEnvironmentVariables( );
 
         /// <summary>
         /// Initializes the SQLite database for caching if Bluesky PDS is configured.
         /// </summary>
         /// <param name="serviceProvider">The service provider to use for resolving services.</param>
-        public static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
+        private static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
             try {
                 // Create a scope to resolve services properly
                 using IServiceScope scope = serviceProvider.CreateScope( );
                 IDbContextFactory<MediaLinkCacheDbContext>? factory = scope.ServiceProvider.GetService<IDbContextFactory<MediaLinkCacheDbContext>>( );
-                if (factory is not null) {
-                    using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
-                    _ = dbContext.Database.EnsureCreated( );
-                    ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
-                    logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
-                }
+                if (factory is null) { return; }
+
+                using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
+                _ = dbContext.Database.EnsureCreated( );
+                ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
             } catch (Exception ex) {
                 ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
                 logger.LogError( ex, "Failed to initialize SQLite cache database" );
@@ -113,7 +200,7 @@ namespace TuneBridge.Configuration {
         /// </summary>
         /// <param name="builder">The HTTP client builder to configure.</param>
         /// <returns>The configured <see cref="IHttpStandardResiliencePipelineBuilder"/>.</returns>
-        internal static IHttpStandardResiliencePipelineBuilder AddStandardResilience( this IHttpClientBuilder builder ) {
+        private static IHttpStandardResiliencePipelineBuilder AddStandardResilience( this IHttpClientBuilder builder ) {
             return builder.AddStandardResilienceHandler( options => {
                 options.Retry.BackoffType = DelayBackoffType.Exponential;
                 options.Retry.UseJitter = true;
@@ -129,8 +216,6 @@ namespace TuneBridge.Configuration {
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 10 );
             } );
         }
-
-        // ===== Private helpers =====
 
         private static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
             _ = services.AddDbContext<ApplicationDbContext>( options =>
@@ -175,12 +260,9 @@ namespace TuneBridge.Configuration {
                 options.DefaultChallengeScheme = "MultiScheme";
             } )
             .AddPolicyScheme( "MultiScheme", "API Key or Cookie", options => {
-                options.ForwardDefaultSelector = context => {
-                    // Use cookie authentication for web UI, API key for API endpoints
-                    return context.Request.Headers.ContainsKey( "X-API-Key" )
-                            ? ApiKeyDefaults.AuthenticationScheme
-                            : IdentityConstants.ApplicationScheme;
-                };
+                options.ForwardDefaultSelector = context => context.Request.Headers.ContainsKey( "X-API-Key" )
+                    ? ApiKeyDefaults.AuthenticationScheme
+                    : IdentityConstants.ApplicationScheme;
             } )
             .AddApiKeyInHeader<ApiKeyProvider>( options => {
                 options.Realm = "TuneBridge API";
@@ -216,17 +298,15 @@ namespace TuneBridge.Configuration {
                     Description = "API Key authentication. Get your API key by registering at /account/register"
                 } );
 
-                options.AddSecurityRequirement( new OpenApiSecurityRequirement {
-                    {
-                        new OpenApiSecurityScheme {
-                            Reference = new OpenApiReference {
-                                Type = ReferenceType.SecurityScheme,
-                                Id = "ApiKey"
-                            }
-                        },
-                        Array.Empty<string>( )
-                    }
-                } );
+                options.AddSecurityRequirement( new OpenApiSecurityRequirement { {
+                    new OpenApiSecurityScheme {
+                        Reference = new OpenApiReference {
+                            Type = ReferenceType.SecurityScheme,
+                            Id = "ApiKey"
+                        }
+                    },
+                    Array.Empty<string>( )
+                } } );
 
                 // Include XML comments from all assemblies if available
                 foreach (string xmlPath in Directory.GetFiles( AppContext.BaseDirectory, "*.xml" )) {
@@ -236,26 +316,28 @@ namespace TuneBridge.Configuration {
         }
 
         private static void ConfigureBlueskyIfEnabled( IServiceCollection services, AppSettings settings ) {
-            if (!string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
-                !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
-                !string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
-                _ = services.AddSingleton<IBlueskyStorageService>( s =>
-                    new BlueskyStorageService(
-                        settings.BlueskyPdsUrl,
-                        settings.BlueskyIdentifier,
-                        settings.BlueskyPassword,
-                        s.GetRequiredService<ILogger<BlueskyStorageService>>( )
-                    )
-                );
-
-                // Register cache service as singleton using DbContextFactory so it is root-safe
-                _ = services.AddSingleton<IMediaLinkCacheService>( s => new MediaLinkCacheService(
-                    s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
-                    s.GetRequiredService<IBlueskyStorageService>( ),
-                    s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
-                    settings.CacheDays
-                ) );
+            if (string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) ||
+                string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) ||
+                string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
+                return;
             }
+
+            _ = services.AddSingleton<IBlueskyStorageService>( s =>
+                new BlueskyStorageService(
+                    settings.BlueskyPdsUrl,
+                    settings.BlueskyIdentifier,
+                    settings.BlueskyPassword,
+                    s.GetRequiredService<ILogger<BlueskyStorageService>>( )
+                )
+            );
+
+            // Register cache service as singleton using DbContextFactory so it is root-safe
+            _ = services.AddSingleton<IMediaLinkCacheService>( s => new MediaLinkCacheService(
+                s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
+                s.GetRequiredService<IBlueskyStorageService>( ),
+                s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
+                settings.CacheDays
+            ) );
         }
 
         private static HashSet<SupportedProviders> RegisterMusicProviders( IServiceCollection services, AppSettings settings ) {
@@ -269,73 +351,84 @@ namespace TuneBridge.Configuration {
         }
 
         private static void RegisterAppleIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
-            if (string.IsNullOrWhiteSpace( settings.AppleTeamId ) == false &&
-                string.IsNullOrWhiteSpace( settings.AppleKeyId ) == false) {
-
-                // Fail fast if missing required apple key file.
-                FileInfo keyPath = new( settings.AppleKeyPath );
-                if (!keyPath.Exists) {
-                    throw new FileNotFoundException( $"Missing .p8 file at: {keyPath.FullName}" );
-                }
-
-                // Fail fast if apple key file is empty.
-                string keyContents = File.ReadAllText( keyPath.FullName );
-                if (string.IsNullOrWhiteSpace( keyContents )) {
-                    throw new InvalidDataException( $".p8 file missing contents at: {keyPath.FullName}" );
-                }
-
-                _ = services.AddHttpClient( "musickit-api", c => {
-                    c.BaseAddress = new Uri( "https://api.music.apple.com/v1/catalog/" );
-                } ).AddStandardResilience( );
-
-                _ = services.AddSingleton( new AppleJwtHandler( settings.AppleTeamId, settings.AppleKeyId, keyContents ) );
-                _ = services.AddTransient<AppleMusicLookupService>( );
-
-                _ = enabledProviders.Add( SupportedProviders.AppleMusic );
+            if (string.IsNullOrWhiteSpace( settings.AppleTeamId ) ||
+                string.IsNullOrWhiteSpace( settings.AppleKeyId )) {
+                return;
             }
+
+            // Fail fast if missing required apple key file.
+            FileInfo keyPath = new( settings.AppleKeyPath );
+            if (!keyPath.Exists) {
+                throw new FileNotFoundException( $"Missing .p8 file at: {keyPath.FullName}" );
+            }
+
+            // Fail fast if apple key file is empty.
+            string keyContents = File.ReadAllText( keyPath.FullName );
+            if (string.IsNullOrWhiteSpace( keyContents )) {
+                throw new InvalidDataException( $".p8 file missing contents at: {keyPath.FullName}" );
+            }
+
+            _ = services.AddHttpClient( "musickit-api", c => {
+                c.BaseAddress = new Uri( "https://api.music.apple.com/v1/catalog/" );
+            } ).AddStandardResilience( );
+
+            _ = services.AddSingleton( new AppleJwtHandler( settings.AppleTeamId, settings.AppleKeyId, keyContents ) );
+            _ = services.AddTransient<AppleMusicLookupService>( );
+
+            _ = enabledProviders.Add( SupportedProviders.AppleMusic );
         }
 
         private static void RegisterSpotifyIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
-            if (string.IsNullOrWhiteSpace( settings.SpotifyClientId ) == false &&
-                string.IsNullOrWhiteSpace( settings.SpotifyClientSecret ) == false) {
-
-                _ = services.AddHttpClient( "spotify-auth", c => {
-                    c.BaseAddress = new Uri( "https://accounts.spotify.com/" );
-                } ).AddStandardResilience( );
-
-                _ = services.AddHttpClient( "spotify-api", c => {
-                    c.BaseAddress = new Uri( "https://api.spotify.com/v1/" );
-                } ).AddStandardResilience( );
-
-                _ = services.AddSingleton( new SpotifyCredentials( settings.SpotifyClientId, settings.SpotifyClientSecret ) );
-                _ = services.AddTransient<SpotifyTokenHandler>( );
-                _ = services.AddTransient<SpotifyLookupService>( );
-
-                _ = enabledProviders.Add( SupportedProviders.Spotify );
+            if (string.IsNullOrWhiteSpace( settings.SpotifyClientId ) ||
+                string.IsNullOrWhiteSpace( settings.SpotifyClientSecret )) {
+                return;
             }
+
+            _ = services.AddHttpClient( "spotify-auth", c => {
+                c.BaseAddress = new Uri( "https://accounts.spotify.com/" );
+            } ).AddStandardResilience( );
+
+            _ = services.AddHttpClient( "spotify-api", c => {
+                c.BaseAddress = new Uri( "https://api.spotify.com/v1/" );
+            } ).AddStandardResilience( );
+
+            _ = services.AddSingleton( new SpotifyCredentials( settings.SpotifyClientId, settings.SpotifyClientSecret ) );
+            _ = services.AddTransient<SpotifyTokenHandler>( );
+            _ = services.AddTransient<SpotifyLookupService>( );
+
+            _ = enabledProviders.Add( SupportedProviders.Spotify );
         }
 
-        private static void RegisterTidalIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
-            if (string.IsNullOrWhiteSpace( settings.TidalClientId ) == false &&
-                string.IsNullOrWhiteSpace( settings.TidalClientSecret ) == false) {
-
-                _ = services.AddHttpClient( "tidal-auth", c => {
-                    c.BaseAddress = new Uri( "https://auth.tidal.com/" );
-                } ).AddStandardResilience( );
-
-                _ = services.AddHttpClient( "tidal-api", c => {
-                    c.BaseAddress = new Uri( "https://openapi.tidal.com/v2/" );
-                } ).AddStandardResilience( );
-
-                _ = services.AddSingleton( new TidalCredentials( settings.TidalClientId, settings.TidalClientSecret ) );
-                _ = services.AddTransient<TidalTokenHandler>( );
-                _ = services.AddTransient<TidalLookupService>( );
-
-                _ = enabledProviders.Add( SupportedProviders.Tidal );
+        private static void RegisterTidalIfConfigured(
+            IServiceCollection services,
+            AppSettings settings,
+            HashSet<SupportedProviders> enabledProviders
+        ) {
+            if (string.IsNullOrWhiteSpace( settings.TidalClientId ) ||
+                string.IsNullOrWhiteSpace( settings.TidalClientSecret )) {
+                return;
             }
+
+            _ = services.AddHttpClient( "tidal-auth", c => {
+                c.BaseAddress = new Uri( "https://auth.tidal.com/" );
+            } ).AddStandardResilience( );
+
+            _ = services.AddHttpClient( "tidal-api", c => {
+                c.BaseAddress = new Uri( "https://openapi.tidal.com/v2/" );
+            } ).AddStandardResilience( );
+
+            _ = services.AddSingleton( new TidalCredentials( settings.TidalClientId, settings.TidalClientSecret ) );
+            _ = services.AddTransient<TidalTokenHandler>( );
+            _ = services.AddTransient<TidalLookupService>( );
+
+            _ = enabledProviders.Add( SupportedProviders.Tidal );
         }
 
-        private static void RegisterMediaLinkService( IServiceCollection services, HashSet<SupportedProviders> enabledProviders, AppSettings settings ) {
+        private static void RegisterMediaLinkService(
+            IServiceCollection services,
+            HashSet<SupportedProviders> enabledProviders,
+            AppSettings settings
+        ) {
             _ = services.AddTransient<IMediaLinkService>( s => {
                 DefaultMediaLinkService baseService = new(
                     GetEnabledProviderServices( enabledProviders, s ),
@@ -356,14 +449,17 @@ namespace TuneBridge.Configuration {
             } );
         }
 
-        private static void ConfigureDiscordIfEnabled( IServiceCollection services, AppSettings settings ) {
-            if (string.IsNullOrWhiteSpace( settings.DiscordToken ) == false) {
-                _ = services.AddDiscordShardedGateway( options => {
-                    options.Token = settings.DiscordToken;
-                    options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
-                } );
-                _ = services.AddShardedGatewayHandlers( typeof( Program ).Assembly );
-            }
+        private static void ConfigureDiscordIfEnabled(
+            IServiceCollection services,
+            AppSettings settings
+        ) {
+            if (string.IsNullOrWhiteSpace( settings.DiscordToken )) { return; }
+
+            _ = services.AddDiscordShardedGateway( options => {
+                options.Token = settings.DiscordToken;
+                options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
+            } );
+            _ = services.AddShardedGatewayHandlers( typeof( Program ).Assembly );
         }
 
         /// <summary>

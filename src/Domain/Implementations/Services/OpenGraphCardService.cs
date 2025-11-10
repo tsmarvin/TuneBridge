@@ -7,7 +7,10 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// <summary>
     /// In-memory implementation of the OpenGraph card service for storing MediaLinkResult objects.
     /// </summary>
-    public class OpenGraphCardService : IOpenGraphCardService {
+    public class OpenGraphCardService( string baseUrl ) : IOpenGraphCardService {
+
+        /// <inheritdoc/>
+        public bool IsEnabled => string.IsNullOrWhiteSpace( baseUrl ) == false && baseUrl.StartsWith( "http" );
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
         private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 24 );
@@ -22,7 +25,8 @@ namespace TuneBridge.Domain.Implementations.Services {
             DateTime expiry = DateTime.UtcNow.Add( _expirationTime );
             _store[id] = (result, expiry);
 
-            return id;
+            // Generate the OpenGraph card URL
+            return $"{baseUrl.TrimEnd( '/' )}/card/{id}";
         }
 
         /// <inheritdoc/>
@@ -41,10 +45,9 @@ namespace TuneBridge.Domain.Implementations.Services {
             // Clean every Nth operation for predictable memory management
             if (Interlocked.Increment( ref _operationCounter ) % CleanupInterval == 0) {
                 DateTime now = DateTime.UtcNow;
-                List<string> expiredKeys = _store
+                List<string> expiredKeys = [.. _store
                     .Where( kv => kv.Value.Expiry <= now )
-                    .Select( kv => kv.Key )
-                    .ToList( );
+                    .Select( kv => kv.Key )];
 
                 foreach (string? key in expiredKeys) {
                     _ = _store.TryRemove( key, out _ );

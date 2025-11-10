@@ -14,7 +14,7 @@ namespace TuneBridge.Domain.Implementations.Extensions {
         /// <param name="result">The media link result to convert.</param>
         /// <returns>A dictionary of OpenGraph meta tag properties.</returns>
         public static Dictionary<string, string> ToOpenGraphMetadata( this MediaLinkResult result ) {
-            Dictionary<string, string> metadata = new( );
+            Dictionary<string, string> metadata = [];
 
             string title = string.Empty;
             string description = string.Empty;

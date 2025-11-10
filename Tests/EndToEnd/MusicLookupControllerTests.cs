@@ -3,9 +3,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Web.Controllers;
 
@@ -35,9 +33,7 @@ public class MusicLookupControllerTests {
     [TestMethod]
     public async Task ByUrlList_WithValidAppleMusicUrl_ReturnsOkWithResults( ) {
         // Arrange
-        MusicLookupController.UrlReq request = new(
- "https://music.apple.com/us/album/bohemian-rhapsody/1440806041"
- );
+        MusicLookupController.UrlReq request = new("https://music.apple.com/us/album/bohemian-rhapsody/1440806041");
 
         // Act
         HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
@@ -46,7 +42,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
         Assert.IsNotNull( results );
-        Assert.IsTrue( results!.Count > 0, "Results should not be empty" );
+        Assert.IsNotEmpty( results, "Results should not be empty" );
     }
 
     [TestMethod]
@@ -61,7 +57,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
         Assert.IsNotNull( results );
-        Assert.IsTrue( results!.Count > 0, "Results should not be empty" );
+        Assert.IsNotEmpty( results, "Results should not be empty" );
     }
 
     [TestMethod]
@@ -76,7 +72,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
         Assert.IsNotNull( results );
-        Assert.IsTrue( results!.Count > 0, "Results should not be empty" );
+        Assert.IsNotEmpty( results, "Results should not be empty" );
     }
 
     [TestMethod]
@@ -95,7 +91,7 @@ public class MusicLookupControllerTests {
         List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
         Assert.IsNotNull( results );
         // Should have at least one result (deduplication may occur if URLs point to same content)
-        Assert.IsTrue( results!.Count > 0, "Results should not be empty" );
+        Assert.IsNotEmpty( results, "Results should not be empty" );
     }
 
     [TestMethod]
@@ -111,7 +107,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
     }
 
     [TestMethod]
@@ -127,7 +123,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
     }
 
     [TestMethod]
@@ -143,7 +139,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty(result.Results, "result.Results should not be empty");
     }
 
     [TestMethod]
@@ -158,7 +154,7 @@ public class MusicLookupControllerTests {
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         string content = await response.Content.ReadAsStringAsync();
-        Assert.IsTrue( content.Length > 0, "content should not be empty" );
+        Assert.IsGreaterThan( 0, content.Length, "content should not be empty" );
     }
 
     public void Dispose( ) {
@@ -170,42 +166,32 @@ public class MusicLookupControllerTests {
 /// Custom web application factory for integration testing.
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
-    protected override void ConfigureWebHost( IWebHostBuilder builder ) {
+    private readonly Dictionary<string, string?>? _configOverrides;
 
-        // Arrange
-        Dictionary<string, string?> configData = new( ) {
+    public CustomWebApplicationFactory( ) { }
+
+    public CustomWebApplicationFactory( Dictionary<string, string?> configOverrides ) {
+        _configOverrides = configOverrides;
+    }
+
+    protected override void ConfigureWebHost( IWebHostBuilder builder ) {
+        // Default test configuration (Spotify only) unless overrides are provided
+        Dictionary<string, string?> configData = _configOverrides ?? new( ) {
             ["TuneBridge:SpotifyClientId"] = "test",
             ["TuneBridge:SpotifyClientSecret"] = "test",
             ["TuneBridge:DiscordToken"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = $"Data Source=Identity_${Guid.NewGuid()};Mode=Memory",
+            ["TuneBridge:ConnectionString"] = $"Data Source=Identity;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
-
-        IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configData)
-            .Build();
-
-        ServiceCollection services = new();
-        _ = services.AddSingleton<IConfiguration>( configuration );
-        _ = services.AddLogging( );
-
         _ = builder.UseEnvironment( "Testing" );
+        //_ = builder.ConfigureTuneBridgeServices( services, configuration );
 
-        _ = services.AddTuneBridgeServices( configuration );
-    }
-
-    protected void RegisterUser( ) {
-        // Use the account controller to register a test user
-        //AccountController.
-
-        // Use the account controller to register an api key
-
-
-        // return the apikey to the caller to be used in future requests.
-
+        _ = builder.ConfigureAppConfiguration( ( context, config ) => {
+            _ = config.AddInMemoryCollection( configData );
+        } );
     }
 }

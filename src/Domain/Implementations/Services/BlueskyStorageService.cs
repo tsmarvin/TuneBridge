@@ -196,7 +196,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// They are tracked only in SQLite.
         /// </summary>
         private static MediaLinkResultRecord ConvertToRecord( MediaLinkResult result ) {
-            List<ProviderResultRecord> providerResults = new( );
+            List<ProviderResultRecord> providerResults = [];
 
             foreach ((SupportedProviders provider, MusicLookupResultDto lookupResult) in result.Results) {
                 string providerName = provider switch {
