@@ -36,7 +36,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Web\wwwroot\.well-known\atproto-lexicon\media.tunebridge.dev.lookup.result.json" />
+    <Content Include="Web\wwwroot\**\*" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

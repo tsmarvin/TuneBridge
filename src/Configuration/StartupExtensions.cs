@@ -186,7 +186,7 @@ namespace TuneBridge.Configuration {
                 if (factory is null) { return; }
 
                 using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
-                _ = dbContext.Database.EnsureCreated( );
+                dbContext.Database.Migrate( );
                 ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
                 logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
             } catch (Exception ex) {
