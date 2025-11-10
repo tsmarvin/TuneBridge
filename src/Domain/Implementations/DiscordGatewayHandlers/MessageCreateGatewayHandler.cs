@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
-using NetCord.Rest;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Extensions;
