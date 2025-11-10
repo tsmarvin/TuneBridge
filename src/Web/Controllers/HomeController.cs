@@ -49,10 +49,11 @@ namespace TuneBridge.Web.Controllers {
 
         /// <summary>
         /// Web-specific lookup endpoint that returns results with card URLs for display.
-        /// This endpoint performs the lookup server-side and stores results in the card service.
+        /// This endpoint performs the lookup server-side, stores all results in the card service,
+        /// and returns multiple card URLs for rendering.
         /// </summary>
-        /// <param name="req">Request containing the music URL to look up.</param>
-        /// <returns>JSON response with card URL if available, otherwise error message.</returns>
+        /// <param name="req">Request containing the music URL(s) to look up.</param>
+        /// <returns>JSON response with array of card URLs and results.</returns>
         [HttpPost( "/lookup/web" )]
         public async Task<IActionResult> WebLookup( [FromBody] WebLookupRequest req ) {
             if (_mediaLinkService == null) {
@@ -63,31 +64,41 @@ namespace TuneBridge.Web.Controllers {
                 return BadRequest( new { error = "URI is required" } );
             }
 
-            // Perform lookup server-side
-            MediaLinkResult? result = null;
-            await foreach (MediaLinkResult r in _mediaLinkService.GetInfoAsync( req.Uri )) {
-                result = r;
-                break; // Take first result for web interface
+            // Perform lookup server-side and collect all results
+            List<WebLookupResultItem> items = [];
+            await foreach (MediaLinkResult result in _mediaLinkService.GetInfoAsync( req.Uri )) {
+                if (result.Results.Count == 0) {
+                    continue; // Skip empty results
+                }
+
+                // Store result and get card URL (server-side only)
+                string? cardUrl = null;
+                if (_cardService?.IsEnabled == true) {
+                    cardUrl = _cardService.StoreResult( result );
+                }
+
+                items.Add( new WebLookupResultItem( cardUrl, result ) );
             }
 
-            if (result == null || result.Results.Count == 0) {
+            if (items.Count == 0) {
                 return Ok( new { hasResults = false, message = "No results found" } );
             }
 
-            // Store result and get card URL (server-side only)
-            string? cardUrl = null;
-            if (_cardService?.IsEnabled == true) {
-                cardUrl = _cardService.StoreResult( result );
-            }
-
-            return Ok( new { hasResults = true, cardUrl, fallbackData = result } );
+            return Ok( new { hasResults = true, items } );
         }
 
         /// <summary>
         /// Request for web-specific lookup.
         /// </summary>
-        /// <param name="Uri">Music URL to look up.</param>
+        /// <param name="Uri">Music URL(s) to look up (can contain multiple URLs).</param>
         public record WebLookupRequest( string Uri );
+
+        /// <summary>
+        /// Individual result item with card URL and fallback data.
+        /// </summary>
+        /// <param name="CardUrl">URL to the stored OpenGraph card, if available.</param>
+        /// <param name="FallbackData">The raw result data for fallback display.</param>
+        public record WebLookupResultItem( string? CardUrl, MediaLinkResult FallbackData );
 
         /// <summary>
         /// Displays the error page.
