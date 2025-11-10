@@ -44,10 +44,11 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
                 string cardUrl = cardService.StoreResult( result );
 
                 // Send a simple message with the card URL (Discord will auto-embed the OpenGraph preview)
+                // Use angle brackets to hide the URL text while still triggering the embed
                 _ = await client.Rest.SendMessageAsync(
                     channelId,
                     new MessageProperties {
-                        Content = $"<@{userId}> Shared: {cardUrl}",
+                        Content = $"<@{userId}> Shared:\n<{cardUrl}>",
                         AllowedMentions = AllowedMentionsProperties.None
                     }
                 );
