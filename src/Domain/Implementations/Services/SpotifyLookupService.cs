@@ -12,10 +12,10 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// <summary>
     /// An <see cref="IMusicLookupService"/> implementation for <see cref="SupportedProviders.Spotify"/>
     /// </summary>
-    /// <param name="handler">The <see cref="SpotifyTokenHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
+    /// <param name="handler">The <see cref="SpotifyTokenHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
     public sealed partial class SpotifyLookupService(
         SpotifyTokenHandler handler,
         IHttpClientFactory factory,
@@ -23,8 +23,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         JsonSerializerOptions serializerOptions
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
 
+        /// <inheritdoc/>
         public override SupportedProviders Provider => SupportedProviders.Spotify;
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc )
             => ParseSpotifyResponse(
                 await NewMusicApiRequest( SpotifyLinkParser.GetTracksIsrcURI( isrc ), IsrcLookupKey ),
@@ -33,6 +35,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
             => ParseSpotifyResponse(
                 await NewMusicApiRequest( SpotifyLinkParser.GetAlbumUpcURI( upc ), UpcLookupKey ),
@@ -41,6 +44,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseSpotifyArtistList(
                 await NewMusicApiRequest(
@@ -99,6 +103,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
             (bool result, SpotifyEntity kind, string id) = await SpotifyLinkParser.TryParseUriAsync( uri );
             if (result) {
@@ -187,10 +192,10 @@ namespace TuneBridge.Domain.Implementations.Services {
             if (element.TryGetProperty( "artists", out JsonElement artistsProps )) {
                 if (artistsProps.GetArrayLength( ) > 0) {
                     result = artistsProps
- .EnumerateArray( )
- .First( )
- .GetProperty( "name" )
- .GetString( ) ?? string.Empty;
+                             .EnumerateArray( )
+                             .First( )
+                             .GetProperty( "name" )
+                             .GetString( ) ?? string.Empty;
                 }
             }
             return result;
@@ -212,15 +217,15 @@ namespace TuneBridge.Domain.Implementations.Services {
                 result.Artist = GetArtistName( element );
 
                 result.Title = element
- .GetProperty( "name" )
- .GetString( ) ?? string.Empty;
+                                 .GetProperty( "name" )
+                                 .GetString( ) ?? string.Empty;
 
                 result.ExternalId = GetExternalIdFromJson( element, isAlbum );
 
                 result.URL = element
- .GetProperty( "external_urls" )
- .GetProperty( "spotify" )
- .GetString( ) ?? string.Empty;
+                             .GetProperty( "external_urls" )
+                             .GetProperty( "spotify" )
+                             .GetString( ) ?? string.Empty;
 
                 switch (kind) {
                     case SpotifyEntity.Album:
@@ -244,10 +249,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         private static string GetAlbumArtUrl( JsonElement element ) {
             if (element.TryGetProperty( "images", out JsonElement imagesProps )) {
                 if (imagesProps.GetArrayLength( ) > 0 && imagesProps
- .EnumerateArray( )
- .First( )
- .TryGetProperty( "url", out JsonElement urlProps )
- ) {
+                                                         .EnumerateArray( )
+                                                         .First( )
+                                                         .TryGetProperty( "url", out JsonElement urlProps )
+                ) {
                     return urlProps.GetString( ) ?? string.Empty;
                 }
             }
@@ -342,6 +347,38 @@ namespace TuneBridge.Domain.Implementations.Services {
                 Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
+        }
+
+        // Fallback for unauthenticated environments using Spotify oEmbed
+        private static async Task<MusicLookupResultDto?> TryGetInfoFromOEmbedAsync( string uri, SpotifyEntity kind ) {
+            try {
+                string fullUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : $"https://{uri}";
+                string oembedUrl = $"https://open.spotify.com/oembed?url={Uri.EscapeDataString(fullUrl)}";
+
+                using HttpClient client = new();
+                using HttpResponseMessage resp = await client.GetAsync(oembedUrl);
+                if (!resp.IsSuccessStatusCode) { return null; }
+
+                using JsonDocument json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                JsonElement root = json.RootElement;
+                string title = root.TryGetProperty("title", out JsonElement t) ? (t.GetString() ?? string.Empty) : string.Empty;
+                string artist = root.TryGetProperty("author_name", out JsonElement a) ? (a.GetString() ?? string.Empty) : string.Empty;
+                string art = root.TryGetProperty("thumbnail_url", out JsonElement th) ? (th.GetString() ?? string.Empty) : string.Empty;
+
+                return string.IsNullOrWhiteSpace( title ) && string.IsNullOrWhiteSpace( artist )
+                    ? null
+                    : new MusicLookupResultDto {
+                        Artist = artist,
+                        Title = title,
+                        ExternalId = string.Empty,
+                        URL = fullUrl,
+                        ArtUrl = art,
+                        IsAlbum = kind == SpotifyEntity.Album ? true : kind == SpotifyEntity.Track ? false : null,
+                        IsPrimary = true
+                    };
+            } catch {
+                return null;
+            }
         }
 
     }

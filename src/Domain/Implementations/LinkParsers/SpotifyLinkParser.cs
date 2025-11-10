@@ -1,5 +1,4 @@
 ﻿using System.Text.RegularExpressions;
-using TuneBridge.Domain.Implementations.Extensions;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Implementations.LinkParsers {
@@ -24,17 +23,11 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         /// Spotify URL in the format "https://open.spotify.com/{type}/{id}" or "https://spotify.link/{code}".
         /// Must follow the open.spotify.com or spotify.link pattern. Query parameters are ignored.
         /// </param>
-        /// <param name="kind">
-        /// Output: The entity type extracted from the URL, mapped to <see cref="SpotifyEntity"/> enum.
-        /// Set to <see cref="SpotifyEntity.Unknown"/> if the URL doesn't match known patterns.
-        /// </param>
-        /// <param name="id">
-        /// Output: The Spotify ID (Base62 alphanumeric string, typically 22 characters).
-        /// This ID can be used directly in Spotify Web API v1 endpoints. Empty string if parsing fails.
-        /// </param>
         /// <returns>
-        /// True if the URL was successfully parsed and recognized as a supported Spotify entity type.
-        /// False if the URL is malformed, doesn't match Spotify patterns, or refers to an unsupported entity.
+        /// A tuple containing: (bool success, SpotifyEntity kind, string id).
+        /// - success: True if the URL was successfully parsed and recognized.
+        /// - kind: The entity type extracted from the URL.
+        /// - id: The Spotify ID (Base62 alphanumeric string, typically 22 characters).
         /// </returns>
         /// <remarks>
         /// Only track and album URLs are currently utilized for music lookup. Artist and playlist URLs
@@ -56,20 +49,16 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
             }
 
             if (s_spotifyLink.IsMatch( link )) {
+                Match match = s_spotifyLink.Match(link);
 
-                string? uri = s_spotifyLink.GetGroupValues(link, "type").FirstOrDefault();
-                if (uri != null) {
-                    Match match = s_spotifyLink.Match(link);
-
-                    id = match.Groups["id"].Value;
-                    kind = match.Groups["type"].Value.ToLowerInvariant( ) switch {
-                        "track" => SpotifyEntity.Track,
-                        "album" => SpotifyEntity.Album,
-                        "prerelease" => SpotifyEntity.PreRelease,
-                        "playlists" => SpotifyEntity.Playlist,
-                        _ => SpotifyEntity.Unknown
-                    };
-                }
+                id = match.Groups["id"].Value;
+                kind = match.Groups["type"].Value.ToLowerInvariant( ) switch {
+                    "track" => SpotifyEntity.Track,
+                    "album" => SpotifyEntity.Album,
+                    "prerelease" => SpotifyEntity.PreRelease,
+                    "playlists" => SpotifyEntity.Playlist,
+                    _ => SpotifyEntity.Unknown
+                };
             }
 
             return (kind != SpotifyEntity.Unknown && !string.IsNullOrEmpty( id ), kind, id);

@@ -14,9 +14,11 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-arm64</RuntimeIdentifiers>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="idunno.Bluesky" Version="1.1.0" />
     <PackageReference Include="AspNetCore.Authentication.ApiKey" Version="9.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10">
@@ -26,9 +28,21 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.10.0" />
+    <InternalsVisibleTo Include="TuneBridge.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="TuneBridge.Tests/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Web\wwwroot\.well-known\atproto-lexicon\media.tunebridge.dev.lookup.result.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
-    <PackageReference Include="NetCord" Version="1.0.0-alpha.444" />
-    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.444" />
+    <PackageReference Include="NetCord" Version="1.0.0-alpha.447" />
+    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.447" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
   </ItemGroup>
 

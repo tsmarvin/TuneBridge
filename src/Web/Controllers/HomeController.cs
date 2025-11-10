@@ -30,6 +30,16 @@ namespace TuneBridge.Web.Controllers {
         public IActionResult Privacy( ) => View( );
 
         /// <summary>
+        /// Health check endpoint for monitoring and load balancers.
+        /// </summary>
+        /// <returns>HTTP 200 OK with a simple status message.</returns>
+        [HttpGet( "/health" )]
+        [ResponseCache( Duration = 0, Location = ResponseCacheLocation.None, NoStore = true )]
+        public IActionResult Health( ) {
+            return Ok( new { status = "healthy", timestamp = DateTime.UtcNow } );
+        }
+
+        /// <summary>
         /// Displays the error page.
         /// </summary>
         /// <returns>The error view with diagnostic information.</returns>

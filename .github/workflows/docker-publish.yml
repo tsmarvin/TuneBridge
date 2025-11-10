@@ -13,12 +13,20 @@ concurrency:
 
 jobs:
   build-and-push:
-    # GitHub-hosted ARM64 runner
-    runs-on: ubuntu-24.04-arm
-
+    name: Build & Push ${{ matrix.os }} - ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
-
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
     env:
       IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/tunebridge-test
 
@@ -40,9 +48,6 @@ jobs:
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f  # v5.8.0
         with:
           images: ${{ env.IMAGE_NAME }}
-          # Tags:
-          # - on tags: v1.2.3 -> 1.2.3, 1.2, 1, latest
-          # - on branches: main -> latest; others -> branch name
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -58,7 +63,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          platforms: linux/arm64
+          platforms: ${{ matrix.platform }}/${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha

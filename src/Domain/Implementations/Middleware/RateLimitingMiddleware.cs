@@ -16,21 +16,39 @@ public class RateLimitingMiddleware {
 
     // Only these endpoints are rate-limited (all are POST). Public URL streaming endpoint is excluded.
     private static readonly HashSet<string> s_rateLimitedRoutes = new(
- new[] {
- "/music/lookup/isrc",
- "/music/lookup/upc",
- "/music/lookup/title",
- "/music/lookup/urllist" // case-insensitive compare below
- },
- StringComparer.OrdinalIgnoreCase
- );
+        [
+            "/music/lookup/isrc",
+            "/music/lookup/upc",
+            "/music/lookup/title",
+            "/music/lookup/urllist" // case-insensitive compare below
+        ],
+        StringComparer.OrdinalIgnoreCase
+    );
 
-    public RateLimitingMiddleware( RequestDelegate next, ILogger<RateLimitingMiddleware> logger, int maxRequestsPerHour ) {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="RateLimitingMiddleware"/> class.
+    /// </summary>
+    /// <param name="next">The next middleware in the pipeline.</param>
+    /// <param name="logger">Logger for rate limiting events.</param>
+    /// <param name="maxRequestsPerHour">Maximum number of requests allowed per hour per user.</param>
+    public RateLimitingMiddleware(
+        RequestDelegate next,
+        ILogger<RateLimitingMiddleware> logger,
+        int maxRequestsPerHour
+    ) {
         _next = next;
         _logger = logger;
         _maxRequestsPerHour = maxRequestsPerHour;
     }
 
+    /// <summary>
+    /// Invokes the rate limiting middleware to check if the user has exceeded their hourly limit.
+    /// </summary>
+    /// <param name="context">The HTTP context for the current request.</param>
+    /// <param name="userManager">User manager for retrieving user information.</param>
+    /// <param name="dbContext">Database context for tracking request counts.</param>
+    /// <param name="cache">Memory cache for storing rate limit data.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public async Task InvokeAsync( HttpContext context, UserManager<ApplicationUser> userManager, ApplicationDbContext dbContext, IMemoryCache cache ) {
         string path = context.Request.Path.Value ?? string.Empty;
 
@@ -69,7 +87,8 @@ public class RateLimitingMiddleware {
 
         // Initialize or reset rate limit window if needed
         if (user.RateLimitWindowStart == null ||
-        (now - user.RateLimitWindowStart.Value).TotalHours >= 1) {
+            (now - user.RateLimitWindowStart.Value).TotalHours >= 1
+        ) {
             user.RateLimitWindowStart = now;
             user.RequestCount = 0;
         }
@@ -78,9 +97,9 @@ public class RateLimitingMiddleware {
         if (user.RequestCount >= _maxRequestsPerHour) {
             TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1) - now;
             _logger.LogWarning(
-            "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
-            username,
-            Math.Ceiling( timeRemaining.TotalMinutes )
+                "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
+                username,
+                Math.Ceiling( timeRemaining.TotalMinutes )
             );
 
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;

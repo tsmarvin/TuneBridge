@@ -12,10 +12,10 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// <summary>
     /// An <see cref="IMusicLookupService"/> implementation for <see cref="SupportedProviders.AppleMusic"/>
     /// </summary>
-    /// <param name="jwtHandler">The <see cref="AppleJwtHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
+    /// <param name="jwtHandler">The <see cref="AppleJwtHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
     public partial class AppleMusicLookupService(
         AppleJwtHandler jwtHandler,
         IHttpClientFactory factory,
@@ -28,10 +28,12 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// </summary>
         public const string DefaultStorefront = "us";
 
+        /// <inheritdoc/>
         public override SupportedProviders Provider => SupportedProviders.AppleMusic;
 
         #region IMusicLookupService Public
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc ) =>
             ParseAppleMusicResponse(
                 await NewMusicApiRequest( AppleMusicLinkParser.GetSongsIsrcURI( DefaultStorefront, isrc ), IsrcLookupKey ),
@@ -41,6 +43,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
             => ParseAppleMusicResponse(
                 await NewMusicApiRequest( AppleMusicLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), UpcLookupKey ),
@@ -50,6 +53,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseAppleMusicArtistList(
                 await NewMusicApiRequest(
@@ -91,6 +95,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri )
             => AppleMusicLinkParser.TryParseUri( uri, out string requestUri, out string storefront, out bool isAlbum )
                 ? ParseAppleMusicResponse(

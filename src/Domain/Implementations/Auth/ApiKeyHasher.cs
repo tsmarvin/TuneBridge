@@ -9,6 +9,11 @@ namespace TuneBridge.Domain.Implementations.Auth;
 public class ApiKeyHasher {
     private readonly string _salt;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ApiKeyHasher"/> class.
+    /// </summary>
+    /// <param name="salt">The cryptographic salt used for hashing API keys.</param>
+    /// <exception cref="ArgumentException">Thrown when salt is null or empty.</exception>
     public ApiKeyHasher( string salt ) {
         if (string.IsNullOrWhiteSpace( salt )) {
             throw new ArgumentException( "API key salt cannot be null or empty", nameof( salt ) );

@@ -32,17 +32,25 @@ namespace TuneBridge.Domain.Types.Bases {
         JsonSerializerOptions serializerOptions
     ) : IMediaLinkService {
 
+        /// <inheritdoc/>
         public abstract IAsyncEnumerable<MediaLinkResult> GetInfoAsync( string content );
+        /// <inheritdoc/>
         public abstract Task<MediaLinkResult?> GetInfoAsync( string title, string artist );
+        /// <inheritdoc/>
         public abstract Task<MediaLinkResult?> GetInfoByISRCAsync( string isrc );
+        /// <inheritdoc/>
         public abstract Task<MediaLinkResult?> GetInfoByUPCAsync( string upc );
 
         #region Base Class Defaults
 
+        /// <summary>Logger for tracking API failures and cross-platform matching issues.</summary>
         protected readonly ILogger<MediaLinkServiceBase> Logger = logger;
+        /// <summary>JSON serialization settings for logging API responses.</summary>
         protected readonly JsonSerializerOptions SerializerOptions = serializerOptions;
+        /// <summary>Dictionary of active music provider service implementations.</summary>
         protected readonly Dictionary<SupportedProviders, IMusicLookupService> EnabledProviders = enabledProvidersCollection;
 
+        /// <summary>Regex pattern for validating HTTPS links.</summary>
         protected virtual Regex ValidLink { get; init; } = ValidHttpsLink( );
 
         /// <summary>
@@ -78,7 +86,7 @@ namespace TuneBridge.Domain.Types.Bases {
         /// </summary>
         /// <param name="title">The name of the track or album.</param>
         /// <param name="artist">The artist that created the track or album.</param>
-        /// <returns>A tuple containing the <see cref="MusicLookupResultDto"/> and <see cref="SupportedProviders">.</returns>
+        /// <returns>A tuple containing the <see cref="MusicLookupResultDto"/> and <see cref="SupportedProviders"/>.</returns>
         protected async Task<(MusicLookupResultDto result, SupportedProviders provider)?> GetMusicLookupResults( string title, string artist ) {
             try {
                 if (string.IsNullOrWhiteSpace( title ) || string.IsNullOrWhiteSpace( artist )) { return null; }
@@ -104,7 +112,7 @@ namespace TuneBridge.Domain.Types.Bases {
         /// </summary>
         /// <param name="externalId">The string content to parse for links.</param>
         /// <param name="isAlbum">Indicates whether to search for UPC entries (true) or ISRC entries (false).</param>
-        /// <returns>A tuple containing the <see cref="MusicLookupResultDto"/> and <see cref="SupportedProviders">.</returns>
+        /// <returns>A tuple containing the <see cref="MusicLookupResultDto"/> and <see cref="SupportedProviders"/>.</returns>
         protected async Task<(MusicLookupResultDto result, SupportedProviders provider)?> GetMusicLookupResults( string externalId, bool isAlbum ) {
             try {
                 if (string.IsNullOrWhiteSpace( externalId )) { return null; }
@@ -129,6 +137,11 @@ namespace TuneBridge.Domain.Types.Bases {
             return null;
         }
 
+        /// <summary>
+        /// Combines lookup results from a single provider into a MediaLinkResult and syncs with other providers.
+        /// </summary>
+        /// <param name="lookupResults">Optional tuple containing the DTO and provider information.</param>
+        /// <returns>A MediaLinkResult with cross-platform data, or null if input is null.</returns>
         protected async Task<MediaLinkResult?> CombineLookupInfoAsync(
             (MusicLookupResultDto dto, SupportedProviders provider)? lookupResults
         ) {
@@ -138,6 +151,11 @@ namespace TuneBridge.Domain.Types.Bases {
             return await SyncLookupResult( result );
         }
 
+        /// <summary>
+        /// Combines lookup results from multiple providers and input links into deduplicated MediaLinkResults.
+        /// </summary>
+        /// <param name="linkResults">Dictionary mapping DTOs to their provider and input link information.</param>
+        /// <returns>Async enumerable of MediaLinkResults with cross-platform data.</returns>
         protected async IAsyncEnumerable<MediaLinkResult> CombineLookupInfoAsync(
             Dictionary<MusicLookupResultDto, (SupportedProviders provider, string inputLink)> linkResults
         ) {
@@ -229,8 +247,11 @@ namespace TuneBridge.Domain.Types.Bases {
         private static string SanitizeForLogging( string? input ) {
             if (string.IsNullOrWhiteSpace( input )) { return string.Empty; }
             // Remove all ASCII control characters (0x00-0x1F, 0x7F) to prevent log injection and forging
-            return Regex.Replace( input, @"[\x00-\x1F\x7F]", string.Empty );
+            return LogSanitizer( ).Replace( input, string.Empty );
         }
+
+        [GeneratedRegex( @"[\x00-\x1F\x7F]" )]
+        private static partial Regex LogSanitizer( );
 
         #endregion Base Class Private Implementations
 

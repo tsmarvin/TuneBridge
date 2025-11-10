@@ -12,10 +12,10 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// <summary>
     /// An <see cref="IMusicLookupService"/> implementation for <see cref="SupportedProviders.Tidal"/>
     /// </summary>
-    /// <param name="handler">The <see cref="TidalTokenHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
-    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.AddTuneBridgeServices"/></param>
+    /// <param name="handler">The <see cref="TidalTokenHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
     public sealed partial class TidalLookupService(
         TidalTokenHandler handler,
         IHttpClientFactory factory,
@@ -28,8 +28,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// </summary>
         public const string DefaultStorefront = "US";
 
+        /// <inheritdoc/>
         public override SupportedProviders Provider => SupportedProviders.Tidal;
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc )
             => await ParseTidalResponse(
                 await NewMusicApiRequest( TidalLinkParser.GetTracksIsrcURI( DefaultStorefront, isrc ), IsrcLookupKey ),
@@ -38,6 +40,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
             => await ParseTidalResponse(
                 await NewMusicApiRequest( TidalLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), UpcLookupKey ),
@@ -46,6 +49,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 null
             );
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseTidalArtistList(
                 await NewMusicApiRequest(
@@ -71,6 +75,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
+        /// <inheritdoc/>
         public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
             if (TidalLinkParser.TryParseUri( uri, out TidalEntity kind, out string id )) {
                 if (kind == TidalEntity.Album) {

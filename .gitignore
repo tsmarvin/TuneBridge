@@ -72,3 +72,23 @@ _site/
 docs/api/
 docs/index.md
 obj/.cache/
+
+# SQLite cache database
+medialinkscache.db
+medialinkscache.db-shm
+medialinkscache.db-wal
+
+# Docker and environment files
+.env
+docker-compose.override.yml
+
+# Secrets directory
+secrets/
+
+# Caddy data
+caddy-data/
+caddy-config/
+caddy-logs/
+
+# macOS file
+.DS_Store
