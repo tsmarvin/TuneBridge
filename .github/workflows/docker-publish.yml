@@ -21,14 +21,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             platform: linux
-            arch: x64
-          - os: ubuntu-latest-arm
+            arch: amd64
+          - os: ubuntu-24.04-arm
             platform: linux
-            arch: arm64
-          - os: macos-latest
-            platform: macos
             arch: arm64
     env:
       IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/tunebridge-test
