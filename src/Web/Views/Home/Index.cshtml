@@ -75,7 +75,7 @@
             </form>
         </div>
 
-        <div>
+        <div id="resultsSection" class="d-none">
             <h3>Results</h3>
             <div id="resultContainer">
                 <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
@@ -138,6 +138,10 @@
             const status = $('status');
             const result = $('result');
             const cardsContainer = $('cardsContainer');
+            const resultsSection = $('resultsSection');
+            
+            // Show results section
+            resultsSection.classList.remove('d-none');
             
             status.textContent = 'Working...';
             lookupForm.querySelector('button[type="submit"]').disabled = true;
