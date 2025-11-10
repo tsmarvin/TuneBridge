@@ -16,7 +16,14 @@ RUN dotnet build "TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/build
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/publish -r "linux-arm64"
+ARG TARGETARCH
+# Map Docker's TARGETARCH to .NET's RID format (amd64 -> x64)
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        DOTNET_ARCH="x64"; \
+    else \
+        DOTNET_ARCH="$TARGETARCH"; \
+    fi && \
+    dotnet publish "TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/publish -r "linux-${DOTNET_ARCH}"
 
 # Add startup script and Caddyfile
 COPY ./entrypoint.sh /app/publish/entrypoint.sh
