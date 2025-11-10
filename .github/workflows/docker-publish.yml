@@ -49,6 +49,7 @@ jobs:
           tags: |
             type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
       
       - name: Prepare platform name
         id: platform
@@ -113,6 +114,7 @@ jobs:
           tags: |
             type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
@@ -122,4 +124,9 @@ jobs:
       
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          TAG=$(echo "$DOCKER_METADATA_OUTPUT_JSON" | jq -r '.tags[0] // empty')
+          if [ -n "$TAG" ]; then
+            docker buildx imagetools inspect "$TAG"
+          else
+            echo "No tags generated, skipping inspection"
+          fi
