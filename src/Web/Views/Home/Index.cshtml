@@ -75,7 +75,10 @@
 
         <div>
             <h3>Result</h3>
-            <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
+            <div id="resultContainer">
+                <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
+                <iframe id="cardFrame" class="d-none border rounded" style="width: 100%; min-height: 600px;" title="Music card result"></iframe>
+            </div>
         </div>
     </div>
 </div>
@@ -129,9 +132,12 @@
             const mode = (modeRadios.find(r => r.checked) || {}).value;
             const status = $('status');
             const result = $('result');
+            const cardFrame = $('cardFrame');
             status.textContent = 'Working...';
             $('go').disabled = true;
             result.textContent = '{}';
+            result.classList.remove('d-none');
+            cardFrame.classList.add('d-none');
             try {
               let endpoint = '';
               let payload = {};
@@ -150,14 +156,48 @@
                 const data = await res.json();
                 result.textContent = JSON.stringify(data, null, 2);
                 status.textContent = 'HTTP429 - Rate Limit Exceeded';
+              } else if (res.ok) {
+                const data = await res.json();
+                
+                // For URL mode, data might be an array, take the first result
+                const resultData = Array.isArray(data) ? (data.length > 0 ? data[0] : null) : data;
+                
+                if (resultData && resultData.results && Object.keys(resultData.results).length > 0) {
+                  // Store the result and get the card URL
+                  const storeRes = await fetch('/card/store', {
+                    method: 'POST',
+                    headers,
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ result: resultData })
+                  });
+                  
+                  if (storeRes.ok) {
+                    const storeData = await storeRes.json();
+                    // Display the card in an iframe
+                    cardFrame.src = storeData.cardUrl;
+                    result.classList.add('d-none');
+                    cardFrame.classList.remove('d-none');
+                    status.textContent = 'OK';
+                  } else {
+                    // Fallback to JSON display if card storage fails
+                    result.textContent = JSON.stringify(data, null, 2);
+                    status.textContent = res.ok ? 'OK (Card unavailable)' : `HTTP ${res.status}`;
+                  }
+                } else {
+                  // No results found or empty results
+                  result.textContent = JSON.stringify(data, null, 2);
+                  status.textContent = 'OK (No results)';
+                }
               } else {
                 const data = await res.json();
                 result.textContent = JSON.stringify(data, null, 2);
-                status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+                status.textContent = `HTTP ${res.status}`;
               }
             } catch (err) {
               status.textContent = 'Error';
               result.textContent = JSON.stringify({ error: String(err) }, null, 2);
+              result.classList.remove('d-none');
+              cardFrame.classList.add('d-none');
             } finally {
               $('go').disabled = false;
             }
