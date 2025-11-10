@@ -1,0 +1,97 @@
+@model TuneBridge.Web.Models.MusicLookupViewModel
+@using TuneBridge.Domain.Types.Enums
+
+@if (!string.IsNullOrEmpty(Model.Message))
+{
+    <div class="alert alert-info">@Model.Message</div>
+}
+else if (Model.Items.Any())
+{
+    <div class="d-flex flex-column gap-3" style="gap: 0.75rem;">
+        @foreach (var item in Model.Items)
+        {
+            var borderColor = GetProviderColor(item.PrimaryProvider);
+            <div class="embed-card" style="border-left-color: @borderColor;">
+                <div class="embed-header">
+                    @if (!string.IsNullOrWhiteSpace(item.PrimaryResult.ArtUrl))
+                    {
+                        @if (!string.IsNullOrWhiteSpace(item.CardUrl))
+                        {
+                            <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer">
+                                <img src="@item.PrimaryResult.ArtUrl" alt="@item.PrimaryResult.Title artwork" class="embed-image" />
+                            </a>
+                        }
+                        else
+                        {
+                            <img src="@item.PrimaryResult.ArtUrl" alt="@item.PrimaryResult.Title artwork" class="embed-image" />
+                        }
+                    }
+                    <div class="embed-content">
+                        @if (!string.IsNullOrWhiteSpace(item.CardUrl))
+                        {
+                            <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer" class="embed-title">
+                                @(item.PrimaryResult.Title ?? "Unknown Title")
+                            </a>
+                        }
+                        else
+                        {
+                            <div class="embed-title">@(item.PrimaryResult.Title ?? "Unknown Title")</div>
+                        }
+                        <div class="embed-info">
+                            Artist: @(item.PrimaryResult.Artist ?? "Unknown")
+                            @if (!string.IsNullOrWhiteSpace(item.PrimaryResult.ExternalId))
+                            {
+                                var idType = item.PrimaryResult.IsAlbum == true ? "UPC" : "ISRC";
+                                <text><br /></text>@idType<text>: </text>@item.PrimaryResult.ExternalId
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="embed-providers">
+                    @foreach (var providerResult in item.Result.Results)
+                    {
+                        <a href="@providerResult.Value.URL" target="_blank" rel="noopener noreferrer" class="provider-button">
+                            <span class="provider-icon">@GetProviderIcon(providerResult.Key)</span>
+                            <span>@GetProviderName(providerResult.Key)</span>
+                        </a>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@functions {
+    string GetProviderIcon(SupportedProviders provider)
+    {
+        return provider switch
+        {
+            SupportedProviders.Spotify => "🎵",
+            SupportedProviders.AppleMusic => "🎶",
+            SupportedProviders.Tidal => "🌊",
+            _ => "🎧"
+        };
+    }
+
+    string GetProviderName(SupportedProviders provider)
+    {
+        return provider switch
+        {
+            SupportedProviders.Spotify => "Spotify",
+            SupportedProviders.AppleMusic => "Apple Music",
+            SupportedProviders.Tidal => "Tidal",
+            _ => provider.ToString()
+        };
+    }
+
+    string GetProviderColor(SupportedProviders provider)
+    {
+        return provider switch
+        {
+            SupportedProviders.AppleMusic => "#D60017",
+            SupportedProviders.Spotify => "#1ED760",
+            SupportedProviders.Tidal => "#FFFFFF",
+            _ => "#6366F1"
+        };
+    }
+}
