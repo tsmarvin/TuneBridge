@@ -99,6 +99,126 @@ namespace TuneBridge.Web.Controllers {
         }
 
         /// <summary>
+        /// Performs ISRC lookup and displays results in a server-rendered view.
+        /// </summary>
+        /// <param name="isrc">ISRC code to look up.</param>
+        /// <returns>Partial view with lookup results.</returns>
+        [HttpPost]
+        public async Task<IActionResult> LookupResultsByIsrc( string isrc ) {
+            if (_mediaLinkService == null) {
+                return PartialView( "_LookupResults", new MusicLookupViewModel {
+                    Message = "Music lookup service not available"
+                } );
+            }
+
+            if (string.IsNullOrWhiteSpace( isrc )) {
+                return PartialView( "_LookupResults", new MusicLookupViewModel {
+                    Message = "ISRC is required"
+                } );
+            }
+
+            MediaLinkResult? result = await _mediaLinkService.GetInfoByISRCAsync( isrc );
+            return CreateViewModelFromResult( result, "No results found for ISRC" );
+        }
+
+        /// <summary>
+        /// Performs UPC lookup and displays results in a server-rendered view.
+        /// </summary>
+        /// <param name="upc">UPC code to look up.</param>
+        /// <returns>Partial view with lookup results.</returns>
+        [HttpPost]
+        public async Task<IActionResult> LookupResultsByUpc( string upc ) {
+            if (_mediaLinkService == null) {
+                return PartialView( "_LookupResults", new MusicLookupViewModel {
+                    Message = "Music lookup service not available"
+                } );
+            }
+
+            if (string.IsNullOrWhiteSpace( upc )) {
+                return PartialView( "_LookupResults", new MusicLookupViewModel {
+                    Message = "UPC is required"
+                } );
+            }
+
+            MediaLinkResult? result = await _mediaLinkService.GetInfoByUPCAsync( upc );
+            return CreateViewModelFromResult( result, "No results found for UPC" );
+        }
+
+        /// <summary>
+        /// Performs title/artist lookup and displays results in a server-rendered view.
+        /// </summary>
+        /// <param name="title">Track or album title.</param>
+        /// <param name="artist">Artist name.</param>
+        /// <returns>Partial view with lookup results.</returns>
+        [HttpPost]
+        public async Task<IActionResult> LookupResultsByTitle( string title, string artist ) {
+            if (_mediaLinkService == null) {
+                return PartialView( "_LookupResults", new MusicLookupViewModel {
+                    Message = "Music lookup service not available"
+                } );
+            }
+
+            if (string.IsNullOrWhiteSpace( title ) || string.IsNullOrWhiteSpace( artist )) {
+                return PartialView( "_LookupResults", new MusicLookupViewModel {
+                    Message = "Title and artist are required"
+                } );
+            }
+
+            MediaLinkResult? result = await _mediaLinkService.GetInfoAsync( title, artist );
+            return CreateViewModelFromResult( result, "No results found for title/artist" );
+        }
+
+        /// <summary>
+        /// Helper method to create a view model from a MediaLinkResult.
+        /// </summary>
+        /// <param name="result">The lookup result.</param>
+        /// <param name="noResultsMessage">Message to display when no results found.</param>
+        /// <returns>Partial view with the created view model.</returns>
+        private IActionResult CreateViewModelFromResult( MediaLinkResult? result, string noResultsMessage ) {
+            MusicLookupViewModel viewModel = new( );
+
+            if (result == null || result.Results.Count == 0) {
+                viewModel.Message = noResultsMessage;
+                return PartialView( "_LookupResults", viewModel );
+            }
+
+            // Find primary result
+            MusicLookupResultDto? primaryResult = null;
+            SupportedProviders primaryProvider = default;
+            foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results) {
+                if (dto.IsPrimary) {
+                    primaryResult = dto;
+                    primaryProvider = provider;
+                    break;
+                }
+                if (primaryResult == null) {
+                    primaryResult = dto;
+                    primaryProvider = provider;
+                }
+            }
+
+            if (primaryResult == null) {
+                viewModel.Message = noResultsMessage;
+                return PartialView( "_LookupResults", viewModel );
+            }
+
+            // Store result and get card URL
+            string? cardUrl = null;
+            if (_cardService?.IsEnabled == true) {
+                cardUrl = _cardService.StoreResult( result );
+            }
+
+            viewModel.Items.Add( new MusicLookupViewModel.MusicLookupResultItem {
+                CardUrl = cardUrl,
+                Result = result,
+                PrimaryProvider = primaryProvider,
+                PrimaryResult = primaryResult
+            } );
+
+            return PartialView( "_LookupResults", viewModel );
+        }
+
+        /// <summary>
         /// Displays the privacy policy page.
         /// </summary>
         /// <returns>The privacy view.</returns>
