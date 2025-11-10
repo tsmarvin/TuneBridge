@@ -31,7 +31,7 @@ Add the following settings to your `appsettings.json`:
 - **BlueskyIdentifier**: Your Bluesky handle or DID
 - **BlueskyPassword**: Your Bluesky password or app password (recommended: use app password)
 - **CacheDays**: Number of days to keep cache entries valid (default: 7)
-- **LinkCacheConnectionString**: SQLite connection string for the cache database (default: `Data Source=medialinkscache.db`)
+- **LinkCacheConnectionString**: SQLite connection string for the cache database (default: `Data Source=tunebridge.db`)
 
 > **Security Note**: Use a Bluesky app password instead of your main account password. Generate an app password at: Settings → App Passwords in Bluesky.
 

@@ -28,7 +28,7 @@ public class ConfigurationValidationTests {
         };
 
         // Act & Assert
-        FileNotFoundException ex = Assert.ThrowsException<FileNotFoundException>( () => {
+        FileNotFoundException ex = Assert.ThrowsExactly<FileNotFoundException>( () => {
             using CustomWebApplicationFactory factory = new( overrides );
             _ = factory.Services; // trigger creation
         } );
@@ -57,7 +57,7 @@ public class ConfigurationValidationTests {
             };
 
             // Act & Assert
-            InvalidDataException ex = Assert.ThrowsException<InvalidDataException>( () => {
+            InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
                 using CustomWebApplicationFactory factory = new( overrides );
                 _ = factory.Services;
             } );
@@ -86,7 +86,7 @@ public class ConfigurationValidationTests {
         };
 
         // Act & Assert
-        InvalidOperationException ex = Assert.ThrowsException<InvalidOperationException>( () => {
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
             using CustomWebApplicationFactory factory = new( overrides );
             _ = factory.Services;
         } );

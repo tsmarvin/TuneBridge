@@ -47,7 +47,7 @@ BLUESKY_PASSWORD_FROM_SECRET=$(read_secret "bluesky_password")
 BLUESKY_PASSWORD="${BLUESKY_PASSWORD:-$BLUESKY_PASSWORD_FROM_SECRET}"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
-LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/medialinkscache.db}"
+LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
 
 # Authentication and rate limiting configuration
 IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"

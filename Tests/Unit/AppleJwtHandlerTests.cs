@@ -52,7 +52,7 @@ public class AppleJwtHandlerTests {
         string invalidKeyContents = "-----BEGIN PRIVATE KEY-----\nINVALID\n-----END PRIVATE KEY-----";
 
         // Act & Assert - Invalid key should throw either CryptographicException or ArgumentException
-        _ = Assert.ThrowsException<ArgumentException>( ( ) =>
+        _ = Assert.ThrowsExactly<ArgumentException>( ( ) =>
             new AppleJwtHandler( TestTeamId, TestKeyId, invalidKeyContents ) );
     }
 
