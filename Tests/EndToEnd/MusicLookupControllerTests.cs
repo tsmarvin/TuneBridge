@@ -42,7 +42,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
         Assert.IsNotNull( results );
-        Assert.IsTrue( results!.Count > 0, "Results should not be empty" );
+        Assert.IsNotEmpty( results, "Results should not be empty" );
     }
 
     [TestMethod]
@@ -57,7 +57,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
         Assert.IsNotNull( results );
-        Assert.IsTrue( results!.Count > 0, "Results should not be empty" );
+        Assert.IsNotEmpty( results, "Results should not be empty" );
     }
 
     [TestMethod]
@@ -72,7 +72,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
         Assert.IsNotNull( results );
-        Assert.IsTrue( results!.Count > 0, "Results should not be empty" );
+        Assert.IsNotEmpty( results, "Results should not be empty" );
     }
 
     [TestMethod]
@@ -91,7 +91,7 @@ public class MusicLookupControllerTests {
         List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
         Assert.IsNotNull( results );
         // Should have at least one result (deduplication may occur if URLs point to same content)
-        Assert.IsTrue( results!.Count > 0, "Results should not be empty" );
+        Assert.IsNotEmpty( results, "Results should not be empty" );
     }
 
     [TestMethod]
@@ -107,7 +107,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
     }
 
     [TestMethod]
@@ -123,7 +123,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
     }
 
     [TestMethod]
@@ -139,7 +139,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty(result.Results, "result.Results should not be empty");
     }
 
     [TestMethod]
@@ -154,7 +154,7 @@ public class MusicLookupControllerTests {
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         string content = await response.Content.ReadAsStringAsync();
-        Assert.IsTrue( content.Length > 0, "content should not be empty" );
+        Assert.IsGreaterThan( 0, content.Length, "content should not be empty" );
     }
 
     public void Dispose( ) {
