@@ -77,11 +77,95 @@
             <h3>Results</h3>
             <div id="resultContainer">
                 <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
-                <div id="cardsContainer" class="d-none" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+                <div id="cardsContainer" class="d-none" style="display: flex; flex-direction: column; gap: 0.75rem;"></div>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+    .embed-card {
+        background: #2f3136;
+        border-left: 4px solid #5865f2;
+        border-radius: 4px;
+        padding: 0.75rem 1rem 0.75rem 0.75rem;
+        max-width: 520px;
+        color: #dcddde;
+    }
+
+    .embed-header {
+        display: flex;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .embed-image {
+        width: 80px;
+        height: 80px;
+        border-radius: 4px;
+        object-fit: cover;
+        flex-shrink: 0;
+    }
+
+    .embed-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .embed-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #00b0f4;
+        text-decoration: none;
+        display: block;
+        margin-bottom: 0.25rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .embed-title:hover {
+        text-decoration: underline;
+    }
+
+    .embed-info {
+        font-size: 0.875rem;
+        color: #b9bbbe;
+        margin-bottom: 0.5rem;
+    }
+
+    .embed-providers {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+
+    .provider-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: #40444b;
+        border: 1px solid #202225;
+        border-radius: 4px;
+        color: #dcddde;
+        text-decoration: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+    }
+
+    .provider-button:hover {
+        background: #36393f;
+        color: #fff;
+        transform: translateY(-1px);
+    }
+
+    .provider-icon {
+        font-size: 1.125rem;
+    }
+</style>
 
 @section Scripts {
     <script>
@@ -150,29 +234,22 @@
                 if (res.ok) {
                   const data = await res.json();
                   if (data.hasResults && data.items && data.items.length > 0) {
-                    // Display multiple cards
-                    let hasCards = false;
+                    // Display multiple compact embeds
                     data.items.forEach((item, index) => {
-                      if (item.cardUrl) {
-                        const iframe = document.createElement('iframe');
-                        iframe.src = item.cardUrl;
-                        iframe.className = 'border rounded';
-                        iframe.style.width = '100%';
-                        iframe.style.minHeight = '600px';
-                        iframe.title = `Music card result ${index + 1}`;
-                        cardsContainer.appendChild(iframe);
-                        hasCards = true;
+                      if (item.fallbackData && item.fallbackData.results) {
+                        const embedEl = createEmbedCard(item);
+                        cardsContainer.appendChild(embedEl);
                       }
                     });
                     
-                    if (hasCards) {
+                    if (cardsContainer.children.length > 0) {
                       result.classList.add('d-none');
                       cardsContainer.classList.remove('d-none');
                       status.textContent = `OK (${data.items.length} result${data.items.length > 1 ? 's' : ''})`;
                     } else {
-                      // Cards not available, show JSON
+                      // No valid cards, show JSON
                       result.textContent = JSON.stringify(data.items.map(i => i.fallbackData), null, 2);
-                      status.textContent = 'OK (Cards unavailable)';
+                      status.textContent = 'OK (No cards available)';
                     }
                   } else {
                     // No results
@@ -216,6 +293,126 @@
               $('go').disabled = false;
             }
           });
+
+          // Helper function to create Discord-style embed card
+          function createEmbedCard(item) {
+            const result = item.fallbackData;
+            const cardUrl = item.cardUrl;
+            
+            // Find primary result or first with data
+            let primaryResult = null;
+            let primaryProvider = null;
+            for (const [provider, data] of Object.entries(result.results)) {
+              if (data.isPrimary) {
+                primaryResult = data;
+                primaryProvider = provider;
+                break;
+              }
+              if (!primaryResult) {
+                primaryResult = data;
+                primaryProvider = provider;
+              }
+            }
+
+            if (!primaryResult) return null;
+
+            // Create embed card element
+            const card = document.createElement('div');
+            card.className = 'embed-card';
+
+            // Create header with image and content
+            const header = document.createElement('div');
+            header.className = 'embed-header';
+
+            // Add image if available
+            if (primaryResult.artUrl) {
+              const img = document.createElement('img');
+              img.src = primaryResult.artUrl;
+              img.alt = `${primaryResult.title} artwork`;
+              img.className = 'embed-image';
+              img.onerror = () => { img.style.display = 'none'; }; // Hide if image fails
+              header.appendChild(img);
+            }
+
+            // Create content section
+            const content = document.createElement('div');
+            content.className = 'embed-content';
+
+            // Title as link to card
+            if (cardUrl) {
+              const titleLink = document.createElement('a');
+              titleLink.href = cardUrl;
+              titleLink.className = 'embed-title';
+              titleLink.textContent = primaryResult.title || 'Unknown Title';
+              titleLink.target = '_blank';
+              titleLink.rel = 'noopener noreferrer';
+              content.appendChild(titleLink);
+            } else {
+              const titleSpan = document.createElement('div');
+              titleSpan.className = 'embed-title';
+              titleSpan.textContent = primaryResult.title || 'Unknown Title';
+              content.appendChild(titleSpan);
+            }
+
+            // Artist and External ID info
+            const info = document.createElement('div');
+            info.className = 'embed-info';
+            let infoText = `Artist: ${primaryResult.artist || 'Unknown'}`;
+            if (primaryResult.externalId) {
+              const idType = primaryResult.isAlbum ? 'UPC' : 'ISRC';
+              infoText += `\n${idType}: ${primaryResult.externalId}`;
+            }
+            info.textContent = infoText;
+            info.style.whiteSpace = 'pre-line';
+            content.appendChild(info);
+
+            header.appendChild(content);
+            card.appendChild(header);
+
+            // Provider buttons
+            const providers = document.createElement('div');
+            providers.className = 'embed-providers';
+
+            for (const [provider, data] of Object.entries(result.results)) {
+              const button = document.createElement('a');
+              button.href = data.url;
+              button.className = 'provider-button';
+              button.target = '_blank';
+              button.rel = 'noopener noreferrer';
+
+              const icon = document.createElement('span');
+              icon.className = 'provider-icon';
+              icon.textContent = getProviderIcon(provider);
+              button.appendChild(icon);
+
+              const name = document.createElement('span');
+              name.textContent = getProviderName(provider);
+              button.appendChild(name);
+
+              providers.appendChild(button);
+            }
+
+            card.appendChild(providers);
+            return card;
+          }
+
+          function getProviderIcon(provider) {
+            const icons = {
+              'Spotify': '🎵',
+              'AppleMusic': '🎶',
+              'Tidal': '🌊'
+            };
+            return icons[provider] || '🎧';
+          }
+
+          function getProviderName(provider) {
+            const names = {
+              'Spotify': 'Spotify',
+              'AppleMusic': 'Apple Music',
+              'Tidal': 'Tidal'
+            };
+            return names[provider] || provider;
+          }
         })();
     </script>
 }
