@@ -85,12 +85,12 @@
 
 <style>
     .embed-card {
-        background: #2f3136;
-        border-left: 4px solid #5865f2;
-        border-radius: 4px;
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color);
+        border-left: 4px solid;
+        border-radius: 0.375rem;
         padding: 0.75rem 1rem 0.75rem 0.75rem;
         max-width: 520px;
-        color: #dcddde;
     }
 
     .embed-header {
@@ -102,7 +102,7 @@
     .embed-image {
         width: 80px;
         height: 80px;
-        border-radius: 4px;
+        border-radius: 0.375rem;
         object-fit: cover;
         flex-shrink: 0;
     }
@@ -115,7 +115,7 @@
     .embed-title {
         font-size: 1rem;
         font-weight: 600;
-        color: #00b0f4;
+        color: var(--bs-link-color);
         text-decoration: none;
         display: block;
         margin-bottom: 0.25rem;
@@ -125,13 +125,15 @@
     }
 
     .embed-title:hover {
+        color: var(--bs-link-hover-color);
         text-decoration: underline;
     }
 
     .embed-info {
         font-size: 0.875rem;
-        color: #b9bbbe;
+        color: var(--bs-secondary-color);
         margin-bottom: 0.5rem;
+        white-space: pre-line;
     }
 
     .embed-providers {
@@ -146,10 +148,10 @@
         align-items: center;
         gap: 0.5rem;
         padding: 0.5rem 0.75rem;
-        background: #40444b;
-        border: 1px solid #202225;
-        border-radius: 4px;
-        color: #dcddde;
+        background: var(--bs-secondary-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.375rem;
+        color: var(--bs-body-color);
         text-decoration: none;
         font-size: 0.875rem;
         font-weight: 500;
@@ -157,13 +159,15 @@
     }
 
     .provider-button:hover {
-        background: #36393f;
-        color: #fff;
+        background: var(--bs-tertiary-bg);
+        color: var(--bs-emphasis-color);
         transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
     .provider-icon {
         font-size: 1.125rem;
+        line-height: 1;
     }
 </style>
 
@@ -319,6 +323,10 @@
             // Create embed card element
             const card = document.createElement('div');
             card.className = 'embed-card';
+            
+            // Set border color based on primary provider
+            const borderColor = getProviderColor(primaryProvider);
+            card.style.borderLeftColor = borderColor;
 
             // Create header with image and content
             const header = document.createElement('div');
@@ -412,6 +420,15 @@
               'Tidal': 'Tidal'
             };
             return names[provider] || provider;
+          }
+
+          function getProviderColor(provider) {
+            const colors = {
+              'AppleMusic': '#D60017',
+              'Spotify': '#1ED760',
+              'Tidal': '#FFFFFF'
+            };
+            return colors[provider] || '#6366F1'; // Default purple
           }
         })();
     </script>
