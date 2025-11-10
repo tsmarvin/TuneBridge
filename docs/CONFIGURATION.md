@@ -31,7 +31,7 @@ At least one complete set of music provider credentials is required:
 | `BLUESKY_IDENTIFIER` | Bluesky account identifier (handle or DID) | No*** |
 | `BLUESKY_PASSWORD` | Bluesky app password | No*** |
 
-\*\* Required only if using Discord integration  
+\*\* Required only if using Discord integration
 \*\*\* Required only if using Bluesky PDS storage for caching lookup results
 
 ### Optional Configuration
@@ -44,7 +44,7 @@ At least one complete set of music provider credentials is required:
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
 | `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
 | `CACHE_DB_PATH` | Path to SQLite database for cache lookups | `medialinkscache.db` |
-| `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `http://localhost:5000` |
+| `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
 
 **Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `TuneBridge__BaseUrl` maps to `TuneBridge:BaseUrl` in configuration).
 
@@ -113,7 +113,7 @@ For local development, you can use an `appsettings.json` file instead of environ
     "BlueskyPassword": "your-app-password",
     "CacheDays": 7,
     "CacheDbPath": "tunebridge.db",
-    "BaseUrl": "http://localhost:5000"
+    "BaseUrl": "localhost"
   },
   "Logging": {
     "LogLevel": {

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Extensions;
 using TuneBridge.Domain.Interfaces;

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -139,7 +139,7 @@ public class MusicLookupControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
         Assert.IsNotNull( result );
-        Assert.IsNotEmpty(result.Results, "result.Results should not be empty");
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
     }
 
     [TestMethod]

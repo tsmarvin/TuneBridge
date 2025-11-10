@@ -13,7 +13,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     permissions:
       contents: read
 
@@ -39,7 +39,7 @@ jobs:
             mkdir -p /tmp/test-keys
             echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
           fi
-          
+
           # Create appsettings.json for tests (with empty DiscordToken to disable Discord bot in tests)
           sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
               -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \

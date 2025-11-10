@@ -1,4 +1,4 @@
-﻿namespace TuneBridge.Configuration {
+namespace TuneBridge.Configuration {
     /// <summary>
     /// Represents application settings for external service integrations.<para/>
     ///

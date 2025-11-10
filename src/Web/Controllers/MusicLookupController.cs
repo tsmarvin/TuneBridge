@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;

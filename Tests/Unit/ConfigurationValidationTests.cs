@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using TuneBridge.Domain.Interfaces; // Added for IMediaLinkService
 using TuneBridge.Tests.EndToEnd;
 

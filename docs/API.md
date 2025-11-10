@@ -226,7 +226,7 @@ All lookup endpoints return a `MediaLinkResult` object with the following struct
       isAlbum?: boolean    // true for albums, false for tracks
     }
   },
-  
+
   // Optional user messages (warnings, info)
   messages?: string[]
 }
@@ -363,7 +363,7 @@ async function lookup(uri) {
       { uri },
       { headers: { 'X-API-Key': API_KEY } }
     );
-    
+
     return response.data.results;
   } catch (error) {
     if (error.response?.status === 429) {

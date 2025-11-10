@@ -1,4 +1,4 @@
-﻿using idunno.AtProto;
+using idunno.AtProto;
 using idunno.AtProto.Repo;
 using idunno.Bluesky;
 using TuneBridge.Domain.Contracts.DTOs;

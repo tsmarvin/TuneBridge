@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using idunno.AtProto.Repo;
 
 namespace TuneBridge.Domain.Contracts.Records {

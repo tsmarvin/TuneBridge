@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using NetCord.Rest;

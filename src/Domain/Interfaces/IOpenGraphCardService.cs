@@ -1,4 +1,4 @@
-﻿using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Contracts.DTOs;
 
 namespace TuneBridge.Domain.Interfaces {
 

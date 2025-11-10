@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
 
@@ -10,7 +10,7 @@ namespace TuneBridge.Domain.Implementations.Services {
     public class OpenGraphCardService( string baseUrl ) : IOpenGraphCardService {
 
         /// <inheritdoc/>
-        public bool IsEnabled => string.IsNullOrWhiteSpace( baseUrl ) == false && baseUrl.StartsWith( "http" );
+        public bool IsEnabled => string.IsNullOrWhiteSpace( baseUrl ) == false;
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
         private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 24 );
@@ -26,7 +26,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             _store[id] = (result, expiry);
 
             // Generate the OpenGraph card URL
-            return $"{baseUrl.TrimEnd( '/' )}/card/{id}";
+            return $"https://{baseUrl.TrimEnd( '/' )}/card/{id}";
         }
 
         /// <inheritdoc/>

@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/bash
 set -eu
 
 # ---- Helper function to read Docker secrets ----
@@ -10,6 +10,8 @@ read_secret() {
         echo ""
     fi
 }
+
+DOMAIN="${DOMAIN:-dev.tunebridge.media}"
 
 # ---- Configure defaults ----
 NODE_NUMBER="${NODE_NUMBER:-0}"
@@ -66,7 +68,7 @@ cat > /app/appsettings.json <<EOF
   "Kestrel": {
     "Endpoints": {
       "Http": {
-        "Url": "http://0.0.0.0:10000"
+        "Url": "http://$DOMAIN:10000"
       }
     }
   },
@@ -87,7 +89,8 @@ cat > /app/appsettings.json <<EOF
     "BlueskyIdentifier": "$BLUESKY_IDENTIFIER",
     "BlueskyPassword": "$BLUESKY_PASSWORD",
     "CacheDays": $CACHE_DAYS,
-    "CacheDbPath": "$CACHE_DB_PATH"
+    "CacheDbPath": "$CACHE_DB_PATH",
+    "BaseUrl": "$DOMAIN"
   },
   "Logging": {
     "LogLevel": {

@@ -1,4 +1,4 @@
-﻿namespace TuneBridge.Domain.Implementations.Middleware;
+namespace TuneBridge.Domain.Implementations.Middleware;
 
 /// <summary>
 /// Middleware to restrict access to Swagger UI to authenticated users only.

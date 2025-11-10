@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using AspNetCore.Authentication.ApiKey;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
