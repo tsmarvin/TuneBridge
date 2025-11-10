@@ -12,7 +12,7 @@ public class ConnectionStringCompatibilityTests {
     public void BothConnectionStrings_CanUseSameValueFormat_WithDataSource( ) {
         // Arrange - Use the same connection string format for both databases
         string sharedConnectionString = "Data Source=shared.db";
-        
+
         Dictionary<string, string?> configData = new( ) {
             ["TuneBridge:IdentityConnectionString"] = sharedConnectionString,
             ["TuneBridge:LinkCacheConnectionString"] = sharedConnectionString,
@@ -36,7 +36,7 @@ public class ConnectionStringCompatibilityTests {
     public void BothConnectionStrings_CanUseSameValueFormat_WithMemoryMode( ) {
         // Arrange - Use the same in-memory connection string format for both databases
         string sharedConnectionString = "Data Source=TestDb;Mode=Memory;Cache=Shared";
-        
+
         Dictionary<string, string?> configData = new( ) {
             ["TuneBridge:IdentityConnectionString"] = sharedConnectionString,
             ["TuneBridge:LinkCacheConnectionString"] = sharedConnectionString,
@@ -61,7 +61,7 @@ public class ConnectionStringCompatibilityTests {
         // Arrange - Use different connection strings for each database
         string identityConnectionString = "Data Source=identity.db";
         string cacheConnectionString = "Data Source=cache.db";
-        
+
         Dictionary<string, string?> configData = new( ) {
             ["TuneBridge:IdentityConnectionString"] = identityConnectionString,
             ["TuneBridge:LinkCacheConnectionString"] = cacheConnectionString,
@@ -87,7 +87,7 @@ public class ConnectionStringCompatibilityTests {
         AppSettings settings = new();
 
         // Assert - Both defaults use "Data Source=" format
-        Assert.IsTrue( settings.IdentityConnectionString.StartsWith( "Data Source=" ) );
-        Assert.IsTrue( settings.LinkCacheConnectionString.StartsWith( "Data Source=" ) );
+        Assert.StartsWith( "Data Source=", settings.IdentityConnectionString );
+        Assert.StartsWith( "Data Source=", settings.LinkCacheConnectionString );
     }
 }

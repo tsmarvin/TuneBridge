@@ -21,15 +21,15 @@ public class MusicLookupServiceTests {
     [TestInitialize]
     public void Initialize( ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
+                                            .AddJsonFile("appsettings.json", optional: true)
+                                            .AddEnvironmentVariables()
+                                            .Build();
 
         // Use the same factory pattern as controller E2E tests, but feed it appsettings.json
         Dictionary<string, string?> overrides = configuration
-            .AsEnumerable()
-            .Where(kv => kv.Value is not null) // filter nulls from section placeholders
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
+         .AsEnumerable()
+         .Where(kv => kv.Value is not null) // filter nulls from section placeholders
+         .ToDictionary(kv => kv.Key, kv => kv.Value);
 
         s_factory = new CustomWebApplicationFactory( overrides );
         _serviceProvider = s_factory.Services;
@@ -56,7 +56,7 @@ public class MusicLookupServiceTests {
 
         // Assert
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
         MusicLookupResultDto firstResult = result.Results.First( ).Value;
         Assert.IsFalse( firstResult.IsAlbum ?? true );
         Assert.IsNotNull( firstResult.Title );
@@ -75,7 +75,7 @@ public class MusicLookupServiceTests {
 
         // Assert
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
         MusicLookupResultDto firstResult = result.Results.First( ).Value;
         Assert.IsTrue( firstResult.IsAlbum ?? false );
         Assert.IsNotNull( firstResult.Title );
@@ -94,11 +94,11 @@ public class MusicLookupServiceTests {
 
         // Assert
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Results.Count > 0, "result.Results should not be empty" );
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
         MusicLookupResultDto firstResult = result.Results.First( ).Value;
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
-        Assert.IsTrue( firstResult.Title?.Contains( "Bohemian", StringComparison.OrdinalIgnoreCase ) == true, "Title should contain Bohemian" );
+        Assert.IsTrue( firstResult.Title?.Contains( "Bohemian", StringComparison.OrdinalIgnoreCase ), "Title should contain Bohemian" );
     }
 
     [TestMethod]
@@ -115,9 +115,9 @@ public class MusicLookupServiceTests {
         }
 
         // Assert
-        Assert.IsTrue( results.Count > 0, "Results collection should not be empty" );
+        Assert.IsNotEmpty( results, "Results collection should not be empty" );
         MediaLinkResult firstResult = results[0];
-        Assert.IsTrue( firstResult.Results.Count > 0, "firstResult.Results should not be empty" );
+        Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
         MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
@@ -136,9 +136,9 @@ public class MusicLookupServiceTests {
         }
 
         // Assert
-        Assert.IsTrue( results.Count > 0, "Results collection should not be empty" );
+        Assert.IsNotEmpty( results, "Results collection should not be empty" );
         MediaLinkResult firstResult = results[0];
-        Assert.IsTrue( firstResult.Results.Count > 0, "firstResult.Results should not be empty" );
+        Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
         MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
@@ -171,12 +171,56 @@ public class MusicLookupServiceTests {
         }
 
         // Assert
-        Assert.IsTrue( results.Count > 0, "Results collection should not be empty" );
+        Assert.IsNotEmpty( results, "Results collection should not be empty" );
         MediaLinkResult firstResult = results[0];
-        Assert.IsTrue( firstResult.Results.Count > 0, "firstResult.Results should not be empty" );
+        Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
         MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
+    }
+
+    /// <summary>
+    /// Tests that Spotify can find a track from Apple Music using ISRC cross-platform matching.
+    /// This test validates the scenario where an Apple Music track link should be found on Spotify.
+    /// Apple Music URL: https://music.apple.com/us/album/chiron/1695231829?i=1695231831
+    /// Expected ISRC: US25X1087647
+    /// Track: "Chiron" by Shades (Alix Perez & Eprom)
+    /// </summary>
+    [TestMethod]
+    public async Task GetInfoByUrl_WithAppleMusicChironTrack_ShouldFindOnSpotify( ) {
+        // Arrange
+        IMediaLinkService mediaLinkService = _serviceProvider.GetRequiredService<IMediaLinkService>();
+        string appleUrl = "https://music.apple.com/us/album/chiron/1695231829?i=1695231831";
+
+        // Act
+        List<MediaLinkResult> results = [];
+        await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( appleUrl )) {
+            results.Add( result );
+        }
+
+        // Assert
+        Assert.IsNotEmpty( results, "Results collection should not be empty" );
+        MediaLinkResult firstResult = results[0];
+        Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
+
+        // Verify Apple Music result
+        Assert.IsTrue( firstResult.Results.ContainsKey( Domain.Types.Enums.SupportedProviders.AppleMusic ), "Should have Apple Music result" );
+        MusicLookupResultDto appleResult = firstResult.Results[Domain.Types.Enums.SupportedProviders.AppleMusic];
+        Assert.IsNotNull( appleResult.Title );
+        Assert.IsNotNull( appleResult.Artist );
+        Assert.IsFalse( appleResult.IsAlbum ?? true, "Should be a track, not an album" );
+
+        // Verify ISRC is present
+        Assert.IsFalse( string.IsNullOrWhiteSpace( appleResult.ExternalId ), "Apple Music result should have an ISRC" );
+        Assert.AreEqual( "US25X1087647", appleResult.ExternalId, "ISRC should match expected value" );
+
+        // Verify Spotify result is present (the main issue being tested)
+        Assert.IsTrue( firstResult.Results.ContainsKey( Domain.Types.Enums.SupportedProviders.Spotify ),
+            "Spotify should find the track using ISRC US25X1087647" );
+        MusicLookupResultDto spotifyResult = firstResult.Results[Domain.Types.Enums.SupportedProviders.Spotify];
+        Assert.IsNotNull( spotifyResult.Title );
+        Assert.IsNotNull( spotifyResult.Artist );
+        Assert.IsFalse( string.IsNullOrWhiteSpace( spotifyResult.URL ), "Spotify result should have a URL" );
     }
 
     [TestCleanup]

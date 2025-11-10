@@ -32,7 +32,7 @@ public class ConfigurationValidationTests {
             using CustomWebApplicationFactory factory = new( overrides );
             _ = factory.Services; // trigger creation
         } );
-        Assert.IsTrue( ex.Message.Contains( ".p8" ) );
+        Assert.Contains( ".p8", ex.Message );
     }
 
     [TestMethod]
@@ -61,7 +61,7 @@ public class ConfigurationValidationTests {
                 using CustomWebApplicationFactory factory = new( overrides );
                 _ = factory.Services;
             } );
-            Assert.IsTrue( ex.Message.Contains( "missing contents" ) );
+            Assert.Contains( "missing contents", ex.Message );
         } finally {
             if (File.Exists( emptyKeyPath )) { File.Delete( emptyKeyPath ); }
         }
@@ -90,7 +90,7 @@ public class ConfigurationValidationTests {
             using CustomWebApplicationFactory factory = new( overrides );
             _ = factory.Services;
         } );
-        Assert.IsTrue( ex.Message.Contains( "Required settings are missing" ) );
+        Assert.Contains( "Required settings are missing", ex.Message );
     }
 
     [TestMethod]

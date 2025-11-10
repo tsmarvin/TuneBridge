@@ -68,7 +68,7 @@ public class AppleJwtHandlerTests {
         Assert.IsNotNull( authHeader );
         Assert.AreEqual( "Bearer", authHeader.Scheme );
         Assert.IsNotNull( authHeader.Parameter );
-        Assert.IsTrue( authHeader.Parameter.Length > 0 );
+        Assert.IsGreaterThan( 0, authHeader.Parameter.Length );
     }
 
     [TestMethod]
@@ -83,11 +83,11 @@ public class AppleJwtHandlerTests {
         // Assert - JWT should have 3 parts separated by dots
         Assert.IsNotNull( token );
         string[] parts = token.Split( '.' );
-        Assert.AreEqual( 3, parts.Length );
+        Assert.HasCount( 3, parts );
 
         // Each part should be base64url encoded (not empty)
         foreach (string part in parts) {
-            Assert.IsTrue( part.Length > 0 );
+            Assert.IsGreaterThan( 0, part.Length );
         }
     }
 
