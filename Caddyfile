@@ -4,8 +4,6 @@
     admin off
     # Persist data for certificates
     storage file_system /data/caddy
-    # Enable auto HTTPS
-    auto_https on
     # Email for Let's Encrypt notifications (override with CADDY_ADMIN_EMAIL env var)
     email {$CADDY_ADMIN_EMAIL}
 }
