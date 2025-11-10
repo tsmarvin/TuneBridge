@@ -41,10 +41,10 @@ public class WebLookupTests {
 
         dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
         Assert.IsNotNull( data );
-        
+
         bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
         Assert.IsTrue( hasResults, "Should have results for valid Spotify URL" );
-        
+
         // Check items array exists
         System.Text.Json.JsonElement itemsElement;
         Assert.IsTrue( data.TryGetProperty( "items", out itemsElement ), "Should have items array" );
@@ -67,12 +67,12 @@ public class WebLookupTests {
 
         dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
         Assert.IsNotNull( data );
-        
+
         bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
         Assert.IsTrue( hasResults, "Should have results for valid URLs" );
-        
+
         // Check that we have multiple items
-        var items = data.GetProperty( "items" );
+        dynamic items = data.GetProperty( "items" );
         int itemCount = items.GetArrayLength( );
         Assert.IsTrue( itemCount > 0, "Should have at least one item" );
     }
@@ -110,7 +110,7 @@ public class WebLookupTests {
 
         dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
         Assert.IsNotNull( data );
-        
+
         bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
         Assert.IsFalse( hasResults, "Should have no results for invalid URL" );
     }
