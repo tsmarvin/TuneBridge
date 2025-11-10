@@ -17,20 +17,16 @@ services:
       # Domain configuration
       - DOMAIN=${DOMAIN:-dev.tunebridge.media}
       - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}
-
       # TuneBridge configuration
-      - NODE_NUMBER=${NODE_NUMBER:-0}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
+      - NODE_NUMBER=${NODE_NUMBER:-100}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
-
       # Music provider credentials (at least one required)
       - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
       - APPLE_KEY_ID=${APPLE_KEY_ID:-}
-      - APPLE_KEY_PATH=${APPLE_KEY_PATH:-/run/secrets/apple_key}
+      - APPLE_KEY_PATH=${APPLE_KEY_PATH:-}
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
       - TIDAL_CLIENT_ID=${TIDAL_CLIENT_ID:-}
-
       # Optional Bluesky PDS configuration
       - BLUESKY_PDS_URL=${BLUESKY_PDS_URL:-} # https://bsky.social is the default if you don't have a custom PDS
       - BLUESKY_IDENTIFIER=${BLUESKY_IDENTIFIER:-}
