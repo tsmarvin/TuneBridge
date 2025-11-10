@@ -139,59 +139,57 @@
             result.classList.remove('d-none');
             cardFrame.classList.add('d-none');
             try {
-              let endpoint = '';
-              let payload = {};
-              switch (mode) {
-                case 'url': endpoint = '/music/lookup/url'; payload = { uri: $('url').value }; break;
-                case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
-                case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
-                case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
-              }
               const headers = { 'Content-Type': 'application/json' };
-              const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
-              if (res.status === 401) {
-                result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null, 2);
-                status.textContent = 'HTTP401 - Unauthorized';
-              } else if (res.status === 429) {
-                const data = await res.json();
-                result.textContent = JSON.stringify(data, null, 2);
-                status.textContent = 'HTTP429 - Rate Limit Exceeded';
-              } else if (res.ok) {
-                const data = await res.json();
+              
+              // For URL mode, use the web-specific endpoint that handles card storage server-side
+              if (mode === 'url') {
+                const payload = { uri: $('url').value };
+                const res = await fetch('/lookup/web', { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
                 
-                // For URL mode, data might be an array, take the first result
-                const resultData = Array.isArray(data) ? (data.length > 0 ? data[0] : null) : data;
-                
-                if (resultData && resultData.results && Object.keys(resultData.results).length > 0) {
-                  // Store the result and get the card URL
-                  const storeRes = await fetch('/card/store', {
-                    method: 'POST',
-                    headers,
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ result: resultData })
-                  });
-                  
-                  if (storeRes.ok) {
-                    const storeData = await storeRes.json();
-                    // Display the card in an iframe
-                    cardFrame.src = storeData.cardUrl;
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.hasResults && data.cardUrl) {
+                    // Display the card
+                    cardFrame.src = data.cardUrl;
                     result.classList.add('d-none');
                     cardFrame.classList.remove('d-none');
                     status.textContent = 'OK';
+                  } else if (data.hasResults && data.fallbackData) {
+                    // Card not available, show JSON
+                    result.textContent = JSON.stringify(data.fallbackData, null, 2);
+                    status.textContent = 'OK (Card unavailable)';
                   } else {
-                    // Fallback to JSON display if card storage fails
-                    result.textContent = JSON.stringify(data, null, 2);
-                    status.textContent = res.ok ? 'OK (Card unavailable)' : `HTTP ${res.status}`;
+                    // No results
+                    result.textContent = JSON.stringify({ message: data.message || 'No results found' }, null, 2);
+                    status.textContent = 'OK (No results)';
                   }
                 } else {
-                  // No results found or empty results
+                  const data = await res.json();
                   result.textContent = JSON.stringify(data, null, 2);
-                  status.textContent = 'OK (No results)';
+                  status.textContent = `HTTP ${res.status}`;
                 }
               } else {
-                const data = await res.json();
-                result.textContent = JSON.stringify(data, null, 2);
-                status.textContent = `HTTP ${res.status}`;
+                // For other modes (ISRC, UPC, Title), use existing API endpoints
+                let endpoint = '';
+                let payload = {};
+                switch (mode) {
+                  case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
+                  case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
+                  case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
+                }
+                const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
+                if (res.status === 401) {
+                  result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null, 2);
+                  status.textContent = 'HTTP 401 - Unauthorized';
+                } else if (res.status === 429) {
+                  const data = await res.json();
+                  result.textContent = JSON.stringify(data, null, 2);
+                  status.textContent = 'HTTP 429 - Rate Limit Exceeded';
+                } else {
+                  const data = await res.json();
+                  result.textContent = JSON.stringify(data, null, 2);
+                  status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+                }
               }
             } catch (err) {
               status.textContent = 'Error';
