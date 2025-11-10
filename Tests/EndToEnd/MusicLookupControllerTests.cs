@@ -3,9 +3,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Web.Controllers;
 
@@ -168,31 +166,32 @@ public class MusicLookupControllerTests {
 /// Custom web application factory for integration testing.
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
-    protected override void ConfigureWebHost( IWebHostBuilder builder ) {
+    private readonly Dictionary<string, string?>? _configOverrides;
 
-        // Arrange
-        Dictionary<string, string?> configData = new( ) {
+    public CustomWebApplicationFactory( ) { }
+
+    public CustomWebApplicationFactory( Dictionary<string, string?> configOverrides ) {
+        _configOverrides = configOverrides;
+    }
+
+    protected override void ConfigureWebHost( IWebHostBuilder builder ) {
+        // Default test configuration (Spotify only) unless overrides are provided
+        Dictionary<string, string?> configData = _configOverrides ?? new( ) {
             ["TuneBridge:SpotifyClientId"] = "test",
             ["TuneBridge:SpotifyClientSecret"] = "test",
             ["TuneBridge:DiscordToken"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = $"Data Source=Identity_${Guid.NewGuid()};Mode=Memory",
+            ["TuneBridge:ConnectionString"] = $"Data Source=Identity;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
-
-        IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configData)
-            .Build();
-
-        ServiceCollection services = [];
-        _ = services.AddSingleton<IConfiguration>( configuration );
-        _ = services.AddLogging( );
-
         _ = builder.UseEnvironment( "Testing" );
+        //_ = builder.ConfigureTuneBridgeServices( services, configuration );
 
-        _ = builder.ConfigureTuneBridgeServices( services, configuration );
+        _ = builder.ConfigureAppConfiguration( ( context, config ) => {
+            _ = config.AddInMemoryCollection( configData );
+        } );
     }
 }

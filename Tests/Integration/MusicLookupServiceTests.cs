@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Tests.EndToEnd;
@@ -14,25 +13,26 @@ namespace TuneBridge.Tests.Integration;
 /// </summary>
 [TestClass]
 public class MusicLookupServiceTests {
+
     private IServiceProvider _serviceProvider = null!;
 
-    private static WebApplicationFactory<Program>? _factory;
+    private static WebApplicationFactory<Program>? s_factory;
 
     [TestInitialize]
     public void Initialize( ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
+            .AddEnvironmentVariables()
             .Build();
 
-        ServiceCollection services = new();
-        _ = services.AddSingleton<IConfiguration>( configuration );
-        _ = services.AddLogging( );
+        // Use the same factory pattern as controller E2E tests, but feed it appsettings.json
+        Dictionary<string, string?> overrides = configuration
+            .AsEnumerable()
+            .Where(kv => kv.Value is not null) // filter nulls from section placeholders
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
 
-        // Add TuneBridge services - will throw if credentials are missing/invalid
-        _ = services.ConfigureTuneBridgeServices( configuration );
-
-        _serviceProvider = services.BuildServiceProvider( );
-        _factory = new CustomWebApplicationFactory( );
+        s_factory = new CustomWebApplicationFactory( overrides );
+        _serviceProvider = s_factory.Services;
     }
 
     [TestMethod]
@@ -181,6 +181,7 @@ public class MusicLookupServiceTests {
 
     [TestCleanup]
     public void Cleanup( ) {
-        (_serviceProvider as IDisposable)?.Dispose( );
+        s_factory?.Dispose( );
     }
+
 }

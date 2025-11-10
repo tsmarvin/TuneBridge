@@ -32,8 +32,10 @@ namespace TuneBridge.Configuration {
             this WebApplicationBuilder builder,
             string[] args
         ) {
-            _ = builder.Configuration
+            if (builder.Environment.EnvironmentName != "Testing") {
+                _ = builder.Configuration
                 .ConfigureAppSettings( args );
+            }
 
             IServiceCollection services = builder.Services;
             IConfiguration config = builder.Configuration;
@@ -165,13 +167,12 @@ namespace TuneBridge.Configuration {
         private static IConfigurationBuilder ConfigureAppSettings(
             this IConfigurationBuilder config,
             string[] args
-        ) => config.AddCommandLine( args )
-                .AddEnvironmentVariables( )
-                .AddJsonFile(
+        ) => config.AddJsonFile(
                     path: "appsettings.json",
                     optional: false,
-                    reloadOnChange: true
-                );
+                    reloadOnChange: false
+                ).AddCommandLine( args )
+                .AddEnvironmentVariables( );
 
         /// <summary>
         /// Initializes the SQLite database for caching if Bluesky PDS is configured.
