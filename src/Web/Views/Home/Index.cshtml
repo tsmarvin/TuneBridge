@@ -131,7 +131,7 @@
           modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
           setMode('url');
 
-          // Handle form submission for URL mode with server-side rendering
+          // Handle form submission for all modes with server-side rendering
           lookupForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const mode = (modeRadios.find(r => r.checked) || {}).value;
@@ -146,51 +146,53 @@
             cardsContainer.innerHTML = '';
 
             try {
-              if (mode === 'url') {
-                // Server-side rendering via form submission
-                const formData = new FormData(lookupForm);
-                const res = await fetch(lookupForm.action, {
-                  method: 'POST',
-                  body: formData,
-                  credentials: 'same-origin'
-                });
+              // All modes now use server-side rendering with form data
+              let endpoint = lookupForm.action;
+              const formData = new FormData();
+              
+              switch (mode) {
+                case 'url':
+                  endpoint = '/Home/LookupResults';
+                  formData.append('uri', $('url').value);
+                  break;
+                case 'isrc':
+                  endpoint = '/Home/LookupResultsByIsrc';
+                  formData.append('isrc', $('isrc').value);
+                  break;
+                case 'upc':
+                  endpoint = '/Home/LookupResultsByUpc';
+                  formData.append('upc', $('upc').value);
+                  break;
+                case 'title':
+                  endpoint = '/Home/LookupResultsByTitle';
+                  formData.append('title', $('title').value);
+                  formData.append('artist', $('artist').value);
+                  break;
+              }
+              
+              const res = await fetch(endpoint, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+              });
 
-                if (res.ok) {
-                  const html = await res.text();
-                  cardsContainer.innerHTML = html;
-                  status.textContent = 'OK';
-                } else {
-                  result.textContent = JSON.stringify({ error: `HTTP ${res.status}` }, null, 2);
-                  result.classList.remove('d-none');
-                  status.textContent = `HTTP ${res.status}`;
-                }
-              } else {
-                // For other modes, use existing API endpoints with JSON
-                let endpoint = '';
-                let payload = {};
-                const headers = { 'Content-Type': 'application/json' };
-                
-                switch (mode) {
-                  case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
-                  case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
-                  case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
-                }
-                
-                const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
-                
-                if (res.status === 401) {
-                  result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null, 2);
-                  status.textContent = 'HTTP 401 - Unauthorized';
-                } else if (res.status === 429) {
-                  const data = await res.json();
-                  result.textContent = JSON.stringify(data, null, 2);
-                  status.textContent = 'HTTP 429 - Rate Limit Exceeded';
-                } else {
-                  const data = await res.json();
-                  result.textContent = JSON.stringify(data, null, 2);
-                  status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
-                }
+              if (res.ok) {
+                const html = await res.text();
+                cardsContainer.innerHTML = html;
+                status.textContent = 'OK';
+              } else if (res.status === 401) {
+                result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null, 2);
                 result.classList.remove('d-none');
+                status.textContent = 'HTTP 401 - Unauthorized';
+              } else if (res.status === 429) {
+                const data = await res.json().catch(() => ({ error: 'Rate limit exceeded' }));
+                result.textContent = JSON.stringify(data, null, 2);
+                result.classList.remove('d-none');
+                status.textContent = 'HTTP 429 - Rate Limit Exceeded';
+              } else {
+                result.textContent = JSON.stringify({ error: `HTTP ${res.status}` }, null, 2);
+                result.classList.remove('d-none');
+                status.textContent = `HTTP ${res.status}`;
               }
             } catch (err) {
               status.textContent = 'Error';
