@@ -121,9 +121,10 @@ namespace TuneBridge.Domain.Implementations.Extensions {
 
         private static Color GetPrimaryProviderColor( SupportedProviders provider )
             => provider switch {
-                SupportedProviders.AppleMusic => new( 0, 0, 255 ),
-                SupportedProviders.Spotify => new( 0, 153, 0 ),
-                _ => new( 100, 100, 100 ),
+                SupportedProviders.AppleMusic => new( 214, 0, 23 ),   // #D60017
+                SupportedProviders.Spotify => new( 30, 215, 96 ),     // #1ED760
+                SupportedProviders.Tidal => new( 255, 255, 255 ),     // #FFFFFF
+                _ => new( 99, 102, 241 ),                             // #6366F1 (purple)
             };
 
         private const string _albumExternalMediaPrefix = "UPC: ";

@@ -89,7 +89,7 @@ public class OpenGraphExtensionsTests {
         // Assert
         Assert.IsNotNull( metadata );
         Assert.IsTrue( metadata.ContainsKey( "theme-color" ) );
-        Assert.AreEqual( "#0000FF", metadata["theme-color"], "Apple Music should have blue theme color" );
+        Assert.AreEqual( "#D60017", metadata["theme-color"], "Apple Music should have red theme color" );
     }
 
     [TestMethod]
@@ -117,7 +117,7 @@ public class OpenGraphExtensionsTests {
         // Assert
         Assert.IsNotNull( metadata );
         Assert.IsTrue( metadata.ContainsKey( "theme-color" ) );
-        Assert.AreEqual( "#1DB954", metadata["theme-color"], "Spotify should have green theme color" );
+        Assert.AreEqual( "#1ED760", metadata["theme-color"], "Spotify should have green theme color" );
     }
 
     [TestMethod]

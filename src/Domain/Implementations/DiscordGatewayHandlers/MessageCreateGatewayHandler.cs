@@ -39,25 +39,12 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
             ulong userId,
             IOpenGraphCardService cardService
         ) {
-            // Store the result and get a unique card ID
-            if (cardService.IsEnabled) {
-                string cardUrl = cardService.StoreResult( result );
-
-                // Send a simple message with the card URL (Discord will auto-embed the OpenGraph preview)
-                // Use angle brackets to hide the URL text while still triggering the embed
-                _ = await client.Rest.SendMessageAsync(
-                    channelId,
-                    new MessageProperties {
-                        Content = $"<@{userId}> Shared:\n<{cardUrl}>",
-                        AllowedMentions = AllowedMentionsProperties.None
-                    }
-                );
-            } else {
-                _ = await client.Rest.SendMessageAsync(
-                    channelId,
-                    result.ToDiscordMessageProperties( userId )
-                );
-            }
+            // For Discord, always use native embeds to get clickable provider links
+            // OpenGraph cards are used for other platforms (Bluesky, etc.) that fetch the card URL
+            _ = await client.Rest.SendMessageAsync(
+                channelId,
+                result.ToDiscordMessageProperties( userId )
+            );
             return true;
         }
 

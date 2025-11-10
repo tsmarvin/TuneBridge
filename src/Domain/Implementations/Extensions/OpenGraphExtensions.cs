@@ -77,15 +77,24 @@ namespace TuneBridge.Domain.Implementations.Extensions {
 
             // Add theme color based on primary provider (for Discord embed color)
             if (primaryProvider.HasValue) {
-                string themeColor = primaryProvider.Value switch {
-                    SupportedProviders.AppleMusic => "#0000FF", // Blue for Apple Music
-                    SupportedProviders.Spotify => "#1DB954",    // Green for Spotify
-                    _ => "#6366F1"                              // Default purple
-                };
+                string themeColor = GetPrimaryProviderColorHex( primaryProvider.Value );
                 metadata["theme-color"] = themeColor;
             }
 
             return metadata;
         }
+
+        /// <summary>
+        /// Gets the hex color code for a provider's theme color.
+        /// </summary>
+        /// <param name="provider">The music provider.</param>
+        /// <returns>Hex color code string.</returns>
+        private static string GetPrimaryProviderColorHex( SupportedProviders provider )
+            => provider switch {
+                SupportedProviders.AppleMusic => "#D60017",
+                SupportedProviders.Spotify => "#1ED760",
+                SupportedProviders.Tidal => "#FFFFFF",
+                _ => "#6366F1"  // Default purple
+            };
     }
 }
