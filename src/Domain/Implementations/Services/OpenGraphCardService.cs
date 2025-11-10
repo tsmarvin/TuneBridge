@@ -12,6 +12,9 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// <inheritdoc/>
         public bool IsEnabled => string.IsNullOrWhiteSpace( baseUrl ) == false;
 
+        /// <inheritdoc/>
+        public string BaseUrl => baseUrl;
+
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
         private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 24 );
         private int _operationCounter;

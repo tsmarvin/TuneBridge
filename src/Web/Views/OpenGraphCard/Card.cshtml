@@ -3,6 +3,7 @@
 @using TuneBridge.Domain.Types.Enums
 @{
     var metadata = ViewBag.Metadata as Dictionary<string, string>;
+    var baseUrl = ViewBag.BaseUrl as string;
 
     // Extract information for display
     string title = metadata?.GetValueOrDefault("og:title") ?? "Music Link";
@@ -10,11 +11,26 @@
     string image = metadata?.GetValueOrDefault("og:image") ?? "";
     string musicType = metadata?.GetValueOrDefault("og:type")?.Replace("music.", "") ?? "track";
 
-    // Parse description to get artist
+    // Parse description to get artist and external ID
     string artist = string.Empty;
+    string externalId = string.Empty;
+    string externalIdType = string.Empty;
+
     if (description.StartsWith("Artist: ")) {
         int lineEnd = description.IndexOf('\n');
         artist = lineEnd > 0 ? description.Substring(8, lineEnd - 8) : description.Substring(8);
+
+        // Check for ISRC or UPC in the description
+        if (lineEnd > 0 && lineEnd < description.Length - 1) {
+            string secondLine = description.Substring(lineEnd + 1);
+            if (secondLine.StartsWith("ISRC: ")) {
+                externalIdType = "ISRC";
+                externalId = secondLine.Substring(6);
+            } else if (secondLine.StartsWith("UPC: ")) {
+                externalIdType = "UPC";
+                externalId = secondLine.Substring(5);
+            }
+        }
     }
 
     Layout = null;
@@ -185,7 +201,12 @@
         <div class="card-body">
             <div class="type-badge">@musicType</div>
 
-            <h2 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem;">Listen on:</h2>
+            @if (!string.IsNullOrWhiteSpace(externalId))
+            {
+                <div class="type-badge" style="background: #e0e7ff; color: #4338ca; margin-left: 0.5rem;">@externalIdType: @externalId</div>
+            }
+
+            <h2 style="margin-top: 1rem; margin-bottom: 1rem; font-size: 1.25rem;">Listen on:</h2>
 
             <div class="providers">
                 @if (Model != null)
@@ -206,7 +227,14 @@
         </div>
 
         <div class="footer">
-            Powered by TuneBridge
+            @if (!string.IsNullOrWhiteSpace(baseUrl))
+            {
+                <a href="https://@baseUrl" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">Powered by TuneBridge</a>
+            }
+            else
+            {
+                <span>Powered by TuneBridge</span>
+            }
         </div>
     </div>
 </body>
