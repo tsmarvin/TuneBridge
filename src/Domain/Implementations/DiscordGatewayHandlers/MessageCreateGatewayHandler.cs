@@ -1,7 +1,6 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
-using NetCord.Rest;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Extensions;
@@ -39,19 +38,16 @@ namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
             ulong userId,
             IOpenGraphCardService cardService
         ) {
-            // Store the result and get a unique card ID
+            // When OpenGraph card service is enabled, use a Discord native embed with the card URL
+            // as the clickable title/image link, while provider links remain inline and clickable
             if (cardService.IsEnabled) {
                 string cardUrl = cardService.StoreResult( result );
-
-                // Send a simple message with the card URL (Discord will auto-embed the OpenGraph preview)
                 _ = await client.Rest.SendMessageAsync(
                     channelId,
-                    new MessageProperties {
-                        Content = $"<@{userId}> Shared: {cardUrl}",
-                        AllowedMentions = AllowedMentionsProperties.None
-                    }
+                    result.ToDiscordMessagePropertiesWithCardUrl( userId, cardUrl )
                 );
             } else {
+                // When OpenGraph is disabled, use the original non-OpenGraph approach
                 _ = await client.Rest.SendMessageAsync(
                     channelId,
                     result.ToDiscordMessageProperties( userId )

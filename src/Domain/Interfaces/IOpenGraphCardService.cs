@@ -1,4 +1,4 @@
-﻿using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Contracts.DTOs;
 
 namespace TuneBridge.Domain.Interfaces {
 
@@ -11,6 +11,11 @@ namespace TuneBridge.Domain.Interfaces {
         /// An indicator whether the OpenGraph card service is enabled.
         /// </summary>
         bool IsEnabled { get; }
+
+        /// <summary>
+        /// The base URL for the application (e.g., https://tunebridge.media).
+        /// </summary>
+        string BaseUrl { get; }
 
         /// <summary>
         /// Stores a MediaLinkResult and returns a unique identifier for it.

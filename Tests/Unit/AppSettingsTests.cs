@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using TuneBridge.Configuration;
 
 namespace TuneBridge.Tests.Unit;
@@ -19,12 +19,12 @@ public class AppSettingsTests {
             ["TuneBridge:SpotifyClientId"] = "spotify_client_id",
             ["TuneBridge:SpotifyClientSecret"] = "spotify_secret",
             ["TuneBridge:DiscordToken"] = "discord_token_here",
-            ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+            ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty, //"https://bsky.social",
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["TuneBridge:LinkCacheConnectionString"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()

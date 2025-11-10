@@ -1,4 +1,4 @@
-﻿@{
+@{
     ViewData["Title"] = "Music Lookup";
 }
 
@@ -44,38 +44,43 @@
         </fieldset>
 
         <div id="inputs" class="mb-3">
-            <div id="urlRow" class="mb-3">
-                <input id="url" type="text" class="form-control" placeholder="Url" />
-            </div>
+            <form id="lookupForm" asp-controller="Home" asp-action="LookupResults" method="post">
+                <div id="urlRow" class="mb-3">
+                    <input id="url" name="uri" type="text" class="form-control" placeholder="Url" />
+                </div>
 
-            <div id="isrcRow" class="mb-3 d-none">
-                <input id="isrc" type="text" class="form-control" placeholder="ISRC (e.g., USVI20000123)" />
-            </div>
+                <div id="isrcRow" class="mb-3 d-none">
+                    <input id="isrc" type="text" class="form-control" placeholder="ISRC (e.g., USVI20000123)" />
+                </div>
 
-            <div id="upcRow" class="mb-3 d-none">
-                <input id="upc" type="text" class="form-control" placeholder="UPC (12–14 digits)" />
-            </div>
+                <div id="upcRow" class="mb-3 d-none">
+                    <input id="upc" type="text" class="form-control" placeholder="UPC (12–14 digits)" />
+                </div>
 
-            <div id="titleRow" class="mb-3 d-none">
-                <div class="row g-2">
-                    <div class="col-12 col-md-6">
-                        <input id="title" type="text" class="form-control" placeholder="Title" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <input id="artist" type="text" class="form-control" placeholder="Artist" />
+                <div id="titleRow" class="mb-3 d-none">
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6">
+                            <input id="title" type="text" class="form-control" placeholder="Title" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <input id="artist" type="text" class="form-control" placeholder="Artist" />
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="d-flex gap-2 align-items-center">
-                <button id="go" class="btn btn-primary">Go</button>
-                <span id="status" class="text-muted"></span>
-            </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <button id="go" type="submit" class="btn btn-primary">Go</button>
+                    <span id="status" class="text-muted"></span>
+                </div>
+            </form>
         </div>
 
-        <div>
-            <h3>Result</h3>
-            <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
+        <div id="resultsSection" class="d-none">
+            <h3>Results</h3>
+            <div id="resultContainer">
+                <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
+                <div id="cardsContainer"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -94,6 +99,7 @@
           const isrcRow = $('isrcRow');
           const upcRow = $('upcRow');
           const titleRow = $('titleRow');
+          const lookupForm = $('lookupForm');
 
           let isAuthenticated = false;
 
@@ -125,41 +131,79 @@
           modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
           setMode('url');
 
-          $('go').addEventListener('click', async () => {
+          // Handle form submission for all modes with server-side rendering
+          lookupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
             const mode = (modeRadios.find(r => r.checked) || {}).value;
             const status = $('status');
             const result = $('result');
+            const cardsContainer = $('cardsContainer');
+            const resultsSection = $('resultsSection');
+            
+            // Show results section
+            resultsSection.classList.remove('d-none');
+            
             status.textContent = 'Working...';
-            $('go').disabled = true;
+            lookupForm.querySelector('button[type="submit"]').disabled = true;
             result.textContent = '{}';
+            result.classList.add('d-none');
+            cardsContainer.innerHTML = '';
+
             try {
-              let endpoint = '';
-              let payload = {};
+              // All modes now use server-side rendering with form data
+              let endpoint = lookupForm.action;
+              const formData = new FormData();
+              
               switch (mode) {
-                case 'url': endpoint = '/music/lookup/url'; payload = { uri: $('url').value }; break;
-                case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
-                case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
-                case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
+                case 'url':
+                  endpoint = '/Home/LookupResults';
+                  formData.append('uri', $('url').value);
+                  break;
+                case 'isrc':
+                  endpoint = '/Home/LookupResultsByIsrc';
+                  formData.append('isrc', $('isrc').value);
+                  break;
+                case 'upc':
+                  endpoint = '/Home/LookupResultsByUpc';
+                  formData.append('upc', $('upc').value);
+                  break;
+                case 'title':
+                  endpoint = '/Home/LookupResultsByTitle';
+                  formData.append('title', $('title').value);
+                  formData.append('artist', $('artist').value);
+                  break;
               }
-              const headers = { 'Content-Type': 'application/json' };
-              const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
-              if (res.status === 401) {
+              
+              const res = await fetch(endpoint, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+              });
+
+              if (res.ok) {
+                const html = await res.text();
+                cardsContainer.innerHTML = html;
+                status.textContent = 'OK';
+              } else if (res.status === 401) {
                 result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null, 2);
-                status.textContent = 'HTTP401 - Unauthorized';
+                result.classList.remove('d-none');
+                status.textContent = 'HTTP 401 - Unauthorized';
               } else if (res.status === 429) {
-                const data = await res.json();
+                const data = await res.json().catch(() => ({ error: 'Rate limit exceeded' }));
                 result.textContent = JSON.stringify(data, null, 2);
-                status.textContent = 'HTTP429 - Rate Limit Exceeded';
+                result.classList.remove('d-none');
+                status.textContent = 'HTTP 429 - Rate Limit Exceeded';
               } else {
-                const data = await res.json();
-                result.textContent = JSON.stringify(data, null, 2);
-                status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+                result.textContent = JSON.stringify({ error: `HTTP ${res.status}` }, null, 2);
+                result.classList.remove('d-none');
+                status.textContent = `HTTP ${res.status}`;
               }
             } catch (err) {
               status.textContent = 'Error';
               result.textContent = JSON.stringify({ error: String(err) }, null, 2);
+              result.classList.remove('d-none');
             } finally {
-              $('go').disabled = false;
+              lookupForm.querySelector('button[type="submit"]').disabled = false;
             }
           });
         })();

@@ -28,7 +28,7 @@ create_secret_file() {
     local file_path="$1"
     local description="$2"
     local example_content="$3"
-    
+
     if [ ! -f "$file_path" ]; then
         echo "$example_content" > "$file_path"
         chmod 600 "$file_path"  # Restrict permissions

@@ -98,7 +98,7 @@ The entrypoint script automatically reads secrets from `/run/secrets/` and falls
 Update `TuneBridge__BaseUrl` to your public domain:
 
 ```bash
--e TuneBridge__BaseUrl=https://dev.tunebridge.media
+-e TuneBridge__BaseUrl=dev.tunebridge.media
 ```
 
 This ensures OpenGraph cards generate correct URLs.

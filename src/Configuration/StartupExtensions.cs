@@ -1,7 +1,9 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using AspNetCore.Authentication.ApiKey;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.OpenApi.Models;
 using NetCord.Gateway;
@@ -129,6 +131,29 @@ namespace TuneBridge.Configuration {
             }
 
             _ = app.UseHttpsRedirection( );
+
+            // Configure static file provider with proper MIME types for AT Protocol lexicon files
+            FileExtensionContentTypeProvider provider = new( );
+            provider.Mappings[".json"] = "application/json";
+
+            // Serve .well-known directory with proper content types for AT Protocol lexicons
+            _ = app.UseStaticFiles( new StaticFileOptions {
+                FileProvider = new PhysicalFileProvider(
+                    Path.Combine( builder.Environment.WebRootPath, ".well-known" ) ),
+                RequestPath = "/.well-known",
+                ContentTypeProvider = provider,
+                ServeUnknownFileTypes = false,
+                OnPrepareResponse = ctx => {
+                    // Add CORS headers to allow Bluesky PDS to fetch lexicon files
+                    ctx.Context.Response.Headers.Append( "Access-Control-Allow-Origin", "*" );
+                    ctx.Context.Response.Headers.Append( "Access-Control-Allow-Methods", "GET, HEAD, OPTIONS" );
+                    ctx.Context.Response.Headers.Append( "Access-Control-Allow-Headers", "Content-Type" );
+
+                    // Cache lexicon files for 1 day
+                    ctx.Context.Response.Headers.Append( "Cache-Control", "public, max-age=86400" );
+                }
+            } );
+
             _ = app.UseStaticFiles( ); // Serve static files from wwwroot
             _ = app.UseRouting( );
 
@@ -186,7 +211,7 @@ namespace TuneBridge.Configuration {
                 if (factory is null) { return; }
 
                 using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
-                _ = dbContext.Database.EnsureCreated( );
+                dbContext.Database.Migrate( );
                 ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
                 logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
             } catch (Exception ex) {
@@ -219,12 +244,12 @@ namespace TuneBridge.Configuration {
 
         private static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
             _ = services.AddDbContext<ApplicationDbContext>( options =>
-                options.UseSqlite( settings.ConnectionString )
+                options.UseSqlite( settings.IdentityConnectionString )
             );
 
             // Register a factory for MediaLinkCacheDbContext to be consumed from singleton services safely
             _ = services.AddDbContextFactory<MediaLinkCacheDbContext>(
-                opts => opts.UseSqlite( settings.CacheDbPath )
+                opts => opts.UseSqlite( settings.LinkCacheConnectionString )
             );
         }
 

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using TuneBridge.Domain.Models;
@@ -114,8 +114,8 @@ public class RateLimitingMiddleware {
 
         // Increment request count atomically using raw SQL to prevent race conditions
         int rowsAffected = await dbContext.Database.ExecuteSqlInterpolatedAsync(
- $@"UPDATE AspNetUsers 
- SET RequestCount = RequestCount + 1 
+ $@"UPDATE AspNetUsers
+ SET RequestCount = RequestCount + 1
  WHERE Id = {user.Id} AND RequestCount < {_maxRequestsPerHour}"
  );
 

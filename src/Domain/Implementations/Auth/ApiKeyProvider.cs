@@ -1,4 +1,4 @@
-﻿using AspNetCore.Authentication.ApiKey;
+using AspNetCore.Authentication.ApiKey;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TuneBridge.Domain.Models;

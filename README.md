@@ -27,8 +27,14 @@ Get started in 5 minutes with automatic HTTPS:
 git clone https://github.com/tsmarvin/TuneBridge.git
 cd TuneBridge
 ./setup-secrets.sh
+nano apple_key.p8
+nano bluesky_password.txt
+nano discord_token.txt
+nano spotify_client_secret.txt
+nano tidal_client_secret.txt
 # Edit secrets/ with your credentials
 cp .env.example .env
+nano .env
 # Edit .env with your configuration
 docker-compose up -d
 ```

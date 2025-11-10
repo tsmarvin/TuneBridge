@@ -4,8 +4,6 @@
     admin off
     # Persist data for certificates
     storage file_system /data/caddy
-    # Enable auto HTTPS
-    auto_https on
     # Email for Let's Encrypt notifications (override with CADDY_ADMIN_EMAIL env var)
     email {$CADDY_ADMIN_EMAIL}
 }
@@ -22,25 +20,25 @@
     header {
         # Enable HSTS (HTTP Strict Transport Security)
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        
+
         # Prevent MIME type sniffing
         X-Content-Type-Options "nosniff"
-        
+
         # Clickjacking protection
         X-Frame-Options "SAMEORIGIN"
-        
+
         # XSS protection (legacy browsers)
         X-XSS-Protection "1; mode=block"
-        
+
         # Referrer policy
         Referrer-Policy "strict-origin-when-cross-origin"
-        
+
         # Content Security Policy
         Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';"
-        
+
         # Permissions policy - Deny access to sensitive browser features
         Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
-        
+
         # Remove server identification
         -Server
         -X-Powered-By
@@ -52,13 +50,13 @@
         health_uri /health
         health_interval 10s
         health_timeout 5s
-        
+
         # Pass real client IP
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
         header_up X-Forwarded-Host {host}
-        
+
         # Timeouts
         transport http {
             read_timeout 30s

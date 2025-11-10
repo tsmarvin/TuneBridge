@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Bases;

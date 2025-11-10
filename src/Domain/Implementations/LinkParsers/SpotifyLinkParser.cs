@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Implementations.LinkParsers {

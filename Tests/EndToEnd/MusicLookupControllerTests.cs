@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -15,19 +15,19 @@ namespace TuneBridge.Tests.EndToEnd;
 /// </summary>
 [TestClass]
 public class MusicLookupControllerTests {
-    private static WebApplicationFactory<Program>? _factory;
-    private static HttpClient? _client;
+    private static WebApplicationFactory<Program>? s_factory;
+    private static HttpClient? s_client;
 
     [ClassInitialize]
     public static void ClassInitialize( TestContext context ) {
-        _factory = new CustomWebApplicationFactory( );
-        _client = _factory.CreateClient( );
+        s_factory = new CustomWebApplicationFactory( );
+        s_client = s_factory.CreateClient( );
     }
 
     [ClassCleanup]
     public static void ClassCleanup( ) {
-        _client?.Dispose( );
-        _factory?.Dispose( );
+        s_client?.Dispose( );
+        s_factory?.Dispose( );
     }
 
     [TestMethod]
@@ -36,11 +36,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.UrlReq request = new("https://music.apple.com/us/album/bohemian-rhapsody/1440806041");
 
         // Act
-        HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
+        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>(TestContext.CancellationToken);
         Assert.IsNotNull( results );
         Assert.IsNotEmpty( results, "Results should not be empty" );
     }
@@ -51,11 +51,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.UrlReq request = new( "https://open.spotify.com/album/6i6folBtxKV28WX3msQ4FE"  );
 
         // Act
-        HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
+        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>(TestContext.CancellationToken);
         Assert.IsNotNull( results );
         Assert.IsNotEmpty( results, "Results should not be empty" );
     }
@@ -66,11 +66,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.UrlReq request = new(  "https://tidal.com/track/96572657"  );
 
         // Act
-        HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
+        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>(TestContext.CancellationToken);
         Assert.IsNotNull( results );
         Assert.IsNotEmpty( results, "Results should not be empty" );
     }
@@ -79,16 +79,16 @@ public class MusicLookupControllerTests {
     public async Task ByUrlList_WithMultipleUrls_ReturnsMultipleResults( ) {
         // Arrange
         MusicLookupController.UrlReq request = new(
-          "https://open.spotify.com/album/6X9k3hgEYTUx6tD5FVx7hq " +
-          "https://music.apple.com/us/album/a-night-at-the-opera-deluxe-remastered-version/1440806041"
+            "https://open.spotify.com/album/6X9k3hgEYTUx6tD5FVx7hq " +
+            "https://music.apple.com/us/album/a-night-at-the-opera-deluxe-remastered-version/1440806041"
         );
 
         // Act
-        HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/urlList", request);
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( );
+        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>(TestContext.CancellationToken);
         Assert.IsNotNull( results );
         // Should have at least one result (deduplication may occur if URLs point to same content)
         Assert.IsNotEmpty( results, "Results should not be empty" );
@@ -101,11 +101,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.IsrcReq request = new( "GBUM71029604" );
 
         // Act
-        HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/isrc", request);
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/isrc", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
+        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>(TestContext.CancellationToken);
         Assert.IsNotNull( result );
         Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
     }
@@ -117,11 +117,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.UpcReq request = new( "00602547202307" );
 
         // Act
-        HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/upc", request);
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/upc", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
+        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>(TestContext.CancellationToken);
         Assert.IsNotNull( result );
         Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
     }
@@ -133,13 +133,13 @@ public class MusicLookupControllerTests {
         MusicLookupController.TitleReq request = new( "Bohemian Rhapsody", "Queen" );
 
         // Act
-        HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/title", request);
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/title", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( );
+        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>(TestContext.CancellationToken);
         Assert.IsNotNull( result );
-        Assert.IsNotEmpty(result.Results, "result.Results should not be empty");
+        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
     }
 
     [TestMethod]
@@ -149,17 +149,17 @@ public class MusicLookupControllerTests {
         MusicLookupController.UrlReq request = new(  "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv"  );
 
         // Act
-        HttpResponseMessage response = await _client!.PostAsJsonAsync("/music/lookup/url", request);
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/url", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        string content = await response.Content.ReadAsStringAsync();
+        string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
         Assert.IsGreaterThan( 0, content.Length, "content should not be empty" );
     }
 
-    public void Dispose( ) {
-        _client?.Dispose( );
-    }
+    public void Dispose( ) => s_client?.Dispose( );
+
+    public TestContext TestContext { get; set; }
 }
 
 /// <summary>
@@ -180,12 +180,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
             ["TuneBridge:SpotifyClientId"] = "test",
             ["TuneBridge:SpotifyClientSecret"] = "test",
             ["TuneBridge:DiscordToken"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = $"Data Source=Identity;Mode=Memory",
+            ["TuneBridge:IdentityConnectionString"] = $"Data Source=Identity;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
         _ = builder.UseEnvironment( "Testing" );
         //_ = builder.ConfigureTuneBridgeServices( services, configuration );

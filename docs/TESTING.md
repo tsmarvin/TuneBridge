@@ -7,7 +7,7 @@ TuneBridge includes a comprehensive test suite with unit, integration, and end-t
 Tests are organized in the `/Tests` directory:
 
 - **Unit Tests** (`Unit/`) - Test individual components in isolation
-- **Integration Tests** (`Integration/`) - Test service integration with external APIs  
+- **Integration Tests** (`Integration/`) - Test service integration with external APIs
 - **End-to-End Tests** (`EndToEnd/`) - Test complete application flows including API endpoints
 
 ## Running Tests
@@ -247,10 +247,10 @@ Structure tests with Arrange, Act, Assert:
 public async Task TestMethod() {
     // Arrange - Set up test data and dependencies
     var input = "test";
-    
+
     // Act - Execute the code being tested
     var result = await _service.ProcessAsync(input);
-    
+
     // Assert - Verify the result
     result.Should().NotBeNull();
 }
@@ -379,18 +379,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: 9.0.x
-      
+
       - name: Restore dependencies
         run: dotnet restore
-      
+
       - name: Build
         run: dotnet build --no-restore
-      
+
       - name: Run tests
         run: dotnet test --no-build --verbosity normal
 ```
@@ -446,7 +446,7 @@ public class MyBenchmarks {
 public static class TestData {
     public const string ValidISRC = "USVI20400123";
     public const string ValidSpotifyUrl = "https://open.spotify.com/track/...";
-    
+
     public static MediaLinkResult CreateTestResult() {
         return new MediaLinkResult {
             // ...

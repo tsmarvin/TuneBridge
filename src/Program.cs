@@ -1,4 +1,4 @@
-﻿using TuneBridge.Configuration;
+using TuneBridge.Configuration;
 
 namespace TuneBridge {
     /// <summary>

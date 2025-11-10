@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using TuneBridge.Domain.Interfaces; // Added for IMediaLinkService
 using TuneBridge.Tests.EndToEnd;
 
@@ -19,20 +19,20 @@ public class ConfigurationValidationTests {
             ["TuneBridge:AppleKeyPath"] = "/nonexistent/path/key.p8",
             ["TuneBridge:SpotifyClientId"] = string.Empty,
             ["TuneBridge:SpotifyClientSecret"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+            ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
         // Act & Assert
-        FileNotFoundException ex = Assert.ThrowsException<FileNotFoundException>( () => {
+        FileNotFoundException ex = Assert.ThrowsExactly<FileNotFoundException>( () => {
             using CustomWebApplicationFactory factory = new( overrides );
             _ = factory.Services; // trigger creation
         } );
-        Assert.IsTrue( ex.Message.Contains( ".p8" ) );
+        Assert.Contains( ".p8", ex.Message );
     }
 
     [TestMethod]
@@ -48,20 +48,20 @@ public class ConfigurationValidationTests {
                 ["TuneBridge:AppleKeyPath"] = emptyKeyPath,
                 ["TuneBridge:SpotifyClientId"] = string.Empty,
                 ["TuneBridge:SpotifyClientSecret"] = string.Empty,
-                ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+                ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
                 ["TuneBridge:ApiKeySalt"] = "api_key_salt",
                 ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
                 ["TuneBridge:BlueskyIdentifier"] = string.Empty,
                 ["TuneBridge:BlueskyPassword"] = string.Empty,
-                ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
+                ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
             };
 
             // Act & Assert
-            InvalidDataException ex = Assert.ThrowsException<InvalidDataException>( () => {
+            InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
                 using CustomWebApplicationFactory factory = new( overrides );
                 _ = factory.Services;
             } );
-            Assert.IsTrue( ex.Message.Contains( "missing contents" ) );
+            Assert.Contains( "missing contents", ex.Message );
         } finally {
             if (File.Exists( emptyKeyPath )) { File.Delete( emptyKeyPath ); }
         }
@@ -77,20 +77,20 @@ public class ConfigurationValidationTests {
             ["TuneBridge:SpotifyClientId"] = string.Empty,
             ["TuneBridge:SpotifyClientSecret"] = string.Empty,
             ["TuneBridge:DiscordToken"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory",
+            ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
         // Act & Assert
-        InvalidOperationException ex = Assert.ThrowsException<InvalidOperationException>( () => {
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
             using CustomWebApplicationFactory factory = new( overrides );
             _ = factory.Services;
         } );
-        Assert.IsTrue( ex.Message.Contains( "Required settings are missing" ) );
+        Assert.Contains( "Required settings are missing", ex.Message );
     }
 
     [TestMethod]
@@ -104,12 +104,12 @@ public class ConfigurationValidationTests {
             ["TuneBridge:SpotifyClientId"] = "spotify_client_id",
             ["TuneBridge:SpotifyClientSecret"] = "spotify_secret",
             ["TuneBridge:DiscordToken"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
+            ["TuneBridge:IdentityConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] = "Data Source=TuneBridge;Mode=Memory",
+            ["TuneBridge:LinkCacheConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
         };
 
         // Act

@@ -1,18 +1,12 @@
-version: '3.8'
-
 services:
   tunebridge:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: tsmarvin/tunebridge-test:latest
     container_name: tunebridge
     restart: unless-stopped
-    
+
     # Ports
     # Port 80: HTTP (will redirect to HTTPS in production)
     # Port 443: HTTPS (Caddy auto-manages certificates)
-    # Port 10000: Direct access to TuneBridge (for development only)
     ports:
       - "80:80"
       - "443:443"
@@ -23,47 +17,30 @@ services:
       # Domain configuration
       - DOMAIN=${DOMAIN:-dev.tunebridge.media}
       - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}
-      
       # TuneBridge configuration
-      - NODE_NUMBER=${NODE_NUMBER:-0}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
+      - NODE_NUMBER=${NODE_NUMBER:-100}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
-      
       # Music provider credentials (at least one required)
       - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
       - APPLE_KEY_ID=${APPLE_KEY_ID:-}
-      - APPLE_KEY_PATH=${APPLE_KEY_PATH:-/run/secrets/apple_key}
+      - APPLE_KEY_PATH=${APPLE_KEY_PATH:-}
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
       - TIDAL_CLIENT_ID=${TIDAL_CLIENT_ID:-}
-      
-      # Optional Discord bot token
-      - DISCORD_TOKEN=${DISCORD_TOKEN:-}
-      
       # Optional Bluesky PDS configuration
       - BLUESKY_PDS_URL=${BLUESKY_PDS_URL:-} # https://bsky.social is the default if you don't have a custom PDS
       - BLUESKY_IDENTIFIER=${BLUESKY_IDENTIFIER:-}
-      
+
       # Cache configuration
       - CACHE_DAYS=${CACHE_DAYS:-7}
-      - CACHE_DB_PATH=${CACHE_DB_PATH:-/app/data/tunebridge.db}
-      
+      - LINK_CACHE_CONNECTION_STRING=${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
+
       # Database configuration
-      - CONNECTION_STRING=${CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
-      
+      - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
+
       # Authentication and rate limiting
-      - API_KEY_SALT=${API_KEY_SALT:-}
       - RATE_LIMIT_REQUESTS_PER_HOUR=${RATE_LIMIT_REQUESTS_PER_HOUR:-20}
-    
-    # Docker secrets (preferred for sensitive data in production)
-    secrets:
-      - apple_key
-      - spotify_client_secret
-      - tidal_client_secret
-      - discord_token
-      - bluesky_password
-      - api_key_salt
-    
+
     # Volumes
     volumes:
       # Persistent data directory
@@ -73,9 +50,14 @@ services:
       - caddy-config:/config/caddy
       # Caddy logs
       - caddy-logs:/var/log/caddy
-      # Custom Caddyfile (optional override)
-      # - ./Caddyfile:/etc/caddy/Caddyfile:ro
-    
+      # Secret mounts (read-only)
+      - ./secrets/apple_key.p8:/run/secrets/apple_key:ro
+      - ./secrets/spotify_client_secret.txt:/run/secrets/spotify_client_secret:ro
+      - ./secrets/tidal_client_secret.txt:/run/secrets/tidal_client_secret:ro
+      - ./secrets/discord_token.txt:/run/secrets/discord_token:ro
+      - ./secrets/bluesky_password.txt:/run/secrets/bluesky_password:ro
+      - ./secrets/api_key_salt.txt:/run/secrets/api_key_salt:ro
+
     # Health check
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:10000/health"]
@@ -83,7 +65,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    
+
     # Resource limits (adjust as needed)
     deploy:
       resources:
@@ -93,22 +75,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-
-# Docker secrets definitions
-# Create these files with your actual secrets before running docker-compose
-secrets:
-  apple_key:
-    file: ${APPLE_KEY_FILE:-./secrets/apple_key.p8}
-  spotify_client_secret:
-    file: ${SPOTIFY_CLIENT_SECRET_FILE:-./secrets/spotify_client_secret.txt}
-  tidal_client_secret:
-    file: ${TIDAL_CLIENT_SECRET_FILE:-./secrets/tidal_client_secret.txt}
-  discord_token:
-    file: ${DISCORD_TOKEN_FILE:-./secrets/discord_token.txt}
-  bluesky_password:
-    file: ${BLUESKY_PASSWORD_FILE:-./secrets/bluesky_password.txt}
-  api_key_salt:
-    file: ${API_KEY_SALT_FILE:-./secrets/api_key_salt.txt}
 
 # Named volumes for data persistence
 volumes:

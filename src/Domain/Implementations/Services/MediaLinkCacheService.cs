@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Contracts.Entities;
 using TuneBridge.Domain.Implementations.Database;
