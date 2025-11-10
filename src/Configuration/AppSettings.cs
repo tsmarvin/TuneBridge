@@ -67,9 +67,9 @@ namespace TuneBridge.Configuration {
         public string DiscordToken { get; set; } = string.Empty;
 
         /// <summary>
-        /// The database connection string for SQLite.
+        /// The database connection string for the identity database (SQLite).
         /// </summary>
-        public string ConnectionString { get; set; } = "Data Source=tunebridge.db";
+        public string IdentityConnectionString { get; set; } = "Data Source=tunebridge.db";
 
         /// <summary>
         /// Salt value for hashing API keys.
@@ -102,9 +102,9 @@ namespace TuneBridge.Configuration {
         public int CacheDays { get; set; } = 7;
 
         /// <summary>
-        /// The SQLite database file path for the cache. Default is "tunebridge.db".
+        /// The database connection string for the link cache database (SQLite).
         /// </summary>
-        public string CacheDbPath { get; set; } = "Data Source=tunebridge.db";
+        public string LinkCacheConnectionString { get; set; } = "Data Source=tunebridge.db";
 
         /// <summary>
         /// The base URL for the application (e.g., https://dev.tunebridge.media). Used for generating OpenGraph card URLs.

@@ -19,12 +19,12 @@ public class ConfigurationValidationTests {
             ["TuneBridge:AppleKeyPath"] = "/nonexistent/path/key.p8",
             ["TuneBridge:SpotifyClientId"] = string.Empty,
             ["TuneBridge:SpotifyClientSecret"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+            ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
         // Act & Assert
@@ -48,12 +48,12 @@ public class ConfigurationValidationTests {
                 ["TuneBridge:AppleKeyPath"] = emptyKeyPath,
                 ["TuneBridge:SpotifyClientId"] = string.Empty,
                 ["TuneBridge:SpotifyClientSecret"] = string.Empty,
-                ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+                ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
                 ["TuneBridge:ApiKeySalt"] = "api_key_salt",
                 ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
                 ["TuneBridge:BlueskyIdentifier"] = string.Empty,
                 ["TuneBridge:BlueskyPassword"] = string.Empty,
-                ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
+                ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
             };
 
             // Act & Assert
@@ -77,12 +77,12 @@ public class ConfigurationValidationTests {
             ["TuneBridge:SpotifyClientId"] = string.Empty,
             ["TuneBridge:SpotifyClientSecret"] = string.Empty,
             ["TuneBridge:DiscordToken"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = "Data Source=Identity;Mode=Memory",
+            ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
         // Act & Assert
@@ -104,12 +104,12 @@ public class ConfigurationValidationTests {
             ["TuneBridge:SpotifyClientId"] = "spotify_client_id",
             ["TuneBridge:SpotifyClientSecret"] = "spotify_secret",
             ["TuneBridge:DiscordToken"] = string.Empty,
-            ["TuneBridge:ConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
+            ["TuneBridge:IdentityConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
             ["TuneBridge:BlueskyIdentifier"] = string.Empty,
             ["TuneBridge:BlueskyPassword"] = string.Empty,
-            ["TuneBridge:CacheDbPath"] = "Data Source=TuneBridge;Mode=Memory",
+            ["TuneBridge:LinkCacheConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
         };
 
         // Act

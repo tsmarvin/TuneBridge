@@ -219,12 +219,12 @@ namespace TuneBridge.Configuration {
 
         private static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
             _ = services.AddDbContext<ApplicationDbContext>( options =>
-                options.UseSqlite( settings.ConnectionString )
+                options.UseSqlite( settings.IdentityConnectionString )
             );
 
             // Register a factory for MediaLinkCacheDbContext to be consumed from singleton services safely
             _ = services.AddDbContextFactory<MediaLinkCacheDbContext>(
-                opts => opts.UseSqlite( settings.CacheDbPath )
+                opts => opts.UseSqlite( settings.LinkCacheConnectionString )
             );
         }
 

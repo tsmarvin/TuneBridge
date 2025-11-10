@@ -37,10 +37,10 @@ services:
 
       # Cache configuration
       - CACHE_DAYS=${CACHE_DAYS:-7}
-      - CACHE_DB_PATH=${CACHE_DB_PATH:-/app/data/tunebridge.db}
+      - LINK_CACHE_CONNECTION_STRING=${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
 
       # Database configuration
-      - CONNECTION_STRING=${CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
+      - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
 
       # Authentication and rate limiting
       - RATE_LIMIT_REQUESTS_PER_HOUR=${RATE_LIMIT_REQUESTS_PER_HOUR:-20}
