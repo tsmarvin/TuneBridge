@@ -5,7 +5,7 @@ set -eu
 read_secret() {
     secret_path="/run/secrets/$1"
     if [ -f "$secret_path" ]; then
-        cat "$secret_path"
+   cat "$secret_path"
     else
         echo ""
     fi
@@ -47,7 +47,7 @@ BLUESKY_PASSWORD_FROM_SECRET=$(read_secret "bluesky_password")
 BLUESKY_PASSWORD="${BLUESKY_PASSWORD:-$BLUESKY_PASSWORD_FROM_SECRET}"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
-CACHE_DB_PATH="${CACHE_DB_PATH:-medialinkscache.db}"
+CACHE_DB_PATH="${CACHE_DB_PATH:-Data Source=/app/data/medialinkscache.db}"
 
 # Authentication and rate limiting configuration
 CONNECTION_STRING="${CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
@@ -68,7 +68,7 @@ cat > /app/appsettings.json <<EOF
   "Kestrel": {
     "Endpoints": {
       "Http": {
-        "Url": "http://$DOMAIN:10000"
+        "Url": "http://0.0.0.0:10000"
       }
     }
   },
@@ -89,7 +89,7 @@ cat > /app/appsettings.json <<EOF
     "BlueskyIdentifier": "$BLUESKY_IDENTIFIER",
     "BlueskyPassword": "$BLUESKY_PASSWORD",
     "CacheDays": $CACHE_DAYS,
-    "CacheDbPath": "$CACHE_DB_PATH",
+    "CacheDbPath": "$(escape_bs "$CACHE_DB_PATH")",
     "BaseUrl": "$DOMAIN"
   },
   "Logging": {
@@ -98,7 +98,7 @@ cat > /app/appsettings.json <<EOF
       "Microsoft.Hosting.Lifetime": "$HOSTING_DEFAULT_LOGLEVEL"
     }
   },
-  "AllowedHosts": "$ALLOWED_HOSTS"
+  "AllowedHosts": "*"
 }
 EOF
 
