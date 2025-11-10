@@ -44,41 +44,134 @@
         </fieldset>
 
         <div id="inputs" class="mb-3">
-            <div id="urlRow" class="mb-3">
-                <input id="url" type="text" class="form-control" placeholder="Url" />
-            </div>
+            <form id="lookupForm" asp-controller="Home" asp-action="LookupResults" method="post">
+                <div id="urlRow" class="mb-3">
+                    <input id="url" name="uri" type="text" class="form-control" placeholder="Url" />
+                </div>
 
-            <div id="isrcRow" class="mb-3 d-none">
-                <input id="isrc" type="text" class="form-control" placeholder="ISRC (e.g., USVI20000123)" />
-            </div>
+                <div id="isrcRow" class="mb-3 d-none">
+                    <input id="isrc" type="text" class="form-control" placeholder="ISRC (e.g., USVI20000123)" />
+                </div>
 
-            <div id="upcRow" class="mb-3 d-none">
-                <input id="upc" type="text" class="form-control" placeholder="UPC (12–14 digits)" />
-            </div>
+                <div id="upcRow" class="mb-3 d-none">
+                    <input id="upc" type="text" class="form-control" placeholder="UPC (12–14 digits)" />
+                </div>
 
-            <div id="titleRow" class="mb-3 d-none">
-                <div class="row g-2">
-                    <div class="col-12 col-md-6">
-                        <input id="title" type="text" class="form-control" placeholder="Title" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <input id="artist" type="text" class="form-control" placeholder="Artist" />
+                <div id="titleRow" class="mb-3 d-none">
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6">
+                            <input id="title" type="text" class="form-control" placeholder="Title" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <input id="artist" type="text" class="form-control" placeholder="Artist" />
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="d-flex gap-2 align-items-center">
-                <button id="go" class="btn btn-primary">Go</button>
-                <span id="status" class="text-muted"></span>
-            </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <button id="go" type="submit" class="btn btn-primary">Go</button>
+                    <span id="status" class="text-muted"></span>
+                </div>
+            </form>
         </div>
 
         <div>
-            <h3>Result</h3>
-            <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
+            <h3>Results</h3>
+            <div id="resultContainer">
+                <pre id="result" class="bg-body-secondary p-3 rounded" aria-live="polite">{}</pre>
+                <div id="cardsContainer"></div>
+            </div>
         </div>
     </div>
 </div>
+
+<style>
+    .embed-card {
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color);
+        border-left: 4px solid;
+        border-radius: 0.375rem;
+        padding: 0.75rem 1rem 0.75rem 0.75rem;
+        max-width: 520px;
+    }
+
+    .embed-header {
+        display: flex;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .embed-image {
+        width: 80px;
+        height: 80px;
+        border-radius: 0.375rem;
+        object-fit: cover;
+        flex-shrink: 0;
+    }
+
+    .embed-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .embed-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--bs-link-color);
+        text-decoration: none;
+        display: block;
+        margin-bottom: 0.25rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .embed-title:hover {
+        color: var(--bs-link-hover-color);
+        text-decoration: underline;
+    }
+
+    .embed-info {
+        font-size: 0.875rem;
+        color: var(--bs-secondary-color);
+        margin-bottom: 0.5rem;
+        white-space: pre-line;
+    }
+
+    .embed-providers {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+
+    .provider-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: var(--bs-secondary-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.375rem;
+        color: var(--bs-body-color);
+        text-decoration: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+    }
+
+    .provider-button:hover {
+        background: var(--bs-tertiary-bg);
+        color: var(--bs-emphasis-color);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .provider-icon {
+        font-size: 1.125rem;
+        line-height: 1;
+    }
+</style>
 
 @section Scripts {
     <script>
@@ -94,6 +187,7 @@
           const isrcRow = $('isrcRow');
           const upcRow = $('upcRow');
           const titleRow = $('titleRow');
+          const lookupForm = $('lookupForm');
 
           let isAuthenticated = false;
 
@@ -125,41 +219,73 @@
           modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
           setMode('url');
 
-          $('go').addEventListener('click', async () => {
+          // Handle form submission for URL mode with server-side rendering
+          lookupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
             const mode = (modeRadios.find(r => r.checked) || {}).value;
             const status = $('status');
             const result = $('result');
+            const cardsContainer = $('cardsContainer');
+            
             status.textContent = 'Working...';
-            $('go').disabled = true;
+            lookupForm.querySelector('button[type="submit"]').disabled = true;
             result.textContent = '{}';
+            result.classList.add('d-none');
+            cardsContainer.innerHTML = '';
+
             try {
-              let endpoint = '';
-              let payload = {};
-              switch (mode) {
-                case 'url': endpoint = '/music/lookup/url'; payload = { uri: $('url').value }; break;
-                case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
-                case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
-                case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
-              }
-              const headers = { 'Content-Type': 'application/json' };
-              const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
-              if (res.status === 401) {
-                result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null, 2);
-                status.textContent = 'HTTP401 - Unauthorized';
-              } else if (res.status === 429) {
-                const data = await res.json();
-                result.textContent = JSON.stringify(data, null, 2);
-                status.textContent = 'HTTP429 - Rate Limit Exceeded';
+              if (mode === 'url') {
+                // Server-side rendering via form submission
+                const formData = new FormData(lookupForm);
+                const res = await fetch(lookupForm.action, {
+                  method: 'POST',
+                  body: formData,
+                  credentials: 'same-origin'
+                });
+
+                if (res.ok) {
+                  const html = await res.text();
+                  cardsContainer.innerHTML = html;
+                  status.textContent = 'OK';
+                } else {
+                  result.textContent = JSON.stringify({ error: `HTTP ${res.status}` }, null, 2);
+                  result.classList.remove('d-none');
+                  status.textContent = `HTTP ${res.status}`;
+                }
               } else {
-                const data = await res.json();
-                result.textContent = JSON.stringify(data, null, 2);
-                status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+                // For other modes, use existing API endpoints with JSON
+                let endpoint = '';
+                let payload = {};
+                const headers = { 'Content-Type': 'application/json' };
+                
+                switch (mode) {
+                  case 'isrc': endpoint = '/music/lookup/isrc'; payload = { isrc: $('isrc').value }; break;
+                  case 'upc': endpoint = '/music/lookup/upc'; payload = { upc: $('upc').value }; break;
+                  case 'title': endpoint = '/music/lookup/title'; payload = { title: $('title').value, artist: $('artist').value }; break;
+                }
+                
+                const res = await fetch(endpoint, { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify(payload) });
+                
+                if (res.status === 401) {
+                  result.textContent = JSON.stringify({ error: 'Authentication required', message: 'Please login to access this endpoint.' }, null, 2);
+                  status.textContent = 'HTTP 401 - Unauthorized';
+                } else if (res.status === 429) {
+                  const data = await res.json();
+                  result.textContent = JSON.stringify(data, null, 2);
+                  status.textContent = 'HTTP 429 - Rate Limit Exceeded';
+                } else {
+                  const data = await res.json();
+                  result.textContent = JSON.stringify(data, null, 2);
+                  status.textContent = res.ok ? 'OK' : `HTTP ${res.status}`;
+                }
+                result.classList.remove('d-none');
               }
             } catch (err) {
               status.textContent = 'Error';
               result.textContent = JSON.stringify({ error: String(err) }, null, 2);
+              result.classList.remove('d-none');
             } finally {
-              $('go').disabled = false;
+              lookupForm.querySelector('button[type="submit"]').disabled = false;
             }
           });
         })();
