@@ -25,14 +25,14 @@
             // Check for ISRC or UPC in the description
             if (lineEnd > 0 && lineEnd < description.Length - 1)
             {
-                string secondLine = description.Substring(lineEnd + 1); if
-                (secondLine.StartsWith("ISRC: "))
+                string secondLine = description.Substring(lineEnd + 1);
+                if (secondLine.StartsWith("ISRC: "))
                 {
-                    externalIdType = " ISRC"; externalId = secondLine.Substring(6);
+                    externalIdType = "ISRC"; externalId = secondLine.Substring(6);
                 }
                 else if (secondLine.StartsWith("UPC: "))
                 {
-                    externalIdType = " UPC"; externalId = secondLine.Substring(5);
+                    externalIdType = "UPC"; externalId = secondLine.Substring(5);
                 }
             }
         }
@@ -312,9 +312,8 @@
 
             // Only return the light theme logo (dark logo for white background)
             // We keep both in the function for consistency but only show light theme
-            return new HtmlString($@"<img src="" {lightThemeLogo}"" alt="" {altText}"" class="" provider-logo
-    provider-logo-light"" /><img src="" {darkThemeLogo}"" alt="" {altText}"" class="" provider-logo
-    provider-logo-dark"" />");
+            return new HtmlString($@"<img src=""{lightThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-light"" />
+<img src=""{darkThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-dark"" />");
         }
 
         string GetProviderName(SupportedProviders provider)

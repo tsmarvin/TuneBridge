@@ -114,9 +114,7 @@ else if (Model.Items.Any())
         var altText = GetProviderName(provider) + " logo";
 
         // Return both images with classes for CSS-based theme switching
-        return new HtmlString($@"<img src="" {lightThemeLogo}"" alt="" {altText}"" class="" provider-logo
-provider-logo-light"" /><img src="" {darkThemeLogo}"" alt="" {altText}"" class="" provider-logo
-provider-logo-dark"" />");
+        return new HtmlString($@"<img src=""{lightThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-light"" /><img src=""{darkThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-dark"" />");
     }
 
     string GetProviderName(SupportedProviders provider)
