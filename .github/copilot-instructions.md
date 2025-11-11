@@ -96,6 +96,11 @@ TuneBridge/
   - Retry disabled for unsafe HTTP methods (POST/PUT/PATCH/DELETE)
 - **Fail-fast validation**: Configuration validation at startup (missing credentials, invalid files)
 - **Optional service registration**: Services only registered if credentials are present
+- **Event Delegation for Dynamic Content**: When adding JavaScript event handlers to elements that are loaded dynamically via AJAX/fetch and injected using `innerHTML`, always use event delegation or initialize handlers after content is loaded
+  - Inline `<script>` tags in partial views do NOT execute when loaded via `innerHTML` (browser security feature)
+  - Either: Use event delegation by attaching handlers to a parent element that exists on page load
+  - Or: Call an initialization function (e.g., `initializeShareButtons()`) after setting `innerHTML`
+- Example: `cardsContainer.innerHTML = html; setTimeout(initializeShareButtons, 100);`
 
 ### Security Guidelines
 - **Never commit secrets** - All credentials via environment variables

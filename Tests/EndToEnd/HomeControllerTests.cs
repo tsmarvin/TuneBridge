@@ -150,7 +150,7 @@ public class HomeControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         Assert.AreEqual( "text/html; charset=utf-8", response.Content.Headers.ContentType?.ToString( ) );
         // Content should either contain embed-card or a "No results found" message
-        Assert.IsTrue( content.Contains( "embed-card", StringComparison.OrdinalIgnoreCase ) || 
+        Assert.IsTrue( content.Contains( "embed-card", StringComparison.OrdinalIgnoreCase ) ||
                       content.Contains( "No results found", StringComparison.OrdinalIgnoreCase ) );
     }
 
@@ -169,7 +169,7 @@ public class HomeControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         Assert.AreEqual( "text/html; charset=utf-8", response.Content.Headers.ContentType?.ToString( ) );
         // Content should either contain embed-card or a "No results found" message
-        Assert.IsTrue( content.Contains( "embed-card", StringComparison.OrdinalIgnoreCase ) || 
+        Assert.IsTrue( content.Contains( "embed-card", StringComparison.OrdinalIgnoreCase ) ||
                       content.Contains( "No results found", StringComparison.OrdinalIgnoreCase ) );
     }
 
@@ -189,7 +189,7 @@ public class HomeControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         Assert.AreEqual( "text/html; charset=utf-8", response.Content.Headers.ContentType?.ToString( ) );
         // Content should either contain embed-card or a "No results found" message
-        Assert.IsTrue( content.Contains( "embed-card", StringComparison.OrdinalIgnoreCase ) || 
+        Assert.IsTrue( content.Contains( "embed-card", StringComparison.OrdinalIgnoreCase ) ||
                       content.Contains( "No results found", StringComparison.OrdinalIgnoreCase ) );
     }
 

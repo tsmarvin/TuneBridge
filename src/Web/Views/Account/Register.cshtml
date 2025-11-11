@@ -23,7 +23,7 @@
                     if (pwd.RequireLowercase) parts.Add("lowercase");
                     if (pwd.RequireDigit) parts.Add("digit");
                     if (pwd.RequireNonAlphanumeric) parts.Add("special character");
-                    var infoText = $"Minimum {pwd.RequiredLength} characters" + (parts.Count > 0 ? $" with {string.Join(", ", parts)}" : string.Empty);
+                    var infoText = $"Minimum {pwd.RequiredLength} characters" + (parts.Count > 0 ? $" with {string.Join(", ",parts)}" : string.Empty);
                 }
                 <div class="form-text">@infoText</div>
             </div>
@@ -68,39 +68,39 @@
             error.classList.add('d-none');
             error.textContent = '';
             if (!email.value || !password.value || !confirmPassword.value) {
-            error.textContent = 'Please fill in all fields';
-            error.classList.remove('d-none');
-            return;
+                error.textContent = 'Please fill in all fields';
+                error.classList.remove('d-none');
+                return;
             }
             if (password.value !== confirmPassword.value) {
-            error.textContent = 'Passwords do not match';
-            error.classList.remove('d-none');
-            return;
+                error.textContent = 'Passwords do not match';
+                error.classList.remove('d-none');
+                return;
             }
             registerBtn.disabled = true;
             registerBtn.textContent = 'Creating account...';
             try {
-            const response = await fetch('/account/register', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email.value, password: password.value })
-            });
-            const data = await response.json();
-            if (!response.ok) {
-            let errorMsg = 'Registration failed';
-            if (data.errors) errorMsg = Object.values(data.errors).flat().join('. ');
-            else if (data.message) errorMsg = data.message;
-            error.textContent = errorMsg;
-            error.classList.remove('d-none');
-            registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
-            return;
-            }
-            apiKeyEl.textContent = data.apiKey;
-            registerForm.classList.add('d-none');
-            successMessage.classList.remove('d-none');
+                const response = await fetch('/account/register', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email.value, password: password.value })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    let errorMsg = 'Registration failed';
+                    if (data.errors) errorMsg = Object.values(data.errors).flat().join('. ');
+                    else if (data.message) errorMsg = data.message;
+                    error.textContent = errorMsg;
+                    error.classList.remove('d-none');
+                    registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
+                    return;
+                }
+                apiKeyEl.textContent = data.apiKey;
+                registerForm.classList.add('d-none');
+                successMessage.classList.remove('d-none');
             } catch (err) {
-            error.textContent = 'Network error: ' + (err?.message || String(err));
-            error.classList.remove('d-none');
-            registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
+                error.textContent = 'Network error: ' + (err?.message || String(err));
+                error.classList.remove('d-none');
+                registerBtn.disabled = false; registerBtn.textContent = 'Create Account';
             }
         });
     </script>
