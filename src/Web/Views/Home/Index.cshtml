@@ -552,7 +552,7 @@
                     }
                 } catch (err) {
                     resultsSection.classList.remove('d-none');
-                    status.textContent = ' Error';
+                    status.textContent = 'Error';
                     result.textContent = JSON.stringify({ error: String(err.message || err) }, null, 2);
                     result.classList.remove('d-none');
                 } finally {
