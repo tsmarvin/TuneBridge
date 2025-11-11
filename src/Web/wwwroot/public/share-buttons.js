@@ -84,7 +84,7 @@ function initializeShareButtons() {
         if (!button) return;
         var originalText = button.innerHTML;
         var iconSpan = button.querySelector('.dropdown-icon');
-        var icon = isError ? '?' : '?';
+        var icon = isError ? '╳' : '✓';
 
         if (iconSpan) {
             iconSpan.textContent = icon;
