@@ -47,49 +47,49 @@
         const apiKeyEl = document.getElementById('apiKey');
 
         loginBtn.addEventListener('click', async () => {
-          error.classList.add('d-none');
-          error.textContent = '';
+            error.classList.add('d-none');
+            error.textContent = '';
 
-          if (!email.value || !password.value) {
-            error.textContent = 'Please fill in all fields';
-            error.classList.remove('d-none');
-            return;
-          }
-
-          loginBtn.disabled = true;
-          loginBtn.textContent = 'Logging in...';
-
-          try {
-            const response = await fetch('/account/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'same-origin',
-              body: JSON.stringify({ email: email.value, password: password.value })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-              error.textContent = data.message || 'Login failed';
-              error.classList.remove('d-none');
-              loginBtn.disabled = false;
-              loginBtn.textContent = 'Login';
-              return;
+            if (!email.value || !password.value) {
+                error.textContent = 'Please fill in all fields';
+                error.classList.remove('d-none');
+                return;
             }
 
-            if (data.apiKey === '***EXISTING_KEY***') {
-              window.location.href = '/';
-            } else {
-              apiKeyEl.textContent = data.apiKey;
-              loginForm.classList.add('d-none');
-              successMessage.classList.remove('d-none');
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+
+            try {
+                const response = await fetch('/account/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ email: email.value, password: password.value })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    error.textContent = data.message || 'Login failed';
+                    error.classList.remove('d-none');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Login';
+                    return;
+                }
+
+                if (data.apiKey === '***EXISTING_KEY***') {
+                    window.location.href = '/';
+                } else {
+                    apiKeyEl.textContent = data.apiKey;
+                    loginForm.classList.add('d-none');
+                    successMessage.classList.remove('d-none');
+                }
+            } catch (err) {
+                error.textContent = 'Network error: ' + err.message;
+                error.classList.remove('d-none');
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
             }
-          } catch (err) {
-            error.textContent = 'Network error: ' + err.message;
-            error.classList.remove('d-none');
-            loginBtn.disabled = false;
-            loginBtn.textContent = 'Login';
-          }
         });
     </script>
 }
