@@ -23,7 +23,7 @@
                     if (pwd.RequireLowercase) parts.Add("lowercase");
                     if (pwd.RequireDigit) parts.Add("digit");
                     if (pwd.RequireNonAlphanumeric) parts.Add("special character");
-                    var infoText = $"Minimum {pwd.RequiredLength} characters" + (parts.Count > 0 ? $" with {string.Join(", ",parts)}" : string.Empty);
+                    var infoText = $"Minimum {pwd.RequiredLength} characters" + (parts.Count > 0 ? $" with {string.Join(", ", parts)}" : string.Empty);
                 }
                 <div class="form-text">@infoText</div>
             </div>
