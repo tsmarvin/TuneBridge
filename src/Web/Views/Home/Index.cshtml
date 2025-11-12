@@ -203,9 +203,6 @@ ViewData["Title"] = "Music Lookup";
 @section Scripts {
 <script>
   (() => {
-    // Bootstrap's collapse component automatically handles data-bs-toggle="collapse"
-    // No custom event listener needed - it will only cause conflicts with Bootstrap's handler
-
     const $ = (id) => document.getElementById(id);
     const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
     const protectedModes = ['isrc', 'upc', 'title'];
