@@ -30,7 +30,7 @@ When you or anyone in your server shares a music link from **Spotify**, **Apple 
 To keep your channels clean, TuneBridge automatically **deletes link-only messages** after posting the conversion embed. For example:
 
 - ✅ **Deleted**: A message containing just `https://open.spotify.com/track/...`
-- ✅ **Deleted**: Multiple links with only whitespace between them
+- ✅ **Deleted**: Multiple music links with only whitespace between them
 - ✅ **Kept**: A message like "Check this out! https://open.spotify.com/track/..."
 - ✅ **Kept**: Any message with text or other content alongside the link
 
@@ -46,10 +46,10 @@ For the bot to work properly, it needs these permissions in your channels:
 
 | Permission | Purpose |
 |-----------|---------|
-| **Read Messages/View Channels** | Detect music links in messages |
+| **Read Messages** | Ensure that the bot is in the channel |
 | **Send Messages** | Post conversion embeds |
 | **Embed Links** | Display music previews with rich formatting |
-| **Manage Messages** | Delete link-only messages for cleaner conversations |
+| **Manage Messages** | Delete link-only messages to prevent multiple embeds for the same content |
 
 **Note:** If the bot lacks the **Manage Messages** permission, it will still convert links and post embeds, but won't be able to delete the original link-only messages.
 
@@ -63,23 +63,15 @@ If you want to limit where TuneBridge operates in your server:
 4. Edit **Channel Permissions**
 5. Find the **TuneBridge** role and deny **Send Messages** or **View Channel**
 
-#### Quick Examples
-
-- **#music** - Bot fully active (recommended)
-- **#serious-discussion** - Bot can't send messages (deny Send Messages)
-- **#announcements** - Bot has no access (deny View Channel)
 
 ## 🛠️ Troubleshooting
 
 ### Bot Not Responding
 
 1. **Check if the bot is online**: Look at the server member list - you should see the TuneBridge bot with a green online indicator
-2. **Verify permissions**: Make sure the bot has **Send Messages**, **Read Messages**, and **Embed Links** permissions in the channel
+2. **Verify permissions**: Make sure the bot is in the channel and has **Send Messages** and **Embed Links** permissions
 3. **Validate the link**: Ensure you're sharing a valid link from Spotify, Apple Music, or Tidal (not a screenshot or description)
 4. **Try Directly On the TuneBridge Website**: Validate the link on [TuneBridge](https://dev.tunebridge.media) to see if it can find matches
-
-If the bot still isn't responding after these steps, contact your server admin - they may need to check the TuneBridge configuration on their end.
-As a last resort, you can submit an issue on [GitHub](https://github.com/tsmarvin/TuneBridge/issues)
 
 ### Bot Can't Find a Match
 
@@ -114,8 +106,10 @@ A: First, check that the bot is online in your server member list and has the re
 **Q: Who can see the bot's messages?**
 A: Everyone in the channel can see the conversion embeds posted by the bot. The embeds display music service URLs (Spotify, Apple Music, Tidal links) and album artwork so that anyone in the channel can easily access the music from their preferred platform. Your original message is visible to everyone until deleted (which only happens for link-only messages).
 
-**Q: Can I see which parts of my message the bot kept?**
-A: The bot keeps your entire message if it contains anything other than music links—including text, emojis, or other content. Only pure link messages are replaced with the conversion embed.
+**Q: What information does the bot store?**
+A: The bot sees the content of all messages in channels where it has access, including user IDs and message content. However, it does not store or log this information beyond what is necessary for link conversion.  
+The only information stored, or logged, are the parsed URLs shared for conversion purposes and the discord user ID of the person who shared them. The discord user ID will only be logged if an error occurs during processing to help with debugging.  
+
 
 ---
 

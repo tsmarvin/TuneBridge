@@ -18,7 +18,7 @@
 ## Technology Stack
 
 ### Core Framework
-- **.NET 9.0** - Primary framework (targeting `net9.0`)
+- **.NET 10.0** - Primary framework (targeting `net10.0`)
 - **ASP.NET Core** - Web framework with MVC pattern
 - **C#** with nullable reference types enabled
 

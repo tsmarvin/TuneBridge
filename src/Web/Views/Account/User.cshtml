@@ -57,10 +57,50 @@
 
             <div id="error" class="alert alert-danger d-none mt-3"></div>
         </div>
+        <hr />
+
+        <div id="dataManagementSection">
+            <h5>Data Management</h5>
+            <p class="text-muted">
+                Manage your personal data and account.
+            </p>
+
+            <div class="mb-3">
+                <button id="downloadDataBtn" class="btn btn-info">
+                    Download My Data
+                </button>
+                <div class="form-text">
+                    Export a copy of all your personal data in JSON format. This includes your account information and
+                    metadata.
+                </div>
+            </div>
+
+            <div id="downloadDataError" class="alert alert-danger d-none mt-3"></div>
+        </div>
+
+        <hr />
+
+        <div id="accountDeletionSection">
+            <h5 class="text-danger">Danger Zone</h5>
+            <p class="text-muted">
+                Permanently delete your account and all associated data.
+            </p>
+
+            <div class="mb-3">
+                <button id="deleteAccountBtn" class="btn btn-danger">
+                    Delete My Account
+                </button>
+                <div class="form-text">
+                    This action is permanent and cannot be undone. All your data will be permanently removed.
+                </div>
+            </div>
+
+            <div id="deleteAccountError" class="alert alert-danger d-none mt-3"></div>
+        </div>
     </div>
 </div>
 
-<!-- Confirmation Modal -->
+<!-- API Key Reset Modal -->
 <div id="confirmModal" class="modal" tabindex="-1" role="dialog" aria-labelledby="confirmModalTitle" aria-hidden="true"
      style="display: none;">
     <div class="modal-dialog" role="document">
@@ -89,21 +129,71 @@
     </div>
 </div>
 
+<!-- Account Deletion Modal -->
+<div id="deleteConfirmModal" class="modal" tabindex="-1" role="dialog" aria-labelledby="deleteConfirmModalTitle"
+     aria-hidden="true" style="display: none;">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 id="deleteConfirmModalTitle" class="modal-title">Confirm Account Deletion</h5>
+                <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close"
+                        id="deleteModalCloseBtn">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Are you sure you want to delete your account?</strong></p>
+                <p>This action will:</p>
+                <ul>
+                    <li>Permanently delete your account</li>
+                    <li>Remove all your personal data</li>
+                    <li>Invalidate your API key</li>
+                    <li>Cancel any active sessions</li>
+                </ul>
+                <p class="text-danger"><strong>⚠️ This action is permanent and cannot be undone.</strong></p>
+                <hr />
+                <div class="form-group">
+                    <label for="deleteConfirmEmail">To confirm deletion, please type your email address:</label>
+                    <input type="email" class="form-control mt-2" id="deleteConfirmEmail" placeholder="your@email.com">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal"
+                        id="deleteModalCancelBtn">
+                    Cancel
+                </button>
+                <button type="button" class="btn btn-danger" id="deleteModalConfirmBtn" disabled>Delete Account</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script>
         const userEmailEl = document.getElementById('userEmail');
         const userIdEl = document.getElementById('userId');
         const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');
+        const downloadDataBtn = document.getElementById('downloadDataBtn');
+        const deleteAccountBtn = document.getElementById('deleteAccountBtn');
         const error = document.getElementById('error');
+        const downloadDataError = document.getElementById('downloadDataError');
+        const deleteAccountError = document.getElementById('deleteAccountError');
         const apiKeyDisplay = document.getElementById('apiKeyDisplay');
         const newApiKeyEl = document.getElementById('newApiKey');
         const resetSection = document.getElementById('resetSection');
 
-        // Modal elements
+        // API Key Reset Modal elements
         const confirmModal = document.getElementById('confirmModal');
         const modalConfirmBtn = document.getElementById('modalConfirmBtn');
         const modalCancelBtn = document.getElementById('modalCancelBtn');
         const modalCloseBtn = document.getElementById('modalCloseBtn');
+
+        // Account Deletion Modal elements
+        const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+        const deleteModalConfirmBtn = document.getElementById('deleteModalConfirmBtn');
+        const deleteModalCancelBtn = document.getElementById('deleteModalCancelBtn');
+        const deleteModalCloseBtn = document.getElementById('deleteModalCloseBtn');
+        const deleteConfirmEmail = document.getElementById('deleteConfirmEmail');
 
         // Load user info
         async function loadUserInfo() {
@@ -124,53 +214,185 @@
             }
         }
 
-        // Modal functions
-        function showModal() {
+        // Modal functions for API Key Reset
+        function showResetModal() {
             confirmModal.style.display = 'block';
             confirmModal.setAttribute('aria-hidden', 'false');
-            // Focus the confirm button for keyboard accessibility
             setTimeout(() => modalConfirmBtn.focus(), 100);
-            // Prevent body scroll
             document.body.style.overflow = 'hidden';
         }
 
-        function hideModal() {
+        function hideResetModal() {
             confirmModal.style.display = 'none';
             confirmModal.setAttribute('aria-hidden', 'true');
-            // Restore body scroll
             document.body.style.overflow = '';
-            // Return focus to the reset button
             resetApiKeyBtn.focus();
         }
 
-        // Show confirmation modal
+        // Modal functions for Account Deletion
+        function showDeleteModal() {
+            deleteConfirmModal.style.display = 'block';
+            deleteConfirmModal.setAttribute('aria-hidden', 'false');
+            deleteConfirmEmail.value = '';
+            deleteModalConfirmBtn.disabled = true;
+            setTimeout(() => deleteConfirmEmail.focus(), 100);
+            document.body.style.overflow = 'hidden';
+        }
+
+        function hideDeleteModal() {
+            deleteConfirmModal.style.display = 'none';
+            deleteConfirmModal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+            deleteAccountBtn.focus();
+        }
+
+        // Event listeners for API Key Reset Modal
         resetApiKeyBtn.addEventListener('click', () => {
             error.classList.add('d-none');
-            showModal();
+            showResetModal();
         });
 
-        // Modal event handlers
         modalConfirmBtn.addEventListener('click', () => {
-            hideModal();
+            hideResetModal();
             resetApiKey();
         });
 
-        modalCancelBtn.addEventListener('click', hideModal);
-        modalCloseBtn.addEventListener('click', hideModal);
+        modalCancelBtn.addEventListener('click', hideResetModal);
+        modalCloseBtn.addEventListener('click', hideResetModal);
 
-        // Close modal on Escape key
+        // Event listeners for Account Deletion Modal
+        deleteAccountBtn.addEventListener('click', () => {
+            deleteAccountError.classList.add('d-none');
+            showDeleteModal();
+        });
+
+        deleteModalConfirmBtn.addEventListener('click', () => {
+            hideDeleteModal();
+            deleteAccount();
+        });
+
+        deleteModalCancelBtn.addEventListener('click', hideDeleteModal);
+        deleteModalCloseBtn.addEventListener('click', hideDeleteModal);
+
+        // Close modals on Escape key
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && confirmModal.style.display === 'block') {
-                hideModal();
+            if (e.key === 'Escape') {
+                if (confirmModal.style.display === 'block') {
+                    hideResetModal();
+                }
+                if (deleteConfirmModal.style.display === 'block') {
+                    hideDeleteModal();
+                }
             }
         });
 
-        // Close modal when clicking outside
+        // Close modals when clicking outside
         confirmModal.addEventListener('click', (e) => {
             if (e.target === confirmModal) {
-                hideModal();
+                hideResetModal();
             }
         });
+
+        deleteConfirmModal.addEventListener('click', (e) => {
+            if (e.target === deleteConfirmModal) {
+                hideDeleteModal();
+            }
+        });
+
+        // Enable/disable delete button based on email confirmation
+        deleteConfirmEmail.addEventListener('input', () => {
+            const userEmail = userEmailEl.textContent;
+            const confirmEmail = deleteConfirmEmail.value.trim();
+            deleteModalConfirmBtn.disabled = confirmEmail !== userEmail;
+        });
+
+        // Download personal data
+        downloadDataBtn.addEventListener('click', async () => {
+            downloadDataError.classList.add('d-none');
+            downloadDataBtn.disabled = true;
+            downloadDataBtn.textContent = 'Downloading...';
+
+            try {
+                const response = await fetch('/account/download-data', {
+                    method: 'POST',
+                    credentials: 'same-origin'
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    downloadDataError.textContent = data.message || 'Failed to download personal data';
+                    downloadDataError.classList.remove('d-none');
+                    downloadDataBtn.disabled = false;
+                    downloadDataBtn.textContent = 'Download My Data';
+                    return;
+                }
+
+                // Get the filename from Content-Disposition header
+                const contentDisposition = response.headers.get('content-disposition');
+                let filename = 'tunebridge-personal-data.json';
+                if (contentDisposition && contentDisposition.includes('filename=')) {
+                    filename = contentDisposition
+                        .split('filename=')[1]
+                        .split(';')[0]
+                        .replace(/"/g, '');
+                }
+
+                // Download the file
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                downloadDataBtn.disabled = false;
+                downloadDataBtn.textContent = 'Download My Data';
+            } catch (err) {
+                console.error('Download data error:', err);
+                downloadDataError.textContent = 'Network error: ' + err.message;
+                downloadDataError.classList.remove('d-none');
+                downloadDataBtn.disabled = false;
+                downloadDataBtn.textContent = 'Download My Data';
+            }
+        });
+
+        // Delete account
+        async function deleteAccount() {
+            deleteAccountError.classList.add('d-none');
+            deleteAccountBtn.disabled = true;
+            deleteAccountBtn.textContent = 'Deleting...';
+
+            try {
+                const response = await fetch('/account/delete', {
+                    method: 'POST',
+                    credentials: 'same-origin'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    deleteAccountError.textContent = data.message || 'Failed to delete account';
+                    deleteAccountError.classList.remove('d-none');
+                    deleteAccountBtn.disabled = false;
+                    deleteAccountBtn.textContent = 'Delete My Account';
+                    return;
+                }
+
+                // Show success message and redirect
+                alert('Your account has been successfully deleted. You will be redirected to the home page.');
+                window.location.href = '/';
+
+            } catch (err) {
+                console.error('Delete account error:', err);
+                deleteAccountError.textContent = 'Network error: ' + err.message;
+                deleteAccountError.classList.remove('d-none');
+                deleteAccountBtn.disabled = false;
+                deleteAccountBtn.textContent = 'Delete My Account';
+            }
+        }
 
         // Reset API key
         async function resetApiKey() {
@@ -204,11 +426,11 @@
                     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
                     apiKeyDisplay.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'nearest' });
                 } catch (e) {
-                    // Fallback for older browsers
                     apiKeyDisplay.scrollIntoView();
                 }
 
             } catch (err) {
+                console.error('Reset API key error:', err);
                 error.textContent = 'Network error: ' + err.message;
                 error.classList.remove('d-none');
                 resetApiKeyBtn.disabled = false;

@@ -15,6 +15,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{84723DB4-9
 		docs\CACHING.md = docs\CACHING.md
 		docs\CONFIGURATION.md = docs\CONFIGURATION.md
 		docs\DEPLOYMENT.md = docs\DEPLOYMENT.md
+		docs\DISCORD_BOT.md = docs\DISCORD_BOT.md
 		docs\QUICKSTART.md = docs\QUICKSTART.md
 		docs\toc.yml = docs\toc.yml
 	EndProjectSection
