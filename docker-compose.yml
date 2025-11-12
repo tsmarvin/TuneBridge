@@ -76,6 +76,57 @@ services:
           cpus: '0.5'
           memory: 256M
 
+    # Network
+    networks:
+      - tunebridge-network
+
+  # Aspire Dashboard for observability and telemetry
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.0
+    container_name: aspire-dashboard
+    restart: unless-stopped
+
+    # Internal port only - accessed via Caddy reverse proxy
+    expose:
+      - "18888"
+      - "4317"
+
+    environment:
+      # Dashboard configuration
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:18888
+      - DASHBOARD__FRONTEND__AUTHMODE=Unsecured
+      # OTLP endpoint for telemetry
+      - DASHBOARD__OTLP__ENDPOINTURL=http://+:4317
+      - DASHBOARD__OTLP__AUTHMODE=Unsecured
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+    # Network
+    networks:
+      - tunebridge-network
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:18888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+# Networks
+networks:
+  tunebridge-network:
+    driver: bridge
+
 # Named volumes for data persistence
 volumes:
   tunebridge-data:

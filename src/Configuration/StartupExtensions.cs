@@ -108,7 +108,7 @@ namespace TuneBridge.Configuration {
         /// </summary>
         /// <param name="builder">The builder to create a web application from.</param>
         /// <returns>The configured application.</returns>
-        public static WebApplication ConfigureTuneBridge(
+        public static async Task<WebApplication> ConfigureTuneBridgeAsync(
             this WebApplicationBuilder builder
         ) {
             WebApplication app = builder.Build();
@@ -121,8 +121,8 @@ namespace TuneBridge.Configuration {
             // Initialize cache database if configured
             InitializeCacheDatabase( app.Services );
 
-            // Initialize database
-            _ = app.InitializeDatabase( );
+            // Initialize database and seed roles
+            await app.InitializeDatabaseAsync( );
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment( )) {
@@ -158,6 +158,9 @@ namespace TuneBridge.Configuration {
 
             _ = app.UseAuthentication( );
             _ = app.UseAuthorization( );
+
+            // Restrict health endpoint access to internal requests only
+            _ = app.UseMiddleware<HealthEndpointAuthorizationMiddleware>( );
 
             // Restrict Swagger UI access to authenticated users
             _ = app.UseMiddleware<SwaggerAuthorizationMiddleware>( );
