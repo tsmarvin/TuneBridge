@@ -269,7 +269,7 @@ public class AccountController : Controller {
 
         _logger.LogInformation( "User downloaded personal data with ID: {UserId}", user.Id );
 
-        var json = System.Text.Json.JsonSerializer.Serialize(
+        string json = System.Text.Json.JsonSerializer.Serialize(
             personalData,
             new System.Text.Json.JsonSerializerOptions { WriteIndented = true }
         );
