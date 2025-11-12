@@ -203,24 +203,8 @@ ViewData["Title"] = "Music Lookup";
 @section Scripts {
 <script>
   (() => {
-    // Initialize Bootstrap collapse for "How It Works" button
-    document.addEventListener('DOMContentLoaded', () => {
-      const howItWorksBtn = document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#howItWorksContent"]');
-      const howItWorksContent = document.getElementById('howItWorksContent');
-
-      if (howItWorksBtn && howItWorksContent) {
-        howItWorksBtn.addEventListener('click', () => {
-          const isExpanded = howItWorksContent.classList.contains('show');
-          if (isExpanded) {
-            howItWorksContent.classList.remove('show');
-            howItWorksBtn.setAttribute('aria-expanded', 'false');
-          } else {
-            howItWorksContent.classList.add('show');
-            howItWorksBtn.setAttribute('aria-expanded', 'true');
-          }
-        });
-      }
-    });
+    // Bootstrap's collapse component automatically handles data-bs-toggle="collapse"
+    // No custom event listener needed - it will only cause conflicts with Bootstrap's handler
 
     const $ = (id) => document.getElementById(id);
     const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
@@ -335,7 +319,7 @@ ViewData["Title"] = "Music Lookup";
         },
         {
           title: 'Waste my time',
-          artist: 'KÃ¶lsch',
+          artist: 'Kölsch',
           trackLink: 'https://tidal.com/browse/track/434932152',
           isrc: 'QM6P42596561',
           albumLink: 'https://tidal.com/album/434932150',
@@ -358,7 +342,7 @@ ViewData["Title"] = "Music Lookup";
           upc: '5039060358597'
         },
         {
-          title: 'No Captain (feat. POLIÃ‡A)',
+          title: 'No Captain (feat. POLIÇA)',
           artist: 'Lane 8',
           trackLink: 'https://tidal.com/browse/track/128587876',
           isrc: 'FRX201711788',
@@ -390,20 +374,20 @@ ViewData["Title"] = "Music Lookup";
 
       // URL placeholder and examples - one from each provider
       $('url').placeholder = placeholder.albumLink;
-      $('urlExamples').innerHTML = `â€¢ <code>${example1.trackLink}</code><br/>â€¢ <code>${example2.trackLink}</code>`;
+      $('urlExamples').innerHTML = `• <code>${example1.trackLink}</code><br/>• <code>${example2.trackLink}</code>`;
 
       // ISRC placeholder and examples - use all three
       $('isrc').placeholder = placeholder.isrc;
-      $('isrcExamples').innerHTML = `â€¢ <code>${example1.isrc}</code>,<br/>â€¢ <code>${example2.isrc}</code>`;
+      $('isrcExamples').innerHTML = `• <code>${example1.isrc}</code>,<br/>• <code>${example2.isrc}</code>`;
 
       // UPC placeholder and examples - use all three
       $('upc').placeholder = placeholder.upc;
-      $('upcExamples').innerHTML = `â€¢ <code>${example1.upc}</code>,<br/>â€¢ <code>${example2.upc}</code>`;
+      $('upcExamples').innerHTML = `• <code>${example1.upc}</code>,<br/>• <code>${example2.upc}</code>`;
 
       // Title/Artist placeholders and examples - use all three
       $('title').placeholder = placeholder.title;
       $('artist').placeholder = placeholder.artist;
-      $('titleExamples').innerHTML = `â€¢ <strong>${example1.title}</strong> by ${example1.artist},<br/>â€¢ <strong>${example2.title}</strong> by ${example2.artist}`;
+      $('titleExamples').innerHTML = `• <strong>${example1.title}</strong> by ${example1.artist},<br/>• <strong>${example2.title}</strong> by ${example2.artist}`;
     }
 
     // Initialize examples
