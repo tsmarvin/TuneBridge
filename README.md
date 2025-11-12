@@ -16,6 +16,7 @@ Ever wanted to share your favorite song, only to realize your friend uses a diff
 - **RESTful API** - Integrate music link conversion into your own apps
 - **Accurate Matching** - Uses ISRC (tracks) and UPC (albums) for precise cross-platform matches
 - **Rich Previews** - OpenGraph cards that work everywhere—Discord, Slack, Twitter, and more
+- **Aspire Dashboard** - Built-in observability and telemetry dashboard (role-based access)
 
 ## 🚀 Quick Start
 
@@ -69,6 +70,7 @@ Visit `http://localhost:10000` to start converting links.
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
 - **[Testing Guide](docs/TESTING.md)** - Run and write tests
 - **[Caching Guide](docs/CACHING.md)** - Configure Bluesky PDS caching
+- **[Aspire Dashboard Access](docs/ASPIRE_DASHBOARD_ACCESS.md)** - Grant users access to observability dashboard
 
 ## 🎯 How It Works
 
