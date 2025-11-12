@@ -364,8 +364,14 @@ namespace TuneBridge.Configuration {
         }
 
         private static void RegisterAppleIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
+            // Check if Apple Music credentials are provided
             if (string.IsNullOrWhiteSpace( settings.AppleTeamId ) ||
                 string.IsNullOrWhiteSpace( settings.AppleKeyId )) {
+                return;
+            }
+
+            // If Team ID and Key ID are provided, the key path must also be provided and valid
+            if (string.IsNullOrWhiteSpace( settings.AppleKeyPath )) {
                 return;
             }
 

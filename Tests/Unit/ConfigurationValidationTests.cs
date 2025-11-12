@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using TuneBridge.Configuration;
 using TuneBridge.Domain.Interfaces; // Added for IMediaLinkService
-using TuneBridge.Tests.EndToEnd;
 
 namespace TuneBridge.Tests.Unit;
 
@@ -12,13 +14,17 @@ namespace TuneBridge.Tests.Unit;
 public class ConfigurationValidationTests {
     [TestMethod]
     public void AddTuneBridgeServices_WithMissingAppleKeyFile_ShouldThrowFileNotFoundException( ) {
-        // Arrange - provide Apple credentials with missing key file
+        // Arrange - provide ALL Apple credentials (TeamId, KeyId, AND KeyPath) with missing key file
+        // This ensures we hit the file validation logic
         Dictionary<string, string?> overrides = new( ) {
             ["TuneBridge:AppleTeamId"] = "TEAM123456",
             ["TuneBridge:AppleKeyId"] = "KEY1234567",
             ["TuneBridge:AppleKeyPath"] = "/nonexistent/path/key.p8",
             ["TuneBridge:SpotifyClientId"] = string.Empty,
             ["TuneBridge:SpotifyClientSecret"] = string.Empty,
+            ["TuneBridge:TidalClientId"] = string.Empty,
+            ["TuneBridge:TidalClientSecret"] = string.Empty,
+            ["TuneBridge:DiscordToken"] = string.Empty,
             ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
             ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
@@ -29,8 +35,10 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         FileNotFoundException ex = Assert.ThrowsExactly<FileNotFoundException>( () => {
-            using CustomWebApplicationFactory factory = new( overrides );
-            _ = factory.Services; // trigger creation
+            IServiceCollection services = new ServiceCollection( );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+            FakeWebHostBuilder builder = new( );
+            _ = builder.ConfigureTuneBridgeServices( services, config );
         } );
         Assert.Contains( ".p8", ex.Message );
     }
@@ -48,6 +56,9 @@ public class ConfigurationValidationTests {
                 ["TuneBridge:AppleKeyPath"] = emptyKeyPath,
                 ["TuneBridge:SpotifyClientId"] = string.Empty,
                 ["TuneBridge:SpotifyClientSecret"] = string.Empty,
+                ["TuneBridge:TidalClientId"] = string.Empty,
+                ["TuneBridge:TidalClientSecret"] = string.Empty,
+                ["TuneBridge:DiscordToken"] = string.Empty,
                 ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
                 ["TuneBridge:ApiKeySalt"] = "api_key_salt",
                 ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
@@ -58,8 +69,10 @@ public class ConfigurationValidationTests {
 
             // Act & Assert
             InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
-                using CustomWebApplicationFactory factory = new( overrides );
-                _ = factory.Services;
+                IServiceCollection services = new ServiceCollection( );
+                IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+                FakeWebHostBuilder builder = new( );
+                _ = builder.ConfigureTuneBridgeServices( services, config );
             } );
             Assert.Contains( "missing contents", ex.Message );
         } finally {
@@ -69,13 +82,16 @@ public class ConfigurationValidationTests {
 
     [TestMethod]
     public void AddTuneBridgeServices_WithNoProviders_ShouldThrowInvalidOperationException( ) {
-        // Arrange - neither Apple nor Spotify nor Tidal credentials
+        // Arrange - no Apple, Spotify, or Tidal credentials
+        // Ensure Discord is also disabled so we properly hit the provider validation
         Dictionary<string, string?> overrides = new( ) {
             ["TuneBridge:AppleTeamId"] = string.Empty,
             ["TuneBridge:AppleKeyId"] = string.Empty,
             ["TuneBridge:AppleKeyPath"] = string.Empty,
             ["TuneBridge:SpotifyClientId"] = string.Empty,
             ["TuneBridge:SpotifyClientSecret"] = string.Empty,
+            ["TuneBridge:TidalClientId"] = string.Empty,
+            ["TuneBridge:TidalClientSecret"] = string.Empty,
             ["TuneBridge:DiscordToken"] = string.Empty,
             ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
@@ -87,8 +103,10 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            using CustomWebApplicationFactory factory = new( overrides );
-            _ = factory.Services;
+            IServiceCollection services = new ServiceCollection( );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+            FakeWebHostBuilder builder = new( );
+            _ = builder.ConfigureTuneBridgeServices( services, config );
         } );
         Assert.Contains( "Required settings are missing", ex.Message );
     }
@@ -103,6 +121,8 @@ public class ConfigurationValidationTests {
             ["TuneBridge:AppleKeyPath"] = string.Empty,
             ["TuneBridge:SpotifyClientId"] = "spotify_client_id",
             ["TuneBridge:SpotifyClientSecret"] = "spotify_secret",
+            ["TuneBridge:TidalClientId"] = string.Empty,
+            ["TuneBridge:TidalClientSecret"] = string.Empty,
             ["TuneBridge:DiscordToken"] = string.Empty,
             ["TuneBridge:IdentityConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
@@ -113,12 +133,25 @@ public class ConfigurationValidationTests {
         };
 
         // Act
-        using CustomWebApplicationFactory factory = new( overrides );
-        IServiceProvider sp = factory.Services;
+        IServiceCollection services = new ServiceCollection( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+        FakeWebHostBuilder builder = new( );
+        _ = builder.ConfigureTuneBridgeServices( services, config );
+        ServiceProvider sp = services.BuildServiceProvider( );
 
         // Assert
         Assert.IsNotNull( sp );
         IMediaLinkService? mediaService = sp.GetService<IMediaLinkService>();
         Assert.IsNotNull( mediaService, "IMediaLinkService should be registered with Spotify credentials" );
+    }
+
+    // Fake IWebHostBuilder for testing ConfigureTuneBridgeServices without spinning up a full web application
+    private class FakeWebHostBuilder : Microsoft.AspNetCore.Hosting.IWebHostBuilder {
+        public Microsoft.AspNetCore.Hosting.IWebHost Build( ) => throw new NotImplementedException( );
+        public Microsoft.AspNetCore.Hosting.IWebHostBuilder ConfigureAppConfiguration( Action<Microsoft.AspNetCore.Hosting.WebHostBuilderContext, IConfigurationBuilder> configureDelegate ) => this;
+        public Microsoft.AspNetCore.Hosting.IWebHostBuilder ConfigureServices( Action<IServiceCollection> configureServices ) => this;
+        public Microsoft.AspNetCore.Hosting.IWebHostBuilder ConfigureServices( Action<Microsoft.AspNetCore.Hosting.WebHostBuilderContext, IServiceCollection> configureServices ) => this;
+        public string? GetSetting( string key ) => null;
+        public Microsoft.AspNetCore.Hosting.IWebHostBuilder UseSetting( string key, string? value ) => this;
     }
 }
