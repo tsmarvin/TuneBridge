@@ -39,30 +39,34 @@
                     </label>
                 </div>
                 <div class="form-check">
+                    <input class="form-check-input" type="radio" name="mode" id="titleRadio" value="title" />
+                    <label class="form-check-label" for="titleRadio">
+                        <strong>Title Search</strong>
+                    </label>
+                </div>
+                <div class="form-check">
                     <input class="form-check-input" type="radio" name="mode" id="isrcRadio" value="isrc" />
                     <label class="form-check-label" for="isrcRadio">
                         <strong>ISRC</strong>
-                        <span class="badge bg-secondary login-required">Login required</span>
                     </label>
                 </div>
                 <div class="form-check">
                     <input class="form-check-input" type="radio" name="mode" id="upcRadio" value="upc" />
                     <label class="form-check-label" for="upcRadio">
                         <strong>UPC</strong>
-                        <span class="badge bg-secondary login-required">Login required</span>
-                    </label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="mode" id="titleRadio" value="title" />
-                    <label class="form-check-label" for="titleRadio">
-                        <strong>Title Search</strong>
-                        <span class="badge bg-secondary login-required">Login required</span>
                     </label>
                 </div>
             </div>
         </fieldset>
 
-        <div id="inputs" class="mb-3">
+        <div id="inputs" class="mb-3" style="position: relative;">
+            <div id="protectedModeOverlay" class="protected-mode-overlay d-none">
+                <div class="overlay-content">
+                    <p class="mb-0">
+                        <a href="/account/login">Login</a> to use this feature. Rate limits apply.
+                    </p>
+                </div>
+            </div>
             <form id="lookupForm" asp-controller="Home" asp-action="LookupResults" method="post">
                 <!-- URL Mode -->
                 <div id="urlRow" class="mb-3">
@@ -182,10 +186,10 @@
         <div class="col">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">RESTful API</h5>
+                    <h5 class="card-title">Are You A Developer?</h5>
                     <p class="card-text">
-                        <a href="/account/register">Register</a> an account to get access to the RESTful API to
-                        integrate music link conversion into your own apps.<br />
+                        <a href="/account/register">Register</a> an account to get access to the RESTful API
+                        and start integrating tunebridge into your app today!<br />
                     </p>
                 </div>
             </div>
@@ -227,6 +231,7 @@
             const upcRow = $('upcRow');
             const titleRow = $('titleRow');
             const lookupForm = $('lookupForm');
+            const protectedModeOverlay = $('protectedModeOverlay');
 
             let isAuthenticated = false;
 
@@ -327,7 +332,7 @@
                     },
                     {
                         title: 'Waste my time',
-                        artist: 'KÃ¶lsch',
+                        artist: 'Kölsch',
                         trackLink: 'https://tidal.com/browse/track/434932152',
                         isrc: 'QM6P42596561',
                         albumLink: 'https://tidal.com/album/434932150',
@@ -350,7 +355,7 @@
                         upc: '5039060358597'
                     },
                     {
-                        title: 'No Captain (feat. POLIÃ‡A)',
+                        title: 'No Captain (feat. POLIÇA)',
                         artist: 'Lane 8',
                         trackLink: 'https://tidal.com/browse/track/128587876',
                         isrc: 'FRX201711788',
@@ -382,20 +387,20 @@
 
                 // URL placeholder and examples - one from each provider
                 $('url').placeholder = placeholder.albumLink;
-                $('urlExamples').innerHTML = `â€¢ <code>${example1.trackLink}</code><br/>â€¢ <code>${example2.trackLink}</code>`;
+                $('urlExamples').innerHTML = `• <code>${example1.trackLink}</code><br/>• <code>${example2.trackLink}</code>`;
 
                 // ISRC placeholder and examples - use all three
                 $('isrc').placeholder = placeholder.isrc;
-                $('isrcExamples').innerHTML = `â€¢ <code>${example1.isrc}</code>,<br/>â€¢ <code>${example2.isrc}</code>`;
+                $('isrcExamples').innerHTML = `• <code>${example1.isrc}</code>,<br/>• <code>${example2.isrc}</code>`;
 
                 // UPC placeholder and examples - use all three
                 $('upc').placeholder = placeholder.upc;
-                $('upcExamples').innerHTML = `â€¢ <code>${example1.upc}</code>,<br/>â€¢ <code>${example2.upc}</code>`;
+                $('upcExamples').innerHTML = `• <code>${example1.upc}</code>,<br/>• <code>${example2.upc}</code>`;
 
                 // Title/Artist placeholders and examples - use all three
                 $('title').placeholder = placeholder.title;
                 $('artist').placeholder = placeholder.artist;
-                $('titleExamples').innerHTML = `â€¢ <strong>${example1.title}</strong> by ${example1.artist},<br/>â€¢ <strong>${example2.title}</strong> by ${example2.artist}`;
+                $('titleExamples').innerHTML = `• <strong>${example1.title}</strong> by ${example1.artist},<br/>• <strong>${example2.title}</strong> by ${example2.artist}`;
             }
 
             // Initialize examples
@@ -408,25 +413,18 @@
                 .catch(() => { isAuthenticated = false; updateUI(); });
 
             function updateUI() {
-                // disable protected radios + show hint when logged out
-                ['isrc', 'upc', 'title'].forEach(mode => {
-                    const radio = document.getElementById(radioIds[mode]);
-                    const label = document.querySelector(`label[for="${radioIds[mode]}"]`);
-                    if (!radio || !label) return;
-                    radio.disabled = !isAuthenticated;
-                    label.classList.toggle('disabled', !isAuthenticated);
-                });
+                // Show/hide overlay based on auth status and current mode
+                const currentMode = (modeRadios.find(r => r.checked) || {}).value;
+                const showOverlay = !isAuthenticated && protectedModes.includes(currentMode);
+                protectedModeOverlay.classList.toggle(HIDDEN_CLASS, !showOverlay);
             }
 
             function setMode(mode) {
-                if (!isAuthenticated && protectedModes.includes(mode)) {
-                    $(radioIds.url).checked = true;
-                    mode = 'url';
-                }
                 urlRow.classList.toggle(HIDDEN_CLASS, mode !== 'url');
                 isrcRow.classList.toggle(HIDDEN_CLASS, mode !== 'isrc');
                 upcRow.classList.toggle(HIDDEN_CLASS, mode !== 'upc');
                 titleRow.classList.toggle(HIDDEN_CLASS, mode !== 'title');
+                updateUI();
             }
 
             modeRadios.forEach(r => r.addEventListener('change', (e) => setMode(e.target.value)));
@@ -440,6 +438,11 @@
                 const result = $('result');
                 const cardsContainer = $('cardsContainer');
                 const resultsSection = $('resultsSection');
+
+                // If protected mode and not authenticated, don't submit
+                if (!isAuthenticated && protectedModes.includes(mode)) {
+                    return;
+                }
 
                 // Clear previous results
                 result.textContent = '{}';

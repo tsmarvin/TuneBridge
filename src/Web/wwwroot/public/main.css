@@ -427,3 +427,62 @@ html[data-bs-theme="dark"] .embed-card[style*="border-left-color: rgb(0, 0, 0)"]
     border-left-color: #FFFFFF !important;
   }
 }
+
+/* Protected mode overlay - covers entire form inputs section */
+#inputs {
+  position: relative;
+  min-height: 300px;
+}
+
+.protected-mode-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: auto;
+  border-radius: 0.375rem;
+  backdrop-filter: blur(2px);
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0.3s, opacity 0.3s;
+}
+
+.protected-mode-overlay:not(.d-none) {
+  visibility: visible;
+  opacity: 1;
+}
+
+html[data-bs-theme="dark"] .protected-mode-overlay {
+  background: rgba(33, 37, 41, 0.85);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-bs-theme="auto"] .protected-mode-overlay,
+  html:not([data-bs-theme]) .protected-mode-overlay {
+    background: rgba(33, 37, 41, 0.85);
+  }
+}
+
+.overlay-content {
+  text-align: center;
+  padding: 1rem;
+}
+
+.overlay-content p {
+  color: var(--bs-body-color);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.overlay-content a {
+  color: var(--bs-link-color);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.overlay-content a:hover {
+  color: var(--bs-link-hover-color);
+}

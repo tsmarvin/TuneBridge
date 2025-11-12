@@ -74,7 +74,7 @@ public class WebLookupTests {
         // Check that we have multiple items
         dynamic items = data.GetProperty( "items" );
         int itemCount = items.GetArrayLength( );
-        Assert.IsTrue( itemCount > 0, "Should have at least one item" );
+        Assert.IsGreaterThan( 0, itemCount, "Should have at least one item" );
     }
 
     [TestMethod]

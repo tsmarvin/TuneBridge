@@ -32,8 +32,8 @@ public class OpenGraphExtensionsTests {
         // Assert
         Assert.IsNotNull( metadata );
         Assert.IsTrue( metadata.ContainsKey( "og:description" ) );
-        Assert.IsTrue( metadata["og:description"].Contains( "ISRC: US25X1087647" ), "Description should contain ISRC" );
-        Assert.IsTrue( metadata["og:description"].Contains( "Artist: Shades, Alix Perez & Eprom" ), "Description should contain artist" );
+        Assert.Contains( "ISRC: US25X1087647", metadata["og:description"], "Description should contain ISRC" );
+        Assert.Contains( "Artist: Shades, Alix Perez & Eprom", metadata["og:description"], "Description should contain artist" );
     }
 
     [TestMethod]
@@ -61,7 +61,7 @@ public class OpenGraphExtensionsTests {
         // Assert
         Assert.IsNotNull( metadata );
         Assert.IsTrue( metadata.ContainsKey( "og:description" ) );
-        Assert.IsTrue( metadata["og:description"].Contains( "UPC: 123456789012" ), "Description should contain UPC for album" );
+        Assert.Contains( "UPC: 123456789012", metadata["og:description"], "Description should contain UPC for album" );
     }
 
     [TestMethod]
@@ -145,9 +145,9 @@ public class OpenGraphExtensionsTests {
         // Assert
         Assert.IsNotNull( metadata );
         Assert.IsTrue( metadata.ContainsKey( "og:description" ) );
-        Assert.IsFalse( metadata["og:description"].Contains( "ISRC:" ), "Description should not contain ISRC when not available" );
-        Assert.IsFalse( metadata["og:description"].Contains( "UPC:" ), "Description should not contain UPC when not available" );
-        Assert.IsTrue( metadata["og:description"].Contains( "Artist: Test Artist" ), "Description should still contain artist" );
+        Assert.DoesNotContain( "ISRC:", metadata["og:description"], "Description should not contain ISRC when not available" );
+        Assert.DoesNotContain( "UPC:", metadata["og:description"], "Description should not contain UPC when not available" );
+        Assert.Contains( "Artist: Test Artist", metadata["og:description"], "Description should still contain artist" );
     }
 
     [TestMethod]
@@ -186,7 +186,7 @@ public class OpenGraphExtensionsTests {
         // Assert
         Assert.IsNotNull( metadata );
         Assert.IsTrue( metadata.ContainsKey( "og:description" ) );
-        Assert.IsFalse( metadata["og:description"].Contains( "Available on:" ), "Description should not contain provider links section" );
-        Assert.IsFalse( metadata["og:description"].Contains( "https://" ), "Description should not contain URLs" );
+        Assert.DoesNotContain( "Available on:", metadata["og:description"], "Description should not contain provider links section" );
+        Assert.DoesNotContain( "https://", metadata["og:description"], "Description should not contain URLs" );
     }
 }

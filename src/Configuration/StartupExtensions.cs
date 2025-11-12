@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Http.Resilience;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using Polly;
@@ -138,8 +138,7 @@ namespace TuneBridge.Configuration {
 
             // Serve .well-known directory with proper content types for AT Protocol lexicons
             _ = app.UseStaticFiles( new StaticFileOptions {
-                FileProvider = new PhysicalFileProvider(
-                    Path.Combine( builder.Environment.WebRootPath, ".well-known" ) ),
+                FileProvider = new PhysicalFileProvider( Path.Combine( builder.Environment.WebRootPath, ".well-known" ) ),
                 RequestPath = "/.well-known",
                 ContentTypeProvider = provider,
                 ServeUnknownFileTypes = false,
@@ -160,6 +159,12 @@ namespace TuneBridge.Configuration {
             _ = app.UseAuthentication( );
             _ = app.UseAuthorization( );
 
+            // Restrict Swagger UI access to authenticated users
+            _ = app.UseMiddleware<SwaggerAuthorizationMiddleware>( );
+
+            // Add rate limiting middleware with configured rate limit
+            _ = app.UseMiddleware<RateLimitingMiddleware>( settings.RateLimitRequestsPerHour );
+
             // Enable Swagger middleware
             _ = app.UseSwagger( );
             _ = app.UseSwaggerUI( options => {
@@ -167,12 +172,6 @@ namespace TuneBridge.Configuration {
                 options.RoutePrefix = "swagger";
                 options.DocumentTitle = "TuneBridge API Documentation";
             } );
-
-            // Restrict Swagger UI access to authenticated users
-            _ = app.UseMiddleware<SwaggerAuthorizationMiddleware>( );
-
-            // Add rate limiting middleware with configured rate limit
-            _ = app.UseMiddleware<RateLimitingMiddleware>( settings.RateLimitRequestsPerHour );
 
             _ = app.MapStaticAssets( );
             _ = app.MapControllerRoute(
@@ -306,7 +305,7 @@ namespace TuneBridge.Configuration {
                     Version = "v1",
                     Description = "Cross-platform music link converter and lookup service for Apple Music, Spotify, and Tidal. Convert music links between platforms, search by URL, ISRC, UPC, or title/artist.",
                     Contact = new OpenApiContact {
-                        Name = "Taylor Marvin",
+                        Name = "TuneBridge",
                         Url = new Uri( "https://github.com/tsmarvin/TuneBridge" )
                     },
                     License = new OpenApiLicense {
@@ -314,24 +313,13 @@ namespace TuneBridge.Configuration {
                         Url = new Uri( "https://github.com/tsmarvin/TuneBridge/blob/main/LICENSE" )
                     }
                 } );
-
-                // Add API Key authentication to Swagger
                 options.AddSecurityDefinition( "ApiKey", new OpenApiSecurityScheme {
                     Type = SecuritySchemeType.ApiKey,
                     In = ParameterLocation.Header,
                     Name = "X-API-Key",
                     Description = "API Key authentication. Get your API key by registering at /account/register"
                 } );
-
-                options.AddSecurityRequirement( new OpenApiSecurityRequirement { {
-                    new OpenApiSecurityScheme {
-                        Reference = new OpenApiReference {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "ApiKey"
-                        }
-                    },
-                    Array.Empty<string>( )
-                } } );
+                options.AddSecurityRequirement( ( d ) => new OpenApiSecurityRequirement { [new( "X-API-Key" )] = [] } );
 
                 // Include XML comments from all assemblies if available
                 foreach (string xmlPath in Directory.GetFiles( AppContext.BaseDirectory, "*.xml" )) {
