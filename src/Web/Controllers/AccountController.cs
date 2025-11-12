@@ -255,12 +255,6 @@ public class AccountController : Controller {
                 createdAt = user.CreatedAt,
                 emailConfirmed = user.EmailConfirmed
             },
-            passwordHash = new {
-                hash = user.PasswordHash
-            },
-            apiKeyHash = new {
-                hash = user.ApiKeyHash
-            },
             rateLimitingData = new {
                 requestCount = user.RequestCount,
                 rateLimitWindowStart = user.RateLimitWindowStart
