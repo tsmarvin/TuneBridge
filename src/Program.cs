@@ -10,14 +10,16 @@ namespace TuneBridge {
         /// and starts the web server.
         /// </summary>
         /// <param name="args">Command-line arguments for configuration overrides.</param>
-        public static async Task Main( string[] args ) =>
-            await WebApplication.CreateBuilder( new WebApplicationOptions( ) {
+        public static async Task Main( string[] args ) {
+            WebApplication app = await WebApplication.CreateBuilder( new WebApplicationOptions( ) {
                 ApplicationName = "TuneBridge",
                 Args = args,
                 WebRootPath = "Web/wwwroot"
             } )
             .ConfigureTuneBridgeServices( args )
-            .ConfigureTuneBridgeAsync( )
-            .ContinueWith( t => t.Result.Run( ) );
+            .ConfigureTuneBridgeAsync( );
+
+            app.Run( );
+        }
     }
 }
