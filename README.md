@@ -56,7 +56,7 @@ Visit `http://localhost:10000` to start converting links.
 
 ### Running Locally
 
-1. Install [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+1. Install [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10)
 2. Clone the repository
 3. Add your API credentials to `appsettings.json` (see [Configuration Guide](docs/CONFIGURATION.md))
 4. Run: `dotnet run`
@@ -92,7 +92,7 @@ When someone shares a Spotify link, TuneBridge responds with a card showing Appl
 
 ## 🛠️ Built With
 
-- **.NET 9.0** - Modern, cross-platform framework
+- **.NET 10.0** - Modern, cross-platform framework
 - **Apple MusicKit API** - Apple Music integration
 - **Spotify Web API** - Spotify integration
 - **Tidal API** - Tidal integration

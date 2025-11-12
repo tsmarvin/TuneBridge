@@ -225,6 +225,12 @@ namespace TuneBridge.Web.Controllers {
         public IActionResult Privacy( ) => View( );
 
         /// <summary>
+        /// Displays the terms of service page.
+        /// </summary>
+        /// <returns>The TOS view.</returns>
+        public IActionResult Tos( ) => View( );
+
+        /// <summary>
         /// Health check endpoint for monitoring and load balancers.
         /// </summary>
         /// <returns>HTTP 200 OK with a simple status message.</returns>

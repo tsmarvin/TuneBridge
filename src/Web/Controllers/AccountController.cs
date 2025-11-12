@@ -230,4 +230,83 @@ public class AccountController : Controller {
             message = "API key regenerated successfully. Update your applications with the new key."
         } );
     }
+
+    /// <summary>
+    /// Downloads all personal data associated with the authenticated user.
+    /// Returns a JSON file containing account information and metadata.
+    /// </summary>
+    /// <returns>JSON file with personal data.</returns>
+    /// <response code="200">Personal data downloaded successfully.</response>
+    /// <response code="401">User not authenticated.</response>
+    [Authorize]
+    [HttpPost]
+    [Route( "account/download-data" )]
+    public async Task<IActionResult> DownloadPersonalData( ) {
+        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        if (user == null) {
+            return Unauthorized( );
+        }
+
+        var personalData = new {
+            exportDate = DateTime.UtcNow,
+            user = new {
+                userId = user.Id,
+                email = user.Email,
+                createdAt = user.CreatedAt,
+                emailConfirmed = user.EmailConfirmed
+            },
+            rateLimitingData = new {
+                requestCount = user.RequestCount,
+                rateLimitWindowStart = user.RateLimitWindowStart
+            }
+        };
+
+        _logger.LogInformation( "User downloaded personal data with ID: {UserId}", user.Id );
+
+        string json = System.Text.Json.JsonSerializer.Serialize(
+            personalData,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }
+        );
+
+        return File(
+            System.Text.Encoding.UTF8.GetBytes( json ),
+            "application/json",
+            $"tunebridge-personal-data-{DateTime.UtcNow:yyyy-MM-dd}.json"
+        );
+    }
+
+    /// <summary>
+    /// Deletes the authenticated user's account and all associated data.
+    /// This action is permanent and cannot be undone.
+    /// </summary>
+    /// <returns>Confirmation of account deletion.</returns>
+    /// <response code="200">Account deleted successfully.</response>
+    /// <response code="401">User not authenticated.</response>
+    /// <response code="400">Failed to delete account.</response>
+    [Authorize]
+    [HttpPost]
+    [Route( "account/delete" )]
+    public async Task<IActionResult> DeleteAccount( ) {
+        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        if (user == null) {
+            return Unauthorized( );
+        }
+
+        // Sign out the user first
+        await _signInManager.SignOutAsync( );
+
+        // Delete the user
+        IdentityResult result = await _userManager.DeleteAsync( user );
+
+        if (!result.Succeeded) {
+            _logger.LogError( "Failed to delete account for user ID: {UserId}", user.Id );
+            return BadRequest( new { message = "Failed to delete account. Please try again." } );
+        }
+
+        _logger.LogInformation( "User account deleted with ID: {UserId}", user.Id );
+
+        return Ok( new {
+            message = "Account deleted successfully. All your personal data has been removed."
+        } );
+    }
 }

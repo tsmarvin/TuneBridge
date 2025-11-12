@@ -2,9 +2,449 @@
     ViewData["Title"] = "Privacy Policy";
 }
 
-<div class="card mb-4">
-    <div class="card-body">
-        <h1 class="card-title">@ViewData["Title"]</h1>
-        <p>Use this page to detail your site's privacy policy.</p>
+<div class="container py-4">
+    <h1 class="mb-4">Privacy Policy</h1>
+    <p class="text-muted mb-4"><strong>Last Updated:</strong> November 2025</p>
+
+    <!-- Combined Summary & Security Notice -->
+    <div class="alert alert-info border" role="alert">
+        <p class="mb-3">
+            <strong>🔐 Privacy-First Design:</strong>
+
+            TuneBridge is built with privacy-first principles in mind. Only the minimum data necessary to convert music
+            links gets collected.<br />
+            We don't track listening history or share personal data. Only the basic album or track info you submit gets
+            used to query the music service APIs.
+        </p>
+        <p class="mb-0">
+            <strong>Infrastructure Note:</strong> TuneBridge is hosted on OVH Cloud and proxied through Cloudflare.
+            These third party services may collect
+            limited technical data (IP addresses, request metadata) according to their own privacy policies.
+        </p>
+        <p class="text-muted mt-3">
+            See <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener noreferrer">
+                Cloudflare's
+                Privacy Policy
+            </a> and
+            <a href="https://www.ovhcloud.com/en/terms-and-conditions/" target="_blank" rel="noopener noreferrer">
+                OVH's
+                Privacy Policy
+            </a> for details.
+        </p>
+    </div>
+
+    <!-- 1. Overview -->
+    <section class="mb-5">
+        <h3>1. Overview</h3>
+        <p>
+            TuneBridge is a cross-platform music link converter created and ran by <a href="https://github.com/tsmarvin">Taylor Marvin</a> that helps you share music across Apple Music,
+            Spotify, and Tidal.<br />
+            This privacy policy explains what data gets collected by the service, how it is used, stored, and protected.
+        </p>
+        <p>
+            I (Taylor Marvin) am committed to your privacy and maintain strict data minimization practices. The application code is
+            open source and can be viewed on <a href="https://github.com/tsmarvin/TuneBridge">GitHub</a>.
+        </p>
+    </section>
+
+    <!-- 2. Data Collected by the Service -->
+    <section class="mb-5">
+        <h3>2. Data Collected by the Service</h3>
+
+        <h4>2.1 Account Information</h4>
+        <div class="card mb-3">
+            <div class="card-body">
+                <p><strong>When you create an account, the service stores:</strong></p>
+                <ul>
+                    <li>
+                        <strong>Email address</strong> - Used as your unique account identifier and for authentication
+                    </li>
+                    <li>
+                        <strong>Password</strong> - Hashed using industry-standard cryptography, never stored in plain text
+                    </li>
+                    <li><strong>Account creation timestamp</strong> - When your account was created</li>
+                    <li><strong>Email address verification status</strong> - Whether you have verified your email</li>
+                </ul>
+                <hr>
+                <p><strong>For API authentication and usage tracking, the service stores:</strong></p>
+                <ul>
+                    <li>
+                        <strong>API Key Hash</strong> - A cryptographic hash of your API key, stored securely for
+                        authentication
+                    </li>
+                    <li><strong>API Key Salt</strong> - A random value used to hash your API key</li>
+                    <li>
+                        <strong>Request count</strong> - Number of API requests made in the current rate limit window
+                    </li>
+                    <li>
+                        <strong>Rate limit window start timestamp</strong> - When your current hourly limit period began
+                    </li>
+                </ul>
+                <p class="text-muted mt-3">
+                    <strong>Important:</strong> Your API key is only shown once when created.
+                    The service stores only a salted hash, making it impossible to recover the original key even if our
+                    database is compromised.
+                    Rate limit data is reset hourly.
+                </p>
+                <p class="text-muted">
+                    <strong>Note:</strong> The service does <em>not</em> collect your real name, phone
+                    number, or demographic information.
+                </p>
+            </div>
+        </div>
+
+        <h4>2.2 Music Link Search Data</h4>
+        <div class="card mb-3">
+            <div class="card-body">
+                <p><strong>What is collected and cached:</strong></p>
+                <ul>
+                    <li>
+                        <strong>Input URLs</strong> - The music service links you search (e.g., Spotify URLs, Apple
+                        Music links, Tidal links)
+                    </li>
+                    <li>
+                        <strong>Search metadata</strong> - Artist names, track/album titles, ISRC codes, UPC codes,
+                        artwork URLs, and market regions
+                    </li>
+                    <li><strong>Provider links</strong> - URLs to the same music on Apple Music, Spotify, and Tidal</li>
+                    <li><strong>Cache timestamps</strong> - When searches were added and last looked up</li>
+                </ul>
+                <p class="text-muted mt-3">
+                    <strong>Retention:</strong> Cache entries are automatically deleted after
+                    <strong>7 days</strong>.
+                </p>
+                <p class="text-muted">
+                    <strong>Storage:</strong> Search data is stored in a SQLite database and the search results will be
+                    stored as a public
+                    <a href="https://atproto.com/">AT Protocol</a> records on our PDS (Personal Data Store).
+                </p>
+            </div>
+        </div>
+
+        <h4>2.3 Logging Data</h4>
+        <div class="card mb-3">
+            <div class="card-body">
+                <p><strong>Is Logged:</strong></p>
+                <ul>
+                    <li>
+                        <strong>HTTP request timestamps and response codes</strong> - For both website and API requests
+                    </li>
+                    <li>
+                        <strong>TuneBridge User ID</strong> - Anonymized identifier for rate limiting and request
+                        tracking (not email addresses)
+                    </li>
+                    <li><strong>Rate limit events</strong> - When rate limits are exceeded</li>
+                    <li><strong>Service events</strong> - Service startup, configuration loading, and errors</li>
+                </ul>
+                <p class="text-muted mt-3">
+                    <strong>Note:</strong> While processing your web request additional data may be logged including:
+                </p>
+                <ul class="text-muted">
+                    <li>IP addresses</li>
+                    <li>User agent strings</li>
+                    <li>Request headers and metadata</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- 3. Data We Do NOT Collect -->
+    <section class="mb-5">
+        <h3>3. Data We Do NOT Collect</h3>
+        <ul class="list-group">
+            <li class="list-group-item">❌ Your listening history from Spotify, Apple Music, or Tidal</li>
+            <li class="list-group-item">❌ Your playlist or library information</li>
+            <li class="list-group-item">❌ Your personal name, phone number, or demographic information</li>
+            <li class="list-group-item">
+                ❌ Browser cookies or tracking pixels (beyond session authentication for user
+                login and site preferences)
+            </li>
+            <li class="list-group-item">❌ Detailed analytics about your music preferences</li>
+            <li class="list-group-item">❌ Third-party marketing data</li>
+        </ul>
+    </section>
+
+    <!-- 4. How We Use Your Data -->
+    <section class="mb-5">
+        <h3>4. How We Use Your Data</h3>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Account & Rate Limiting</strong>
+            </div>
+            <div class="card-body">
+                <p>Your account and rate limiting data is used to:</p>
+                <ul>
+                    <li>Authenticate you to your account</li>
+                    <li>Generate and manage your API key</li>
+                    <li>Enforce fair usage limits and prevent API abuse</li>
+                    <li>Provide personalized account settings</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Music Link Conversion</strong>
+            </div>
+            <div class="card-body">
+                <p>Your music link search data is used to:</p>
+                <ul>
+                    <li>Convert music links between platforms</li>
+                    <li>Cache results to improve performance and reduce API calls to music services</li>
+                    <li>Generate OpenGraph cards for sharing in Discord, Slack, social media, etc.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- 5. Data Storage & Security -->
+    <section class="mb-5">
+        <h3>5. Data Storage & Security</h3>
+
+        <h4>5.1 Where Data is Stored</h4>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Data Type</th>
+                        <th>Storage Location</th>
+                        <th>Retention Period</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Account info, API keys, rate limiting</td>
+                        <td>Local SQLite database</td>
+                        <td>Until account deletion</td>
+                    </tr>
+                    <tr>
+                        <td>Music link cache and search data</td>
+                        <td>Local SQLite database + AT Protocol PDS</td>
+                        <td>7 days (configurable)</td>
+                    </tr>
+                    <tr>
+                        <td>Server logs</td>
+                        <td>Local file storage</td>
+                        <td>
+                            Typically less than 7 days (but may be kept indefinitely for additional application
+                            development purposes or as required by law)
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h4>5.2 Security Measures</h4>
+        <ul class="list-group">
+            <li class="list-group-item">
+                <strong>Password Hashing:</strong> Passwords are hashed, making them computationally expensive to crack.
+            </li>
+            <li class="list-group-item">
+                <strong>API Key Security:</strong> API keys are stored as salted hashes. Original keys are never stored or
+                recoverable.
+            </li>
+            <li class="list-group-item">
+                <strong>Database Encryption:</strong> All databases use SQLite's built-in encryption and can be encrypted at
+                rest by deployers.
+            </li>
+            <li class="list-group-item">
+                <strong>HTTPS/TLS:</strong> All communication between your client and TuneBridge is encrypted using TLS.
+            </li>
+            <li class="list-group-item">
+                <strong>Access Control:</strong> Database queries use parameterized queries to prevent SQL injection.
+            </li>
+            <li class="list-group-item">
+                <strong>No Logging of Sensitive Data:</strong> Passwords, API keys, and authentication tokens are never logged.
+            </li>
+        </ul>
+    </section>
+
+    <!-- 6. Third-Party Services -->
+    <section class="mb-5">
+        <h3>6. Third-Party Services</h3>
+
+        <h4>6.1 Music Service APIs</h4>
+        <p>
+            TuneBridge integrates with the official APIs of:
+        </p>
+        <ul>
+            <li><strong>Apple Music (MusicKit API)</strong> - To search for and retrieve music links</li>
+            <li><strong>Spotify Web API</strong> - To search for and retrieve music links</li>
+            <li><strong>Tidal API</strong> - To search for and retrieve music links</li>
+        </ul>
+        <p>
+            When you use TuneBridge to convert a link:
+        </p>
+        <ol>
+            <li>TuneBridge extracts metadata from the input URL (the album ID or track ID)</li>
+            <li>TuneBridge queries the music service APIs to find matches</li>
+            <li>
+                The music services receive only the search criteria (the album or track id, artist/title information, ISRC, or
+                UPC)
+            </li>
+            <li>TuneBridge never sends your email address, password, or personal data to these services</li>
+        </ol>
+        <ul class="text-muted">
+            <li>
+                <a href="https://www.apple.com/privacy/" target="_blank" rel="noopener noreferrer">
+                    Apple Privacy
+                    Policy
+                </a>
+            </li>
+            <li>
+                <a href="https://www.spotify.com/us/legal/privacy-policy/" target="_blank" rel="noopener noreferrer">
+                    Spotify
+                    Privacy Policy
+                </a>
+            </li>
+            <li>
+                <a href="https://tidal.com/privacy" target="_blank" rel="noopener noreferrer">Tidal Privacy Policy</a>
+            </li>
+        </ul>
+        <h4>6.2 AT Protocol</h4>
+        <p>
+            Media link search results are stored as public AT Protocol records on the TuneBridge Personal Data Store (PDS).
+        </p>
+        <p>
+            <strong>Important:</strong> To protect user privacy the music service URLs input by end users
+            (which may contain music service provider tracking IDs) are stored local to the service in a SQLite database
+            and not made public on the PDS.<br />
+        </p>
+
+        <h4>6.3 Discord Bot</h4>
+        <p>If you add the TuneBridge bot to your Discord server, it will:</p>
+        <ul>
+            <li>Detect music links in messages</li>
+            <li>Automatically convert and reply with links on other platforms</li>
+        </ul>
+        <p>
+            <strong>Data handling:</strong> Discord may provide user and server IDs during message processing.
+            We may log partial message content (the extracted music service URL) and Discord user and server IDs for
+            operational and debugging purposes.
+            Discord user IDs may also be incidentally logged in association with requests that cause errors in the
+            tunebridge application.
+        </p>
+    </section>
+
+    <!-- 7. Your Rights & Data Control -->
+    <section class="mb-5">
+        <h3>7. Your Rights & Data Control</h3>
+
+        <h4>7.1 Access Your Data</h4>
+        <p>
+            You have the right to request a copy of all personal data we hold about you. Use the data download button in
+            your account settings on the user page. You can export your API key at any time by regenerating it through your
+            account settings. The contents of your search requests are not associated with your user so your search history
+            cannot be exported.
+        </p>
+
+        <h4>7.2 Delete Your Account</h4>
+        <p>
+            You can delete your account at any time. A delete button is available in your account settings on the user
+            page.
+            Account deletion will:
+        </p>
+        <ul>
+            <li>✅ Delete your email address and hashed password</li>
+            <li>✅ Delete your API key hash</li>
+            <li>✅ Delete your rate limiting data</li>
+            <li>⚠️ Cache entries may persist for up to 7 days before automatic deletion</li>
+        </ul>
+    </section>
+
+    <!-- 8. Logging & Monitoring -->
+    <section class="mb-5">
+        <h3>8. Logging & Monitoring</h3>
+
+        <h4>8.1 What We Log</h4>
+        <ul>
+            <li>HTTP request timestamps and response codes (both website and API)</li>
+            <li>
+                TuneBridge User ID (anonymized account identifier, not email address; may include Discord user IDs for
+                Discord bot usage)
+            </li>
+            <li>Rate limit events (when limits are exceeded)</li>
+            <li>Service startup, configuration, and error events</li>
+        </ul>
+
+        <h4>8.2 What We Do NOT Log</h4>
+        <ul>
+            <li>❌ Email addresses or usernames</li>
+            <li>❌ Passwords or API keys</li>
+            <li>❌ Full request bodies or complete search queries</li>
+            <li>❌ Detailed music metadata from searches</li>
+        </ul>
+
+        <h4>8.3 Log Retention</h4>
+        <p>Logs may be retained indefinitely for development or debugging purposes, and as required by law.</p>
+    </section>
+
+    <!-- 9. Data Retention & Deletion -->
+    <section class="mb-5">
+        <h3>9. Data Retention & Deletion</h3>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Data Type</th>
+                        <th>Retention Period</th>
+                        <th>Automatic Deletion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Account credentials</td>
+                        <td>Until account deletion</td>
+                        <td>Manual (via account deletion)</td>
+                    </tr>
+                    <tr>
+                        <td>(Hashed) API keys</td>
+                        <td>Until account deletion or key regeneration</td>
+                        <td>Manual (via account deletion or regeneration)</td>
+                    </tr>
+                    <tr>
+                        <td>Rate limiting counters</td>
+                        <td>1 hour (reset hourly)</td>
+                        <td>Automatic</td>
+                    </tr>
+                    <tr>
+                        <td>Search cache entries</td>
+                        <td>7 days</td>
+                        <td>Automatic</td>
+                    </tr>
+                    <tr>
+                        <td>Server logs</td>
+                        <td>Typically less than 7 day but may be retained indefinitely</td>
+                        <td>None (retained for development/legal purposes)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 10. Contact & Support -->
+    <section class="mb-5">
+        <h3>10. Contact & Support</h3>
+        <p>
+            If you have questions about this privacy policy or concerns about how your data is handled:
+        </p>
+        <ul>
+            <li>
+                <strong>For dev.tunebridge.media:</strong> <a href="https://github.com/tsmarvin/TuneBridge/issues"
+                                                              target="_blank" rel="noopener noreferrer">Report issues on GitHub</a>
+            </li>
+            <li><strong>For self-hosted instances:</strong> Contact your TuneBridge server administrator</li>
+        </ul>
+    </section>
+
+    <hr class="my-5">
+
+    <div class="alert alert-light border">
+        <p class="mb-0">
+            TuneBridge is committed to transparency about how we handle your data.
+            This privacy policy reflects our actual practices and will be updated as the service evolves.
+        </p>
     </div>
 </div>

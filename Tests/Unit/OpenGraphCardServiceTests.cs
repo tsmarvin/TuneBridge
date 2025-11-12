@@ -70,6 +70,6 @@ public class OpenGraphCardServiceTests {
         string cardUrl = service.StoreResult( result );
 
         // Assert
-        Assert.IsTrue( cardUrl.StartsWith( $"https://{baseUrl}/card/" ), "Card URL should start with base URL" );
+        Assert.StartsWith( $"https://{baseUrl}/card/", cardUrl, "Card URL should start with base URL" );
     }
 }
