@@ -203,25 +203,6 @@ ViewData["Title"] = "Music Lookup";
 @section Scripts {
 <script>
   (() => {
-    // Initialize Bootstrap collapse for "How It Works" button
-    document.addEventListener('DOMContentLoaded', () => {
-      const howItWorksBtn = document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#howItWorksContent"]');
-      const howItWorksContent = document.getElementById('howItWorksContent');
-
-      if (howItWorksBtn && howItWorksContent) {
-        howItWorksBtn.addEventListener('click', () => {
-          const isExpanded = howItWorksContent.classList.contains('show');
-          if (isExpanded) {
-            howItWorksContent.classList.remove('show');
-            howItWorksBtn.setAttribute('aria-expanded', 'false');
-          } else {
-            howItWorksContent.classList.add('show');
-            howItWorksBtn.setAttribute('aria-expanded', 'true');
-          }
-        });
-      }
-    });
-
     const $ = (id) => document.getElementById(id);
     const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
     const protectedModes = ['isrc', 'upc', 'title'];
