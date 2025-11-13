@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Interfaces; // Added for IMediaLinkService
 
@@ -36,9 +35,8 @@ public class ConfigurationValidationTests {
         // Act & Assert
         FileNotFoundException ex = Assert.ThrowsExactly<FileNotFoundException>( () => {
             IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
-            FakeWebHostBuilder builder = new( );
-            _ = builder.ConfigureTuneBridgeServices( services, config );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
+            _ = services.AddTuneBridgeServices( config );
         } );
         Assert.Contains( ".p8", ex.Message );
     }
@@ -71,8 +69,7 @@ public class ConfigurationValidationTests {
             InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
                 IServiceCollection services = new ServiceCollection( );
                 IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
-                FakeWebHostBuilder builder = new( );
-                _ = builder.ConfigureTuneBridgeServices( services, config );
+                _ = services.AddTuneBridgeServices( config );
             } );
             Assert.Contains( "missing contents", ex.Message );
         } finally {
@@ -105,8 +102,7 @@ public class ConfigurationValidationTests {
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
             IServiceCollection services = new ServiceCollection( );
             IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
-            FakeWebHostBuilder builder = new( );
-            _ = builder.ConfigureTuneBridgeServices( services, config );
+            _ = services.AddTuneBridgeServices( config );
         } );
         Assert.Contains( "Required settings are missing", ex.Message );
     }
@@ -135,23 +131,12 @@ public class ConfigurationValidationTests {
         // Act
         IServiceCollection services = new ServiceCollection( );
         IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
-        FakeWebHostBuilder builder = new( );
-        _ = builder.ConfigureTuneBridgeServices( services, config );
+        _ = services.AddTuneBridgeServices( config );
         ServiceProvider sp = services.BuildServiceProvider( );
 
         // Assert
         Assert.IsNotNull( sp );
         IMediaLinkService? mediaService = sp.GetService<IMediaLinkService>();
         Assert.IsNotNull( mediaService, "IMediaLinkService should be registered with Spotify credentials" );
-    }
-
-    // Fake IWebHostBuilder for testing ConfigureTuneBridgeServices without spinning up a full web application
-    private class FakeWebHostBuilder : Microsoft.AspNetCore.Hosting.IWebHostBuilder {
-        public Microsoft.AspNetCore.Hosting.IWebHost Build( ) => throw new NotImplementedException( );
-        public Microsoft.AspNetCore.Hosting.IWebHostBuilder ConfigureAppConfiguration( Action<Microsoft.AspNetCore.Hosting.WebHostBuilderContext, IConfigurationBuilder> configureDelegate ) => this;
-        public Microsoft.AspNetCore.Hosting.IWebHostBuilder ConfigureServices( Action<IServiceCollection> configureServices ) => this;
-        public Microsoft.AspNetCore.Hosting.IWebHostBuilder ConfigureServices( Action<Microsoft.AspNetCore.Hosting.WebHostBuilderContext, IServiceCollection> configureServices ) => this;
-        public string? GetSetting( string key ) => null;
-        public Microsoft.AspNetCore.Hosting.IWebHostBuilder UseSetting( string key, string? value ) => this;
     }
 }
