@@ -6,7 +6,7 @@ using TuneBridge.Domain.Interfaces;
 namespace TuneBridge.Domain.Implementations.Services {
 
     /// <summary>
-    /// Decorator for <see cref="IMediaLinkService"/> that adds caching with Bluesky PDS storage.
+    /// Decorator for <see cref="IMediaLinkService"/> that adds caching with ATProto PDS storage.
     /// This service checks the cache before performing lookups and stores results for future use.
     /// </summary>
     /// <remarks>
@@ -144,7 +144,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                         } else {
                             // Cache as a new result
                             string recordUri = await cacheService.CacheResultAsync( result, resultInputLinks );
-                            logger.LogInformation( "Cached new result to Bluesky: {uri}", recordUri );
+                            logger.LogInformation( "Cached new result to ATProto: {uri}", recordUri );
                         }
                     } catch (Exception ex) {
                         logger.LogError( ex, "Failed to cache result, continuing without caching" );

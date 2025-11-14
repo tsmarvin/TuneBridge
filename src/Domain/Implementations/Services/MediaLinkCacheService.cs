@@ -3,25 +3,26 @@ using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Contracts.Entities;
 using TuneBridge.Domain.Implementations.Database;
 using TuneBridge.Domain.Implementations.LinkParsers;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 
 namespace TuneBridge.Domain.Implementations.Services {
 
     /// <summary>
-    /// Implementation of <see cref="IMediaLinkCacheService"/> that uses SQLite to track Bluesky PDS record locations
-    /// and Bluesky PDS for persistent storage. The SQLite database is used only for efficient lookups; all actual
+    /// Implementation of <see cref="IMediaLinkCacheService"/> that uses SQLite to track ATProto PDS record locations
+    /// and ATProto PDS for persistent storage. The SQLite database is used only for efficient lookups; all actual
     /// data is stored on and retrieved from the PDS.
     /// </summary>
     /// <remarks>
     /// Initializes a new instance of the <see cref="MediaLinkCacheService"/> class.
     /// </remarks>
     /// <param name="dbContextFactory">Factory for creating database contexts.</param>
-    /// <param name="blueskyStorage">Service for storing and retrieving results from Bluesky PDS.</param>
+    /// <param name="atprotoStorage">Service for storing and retrieving results from ATProto PDS.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="cacheDays">Number of days to consider cache entries fresh.</param>
     public class MediaLinkCacheService(
         IDbContextFactory<MediaLinkCacheDbContext> dbContextFactory,
-        IBlueskyStorageService blueskyStorage,
+        IATProtoStorageService atprotoStorage,
         ILogger<MediaLinkCacheService> logger,
         int cacheDays
     ) : IMediaLinkCacheService {
@@ -45,8 +46,8 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                 MediaLinkCacheEntry cacheEntry = inputLinkEntry.MediaLinkCacheEntry;
 
-                // Fetch the actual result from Bluesky PDS
-                MediaLinkResult? result = await blueskyStorage.GetMediaLinkResultAsync( cacheEntry.RecordUri );
+                // Fetch the actual result from ATProto PDS
+                MediaLinkResult? result = await atprotoStorage.GetMediaLinkResultAsync( cacheEntry.RecordUri );
 
                 if (result is null) {
                     logger.LogWarning( "Record not found on PDS, removing cache entry: {uri}", cacheEntry.RecordUri );
@@ -78,11 +79,32 @@ namespace TuneBridge.Domain.Implementations.Services {
             try {
                 using MediaLinkCacheDbContext dbContext = dbContextFactory.CreateDbContext( );
 
-                // Store on Bluesky PDS first
-                string recordUri = await blueskyStorage.StoreMediaLinkResultAsync( result );
+                // Store on ATProto PDS first (this creates/updates with deterministic rkey)
+                string recordUri = await atprotoStorage.StoreMediaLinkResultAsync( result );
 
-                // Create cache entry (without storing the result data in SQLite)
+                // Extract rkey from the result
+                string rkey = RecordKeyGenerator.GenerateRkey( result );
+
+                // Check if cache entry already exists for this rkey
+                MediaLinkCacheEntry? existingEntry = await dbContext.CacheEntries
+                    .FirstOrDefaultAsync( ce => ce.Rkey == rkey );
+
+                if (existingEntry != null) {
+                    // Update existing entry
+                    existingEntry.RecordUri = recordUri;
+                    existingEntry.LastLookedUpAt = DateTime.UtcNow;
+                    _ = await dbContext.SaveChangesAsync( );
+
+                    // Add new input links
+                    await AddLinksToEntryAsync( dbContext, existingEntry.Id, inputLinks );
+
+                    logger.LogInformation( "Updated existing cache entry with rkey: {rkey}", rkey );
+                    return recordUri;
+                }
+
+                // Create new cache entry (without storing the result data in SQLite)
                 MediaLinkCacheEntry cacheEntry = new( ) {
+                    Rkey = rkey,
                     RecordUri = recordUri,
                     CreatedAt = DateTime.UtcNow,
                     LastLookedUpAt = DateTime.UtcNow
@@ -94,7 +116,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Add input links with conflict handling
                 await AddLinksToEntryAsync( dbContext, cacheEntry.Id, inputLinks );
 
-                logger.LogInformation( "Cached result with input links to Bluesky record: {uri}", recordUri );
+                logger.LogInformation( "Cached result with input links to ATProto record: {uri} (rkey: {rkey})", recordUri, rkey );
 
                 return recordUri;
             } catch (Exception ex) {
@@ -108,8 +130,8 @@ namespace TuneBridge.Domain.Implementations.Services {
             try {
                 using MediaLinkCacheDbContext dbContext = dbContextFactory.CreateDbContext( );
 
-                // Update the record on Bluesky PDS
-                bool updated = await blueskyStorage.UpdateMediaLinkResultAsync( recordUri, result );
+                // Update the record on ATProto PDS
+                bool updated = await atprotoStorage.UpdateMediaLinkResultAsync( recordUri, result );
 
                 if (!updated) {
                     logger.LogWarning( "Failed to update PDS record: {uri}", recordUri );

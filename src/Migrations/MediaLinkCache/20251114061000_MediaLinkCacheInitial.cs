@@ -12,6 +12,7 @@ namespace TuneBridge.Migrations.MediaLinkCache {
                 columns: table => new {
                     Id = table.Column<int>( type: "INTEGER", nullable: false )
                         .Annotation( "Sqlite:Autoincrement", true ),
+                    Rkey = table.Column<string>( type: "TEXT", maxLength: 200, nullable: false ),
                     RecordUri = table.Column<string>( type: "TEXT", maxLength: 500, nullable: false ),
                     CreatedAt = table.Column<DateTime>( type: "TEXT", nullable: false ),
                     LastLookedUpAt = table.Column<DateTime>( type: "TEXT", nullable: false )
@@ -49,6 +50,13 @@ namespace TuneBridge.Migrations.MediaLinkCache {
                 name: "IX_CacheEntries_RecordUri",
                 table: "CacheEntries",
                 column: "RecordUri",
+                unique: true
+            );
+
+            _ = migrationBuilder.CreateIndex(
+                name: "IX_CacheEntries_Rkey",
+                table: "CacheEntries",
+                column: "Rkey",
                 unique: true
             );
 
