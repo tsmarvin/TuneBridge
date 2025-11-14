@@ -96,8 +96,8 @@ namespace TuneBridge.Configuration {
                 p => new OpenGraphCardService( settings.BaseUrl )
             );
 
-            // Optional Bluesky storage and cache services
-            ConfigureBlueskyIfEnabled( services, settings );
+            // Optional ATProto storage and cache services
+            ConfigureATProtoIfEnabled( services, settings );
 
             // Provider registrations (Apple/Spotify/Tidal)
             HashSet<SupportedProviders> enabledProviders = RegisterMusicProviders( services, settings );
@@ -158,7 +158,7 @@ namespace TuneBridge.Configuration {
                 ContentTypeProvider = provider,
                 ServeUnknownFileTypes = false,
                 OnPrepareResponse = ctx => {
-                    // Add CORS headers to allow Bluesky PDS to fetch lexicon files
+                    // Add CORS headers to allow ATProto PDS to fetch lexicon files
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Origin", "*" );
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Methods", "GET, HEAD, OPTIONS" );
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Headers", "Content-Type" );
@@ -214,7 +214,7 @@ namespace TuneBridge.Configuration {
                 .AddEnvironmentVariables( );
 
         /// <summary>
-        /// Initializes the SQLite database for caching if Bluesky PDS is configured.
+        /// Initializes the SQLite database for caching if ATProto PDS is configured.
         /// </summary>
         /// <param name="serviceProvider">The service provider to use for resolving services.</param>
         private static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
@@ -343,26 +343,26 @@ namespace TuneBridge.Configuration {
             } );
         }
 
-        private static void ConfigureBlueskyIfEnabled( IServiceCollection services, AppSettings settings ) {
+        private static void ConfigureATProtoIfEnabled( IServiceCollection services, AppSettings settings ) {
             if (string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) ||
                 string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) ||
                 string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
                 return;
             }
 
-            _ = services.AddSingleton<IBlueskyStorageService>( s =>
-                new BlueskyStorageService(
+            _ = services.AddSingleton<IATProtoStorageService>( s =>
+                new ATProtoStorageService(
                     settings.BlueskyPdsUrl,
                     settings.BlueskyIdentifier,
                     settings.BlueskyPassword,
-                    s.GetRequiredService<ILogger<BlueskyStorageService>>( )
+                    s.GetRequiredService<ILogger<ATProtoStorageService>>( )
                 )
             );
 
             // Register cache service as singleton using DbContextFactory so it is root-safe
             _ = services.AddSingleton<IMediaLinkCacheService>( s => new MediaLinkCacheService(
                 s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
-                s.GetRequiredService<IBlueskyStorageService>( ),
+                s.GetRequiredService<IATProtoStorageService>( ),
                 s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
                 settings.CacheDays
             ) );
@@ -470,7 +470,7 @@ namespace TuneBridge.Configuration {
                     s.GetRequiredService<JsonSerializerOptions>( )
                 );
 
-                // Wrap with caching if Bluesky is configured
+                // Wrap with caching if ATProto is configured
                 return !string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
                     !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
                     !string.IsNullOrWhiteSpace( settings.BlueskyPassword )

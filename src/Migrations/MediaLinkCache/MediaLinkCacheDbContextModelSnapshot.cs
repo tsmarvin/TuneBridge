@@ -2,7 +2,6 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TuneBridge.Domain.Implementations.Database;
 
 #nullable disable
@@ -61,11 +60,19 @@ namespace TuneBridge.Migrations.MediaLinkCache
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Rkey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("LastLookedUpAt");
 
                     b.HasIndex("RecordUri")
+                        .IsUnique();
+
+                    b.HasIndex("Rkey")
                         .IsUnique();
 
                     b.ToTable("CacheEntries");

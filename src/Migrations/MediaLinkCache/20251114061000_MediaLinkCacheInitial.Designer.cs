@@ -3,7 +3,6 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TuneBridge.Domain.Implementations.Database;
 
 #nullable disable
@@ -11,7 +10,7 @@ using TuneBridge.Domain.Implementations.Database;
 namespace TuneBridge.Migrations.MediaLinkCache
 {
     [DbContext(typeof(MediaLinkCacheDbContext))]
-    [Migration("20251110062759_MediaLinkCacheInitial")]
+    [Migration("20251114061000_MediaLinkCacheInitial")]
     partial class MediaLinkCacheInitial
     {
         /// <inheritdoc />
@@ -64,11 +63,19 @@ namespace TuneBridge.Migrations.MediaLinkCache
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Rkey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("LastLookedUpAt");
 
                     b.HasIndex("RecordUri")
+                        .IsUnique();
+
+                    b.HasIndex("Rkey")
                         .IsUnique();
 
                     b.ToTable("CacheEntries");

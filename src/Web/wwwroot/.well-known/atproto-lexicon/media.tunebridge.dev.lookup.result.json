@@ -5,7 +5,7 @@
 		"main": {
 			"type": "record",
 			"description": "Result of parsing and looking up media links across supported music streaming providers.",
-			"key": "tid",
+			"key": "any",
 			"record": {
 				"type": "object",
 				"required": [
