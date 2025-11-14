@@ -179,6 +179,8 @@ namespace TuneBridge.Configuration {
             _ = app.UseRouting( );
 
             // Restrict health endpoint access to internal requests only
+            // NOTE: This middleware is intentionally placed before authentication because it uses IP-based authorization
+            // and does not require authenticated user context. If future changes require authentication, adjust the order accordingly.
             _ = app.UseMiddleware<HealthEndpointAuthorizationMiddleware>( );
 
             _ = app.UseAuthentication( );
@@ -236,10 +238,10 @@ namespace TuneBridge.Configuration {
 
                 using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
                 dbContext.Database.Migrate( );
-                ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
                 logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
             } catch (Exception ex) {
-                ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
                 logger.LogError( ex, "Failed to initialize SQLite cache database" );
             }
         }

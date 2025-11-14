@@ -36,11 +36,7 @@ public static class DatabaseExtensions {
     private static async Task SeedRolesAsync( RoleManager<IdentityRole> roleManager ) {
         // Create AspireDashboardAccess role if it doesn't exist
         if (!await roleManager.RoleExistsAsync( Roles.AspireDashboardAccess )) {
-            IdentityResult result = await roleManager.CreateAsync( new IdentityRole( Roles.AspireDashboardAccess ) );
-            if (result.Succeeded) {
-                // Role created successfully - no users are assigned to this role by default
-                // Users must be manually assigned via database edits
-            }
+            _ = await roleManager.CreateAsync( new IdentityRole( Roles.AspireDashboardAccess ) );
         }
     }
 }

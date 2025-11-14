@@ -22,6 +22,7 @@ namespace TuneBridge.Tests.Integration;
 public class DashboardAuthorizationTests {
     private WebApplicationFactory<Program>? _factory;
     private HttpClient? _client;
+    private ApplicationDbContext? _dbContext;
     private const string TestUserEmail = "dashboardtest@example.com";
     private const string TestUserPassword = "Test@Password123!";
 
@@ -40,21 +41,32 @@ public class DashboardAuthorizationTests {
                     }
 
                     _ = services.AddDbContext<ApplicationDbContext>( options => {
-                        _ = options.UseInMemoryDatabase( "InMemoryDbForTesting" + Guid.NewGuid( ) );
+                        _ = options.UseInMemoryDatabase( "InMemoryDbForTesting" );
                     } );
 
-                    // Add test authentication scheme
-                    _ = services.AddAuthentication( "TestScheme" )
+                    // Add test authentication scheme with default scheme set
+                    _ = services.AddAuthentication( options => { options.DefaultScheme = "TestScheme"; } )
                         .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>( "TestScheme", options => { } );
                 } );
             } );
 
         _client = _factory.CreateClient( );
+        
+        // Get and store DbContext for cleanup
+        using IServiceScope scope = _factory.Services.CreateScope( );
+        _dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
     }
 
     [TestCleanup]
     public void Cleanup( ) {
         _client?.Dispose( );
+        
+        // Clean up the in-memory database
+        if (_dbContext != null) {
+            _dbContext.Database.EnsureDeleted( );
+            _dbContext.Dispose( );
+        }
+        
         _factory?.Dispose( );
     }
 

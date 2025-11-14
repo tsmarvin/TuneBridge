@@ -79,7 +79,7 @@ public class HealthEndpointAuthorizationMiddleware {
 
         byte[] bytes = parsedIp.GetAddressBytes( );
 
-        // Docker default bridge network: 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+        // RFC 1918 private network range: 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
         if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) {
             return true;
         }
