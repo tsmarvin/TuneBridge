@@ -1,3 +1,6 @@
+using OpenTelemetry.Logs;
+using OpenTelemetry.Resources;
+using Serilog;
 using TuneBridge.Configuration;
 
 namespace TuneBridge {
@@ -10,14 +13,23 @@ namespace TuneBridge {
         /// and starts the web server.
         /// </summary>
         /// <param name="args">Command-line arguments for configuration overrides.</param>
-        public static void Main( string[] args ) =>
-            WebApplication.CreateBuilder( new WebApplicationOptions( ) {
+        public static async Task Main( string[] args ) {
+            WebApplicationBuilder builder = WebApplication.CreateBuilder( new WebApplicationOptions( ) {
                 ApplicationName = "TuneBridge",
                 Args = args,
                 WebRootPath = "Web/wwwroot"
-            } )
-            .ConfigureTuneBridgeServices( args )
-            .ConfigureTuneBridge( )
-            .Run( );
+            } );
+
+            // Configure TuneBridge services (this loads configuration and sets up logging)
+            _ = builder.ConfigureTuneBridgeServices( args );
+
+            WebApplication app = await builder.ConfigureTuneBridgeAsync( );
+
+            try {
+                app.Run( );
+            } finally {
+                Log.CloseAndFlush();
+            }
+        }
     }
 }

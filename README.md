@@ -16,6 +16,7 @@ Ever wanted to share your favorite song, only to realize your friend uses a diff
 - **RESTful API** - Integrate music link conversion into your own apps
 - **Accurate Matching** - Uses ISRC (tracks) and UPC (albums) for precise cross-platform matches
 - **Rich Previews** - OpenGraph cards that work everywhere—Discord, Slack, Twitter, and more
+- **Aspire Dashboard** - Built-in observability and telemetry dashboard (role-based access)
 
 ## 🚀 Quick Start
 

@@ -49,8 +49,15 @@ IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/
 API_KEY_SALT="$(read_secret "api_key_salt")"
 RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
+# Logging configuration
+LOG_FILE_PATH="${LOG_FILE_PATH:-/app/data/logs/tunebridge-.log}"
+OTLP_ENDPOINT="${OTLP_ENDPOINT:-http://aspire-dashboard:4317}"
+
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
+
+# 0) Create logs directory if it doesn't exist
+mkdir -p /app/data/logs
 
 # 1) Remove existing appsettings.json if present
 [ -f /app/appsettings.json ] && rm -f /app/appsettings.json
@@ -89,7 +96,11 @@ cat > /app/appsettings.json <<EOF
     "LogLevel": {
       "Default": "$DEFAULT_LOGLEVEL",
       "Microsoft.Hosting.Lifetime": "$HOSTING_DEFAULT_LOGLEVEL"
-    }
+    },
+    "FilePath": "$(escape_bs "$LOG_FILE_PATH")"
+  },
+  "OpenTelemetry": {
+    "OtlpEndpoint": "$OTLP_ENDPOINT"
   },
   "AllowedHosts": "*"
 }
