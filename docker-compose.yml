@@ -56,8 +56,11 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:18888
+      # Frontend authentication is handled by Caddy forward_auth
       - DASHBOARD__FRONTEND__AUTHMODE=Unsecured
       - DASHBOARD__OTLP__ENDPOINTURL=http://+:4317
+      # OTLP endpoint is unsecured for internal network telemetry collection
+      # All containers on the internal network can send telemetry without authentication
       - DASHBOARD__OTLP__AUTHMODE=Unsecured
     deploy:
       resources:

@@ -171,11 +171,11 @@ namespace TuneBridge.Configuration {
             _ = app.UseStaticFiles( ); // Serve static files from wwwroot
             _ = app.UseRouting( );
 
-            _ = app.UseAuthentication( );
-            _ = app.UseAuthorization( );
-
             // Restrict health endpoint access to internal requests only
             _ = app.UseMiddleware<HealthEndpointAuthorizationMiddleware>( );
+
+            _ = app.UseAuthentication( );
+            _ = app.UseAuthorization( );
 
             // Restrict Swagger UI access to authenticated users
             _ = app.UseMiddleware<SwaggerAuthorizationMiddleware>( );

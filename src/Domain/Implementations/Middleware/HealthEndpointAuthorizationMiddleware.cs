@@ -1,3 +1,5 @@
+using TuneBridge.Domain.Types.Constants;
+
 namespace TuneBridge.Domain.Implementations.Middleware;
 
 /// <summary>
@@ -27,8 +29,8 @@ public class HealthEndpointAuthorizationMiddleware {
     /// <param name="context">The HTTP context.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task InvokeAsync( HttpContext context ) {
-        // Only intercept requests to /health endpoint
-        if (!context.Request.Path.Equals( "/health", StringComparison.OrdinalIgnoreCase )) {
+        // Only intercept requests to health endpoint
+        if (!context.Request.Path.Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase )) {
             await _next( context );
             return;
         }
@@ -59,20 +61,36 @@ public class HealthEndpointAuthorizationMiddleware {
             return false;
         }
 
-        // Localhost IPv4 and IPv6
-        if (ipAddress == "::1" || ipAddress == "127.0.0.1" || ipAddress.StartsWith( "127." )) {
+        // Try to parse the IP address
+        if (!System.Net.IPAddress.TryParse( ipAddress, out System.Net.IPAddress? parsedIp )) {
+            return false;
+        }
+
+        // Check for localhost (IPv4 and IPv6)
+        if (System.Net.IPAddress.IsLoopback( parsedIp )) {
             return true;
         }
 
-        // Docker internal networks
-        // 172.16.0.0 - 172.31.255.255 (Docker default bridge network)
-        // 10.0.0.0 - 10.255.255.255 (Private network)
-        if (ipAddress.StartsWith( "172." ) || ipAddress.StartsWith( "10." )) {
+        // Convert to bytes for range checking (IPv4 only for simplicity)
+        if (parsedIp.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) {
+            // For IPv6, only allow loopback which was already checked above
+            return false;
+        }
+
+        byte[] bytes = parsedIp.GetAddressBytes( );
+
+        // Docker default bridge network: 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+        if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) {
             return true;
         }
 
-        // IPv6 loopback
-        if (ipAddress.StartsWith( "::ffff:127." )) {
+        // Private network: 10.0.0.0/8 (10.0.0.0 - 10.255.255.255)
+        if (bytes[0] == 10) {
+            return true;
+        }
+
+        // Private network: 192.168.0.0/16 (192.168.0.0 - 192.168.255.255)
+        if (bytes[0] == 192 && bytes[1] == 168) {
             return true;
         }
 
