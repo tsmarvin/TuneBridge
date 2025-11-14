@@ -82,12 +82,8 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Store on ATProto PDS first (this creates/updates with deterministic rkey)
                 string recordUri = await atprotoStorage.StoreMediaLinkResultAsync( result );
 
-                // Extract rkey from the recordUri (format: at://did:plc:xxx/collection/rkey)
-                string? rkey = RecordKeyGenerator.GenerateRkey( result );
-                if (rkey == null) {
-                    logger.LogWarning( "Cannot cache result without deterministic rkey" );
-                    return recordUri;
-                }
+                // Extract rkey from the result
+                string rkey = RecordKeyGenerator.GenerateRkey( result );
 
                 // Check if cache entry already exists for this rkey
                 MediaLinkCacheEntry? existingEntry = await dbContext.CacheEntries

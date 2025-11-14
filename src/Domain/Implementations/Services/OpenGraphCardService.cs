@@ -25,17 +25,9 @@ namespace TuneBridge.Domain.Implementations.Services {
         public string StoreResult( MediaLinkResult result ) {
             CleanExpiredEntries( );
 
-            // Generate deterministic ID based on rkey if available
-            string? rkey = RecordKeyGenerator.GenerateRkey( result );
-            string id;
-
-            if (rkey != null) {
-                // Use deterministic card ID based on rkey
-                id = RecordKeyGenerator.GenerateCardId( rkey );
-            } else {
-                // Fallback to random GUID if no externalId is available
-                id = Guid.NewGuid().ToString( "N" );
-            }
+            // Generate deterministic ID based on rkey (always available with fallback)
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
+            string id = RecordKeyGenerator.GenerateCardId( rkey );
 
             DateTime expiry = DateTime.UtcNow.Add( _expirationTime );
             _store[id] = (result, expiry);

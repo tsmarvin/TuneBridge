@@ -92,14 +92,8 @@ namespace TuneBridge.Domain.Implementations.Services {
             await EnsureAuthenticatedAsync( );
 
             try {
-                // Generate deterministic rkey based on externalId
-                string? rkey = RecordKeyGenerator.GenerateRkey( result );
-
-                if (rkey == null) {
-                    // No externalId available - cannot create deterministic record
-                    _logger.LogWarning( "Cannot create deterministic record: no externalId found in MediaLinkResult" );
-                    throw new InvalidOperationException( "Cannot create deterministic record without externalId (ISRC/UPC)" );
-                }
+                // Generate deterministic rkey based on externalId or metadata
+                string rkey = RecordKeyGenerator.GenerateRkey( result );
 
                 // Convert MediaLinkResult DTO to custom record
                 MediaLinkResultRecord record = ConvertToRecord( result );

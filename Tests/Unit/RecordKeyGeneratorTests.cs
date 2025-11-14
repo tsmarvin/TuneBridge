@@ -50,7 +50,7 @@ namespace TuneBridge.Tests.Unit {
         }
 
         [TestMethod]
-        public void GenerateRkey_WithNoExternalId_ReturnsNull( ) {
+        public void GenerateRkey_WithNoExternalId_ReturnsMetadataBasedRkey( ) {
             // Arrange
             MediaLinkResult result = new( );
             result.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
@@ -62,10 +62,11 @@ namespace TuneBridge.Tests.Unit {
             } );
 
             // Act
-            string? rkey = RecordKeyGenerator.GenerateRkey( result );
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
-            _ = rkey.Should( ).BeNull( );
+            _ = rkey.Should( ).NotBeNull( );
+            _ = rkey.Should( ).StartWith( "metadata:" );
         }
 
         [TestMethod]
@@ -168,6 +169,35 @@ namespace TuneBridge.Tests.Unit {
 
             // Assert
             _ = act.Should( ).Throw<ArgumentException>( );
+        }
+
+        [TestMethod]
+        public void GenerateRkey_WithSameMetadata_ReturnsSameRkey( ) {
+            // Arrange
+            MediaLinkResult result1 = new( );
+            result1.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+                ExternalId = "",
+                IsAlbum = false,
+                Artist = "Test Artist",
+                Title = "Test Track",
+                URL = "https://open.spotify.com/track/test1"
+            } );
+
+            MediaLinkResult result2 = new( );
+            result2.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                ExternalId = "",
+                IsAlbum = false,
+                Artist = "Test Artist",
+                Title = "Test Track",
+                URL = "https://music.apple.com/track/test2"
+            } );
+
+            // Act
+            string rkey1 = RecordKeyGenerator.GenerateRkey( result1 );
+            string rkey2 = RecordKeyGenerator.GenerateRkey( result2 );
+
+            // Assert
+            _ = rkey1.Should( ).Be( rkey2, "Same metadata should generate same rkey" );
         }
     }
 }

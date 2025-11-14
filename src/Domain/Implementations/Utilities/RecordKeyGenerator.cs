@@ -12,39 +12,58 @@ namespace TuneBridge.Domain.Implementations.Utilities {
 
         /// <summary>
         /// Generates a deterministic rkey for a MediaLinkResult based on the first available
-        /// externalId (ISRC/UPC) and media type from the results.
+        /// externalId (ISRC/UPC) and media type from the results. If no externalId is found,
+        /// generates a fallback rkey based on metadata hash.
         /// </summary>
         /// <param name="result">The MediaLinkResult containing provider results.</param>
-        /// <returns>A deterministic rkey string, or null if no valid externalId is found.</returns>
+        /// <returns>A deterministic rkey string.</returns>
         /// <remarks>
-        /// Format: "track:{externalId}" or "album:{externalId}"
+        /// Primary format: "track:{externalId}" or "album:{externalId}"
+        /// Fallback format: "metadata:{hash}" where hash is base32(sha256(title|artist|isAlbum))
         /// The externalId is sanitized to be URL-safe (alphanumeric and hyphens only).
-        /// Returns null if no result has a non-empty externalId.
         /// </remarks>
-        public static string? GenerateRkey( MediaLinkResult result ) {
+        public static string GenerateRkey( MediaLinkResult result ) {
             if (result?.Results == null || result.Results.Count == 0) {
-                return null;
+                throw new ArgumentException( "MediaLinkResult must contain at least one result", nameof( result ) );
             }
 
             // Find the first result with a non-empty externalId
             MusicLookupResultDto? firstResultWithId = result.Results.Values
                 .FirstOrDefault( r => !string.IsNullOrWhiteSpace( r.ExternalId ) );
 
-            if (firstResultWithId == null) {
-                return null;
+            if (firstResultWithId != null) {
+                // Determine media type prefix
+                string prefix = firstResultWithId.IsAlbum == true ? "album" : "track";
+
+                // Sanitize the externalId to be URL-safe (alphanumeric and hyphens)
+                string sanitizedId = SanitizeForRkey( firstResultWithId.ExternalId );
+
+                if (!string.IsNullOrEmpty( sanitizedId )) {
+                    return $"{prefix}:{sanitizedId}";
+                }
             }
 
-            // Determine media type prefix
-            string prefix = firstResultWithId.IsAlbum == true ? "album" : "track";
+            // Fallback: Generate rkey from metadata hash
+            return GenerateMetadataBasedRkey( result );
+        }
 
-            // Sanitize the externalId to be URL-safe (alphanumeric and hyphens)
-            string sanitizedId = SanitizeForRkey( firstResultWithId.ExternalId );
+        /// <summary>
+        /// Generates a fallback rkey based on metadata when no externalId is available.
+        /// </summary>
+        private static string GenerateMetadataBasedRkey( MediaLinkResult result ) {
+            // Get first result to extract metadata
+            MusicLookupResultDto firstResult = result.Results.Values.First( );
 
-            if (string.IsNullOrEmpty( sanitizedId )) {
-                return null;
-            }
+            // Create a stable string from metadata
+            string metadataString = $"{firstResult.Title}|{firstResult.Artist}|{(firstResult.IsAlbum == true ? "album" : "track")}";
 
-            return $"{prefix}:{sanitizedId}";
+            // Compute SHA-256 hash
+            byte[] hashBytes = SHA256.HashData( Encoding.UTF8.GetBytes( metadataString ) );
+
+            // Convert to base32 and truncate to reasonable length (16 chars for metadata-based keys)
+            string base32Hash = ToBase32( hashBytes )[..16].ToLowerInvariant( );
+
+            return $"metadata:{base32Hash}";
         }
 
         /// <summary>
