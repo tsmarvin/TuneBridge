@@ -176,7 +176,8 @@ namespace TuneBridge.Domain.Implementations.Utilities {
                 _ = result.Append( '=' );
             }
 
-            return result.ToString( );
+            // Remove padding ('=') for URL safety
+            return result.ToString( ).TrimEnd( '=' );
         }
     }
 }

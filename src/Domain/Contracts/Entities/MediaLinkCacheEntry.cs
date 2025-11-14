@@ -13,7 +13,9 @@ namespace TuneBridge.Domain.Contracts.Entities {
         public int Id { get; set; }
 
         /// <summary>
-        /// The deterministic record key (rkey) for the ATProto record (e.g., "track:USRC12345678" or "album:123456789012").
+        /// The deterministic record key (rkey) for the ATProto record.
+        /// Primary format: "track:{externalId}" or "album:{externalId}" (e.g., "track:USRC12345678" or "album:123456789012").
+        /// Fallback format: "metadata:{hash}" (e.g., "metadata:a1b2c3d4e5f6g7h8") is used when no externalId is available.
         /// This serves as the primary identifier for deterministic lookups.
         /// </summary>
         public string Rkey { get; set; } = string.Empty;

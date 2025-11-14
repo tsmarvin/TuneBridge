@@ -29,13 +29,14 @@ namespace TuneBridge.Domain.Implementations.Services {
             string rkey = RecordKeyGenerator.GenerateRkey( result );
             string id = RecordKeyGenerator.GenerateCardId( rkey );
 
-            DateTime expiry;
-            if (!_store.TryGetValue( id, out var existing ) || existing.Expiry <= DateTime.UtcNow) {
-                expiry = DateTime.UtcNow.Add( _expirationTime );
-            } else {
-                expiry = existing.Expiry;
-            }
-            _store[id] = (result, expiry);
+            // Atomically add or update the entry, preserving expiry if not expired
+            _ = _store.AddOrUpdate(
+                id,
+                (result, DateTime.UtcNow.Add( _expirationTime )),
+                ( _, existing ) => existing.Expiry > DateTime.UtcNow
+                    ? (result, existing.Expiry)
+                    : (result, DateTime.UtcNow.Add( _expirationTime ))
+            );
 
             // Generate the OpenGraph card URL
             return $"https://{baseUrl.TrimEnd( '/' )}/card/{id}";
