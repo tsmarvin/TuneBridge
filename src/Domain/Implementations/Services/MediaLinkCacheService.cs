@@ -3,6 +3,7 @@ using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Contracts.Entities;
 using TuneBridge.Domain.Implementations.Database;
 using TuneBridge.Domain.Implementations.LinkParsers;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 
 namespace TuneBridge.Domain.Implementations.Services {
@@ -78,11 +79,36 @@ namespace TuneBridge.Domain.Implementations.Services {
             try {
                 using MediaLinkCacheDbContext dbContext = dbContextFactory.CreateDbContext( );
 
-                // Store on ATProto PDS first
+                // Store on ATProto PDS first (this creates/updates with deterministic rkey)
                 string recordUri = await atprotoStorage.StoreMediaLinkResultAsync( result );
 
-                // Create cache entry (without storing the result data in SQLite)
+                // Extract rkey from the recordUri (format: at://did:plc:xxx/collection/rkey)
+                string? rkey = RecordKeyGenerator.GenerateRkey( result );
+                if (rkey == null) {
+                    logger.LogWarning( "Cannot cache result without deterministic rkey" );
+                    return recordUri;
+                }
+
+                // Check if cache entry already exists for this rkey
+                MediaLinkCacheEntry? existingEntry = await dbContext.CacheEntries
+                    .FirstOrDefaultAsync( ce => ce.Rkey == rkey );
+
+                if (existingEntry != null) {
+                    // Update existing entry
+                    existingEntry.RecordUri = recordUri;
+                    existingEntry.LastLookedUpAt = DateTime.UtcNow;
+                    _ = await dbContext.SaveChangesAsync( );
+
+                    // Add new input links
+                    await AddLinksToEntryAsync( dbContext, existingEntry.Id, inputLinks );
+
+                    logger.LogInformation( "Updated existing cache entry with rkey: {rkey}", rkey );
+                    return recordUri;
+                }
+
+                // Create new cache entry (without storing the result data in SQLite)
                 MediaLinkCacheEntry cacheEntry = new( ) {
+                    Rkey = rkey,
                     RecordUri = recordUri,
                     CreatedAt = DateTime.UtcNow,
                     LastLookedUpAt = DateTime.UtcNow
@@ -94,7 +120,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Add input links with conflict handling
                 await AddLinksToEntryAsync( dbContext, cacheEntry.Id, inputLinks );
 
-                logger.LogInformation( "Cached result with input links to ATProto record: {uri}", recordUri );
+                logger.LogInformation( "Cached result with input links to ATProto record: {uri} (rkey: {rkey})", recordUri, rkey );
 
                 return recordUri;
             } catch (Exception ex) {

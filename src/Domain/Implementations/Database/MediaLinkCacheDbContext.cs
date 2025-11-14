@@ -33,6 +33,9 @@ namespace TuneBridge.Domain.Implementations.Database {
             // Configure MediaLinkCacheEntry
             _ = modelBuilder.Entity<MediaLinkCacheEntry>( entity => {
                 _ = entity.HasKey( e => e.Id );
+                _ = entity.Property( e => e.Rkey )
+                    .IsRequired( )
+                    .HasMaxLength( 200 );
                 _ = entity.Property( e => e.RecordUri )
                     .IsRequired( )
                     .HasMaxLength( 500 );
@@ -41,6 +44,8 @@ namespace TuneBridge.Domain.Implementations.Database {
                 _ = entity.Property( e => e.LastLookedUpAt )
                     .IsRequired( );
 
+                _ = entity.HasIndex( e => e.Rkey )
+                    .IsUnique( );
                 _ = entity.HasIndex( e => e.RecordUri )
                     .IsUnique( );
                 _ = entity.HasIndex( e => e.LastLookedUpAt );

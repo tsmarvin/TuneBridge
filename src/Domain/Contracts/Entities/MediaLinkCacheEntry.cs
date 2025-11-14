@@ -13,6 +13,12 @@ namespace TuneBridge.Domain.Contracts.Entities {
         public int Id { get; set; }
 
         /// <summary>
+        /// The deterministic record key (rkey) for the ATProto record (e.g., "track:USRC12345678" or "album:123456789012").
+        /// This serves as the primary identifier for deterministic lookups.
+        /// </summary>
+        public string Rkey { get; set; } = string.Empty;
+
+        /// <summary>
         /// The AT-URI of the record on ATProto PDS (e.g., at://did:plc:xxx/media.tunebridge.dev.lookup.result/yyy).
         /// </summary>
         public string RecordUri { get; set; } = string.Empty;
