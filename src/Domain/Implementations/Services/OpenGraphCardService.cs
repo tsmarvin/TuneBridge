@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 
 namespace TuneBridge.Domain.Implementations.Services {
@@ -24,7 +25,18 @@ namespace TuneBridge.Domain.Implementations.Services {
         public string StoreResult( MediaLinkResult result ) {
             CleanExpiredEntries( );
 
-            string id = Guid.NewGuid().ToString( "N" );
+            // Generate deterministic ID based on rkey if available
+            string? rkey = RecordKeyGenerator.GenerateRkey( result );
+            string id;
+
+            if (rkey != null) {
+                // Use deterministic card ID based on rkey
+                id = RecordKeyGenerator.GenerateCardId( rkey );
+            } else {
+                // Fallback to random GUID if no externalId is available
+                id = Guid.NewGuid().ToString( "N" );
+            }
+
             DateTime expiry = DateTime.UtcNow.Add( _expirationTime );
             _store[id] = (result, expiry);
 
