@@ -40,6 +40,14 @@ BLUESKY_IDENTIFIER="${BLUESKY_IDENTIFIER:-}"
 # Try to read Bluesky password from Docker secret
 BLUESKY_PASSWORD="$(read_secret "bluesky_password")"
 
+# Jetstream monitor configuration (optional)
+JETSTREAM_MONITOR_ENABLED="${JETSTREAM_MONITOR_ENABLED:-false}"
+JETSTREAM_URL="${JETSTREAM_URL:-wss://jetstream2.us-east.bsky.network/subscribe}"
+TUNEBRIDGE_DID="${TUNEBRIDGE_DID:-}"
+JETSTREAM_MAX_ERROR_RATE="${JETSTREAM_MAX_ERROR_RATE:-0.3}"
+JETSTREAM_ERROR_WINDOW_MINUTES="${JETSTREAM_ERROR_WINDOW_MINUTES:-5}"
+JETSTREAM_MIN_REQUESTS_FOR_ERROR_RATE="${JETSTREAM_MIN_REQUESTS_FOR_ERROR_RATE:-10}"
+
 CACHE_DAYS="${CACHE_DAYS:-7}"
 LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
 
@@ -90,7 +98,13 @@ cat > /app/appsettings.json <<EOF
     "BlueskyPassword": "$BLUESKY_PASSWORD",
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
-    "BaseUrl": "$BASEURL"
+    "BaseUrl": "$BASEURL",
+    "JetstreamMonitorEnabled": $JETSTREAM_MONITOR_ENABLED,
+    "JetstreamUrl": "$JETSTREAM_URL",
+    "TuneBridgeDid": "$TUNEBRIDGE_DID",
+    "JetstreamMaxErrorRate": $JETSTREAM_MAX_ERROR_RATE,
+    "JetstreamErrorWindowMinutes": $JETSTREAM_ERROR_WINDOW_MINUTES,
+    "JetstreamMinRequestsForErrorRate": $JETSTREAM_MIN_REQUESTS_FOR_ERROR_RATE
   },
   "Logging": {
     "LogLevel": {

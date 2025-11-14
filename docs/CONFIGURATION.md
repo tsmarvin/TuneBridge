@@ -30,9 +30,13 @@ At least one complete set of music provider credentials is required:
 | `BLUESKY_PDS_URL` | Bluesky PDS URL for storing lookup results | No*** |
 | `BLUESKY_IDENTIFIER` | Bluesky account identifier (handle or DID) | No*** |
 | `BLUESKY_PASSWORD` | Bluesky app password | No*** |
+| `JETSTREAM_MONITOR_ENABLED` | Enable ATProto Jetstream monitoring for cache bootstrapping | No**** |
+| `JETSTREAM_URL` | Jetstream URL to connect to | No**** |
+| `TUNEBRIDGE_DID` | TuneBridge account DID to filter out own posts | No**** |
 
 \*\* Required only if using Discord integration
 \*\*\* Required only if using Bluesky PDS storage for caching lookup results
+\*\*\*\* Required only if using Jetstream monitoring
 
 ### Optional Configuration
 
@@ -48,6 +52,9 @@ At least one complete set of music provider credentials is required:
 | `TuneBridge__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=tunebridge.db` |
 | `TuneBridge__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=tunebridge.db` |
 | `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
+| `JETSTREAM_MAX_ERROR_RATE` | Maximum error rate before pausing link processing | `0.3` (30%) |
+| `JETSTREAM_ERROR_WINDOW_MINUTES` | Time window for error rate calculation | `5` minutes |
+| `JETSTREAM_MIN_REQUESTS_FOR_ERROR_RATE` | Minimum requests before error rate applies | `10` |
 
 **Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `TuneBridge__BaseUrl` maps to `TuneBridge:BaseUrl` in configuration).
 
@@ -91,6 +98,31 @@ If you want to store lookup results on a Bluesky PDS for persistent caching:
 6. Set `BLUESKY_PDS_URL` to `https://bsky.social` (or your custom PDS URL)
 
 **Note**: Lookup results are stored as custom AT Protocol lexicon records on your PDS. Input links with tracking parameters are kept private in a local SQLite database for privacy protection.
+
+### ATProto Jetstream Monitor (Optional - for cache bootstrapping)
+
+The Jetstream monitor listens to the public ATProto firehose to automatically discover and cache music links shared across the network. This helps bootstrap your cache with popular links without manual intervention.
+
+**Important**: Only enable this feature if you have sufficient API quota with your music service providers, as it will automatically process discovered links.
+
+To enable Jetstream monitoring:
+
+1. Set `JETSTREAM_MONITOR_ENABLED=true`
+2. Set `JETSTREAM_URL` to a Jetstream endpoint (default: `wss://jetstream2.us-east.bsky.network/subscribe`)
+3. Set `TUNEBRIDGE_DID` to your TuneBridge account DID to filter out your own posts (optional but recommended)
+
+**How it works**:
+- Monitors the ATProto Jetstream for `app.bsky.feed.post` records
+- Extracts music service URLs (Apple Music, Spotify, Tidal) from post text
+- Filters out posts from TuneBridge's own account
+- Checks server health before processing links
+- Automatically pauses when error rate exceeds threshold (default: 30% within 5 minutes)
+- Gracefully handles connection interruptions with automatic reconnection
+
+**Health Monitoring**:
+- The service tracks HTTP error rates (429, 5xx) to avoid overloading APIs
+- Access health metrics at `/health/detailed` (internal network only)
+- Configure thresholds via `JETSTREAM_MAX_ERROR_RATE`, `JETSTREAM_ERROR_WINDOW_MINUTES`, and `JETSTREAM_MIN_REQUESTS_FOR_ERROR_RATE`
 
 ## Configuration Files
 
