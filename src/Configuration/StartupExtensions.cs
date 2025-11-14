@@ -122,6 +122,9 @@ namespace TuneBridge.Configuration {
             _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
             ConfigureDiscordIfEnabled( services, settings );
 
+            // Jetstream monitor configuration
+            ConfigureJetstreamMonitorIfEnabled( services, settings );
+
             return services;
         }
 
@@ -507,6 +510,41 @@ namespace TuneBridge.Configuration {
                 options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
             } );
             _ = services.AddShardedGatewayHandlers( typeof( Program ).Assembly );
+        }
+
+        private static void ConfigureJetstreamMonitorIfEnabled(
+            IServiceCollection services,
+            AppSettings settings
+        ) {
+            // Register health monitor (always available for API health checks)
+            _ = services.AddSingleton<IServerHealthMonitor>( s =>
+                new ServerHealthMonitor(
+                    settings.JetstreamMaxErrorRate,
+                    settings.JetstreamErrorWindowMinutes,
+                    settings.JetstreamMinRequestsForErrorRate
+                )
+            );
+
+            // Only register Jetstream monitor if enabled
+            if (!settings.JetstreamMonitorEnabled) {
+                return;
+            }
+
+            // Validate required configuration
+            if (string.IsNullOrWhiteSpace( settings.JetstreamUrl )) {
+                throw new InvalidOperationException( "JetstreamUrl is required when JetstreamMonitorEnabled is true." );
+            }
+
+            _ = services.AddHostedService<JetstreamMonitorService>( s =>
+                new JetstreamMonitorService(
+                    s.GetRequiredService<ILogger<JetstreamMonitorService>>( ),
+                    s.GetRequiredService<IMediaLinkService>( ),
+                    s.GetRequiredService<IServerHealthMonitor>( ),
+                    settings.JetstreamUrl,
+                    settings.TuneBridgeDid,
+                    settings.JetstreamMonitorEnabled
+                )
+            );
         }
 
         /// <summary>

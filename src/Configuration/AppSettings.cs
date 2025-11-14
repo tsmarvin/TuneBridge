@@ -111,5 +111,35 @@ namespace TuneBridge.Configuration {
         /// </summary>
         public string BaseUrl { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Enable or disable the ATProto Jetstream monitor service.
+        /// </summary>
+        public bool JetstreamMonitorEnabled { get; set; }
+
+        /// <summary>
+        /// The ATProto Jetstream URL (e.g., wss://jetstream2.us-east.bsky.network/subscribe).
+        /// </summary>
+        public string JetstreamUrl { get; set; } = "wss://jetstream2.us-east.bsky.network/subscribe";
+
+        /// <summary>
+        /// The TuneBridge account DID to filter out own posts from Jetstream monitoring.
+        /// </summary>
+        public string TuneBridgeDid { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Maximum allowed error rate (0.0 to 1.0) before pausing link processing. Default is 0.3 (30%).
+        /// </summary>
+        public double JetstreamMaxErrorRate { get; set; } = 0.3;
+
+        /// <summary>
+        /// Time window in minutes for calculating error rate. Default is 5 minutes.
+        /// </summary>
+        public int JetstreamErrorWindowMinutes { get; set; } = 5;
+
+        /// <summary>
+        /// Minimum number of requests before error rate calculation applies. Default is 10.
+        /// </summary>
+        public int JetstreamMinRequestsForErrorRate { get; set; } = 10;
+
     }
 }

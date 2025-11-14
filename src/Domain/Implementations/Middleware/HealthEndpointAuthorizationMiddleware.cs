@@ -29,8 +29,11 @@ public class HealthEndpointAuthorizationMiddleware {
     /// <param name="context">The HTTP context.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task InvokeAsync( HttpContext context ) {
-        // Only intercept requests to health endpoint
-        if (!context.Request.Path.Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase )) {
+        // Only intercept requests to health endpoints
+        bool isHealthEndpoint = context.Request.Path.Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) ||
+                                context.Request.Path.StartsWithSegments( "/health", StringComparison.OrdinalIgnoreCase );
+
+        if (!isHealthEndpoint) {
             await _next( context );
             return;
         }
