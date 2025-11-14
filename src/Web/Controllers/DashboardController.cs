@@ -55,6 +55,6 @@ public class DashboardController : ControllerBase {
         }
 
         _logger.LogInformation( "Dashboard authorization granted for user {UserId}", user.Id );
-        return Ok( new { authorized = true, userId = user.Id } );
+        return Ok( new { authorized = true } );
     }
 }

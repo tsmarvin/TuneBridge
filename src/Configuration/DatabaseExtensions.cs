@@ -21,7 +21,7 @@ public static class DatabaseExtensions {
         RoleManager<IdentityRole> roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>( );
 
         // Apply pending migrations and create the database if it doesn't exist
-        context.Database.Migrate( );
+        await context.Database.MigrateAsync( );
 
         // Seed the AspireDashboardAccess role if it doesn't exist
         await SeedRolesAsync( roleManager );

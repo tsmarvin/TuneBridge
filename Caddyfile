@@ -47,7 +47,7 @@
     # Route /dashboard requests to the Aspire Dashboard container after checking authorization
     handle /dashboard* {
         # Forward auth check - verify user has AspireDashboardAccess role
-        forward_auth localhost:10000 {
+        forward_auth tunebridge:10000 {
             uri /api/dashboard/authorize
             copy_headers Authorization Cookie
         }
