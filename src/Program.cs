@@ -20,17 +20,8 @@ namespace TuneBridge {
                 WebRootPath = "Web/wwwroot"
             } );
 
-            // Configure TuneBridge services first (this loads configuration)
+            // Configure TuneBridge services (this loads configuration and sets up logging)
             _ = builder.ConfigureTuneBridgeServices( args );
-
-            // Configure logging only in non-testing environments
-            if (builder.Environment.EnvironmentName != "Testing") {
-                // Configure Serilog for file logging with rotation (after configuration is loaded)
-                ConfigureSerilog( builder );
-
-                // Configure OpenTelemetry for Aspire Dashboard integration (after configuration is loaded)
-                ConfigureOpenTelemetry( builder );
-            }
 
             WebApplication app = await builder.ConfigureTuneBridgeAsync( );
 
@@ -39,45 +30,6 @@ namespace TuneBridge {
             } finally {
                 Log.CloseAndFlush();
             }
-        }
-
-        private static void ConfigureSerilog( WebApplicationBuilder builder ) {
-            string logPath = builder.Configuration["Logging:FilePath"] ?? "/app/data/logs/tunebridge-.log";
-
-            Log.Logger = new LoggerConfiguration( )
-                .ReadFrom.Configuration( builder.Configuration )
-                .WriteTo.File(
-                    path: logPath,
-                    rollingInterval: RollingInterval.Day,
-                    fileSizeLimitBytes: 10 * 1024 * 1024, // 10MB
-                    retainedFileCountLimit: 5,
-                    rollOnFileSizeLimit: true,
-                    shared: false
-                )
-                .CreateLogger( );
-
-            _ = builder.Host.UseSerilog( );
-        }
-
-        private static void ConfigureOpenTelemetry( WebApplicationBuilder builder ) {
-            string? otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
-
-            // Only configure OpenTelemetry if endpoint is provided
-            if (string.IsNullOrWhiteSpace( otlpEndpoint )) {
-                return;
-            }
-
-            var version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.1";
-            _ = builder.Logging.AddOpenTelemetry( options => {
-                options.SetResourceBuilder(
-                    ResourceBuilder.CreateDefault( )
-                        .AddService( serviceName: "TuneBridge", serviceVersion: version )
-                );
-
-                options.AddOtlpExporter( otlpOptions => {
-                    otlpOptions.Endpoint = new Uri( otlpEndpoint );
-                } );
-            } );
         }
     }
 }
