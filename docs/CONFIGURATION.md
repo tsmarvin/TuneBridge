@@ -42,6 +42,8 @@ At least one complete set of music provider credentials is required:
 | `ALLOWED_HOSTS` | Allowed hosts for the web server | `*` |
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
+| `OTLP_ENDPOINT` | OpenTelemetry OTLP endpoint for Aspire Dashboard | `http://aspire-dashboard:4317` |
+| `LOG_FILE_PATH` | File path for log files | `/app/data/logs/tunebridge-.log` |
 | `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
 | `TuneBridge__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=tunebridge.db` |
 | `TuneBridge__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=tunebridge.db` |
@@ -120,7 +122,11 @@ For local development, you can use an `appsettings.json` file instead of environ
     "LogLevel": {
       "Default": "Information",
       "Microsoft.Hosting.Lifetime": "Information"
-    }
+    },
+    "FilePath": "/app/data/logs/tunebridge-.log"
+  },
+  "OpenTelemetry": {
+    "OtlpEndpoint": "http://aspire-dashboard:4317"
   },
   "AllowedHosts": "localhost"
 }
@@ -162,3 +168,72 @@ Check the application logs on startup for any configuration warnings:
 [Warning] Spotify credentials not configured - Spotify lookups will be unavailable
 [Information] Discord token not provided - Discord bot will not be started
 ```
+
+## Logging Configuration
+
+TuneBridge supports two logging destinations that work simultaneously:
+
+### File Logging
+
+Logs are written to persistent files with automatic rotation and retention:
+
+- **Location**: `/app/data/logs/tunebridge-.log` (configurable via `LOG_FILE_PATH`)
+- **Rotation**: Daily rotation + size-based rotation (10MB per file)
+- **Retention**: Maximum 5 log files (oldest files are automatically deleted)
+- **Total Size**: Up to ~50MB total log storage
+
+File logging provides local backup for diagnostics when the Aspire Dashboard is unavailable.
+
+### OpenTelemetry (OTLP) Logging
+
+Logs are sent to the Aspire Dashboard for real-time observability:
+
+- **Endpoint**: `http://aspire-dashboard:4317` (configurable via `OTLP_ENDPOINT`)
+- **Protocol**: OpenTelemetry Protocol (OTLP)
+- **Dashboard**: Access via Aspire Dashboard (requires `AspireDashboardAccess` role)
+
+To disable OpenTelemetry logging, set `OTLP_ENDPOINT` to an empty string.
+
+### Log Levels
+
+Configure log verbosity using these environment variables:
+
+- `DEFAULT_LOGLEVEL`: Overall application log level (`Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`)
+- `HOSTING_DEFAULT_LOGLEVEL`: ASP.NET hosting infrastructure log level
+
+Example in docker-compose.yml:
+
+```yaml
+environment:
+  - DEFAULT_LOGLEVEL=Debug
+  - HOSTING_DEFAULT_LOGLEVEL=Information
+  - OTLP_ENDPOINT=http://aspire-dashboard:4317
+  - LOG_FILE_PATH=/app/data/logs/tunebridge-.log
+```
+
+### Accessing Logs
+
+**File Logs** (Docker):
+```bash
+# View logs from the persistent volume
+docker exec -it tunebridge cat /app/data/logs/tunebridge-*.log
+
+# Tail logs in real-time
+docker exec -it tunebridge tail -f /app/data/logs/tunebridge-*.log
+```
+
+**OpenTelemetry Logs** (Aspire Dashboard):
+1. Access the Aspire Dashboard at `http://localhost:18888` (or your configured endpoint)
+2. Ensure your user has the `AspireDashboardAccess` role (see [Aspire Dashboard Access Guide](ASPIRE_DASHBOARD_ACCESS.md))
+3. Navigate to the "Logs" section to view real-time logs with filtering and search
+
+### Log Rotation Details
+
+Log files are automatically managed:
+
+1. **Daily rotation**: New file created each day (e.g., `tunebridge-20250114.log`)
+2. **Size-based rotation**: When a file reaches 10MB, a new file is created
+3. **Retention**: Only the 5 most recent files are kept
+4. **Automatic cleanup**: Old files are deleted when retention limit is reached
+
+This ensures the container doesn't accumulate excessive log data while maintaining diagnostic history.
