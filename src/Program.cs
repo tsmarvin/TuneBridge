@@ -34,7 +34,11 @@ namespace TuneBridge {
 
             WebApplication app = await builder.ConfigureTuneBridgeAsync( );
 
-            app.Run( );
+            try {
+                app.Run( );
+            } finally {
+                Log.CloseAndFlush();
+            }
         }
 
         private static void ConfigureSerilog( WebApplicationBuilder builder ) {
@@ -63,10 +67,11 @@ namespace TuneBridge {
                 return;
             }
 
+            var version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.1";
             _ = builder.Logging.AddOpenTelemetry( options => {
                 options.SetResourceBuilder(
                     ResourceBuilder.CreateDefault( )
-                        .AddService( serviceName: "TuneBridge", serviceVersion: "0.0.1" )
+                        .AddService( serviceName: "TuneBridge", serviceVersion: version )
                 );
 
                 options.AddOtlpExporter( otlpOptions => {
