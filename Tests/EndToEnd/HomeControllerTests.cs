@@ -7,13 +7,26 @@ namespace TuneBridge.Tests.EndToEnd;
 /// End-to-end tests for the HomeController web interface endpoints.
 /// </summary>
 [TestClass]
+[TestCategory( "EndToEnd" )] // Mark as end-to-end tests - these are fast and don't hit external APIs
 public class HomeControllerTests {
     private static WebApplicationFactory<Program>? s_factory;
     private static HttpClient? s_client;
 
     [ClassInitialize]
     public static void ClassInitialize( TestContext context ) {
-        s_factory = new CustomWebApplicationFactory( );
+        // Create factory with unique database connection strings and no Discord token
+        Dictionary<string, string?> configData = new( ) {
+            ["TuneBridge:SpotifyClientId"] = "test",
+            ["TuneBridge:SpotifyClientSecret"] = "test",
+            ["TuneBridge:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
+            ["TuneBridge:IdentityConnectionString"] = $"Data Source=Home_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
+            ["TuneBridge:BlueskyPdsUrl"] = "",
+            ["TuneBridge:BlueskyIdentifier"] = "",
+            ["TuneBridge:BlueskyPassword"] = "",
+            ["TuneBridge:LinkCacheConnectionString"] = $"Data Source=Home_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+        };
+        s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
     }
 
@@ -24,6 +37,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task Index_ReturnsSuccessStatusCode( ) {
         // Act
         HttpResponseMessage response = await s_client!.GetAsync("/", TestContext.CancellationToken );
@@ -34,6 +48,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task Index_ContainsExpectedContent( ) {
         // Act
         HttpResponseMessage response = await s_client!.GetAsync("/", TestContext.CancellationToken );
@@ -44,6 +59,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task Privacy_ReturnsSuccessStatusCode( ) {
         // Act
         HttpResponseMessage response = await s_client!.GetAsync("/Home/Privacy", TestContext.CancellationToken );
@@ -53,6 +69,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task Error_ReturnsSuccessStatusCode( ) {
         // Act
         HttpResponseMessage response = await s_client!.GetAsync("/Home/Error", TestContext.CancellationToken );
@@ -62,6 +79,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task NonExistentRoute_ReturnsNotFound( ) {
         // Act
         HttpResponseMessage response = await s_client!.GetAsync("/NonExistent/Route", TestContext.CancellationToken );
@@ -71,6 +89,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task LookupResults_WithEmptyUri_ReturnsMessageView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
@@ -87,6 +106,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task LookupResultsByIsrc_WithEmptyIsrc_ReturnsMessageView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
@@ -103,6 +123,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task LookupResultsByUpc_WithEmptyUpc_ReturnsMessageView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
@@ -119,6 +140,7 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task LookupResultsByTitle_WithEmptyTitleAndArtist_ReturnsMessageView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
@@ -136,6 +158,8 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [TestCategory( "Integration" )] // Requires real API credentials
+    [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for API call
     public async Task LookupResultsByIsrc_WithValidIsrc_ReturnsHtmlView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
@@ -155,6 +179,8 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [TestCategory( "Integration" )] // Requires real API credentials
+    [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for API call
     public async Task LookupResultsByUpc_WithValidUpc_ReturnsHtmlView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
@@ -174,6 +200,8 @@ public class HomeControllerTests {
     }
 
     [TestMethod]
+    [TestCategory( "Integration" )] // Requires real API credentials
+    [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for API call
     public async Task LookupResultsByTitle_WithValidTitleAndArtist_ReturnsHtmlView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {

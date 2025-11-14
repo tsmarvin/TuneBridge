@@ -12,8 +12,7 @@ read_secret() {
 }
 
 # ---- Configure defaults ----
-DOMAIN="${DOMAIN:-dev.tunebridge.media}"
-CADDY_ADMIN_EMAIL="${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}"
+BASEURL="${BASEURL:-"dev.tunebridge.media"}"
 NODE_NUMBER="${NODE_NUMBER:-0}"
 DEFAULT_LOGLEVEL="${DEFAULT_LOGLEVEL:-Information}"
 HOSTING_DEFAULT_LOGLEVEL="${HOSTING_DEFAULT_LOGLEVEL:-Information}"
@@ -84,7 +83,7 @@ cat > /app/appsettings.json <<EOF
     "BlueskyPassword": "$BLUESKY_PASSWORD",
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
-    "BaseUrl": "$DOMAIN"
+    "BaseUrl": "$BASEURL"
   },
   "Logging": {
     "LogLevel": {
@@ -96,23 +95,6 @@ cat > /app/appsettings.json <<EOF
 }
 EOF
 
-# 3) Start Caddy in the background
-echo "Starting Caddy reverse proxy..."
-caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
-CADDY_PID=$!
-
-# Set up signal handlers for graceful shutdown
-trap 'echo "Shutting down..."; kill -TERM $CADDY_PID 2>/dev/null; wait $CADDY_PID' SIGTERM SIGINT
-
-# Give Caddy a moment to start
-sleep 2
-
-# Check if Caddy is running
-if ! kill -0 $CADDY_PID 2>/dev/null; then
-    echo "ERROR: Caddy failed to start"
-    exit 1
-fi
-
-# 4) Launch the TuneBridge application
+# 3) Launch the TuneBridge application
 echo "Starting TuneBridge application..."
 exec "/app/TuneBridge"

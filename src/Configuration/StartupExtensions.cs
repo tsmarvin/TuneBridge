@@ -55,6 +55,21 @@ namespace TuneBridge.Configuration {
             IServiceCollection services,
             IConfiguration config
         ) where TBuilder : IWebHostBuilder {
+            _ = AddTuneBridgeServices( services, config );
+            return builder;
+        }
+
+        /// <summary>
+        /// Registers TuneBridge services, authentication handlers, HTTP clients, and (optional) Discord services directly on an IServiceCollection.
+        /// This is useful for testing scenarios where you don't need a full IWebHostBuilder.
+        /// </summary>
+        /// <param name="services">The service collection to configure.</param>
+        /// <param name="config">The configuration to use for settings.</param>
+        /// <returns>The configured service collection.</returns>
+        internal static IServiceCollection AddTuneBridgeServices(
+            this IServiceCollection services,
+            IConfiguration config
+        ) {
             // Add services to the container.
             _ = services
                 .AddControllersWithViews( )
@@ -100,7 +115,7 @@ namespace TuneBridge.Configuration {
             _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
             ConfigureDiscordIfEnabled( services, settings );
 
-            return builder;
+            return services;
         }
 
         /// <summary>
@@ -233,13 +248,13 @@ namespace TuneBridge.Configuration {
                 options.Retry.UseJitter = true;
                 options.Retry.MaxRetryAttempts = 5;
                 options.Retry.Delay = TimeSpan.FromSeconds( 1 );
-                options.Retry.MaxDelay = TimeSpan.FromSeconds( 30 );
+                options.Retry.MaxDelay = TimeSpan.FromSeconds( 60 ); // Increased from 30 to 60 seconds
                 options.Retry.ShouldRetryAfterHeader = true; // honor Retry-After
 
                 options.Retry.DisableForUnsafeHttpMethods( ); // Disables retry on POST/PUT/PATCH/DELETE/CONNECT
 
                 // Timeouts (outer total, inner per-attempt)
-                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds( 20 );
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds( 120 );
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 10 );
             } );
         }
@@ -367,8 +382,14 @@ namespace TuneBridge.Configuration {
         }
 
         private static void RegisterAppleIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
+            // Check if Apple Music credentials are provided
             if (string.IsNullOrWhiteSpace( settings.AppleTeamId ) ||
                 string.IsNullOrWhiteSpace( settings.AppleKeyId )) {
+                return;
+            }
+
+            // If Team ID and Key ID are provided, the key path must also be provided and valid
+            if (string.IsNullOrWhiteSpace( settings.AppleKeyPath )) {
                 return;
             }
 
@@ -469,6 +490,7 @@ namespace TuneBridge.Configuration {
             IServiceCollection services,
             AppSettings settings
         ) {
+            // Only register Discord services if token is provided and not empty/whitespace
             if (string.IsNullOrWhiteSpace( settings.DiscordToken )) { return; }
 
             _ = services.AddDiscordShardedGateway( options => {
