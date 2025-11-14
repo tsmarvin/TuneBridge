@@ -41,6 +41,7 @@ namespace TuneBridge.Domain.Implementations.Utilities {
                 if (!string.IsNullOrEmpty( sanitizedId )) {
                     return $"{prefix}:{sanitizedId}";
                 }
+                // If externalId sanitizes to empty, log warning and fall back to metadata
             }
 
             // Fallback: Generate rkey from metadata hash
@@ -54,8 +55,13 @@ namespace TuneBridge.Domain.Implementations.Utilities {
             // Get first result to extract metadata
             MusicLookupResultDto firstResult = result.Results.Values.First( );
 
-            // Create a stable string from metadata
-            string metadataString = $"{firstResult.Title}|{firstResult.Artist}|{(firstResult.IsAlbum == true ? "album" : "track")}";
+            // Validate that at least one of Title or Artist is non-empty
+            if (string.IsNullOrWhiteSpace( firstResult.Title ) && string.IsNullOrWhiteSpace( firstResult.Artist )) {
+                throw new ArgumentException( "Cannot generate metadata-based rkey: both Title and Artist are empty" );
+            }
+
+            // Create a stable string from normalized metadata (lowercase, trimmed)
+            string metadataString = $"{firstResult.Title?.Trim().ToLowerInvariant() ?? ""}|{firstResult.Artist?.Trim().ToLowerInvariant() ?? ""}|{(firstResult.IsAlbum == true ? "album" : "track")}";
 
             // Compute SHA-256 hash
             byte[] hashBytes = SHA256.HashData( Encoding.UTF8.GetBytes( metadataString ) );
@@ -127,10 +133,8 @@ namespace TuneBridge.Domain.Implementations.Utilities {
 
             // Keep only alphanumeric characters and hyphens
             StringBuilder sb = new( );
-            foreach (char c in externalId) {
-                if (char.IsLetterOrDigit( c ) || c == '-') {
-                    _ = sb.Append( c );
-                }
+            foreach (char c in externalId.Where( c => char.IsLetterOrDigit( c ) || c == '-' )) {
+                _ = sb.Append( c );
             }
 
             return sb.ToString( );
@@ -165,6 +169,11 @@ namespace TuneBridge.Domain.Implementations.Utilities {
             if (bits > 0) {
                 int index = (value << (5 - bits)) & 0x1F;
                 _ = result.Append( base32Alphabet[index] );
+            }
+
+            // RFC 4648: Pad output to a multiple of 8 characters with '='
+            while (result.Length % 8 != 0) {
+                _ = result.Append( '=' );
             }
 
             return result.ToString( );

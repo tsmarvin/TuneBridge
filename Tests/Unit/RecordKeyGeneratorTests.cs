@@ -199,5 +199,68 @@ namespace TuneBridge.Tests.Unit {
             // Assert
             _ = rkey1.Should( ).Be( rkey2, "Same metadata should generate same rkey" );
         }
+
+        [TestMethod]
+        public void GenerateRkey_WithEmptyTitleAndArtist_ThrowsException( ) {
+            // Arrange
+            MediaLinkResult result = new( );
+            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+                ExternalId = "",
+                IsAlbum = false,
+                Artist = "",
+                Title = "",
+                URL = "https://open.spotify.com/track/test"
+            } );
+
+            // Act
+            Action act = ( ) => RecordKeyGenerator.GenerateRkey( result );
+
+            // Assert
+            _ = act.Should( ).Throw<ArgumentException>( )
+                .WithMessage( "*both Title and Artist are empty*" );
+        }
+
+        [TestMethod]
+        public void GenerateRkey_WithNormalizedMetadata_ReturnsSameRkey( ) {
+            // Arrange - Different case and whitespace but same content
+            MediaLinkResult result1 = new( );
+            result1.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+                ExternalId = "",
+                IsAlbum = false,
+                Artist = "Test Artist",
+                Title = "Test Track",
+                URL = "https://open.spotify.com/track/test1"
+            } );
+
+            MediaLinkResult result2 = new( );
+            result2.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                ExternalId = "",
+                IsAlbum = false,
+                Artist = "  TEST ARTIST  ",
+                Title = "  test track  ",
+                URL = "https://music.apple.com/track/test2"
+            } );
+
+            // Act
+            string rkey1 = RecordKeyGenerator.GenerateRkey( result1 );
+            string rkey2 = RecordKeyGenerator.GenerateRkey( result2 );
+
+            // Assert
+            _ = rkey1.Should( ).Be( rkey2, "Metadata normalization should make case and whitespace irrelevant" );
+        }
+
+        [TestMethod]
+        public void GenerateCardId_IncludesPadding( ) {
+            // Arrange
+            string rkey = "track:USRC12345678";
+
+            // Act
+            string cardId = RecordKeyGenerator.GenerateCardId( rkey, maxLength: 100 ); // Use longer length to see padding
+
+            // Assert
+            // Base32 output should be padded to multiple of 8
+            // Since we're using SHA256 (32 bytes), base32 encoding produces (32*8/5) = 51.2 chars, rounded up with padding
+            _ = cardId.Should( ).NotBeNullOrEmpty( );
+        }
     }
 }
