@@ -8,7 +8,10 @@ using Microsoft.Extensions.Http.Resilience;
 using Microsoft.OpenApi;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Resources;
 using Polly;
+using Serilog;
 using TuneBridge.Domain.Implementations.Auth;
 using TuneBridge.Domain.Implementations.Database;
 using TuneBridge.Domain.Implementations.Middleware;
@@ -37,6 +40,10 @@ namespace TuneBridge.Configuration {
             if (builder.Environment.EnvironmentName != "Testing") {
                 _ = builder.Configuration
                 .ConfigureAppSettings( args );
+
+                // Configure logging after configuration is loaded
+                ConfigureSerilog( builder );
+                ConfigureOpenTelemetry( builder );
             }
 
             IServiceCollection services = builder.Services;
@@ -528,6 +535,69 @@ namespace TuneBridge.Configuration {
                 }
             }
             return results;
+        }
+
+        /// <summary>
+        /// Configures Serilog for file logging with rotation and retention.
+        /// </summary>
+        /// <param name="builder">The web application builder to configure.</param>
+        private static void ConfigureSerilog( WebApplicationBuilder builder ) {
+            string logPath = builder.Configuration["Logging:FilePath"] ?? "/app/data/logs/tunebridge-.log";
+
+            try {
+                string? logDir = Path.GetDirectoryName( logPath );
+                if (!string.IsNullOrEmpty( logDir ) && !Directory.Exists( logDir )) {
+                    Directory.CreateDirectory( logDir );
+                }
+            } catch (Exception ex) {
+                Console.WriteLine( $"Warning: Failed to validate/create log directory: {ex.Message}" );
+                // Fall back to not configuring file logging
+                return;
+            }
+
+            Log.Logger = new LoggerConfiguration( )
+                .ReadFrom.Configuration( builder.Configuration )
+                .WriteTo.File(
+                    path: logPath,
+                    rollingInterval: RollingInterval.Day,
+                    fileSizeLimitBytes: 10 * 1024 * 1024, // 10MB
+                    retainedFileCountLimit: 5,
+                    rollOnFileSizeLimit: true,
+                    shared: false
+                )
+                .CreateLogger( );
+
+            _ = builder.Host.UseSerilog( );
+        }
+
+        /// <summary>
+        /// Configures OpenTelemetry for OTLP export to Aspire Dashboard.
+        /// </summary>
+        /// <param name="builder">The web application builder to configure.</param>
+        private static void ConfigureOpenTelemetry( WebApplicationBuilder builder ) {
+            string? otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+
+            // Only configure OpenTelemetry if endpoint is provided
+            if (string.IsNullOrWhiteSpace( otlpEndpoint )) {
+                return;
+            }
+
+            if (!Uri.TryCreate( otlpEndpoint, UriKind.Absolute, out Uri? uri )) {
+                Console.WriteLine( $"Warning: Invalid OTLP endpoint URL '{otlpEndpoint}' - OpenTelemetry logging disabled" );
+                return;
+            }
+
+            var version = typeof( Program ).Assembly.GetName( ).Version?.ToString( ) ?? "0.0.1";
+            _ = builder.Logging.AddOpenTelemetry( options => {
+                options.SetResourceBuilder(
+                    ResourceBuilder.CreateDefault( )
+                        .AddService( serviceName: "TuneBridge", serviceVersion: version )
+                );
+
+                options.AddOtlpExporter( otlpOptions => {
+                    otlpOptions.Endpoint = uri;
+                } );
+            } );
         }
     }
 }
