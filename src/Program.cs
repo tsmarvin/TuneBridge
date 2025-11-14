@@ -20,15 +20,19 @@ namespace TuneBridge {
                 WebRootPath = "Web/wwwroot"
             } );
 
-            // Configure Serilog for file logging with rotation
-            ConfigureSerilog( builder );
+            // Configure TuneBridge services first (this loads configuration)
+            _ = builder.ConfigureTuneBridgeServices( args );
 
-            // Configure OpenTelemetry for Aspire Dashboard integration
-            ConfigureOpenTelemetry( builder );
+            // Configure logging only in non-testing environments
+            if (builder.Environment.EnvironmentName != "Testing") {
+                // Configure Serilog for file logging with rotation (after configuration is loaded)
+                ConfigureSerilog( builder );
 
-            WebApplication app = await builder
-                .ConfigureTuneBridgeServices( args )
-                .ConfigureTuneBridgeAsync( );
+                // Configure OpenTelemetry for Aspire Dashboard integration (after configuration is loaded)
+                ConfigureOpenTelemetry( builder );
+            }
+
+            WebApplication app = await builder.ConfigureTuneBridgeAsync( );
 
             app.Run( );
         }
