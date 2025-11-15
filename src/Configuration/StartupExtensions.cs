@@ -575,17 +575,13 @@ namespace TuneBridge.Configuration {
                     }
 
                     // Check if request path is /health
-                    if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue )) {
-                        string path = pathValue.ToString( ).Trim( '"' );
-                        if (path.Equals( "/health", StringComparison.OrdinalIgnoreCase )) {
-                            // Check if status code is 200 (success)
-                            if (logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue )) {
-                                string status = statusValue.ToString( );
-                                if (status == "200") {
-                                    return true; // Exclude this successful health check log
-                                }
-                            }
-                        }
+                    if (
+                        logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
+                        pathValue.ToString( ).Trim( '"' ).Equals( "/health", StringComparison.OrdinalIgnoreCase ) &&
+                        logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
+                        statusValue.ToString( ) == "200"
+                    ) {
+                        return true; // Exclude this successful health check log
                     }
 
                     return false;

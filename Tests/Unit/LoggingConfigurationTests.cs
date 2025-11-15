@@ -214,13 +214,12 @@ public class LoggingConfigurationTests {
 
                     if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue )) {
                         string path = pathValue.ToString( ).Trim( '"' );
-                        if (path.Equals( "/health", StringComparison.OrdinalIgnoreCase )) {
-                            if (logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue )) {
-                                string status = statusValue.ToString( );
-                                if (status == "200") {
-                                    return true;
-                                }
-                            }
+                        if (
+                            path.Equals( "/health", StringComparison.OrdinalIgnoreCase ) &&
+                            logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
+                            statusValue.ToString( ) == "200"
+                        ) {
+                            return true;
                         }
                     }
                     return false;
