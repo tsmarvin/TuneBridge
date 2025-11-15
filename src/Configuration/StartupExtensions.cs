@@ -18,6 +18,7 @@ using TuneBridge.Domain.Implementations.Middleware;
 using TuneBridge.Domain.Implementations.Services;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Models;
+using TuneBridge.Domain.Types.Constants;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Configuration {
@@ -563,7 +564,7 @@ namespace TuneBridge.Configuration {
                     // Exclude successful health check requests from logs (but keep failures)
                     // This filters out Information level logs for GET /health with 200 OK status
                     if (logEvent.Level != Serilog.Events.LogEventLevel.Information) {
-                        return false; // Don't exclude warnings, errors, etc. (failures will be at Warning or Error level)
+                        return false; // Don't exclude warnings, errors, etc. (allows non-200 status codes and higher log levels to pass through)
                     }
 
                     // Check if this is an HTTP request completion log from Serilog.AspNetCore
@@ -577,7 +578,7 @@ namespace TuneBridge.Configuration {
                     // Check if request path is /health
                     if (
                         logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
-                        pathValue.ToString( ).Trim( '"' ).Equals( "/health", StringComparison.OrdinalIgnoreCase ) &&
+                        pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
                         logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
                         statusValue.ToString( ) == "200"
                     ) {

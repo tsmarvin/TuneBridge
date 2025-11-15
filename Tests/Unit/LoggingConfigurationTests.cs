@@ -5,6 +5,7 @@ using OpenTelemetry.Logs;
 using Serilog;
 using Serilog.Core;
 using TuneBridge;
+using TuneBridge.Domain.Types.Constants;
 
 namespace TuneBridge.Tests.Unit;
 
@@ -215,7 +216,7 @@ public class LoggingConfigurationTests {
                     if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue )) {
                         string path = pathValue.ToString( ).Trim( '"' );
                         if (
-                            path.Equals( "/health", StringComparison.OrdinalIgnoreCase ) &&
+                            path.Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
                             logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
                             statusValue.ToString( ) == "200"
                         ) {
