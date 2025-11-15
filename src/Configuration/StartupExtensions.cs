@@ -18,6 +18,7 @@ using TuneBridge.Domain.Implementations.Middleware;
 using TuneBridge.Domain.Implementations.Services;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Models;
+using TuneBridge.Domain.Types.Constants;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Configuration {
@@ -559,6 +560,33 @@ namespace TuneBridge.Configuration {
 
             Log.Logger = new LoggerConfiguration( )
                 .ReadFrom.Configuration( builder.Configuration )
+                .Filter.ByExcluding( logEvent => {
+                    // Exclude successful health check requests from logs (but keep failures)
+                    // This filters out Information level logs for GET /health with 200 OK status
+                    if (logEvent.Level != Serilog.Events.LogEventLevel.Information) {
+                        return false; // Don't exclude warnings, errors, etc. (allows non-200 status codes and higher log levels to pass through)
+                    }
+
+                    // Check if this is an HTTP request completion log from Serilog.AspNetCore
+                    // The message template for HTTP request completion is typically:
+                    // "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms"
+                    string? messageTemplate = logEvent.MessageTemplate?.Text;
+                    if (messageTemplate == null || !messageTemplate.Contains( "HTTP" )) {
+                        return false;
+                    }
+
+                    // Check if request path is /health
+                    if (
+                        logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
+                        pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
+                        logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
+                        statusValue.ToString( ) == "200"
+                    ) {
+                        return true; // Exclude this successful health check log
+                    }
+
+                    return false;
+                } )
                 .WriteTo.File(
                     path: logPath,
                     rollingInterval: RollingInterval.Day,

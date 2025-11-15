@@ -5,6 +5,7 @@ using OpenTelemetry.Logs;
 using Serilog;
 using Serilog.Core;
 using TuneBridge;
+using TuneBridge.Domain.Types.Constants;
 
 namespace TuneBridge.Tests.Unit;
 
@@ -188,6 +189,87 @@ public class LoggingConfigurationTests {
             string? logDir = Path.GetDirectoryName( logPath );
             if (logDir != null && Directory.Exists( logDir )) {
                 Directory.Delete( logDir, true );
+            }
+        }
+    }
+
+    [TestMethod]
+    public void HealthCheckLoggingFilter_ShouldExcludeSuccessfulHealthChecks( ) {
+        // Arrange
+        string logPath = Path.Combine( Path.GetTempPath( ), $"test-health-filter-{Guid.NewGuid( )}.log" );
+
+        try {
+            // Create logger with health check filter (mimicking StartupExtensions.ConfigureSerilog)
+            Logger logger = new LoggerConfiguration( )
+                .MinimumLevel.Information( )
+                .Filter.ByExcluding( logEvent => {
+                    // Exclude successful health check requests from logs
+                    if (logEvent.Level != Serilog.Events.LogEventLevel.Information) {
+                        return false;
+                    }
+
+                    string? messageTemplate = logEvent.MessageTemplate?.Text;
+                    if (messageTemplate == null || !messageTemplate.Contains( "HTTP" )) {
+                        return false;
+                    }
+
+                    if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue )) {
+                        string path = pathValue.ToString( ).Trim( '"' );
+                        if (
+                            path.Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
+                            logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
+                            statusValue.ToString( ) == "200"
+                        ) {
+                            return true;
+                        }
+                    }
+                    return false;
+                } )
+                .WriteTo.File( logPath )
+                .CreateLogger( );
+
+            // Act - Simulate HTTP request logs with properties
+            logger
+                .ForContext( "RequestPath", "/health" )
+                .ForContext( "StatusCode", 200 )
+                .Information( "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms",
+                    "GET", "/health", 200, 1.2345 );
+
+            logger
+                .ForContext( "RequestPath", "/api/data" )
+                .ForContext( "StatusCode", 200 )
+                .Information( "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms",
+                    "GET", "/api/data", 200, 5.6789 );
+
+            logger
+                .ForContext( "RequestPath", "/health" )
+                .ForContext( "StatusCode", 500 )
+                .Warning( "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms",
+                    "GET", "/health", 500, 10.0 );
+
+            logger.Dispose( );
+
+            // Assert
+            string logContent = File.ReadAllText( logPath );
+
+            // Successful health check (200 OK at Information level) should be filtered out
+            int healthOccurrences = System.Text.RegularExpressions.Regex.Matches( logContent, "/health" ).Count;
+
+            // Should only have 1 occurrence (the warning for 500 error), not 2
+            Assert.AreEqual( 1, healthOccurrences,
+                $"Expected only 1 /health occurrence (the failed one), but found {healthOccurrences}. Successful health check at Information level should be filtered." );
+
+            // Other requests should still be logged
+            Assert.IsTrue( logContent.Contains( "/api/data" ),
+                "Non-health endpoints should be logged" );
+
+            // Failed health check (non-Information level) should be logged
+            Assert.IsTrue( logContent.Contains( "500" ),
+                "Failed health check requests should still be logged" );
+        } finally {
+            // Cleanup
+            if (File.Exists( logPath )) {
+                File.Delete( logPath );
             }
         }
     }
