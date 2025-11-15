@@ -95,9 +95,20 @@ cat > /app/appsettings.json <<EOF
   "Logging": {
     "LogLevel": {
       "Default": "$DEFAULT_LOGLEVEL",
-      "Microsoft.Hosting.Lifetime": "$HOSTING_DEFAULT_LOGLEVEL"
+      "Microsoft.Hosting.Lifetime": "$HOSTING_DEFAULT_LOGLEVEL",
+      "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
+      "Microsoft.AspNetCore.Routing.EndpointMiddleware": "Warning"
     },
     "FilePath": "$(escape_bs "$LOG_FILE_PATH")"
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "$DEFAULT_LOGLEVEL",
+      "Override": {
+        "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
+        "Microsoft.AspNetCore.Routing.EndpointMiddleware": "Warning"
+      }
+    }
   },
   "OpenTelemetry": {
     "OtlpEndpoint": "$OTLP_ENDPOINT"
