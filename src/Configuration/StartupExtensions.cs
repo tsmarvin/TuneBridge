@@ -564,31 +564,50 @@ namespace TuneBridge.Configuration {
                 .ReadFrom.Configuration( builder.Configuration )
                 .Filter.ByExcluding( logEvent => {
                     // Exclude successful health check requests from logs (but keep failures)
-                    // This filters out Information level logs for GET /health with 200 OK status
+                    // This filters out Information level logs for /health endpoint
                     if (logEvent.Level != Serilog.Events.LogEventLevel.Information) {
-                        return false; // Don't exclude warnings, errors, etc. (allows non-200 status codes and higher log levels to pass through)
+                        return false; // Don't exclude warnings, errors, etc. (allows failures and higher log levels to pass through)
                     }
 
-                    // Check if this is an HTTP request completion log from Serilog.AspNetCore
-                    // The message template for HTTP request completion is typically:
-                    // "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms"
-                    string? messageTemplate = logEvent.MessageTemplate?.Text;
-                    if (messageTemplate == null || !messageTemplate.Contains( "HTTP" )) {
-                        return false;
+                    // Check if this is a log event related to health endpoint
+                    // This covers both HTTP request logs from Serilog.AspNetCore and MVC action execution logs
+                    string? sourceContext = logEvent.Properties.TryGetValue( "SourceContext", out Serilog.Events.LogEventPropertyValue? sourceValue )
+                        ? sourceValue.ToString( ).Trim( '"' )
+                        : null;
+
+                    // Filter MVC controller action execution logs for health endpoint
+                    // Check if this is an MVC/Routing infrastructure log
+                    if (sourceContext != null &&
+                        (sourceContext.Contains( "Microsoft.AspNetCore.Mvc" ) ||
+                         sourceContext.Contains( "Microsoft.AspNetCore.Routing" ))) {
+                        
+                        // Check ActionName property first (most reliable indicator)
+                        if (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue )) {
+                            string actionName = actionValue.ToString( );
+                            if (actionName.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
+                                return true; // Exclude health check related MVC logs
+                            }
+                        }
+
+                        // Also check message text for "Health" keyword as fallback
+                        // This catches logs like "Route matched with {action = "Health", controller = "Home"}"
+                        string messageText = logEvent.RenderMessage( );
+                        if (messageText.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
+                            return true; // Exclude health check related MVC logs
+                        }
                     }
 
-                    // Check if request path is /health
-                    if (
-                        logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
+                    // Filter HTTP request completion logs from Serilog.AspNetCore for successful health checks
+                    if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
                         pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
                         logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
-                        statusValue.ToString( ) == "200"
-                    ) {
-                        return true; // Exclude this successful health check log
+                        statusValue.ToString( ) == "200") {
+                        return true; // Exclude successful health check HTTP logs
                     }
 
                     return false;
                 } )
+                .WriteTo.Console( )
                 .WriteTo.File(
                     path: logPath,
                     rollingInterval: RollingInterval.Day,
