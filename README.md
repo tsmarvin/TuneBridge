@@ -1,5 +1,11 @@
 # TuneBridge
 
+[![Build and Deploy Documentation](https://github.com/tsmarvin/TuneBridge/actions/workflows/docs.yml/badge.svg)](https://github.com/tsmarvin/TuneBridge/actions/workflows/docs.yml)
+[![docker-publish](https://github.com/tsmarvin/TuneBridge/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/tsmarvin/TuneBridge/actions/workflows/docker-publish.yml)
+[![Tests](https://github.com/tsmarvin/TuneBridge/actions/workflows/tests.yml/badge.svg)](https://github.com/tsmarvin/TuneBridge/actions/workflows/tests.yml)
+[![CodeQL](https://github.com/tsmarvin/TuneBridge/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/tsmarvin/TuneBridge/actions/workflows/github-code-scanning/codeql)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/tsmarvin/TuneBridge/badge)](https://scorecard.dev/viewer/?uri=github.com/tsmarvin/TuneBridge)
+
 **Music is universal. Your links should be too.**
 
 TuneBridge is a cross-platform music link converter that helps you share music effortlessly across streaming platforms. Share a link from Apple Music, Spotify, or Tidal, and TuneBridge finds the same track or album on all supported services—ensuring every listener can enjoy the music, regardless of their preferred platform.
