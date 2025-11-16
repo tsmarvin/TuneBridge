@@ -5,6 +5,7 @@ using TuneBridge.Domain.Implementations.Database;
 using TuneBridge.Domain.Implementations.LinkParsers;
 using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
+using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Implementations.Services {
 
@@ -368,7 +369,13 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// Helper method to add all types of lookup entries for a cache entry.
         /// This includes user input links, service links, external IDs, and metadata.
         /// </summary>
-        private async Task AddLookupEntriesAsync( MediaLinkCacheDbContext dbContext, string rkey, IEnumerable<string> userInputLinks, MediaLinkResult result, bool isAlbum ) {
+        private async Task AddLookupEntriesAsync(
+            MediaLinkCacheDbContext dbContext,
+            string rkey,
+            IEnumerable<string> userInputLinks,
+            MediaLinkResult result,
+            bool isAlbum
+        ) {
             // Add user input links
             await AddUserInputLookupEntriesAsync( dbContext, rkey, userInputLinks, isAlbum );
 
@@ -389,7 +396,8 @@ namespace TuneBridge.Domain.Implementations.Services {
             // Add metadata lookup (title|artist)
             MusicLookupResultDto firstResult = result.Results.Values.First( );
             if (!string.IsNullOrWhiteSpace( firstResult.Title ) || !string.IsNullOrWhiteSpace( firstResult.Artist )) {
-                string metadataKey = $"{firstResult.Title?.Trim().ToLowerInvariant() ?? ""}|{firstResult.Artist?.Trim().ToLowerInvariant() ?? ""}";
+                string metadataKey = $"{firstResult.Title?.Trim().ToLowerInvariant()
+                    ?? ""}|{firstResult.Artist?.Trim().ToLowerInvariant() ?? ""}";
                 await AddLookupEntriesOfTypeAsync( dbContext, rkey, [metadataKey], LookupEntryType.Metadata, isAlbum );
             }
         }
@@ -397,7 +405,12 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// <summary>
         /// Helper method to add user input lookup entries only.
         /// </summary>
-        private async Task AddUserInputLookupEntriesAsync( MediaLinkCacheDbContext dbContext, string rkey, IEnumerable<string> links, bool isAlbum ) {
+        private async Task AddUserInputLookupEntriesAsync(
+            MediaLinkCacheDbContext dbContext,
+            string rkey,
+            IEnumerable<string> links,
+            bool isAlbum
+        ) {
             await AddLookupEntriesOfTypeAsync( dbContext, rkey, links, LookupEntryType.UserInput, isAlbum );
         }
 
@@ -405,7 +418,13 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// Helper method to add lookup entries of a specific type with conflict handling.
         /// Batches all adds and saves once to reduce database I/O.
         /// </summary>
-        private async Task AddLookupEntriesOfTypeAsync( MediaLinkCacheDbContext dbContext, string rkey, IEnumerable<string> lookupValues, LookupEntryType lookupType, bool isAlbum ) {
+        private async Task AddLookupEntriesOfTypeAsync(
+            MediaLinkCacheDbContext dbContext,
+            string rkey,
+            IEnumerable<string> lookupValues,
+            LookupEntryType lookupType,
+            bool isAlbum
+        ) {
             List<string> normalizedValues = [.. lookupValues
                 .Select( v => lookupType is LookupEntryType.UserInput or LookupEntryType.ServiceLink
                     ? LinkNormalizer.Normalize( v )
@@ -443,7 +462,10 @@ namespace TuneBridge.Domain.Implementations.Services {
                     _ = await dbContext.SaveChangesAsync( );
                 } catch (DbUpdateException ex) {
                     // Log the conflict for diagnostics
-                    logger.LogWarning( ex, "Unique constraint violation when adding {EntryCount} lookup entries of type {LookupType} to cache entry {Rkey}. This typically occurs due to concurrent requests.",
+                    logger.LogWarning(
+                        ex,
+                        "Unique constraint violation when adding {EntryCount} lookup entries of type {LookupType}" +
+                        " to cache entry {Rkey}. This typically occurs due to concurrent requests.",
                         normalizedValues.Count, lookupType, rkey );
 
                     // Detach conflicting entries to avoid tracking issues
