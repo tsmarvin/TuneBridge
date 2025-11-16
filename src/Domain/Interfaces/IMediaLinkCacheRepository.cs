@@ -15,6 +15,28 @@ namespace TuneBridge.Domain.Interfaces {
         Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultAsync( string inputLink );
 
         /// <summary>
+        /// Attempts to get a cached MediaLinkResult by ISRC (International Standard Recording Code).
+        /// </summary>
+        /// <param name="isrc">The ISRC code to search for.</param>
+        /// <returns>A tuple containing the cached result, its ATProto record URI, and staleness indicator, or null if not found.</returns>
+        Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByISRCAsync( string isrc );
+
+        /// <summary>
+        /// Attempts to get a cached MediaLinkResult by UPC (Universal Product Code).
+        /// </summary>
+        /// <param name="upc">The UPC code to search for.</param>
+        /// <returns>A tuple containing the cached result, its ATProto record URI, and staleness indicator, or null if not found.</returns>
+        Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByUPCAsync( string upc );
+
+        /// <summary>
+        /// Attempts to get a cached MediaLinkResult by title and artist metadata.
+        /// </summary>
+        /// <param name="title">The track or album title.</param>
+        /// <param name="artist">The artist name.</param>
+        /// <returns>A tuple containing the cached result, its ATProto record URI, and staleness indicator, or null if not found.</returns>
+        Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByMetadataAsync( string title, string artist );
+
+        /// <summary>
         /// Stores a MediaLinkResult in the cache and on ATProto PDS.
         /// </summary>
         /// <param name="result">The MediaLinkResult to cache.</param>

@@ -17,9 +17,9 @@ namespace TuneBridge.Domain.Implementations.Services {
         public string BaseUrl => baseUrl;
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
-        private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 24 );
+        private readonly TimeSpan _expirationTime = TimeSpan.FromDays( 6 );
         private int _operationCounter;
-        private const int CleanupInterval = 100;
+        private const int CleanupInterval = 10000;
 
         /// <inheritdoc/>
         public string StoreResult( MediaLinkResult result ) {

@@ -4,6 +4,7 @@ root = true
 # Don't use tabs for indentation.
 [*]
 indent_style = space
+end_of_line = lf
 # (Please don't specify an indent_size here; that has too many unintended consequences.)
 
 # Code files
@@ -15,6 +16,7 @@ charset = utf-8
 # XML project files
 [*.{csproj,vbproj,vcxproj,vcxproj.filters,proj,projitems,shproj}]
 indent_size = 4
+charset = utf-8
 
 # XML config files
 [*.{props,targets,ruleset,config,nuspec,resx,vsixmanifest,vsct}]
@@ -22,15 +24,17 @@ indent_size = 2
 
 # JSON files
 [*.json]
+charset = utf-8
 indent_size = 2
 
 # Powershell files
 [*.ps1]
+charset = utf-8
 indent_size = 4
 
 # Shell script files
 [*.sh]
-end_of_line = lf
+charset = utf-8
 indent_size = 2
 
 # Dotnet code style settings:

@@ -51,7 +51,7 @@
             uri /api/dashboard/authorize
             copy_headers Authorization Cookie
         }
-        
+
         # Proxy to Aspire Dashboard container
         reverse_proxy aspire-dashboard:18888 {
             # Pass real client IP
@@ -59,7 +59,7 @@
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto {scheme}
             header_up X-Forwarded-Host {host}
-            
+
             # Timeouts
             transport http {
                 read_timeout 30s

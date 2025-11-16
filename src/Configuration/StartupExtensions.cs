@@ -475,21 +475,22 @@ namespace TuneBridge.Configuration {
             AppSettings settings
         ) {
             _ = services.AddTransient<IMediaLinkService>( s => {
-                DefaultMediaLinkService baseService = new(
-                    GetEnabledProviderServices( enabledProviders, s ),
-                    s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
-                    s.GetRequiredService<JsonSerializerOptions>( )
-                );
+                Dictionary<SupportedProviders, IMusicLookupService> providerServices = GetEnabledProviderServices( enabledProviders, s );
 
-                // Wrap with caching if ATProto is configured
+                // Use caching service if ATProto is configured, otherwise use default service
                 return !string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) &&
                     !string.IsNullOrWhiteSpace( settings.ATProtoPassword )
                     ? new CachingMediaLinkService(
-                        baseService,
+                        providerServices,
                         s.GetRequiredService<IMediaLinkCacheRepository>( ),
-                        s.GetRequiredService<ILogger<CachingMediaLinkService>>( )
+                        s.GetRequiredService<ILogger<CachingMediaLinkService>>( ),
+                        s.GetRequiredService<JsonSerializerOptions>( )
                     )
-                    : baseService;
+                    : new DefaultMediaLinkService(
+                        providerServices,
+                        s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
+                        s.GetRequiredService<JsonSerializerOptions>( )
+                    );
             } );
         }
 
