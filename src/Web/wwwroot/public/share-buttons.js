@@ -50,7 +50,8 @@ function initializeShareButtons() {
 
     // Handle copy link buttons
     document.querySelectorAll('.copy-link-btn').forEach(function (button) {
-        button.onclick = function () {
+        button.onclick = function (e) {
+            e.stopPropagation();
             var url = this.getAttribute('data-url');
             var absoluteUrl = new URL(url, window.location.origin).href;
 
@@ -65,7 +66,8 @@ function initializeShareButtons() {
 
     // Handle copy iframe buttons
     document.querySelectorAll('.copy-embed-btn').forEach(function (button) {
-        button.onclick = function () {
+        button.onclick = function (e) {
+            e.stopPropagation();
             var url = this.getAttribute('data-url');
             var title = JSON.parse(this.getAttribute('data-title'));
             var absoluteUrl = new URL(url, window.location.origin).href;
@@ -82,7 +84,8 @@ function initializeShareButtons() {
 
     // Handle copy ATProto URI buttons
     document.querySelectorAll('.copy-atproto-btn').forEach(function (button) {
-        button.onclick = function () {
+        button.onclick = function (e) {
+            e.stopPropagation();
             var uri = this.getAttribute('data-uri');
 
             navigator.clipboard.writeText(uri).then(function () {
