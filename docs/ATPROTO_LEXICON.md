@@ -19,9 +19,7 @@ TuneBridge uses a custom ATProto lexicon to store music lookup results as struct
 
 **NSID (Namespaced Identifier):** `media.tunebridge.dev.lookup.result`
 
-**Deployment Domain:** `dev.tunebridge.media`
-
-**Authority Domain:** `tunebridge.dev` (from NSID reverse-DNS)
+**Authority Domain:** `dev.tunebridge.media` (from NSID reverse-DNS: `media.tunebridge.dev` → `dev.tunebridge.media`)
 
 According to the ATProto specification, lexicon schemas must be:
 1. Published at a predictable HTTPS endpoint on the authority domain
@@ -65,16 +63,9 @@ See the lexicon file for the complete JSON schema definition.
 
 To establish domain authority for the lexicon NSID, you should configure DNS TXT records. This step is **optional but recommended** for full ATProto compliance and enhanced trust.
 
-**Note:** The NSID `media.tunebridge.dev.lookup.result` suggests authority domain `tunebridge.dev`, but TuneBridge is deployed at `dev.tunebridge.media`. You have two options:
-
-1. **Configure DNS for `tunebridge.dev`** (NSID authority domain) with delegation to `dev.tunebridge.media`
-2. **Configure DNS for `dev.tunebridge.media`** (deployment domain) directly
-
-This guide focuses on option 2 (deployment domain configuration) as it's simpler for most deployments.
-
 ### Required DNS TXT Records
 
-Add the following DNS TXT record to your deployment domain (`dev.tunebridge.media`):
+Add the following DNS TXT record to your domain (`dev.tunebridge.media`):
 
 **Record Type:** TXT  
 **Host/Name:** `_lexicon`  
@@ -83,7 +74,6 @@ Add the following DNS TXT record to your deployment domain (`dev.tunebridge.medi
 
 ### Example DNS Configuration
 
-For the deployment domain:
 ```
 _lexicon.dev.tunebridge.media.    3600    IN    TXT    "did=did:plc:your-did-identifier"
 ```
@@ -276,9 +266,8 @@ ATProto clients resolve lexicon authority in the following order:
 
 ### 1. DNS TXT Record Resolution (Recommended)
 
-Clients query the `_lexicon` TXT record to find the authoritative DID.
+Clients query the `_lexicon` TXT record to find the authoritative DID:
 
-For TuneBridge's deployment domain:
 ```bash
 dig _lexicon.dev.tunebridge.media TXT
 ```
@@ -287,8 +276,6 @@ Expected response:
 ```
 _lexicon.dev.tunebridge.media. 3600 IN TXT "did=did:plc:your-identifier"
 ```
-
-*Note: Theoretically, the NSID authority domain (`tunebridge.dev`) could also be used, but using the deployment domain is simpler.*
 
 ### 2. HTTPS Endpoint Resolution (Fallback)
 
@@ -364,8 +351,8 @@ TuneBridge supports both ATProto DID methods:
                  │
                  ▼
 ┌─────────────────────────────────────────┐
-│ Extract domain from NSID: tunebridge.dev│
-│ Or use deployment domain: dev.tunebridge.media│
+│ Extract authority domain from NSID:     │
+│ media.tunebridge.dev → dev.tunebridge.media│
 └────────────────┬────────────────────────┘
                  │
                  ▼
@@ -382,7 +369,7 @@ TuneBridge supports both ATProto DID methods:
     │                 │
     ▼                 ▼
 ┌─────────┐   ┌───────────────────────────┐
-│ Get DID │   │ Fetch from deployment:    │
+│ Get DID │   │ Fetch from HTTPS:         │
 │         │   │ https://dev.tunebridge.   │
 │         │   │ media/.well-known/        │
 │         │   │ atproto-lexicon/<nsid>    │
