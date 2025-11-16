@@ -34,11 +34,10 @@ TIDAL_CLIENT_SECRET="$(read_secret "tidal_client_secret")"
 # Try to read Discord token from Docker secret
 DISCORD_TOKEN="$(read_secret "discord_token")"
 
-# Optional Bluesky PDS configuration
-BLUESKY_PDS_URL="${BLUESKY_PDS_URL:-"https://bsky.social"}"
-BLUESKY_IDENTIFIER="${BLUESKY_IDENTIFIER:-}"
-# Try to read Bluesky password from Docker secret
-BLUESKY_PASSWORD="$(read_secret "bluesky_password")"
+# Optional ATProto PDS configuration
+ATPROTO_IDENTIFIER="${ATPROTO_IDENTIFIER:-}"
+# Try to read ATProto password from Docker secret
+ATPROTO_PASSWORD="$(read_secret "atproto_password")"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
 LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
@@ -85,12 +84,12 @@ cat > /app/appsettings.json <<EOF
     "IdentityConnectionString": "$(escape_bs "$IDENTITY_CONNECTION_STRING")",
     "ApiKeySalt": "$API_KEY_SALT",
     "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR,
-    "BlueskyPdsUrl": "$BLUESKY_PDS_URL",
-    "BlueskyIdentifier": "$BLUESKY_IDENTIFIER",
-    "BlueskyPassword": "$BLUESKY_PASSWORD",
+    "ATProtoIdentifier": "$ATPROTO_IDENTIFIER",
+    "ATProtoPassword": "$ATPROTO_PASSWORD",
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
-    "BaseUrl": "$BASEURL"
+    "BaseUrl": "$BASEURL",
+    "LogFilePath": "$(escape_bs "$LOG_FILE_PATH")"
   },
   "Logging": {
     "LogLevel": {
@@ -98,8 +97,7 @@ cat > /app/appsettings.json <<EOF
       "Microsoft.Hosting.Lifetime": "$HOSTING_DEFAULT_LOGLEVEL",
       "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
       "Microsoft.AspNetCore.Routing.EndpointMiddleware": "Warning"
-    },
-    "FilePath": "$(escape_bs "$LOG_FILE_PATH")"
+    }
   },
   "Serilog": {
     "MinimumLevel": {

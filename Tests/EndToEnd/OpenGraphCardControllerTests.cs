@@ -23,9 +23,8 @@ public class WebLookupTests {
             ["TuneBridge:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
             ["TuneBridge:IdentityConnectionString"] = $"Data Source=WebLookup_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:BlueskyPdsUrl"] = "",
-            ["TuneBridge:BlueskyIdentifier"] = "",
-            ["TuneBridge:BlueskyPassword"] = "",
+            ["TuneBridge:ATProtoIdentifier"] = "",
+            ["TuneBridge:ATProtoPassword"] = "",
             ["TuneBridge:LinkCacheConnectionString"] = $"Data Source=WebLookup_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
         };
         s_factory = new CustomWebApplicationFactory( configData );
@@ -58,7 +57,7 @@ public class WebLookupTests {
         dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
         Assert.IsNotNull( data );
 
-        bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
+        bool hasResults = data?.GetProperty( "hasResults" ).GetBoolean( );
 
         // If we hit rate limits, hasResults may be false - that's acceptable for integration tests
         if (!hasResults) {
@@ -70,7 +69,7 @@ public class WebLookupTests {
 
         // Check items array exists
         System.Text.Json.JsonElement itemsElement;
-        Assert.IsTrue( data.TryGetProperty( "items", out itemsElement ), "Should have items array" );
+        Assert.IsTrue( data?.TryGetProperty( "items", out itemsElement ), "Should have items array" );
     }
 
     [TestMethod]
@@ -93,7 +92,7 @@ public class WebLookupTests {
         dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
         Assert.IsNotNull( data );
 
-        bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
+        bool hasResults = data?.GetProperty( "hasResults" ).GetBoolean( );
 
         // If we hit rate limits, hasResults may be false - that's acceptable for integration tests
         if (!hasResults) {
@@ -102,10 +101,12 @@ public class WebLookupTests {
         }
 
         Assert.IsTrue( hasResults, "Should have results for valid URLs" );
-
+        int itemCount = 0;
         // Check that we have multiple items
-        dynamic items = data.GetProperty( "items" );
-        int itemCount = items.GetArrayLength( );
+        if (null != data?.GetProperty( "items" )) {
+            dynamic items = data.GetProperty( "items" );
+            itemCount = items?.GetArrayLength( ) ?? 0;
+        }
         Assert.IsGreaterThan( 0, itemCount, "Should have at least one item" );
     }
 
@@ -145,7 +146,7 @@ public class WebLookupTests {
         dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
         Assert.IsNotNull( data );
 
-        bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
+        bool hasResults = data?.GetProperty( "hasResults" ).GetBoolean( );
         Assert.IsFalse( hasResults, "Should have no results for invalid URL" );
     }
 

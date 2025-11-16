@@ -21,9 +21,8 @@ public class HomeControllerTests {
             ["TuneBridge:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
             ["TuneBridge:IdentityConnectionString"] = $"Data Source=Home_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:BlueskyPdsUrl"] = "",
-            ["TuneBridge:BlueskyIdentifier"] = "",
-            ["TuneBridge:BlueskyPassword"] = "",
+            ["TuneBridge:ATProtoIdentifier"] = "",
+            ["TuneBridge:ATProtoPassword"] = "",
             ["TuneBridge:LinkCacheConnectionString"] = $"Data Source=Home_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
         };
         s_factory = new CustomWebApplicationFactory( configData );

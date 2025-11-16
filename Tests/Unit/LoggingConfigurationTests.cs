@@ -1,10 +1,6 @@
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using OpenTelemetry.Logs;
 using Serilog;
 using Serilog.Core;
-using TuneBridge;
 using TuneBridge.Domain.Types.Constants;
 
 namespace TuneBridge.Tests.Unit;
@@ -19,11 +15,11 @@ public class LoggingConfigurationTests {
     public void ConfigureSerilog_WithDefaultFilePath_ShouldCreateLogger( ) {
         // Arrange
         string logPath = Path.Combine( Path.GetTempPath( ), $"test-log-{Guid.NewGuid( )}", "test-.log" );
-        Directory.CreateDirectory( Path.GetDirectoryName( logPath )! );
+        _ = Directory.CreateDirectory( Path.GetDirectoryName( logPath )! );
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["Logging:FilePath"] = logPath,
+                ["TuneBridge:LogFilePath"] = logPath,
                 ["Logging:LogLevel:Default"] = "Information"
             };
 
@@ -63,11 +59,11 @@ public class LoggingConfigurationTests {
         // Arrange
         string logDir = Path.Combine( Path.GetTempPath( ), $"test-log-rotation-{Guid.NewGuid( )}" );
         string logPath = Path.Combine( logDir, "test-.log" );
-        Directory.CreateDirectory( logDir );
+        _ = Directory.CreateDirectory( logDir );
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["Logging:FilePath"] = logPath,
+                ["TuneBridge:LogFilePath"] = logPath,
                 ["Logging:LogLevel:Default"] = "Information"
             };
 
@@ -147,11 +143,11 @@ public class LoggingConfigurationTests {
     public void LoggingConfiguration_ShouldSupportBothFileAndOpenTelemetry( ) {
         // Arrange
         string logPath = Path.Combine( Path.GetTempPath( ), $"test-dual-log-{Guid.NewGuid( )}", "test-.log" );
-        Directory.CreateDirectory( Path.GetDirectoryName( logPath )! );
+        _ = Directory.CreateDirectory( Path.GetDirectoryName( logPath )! );
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["Logging:FilePath"] = logPath,
+                ["TuneBridge:LogFilePath"] = logPath,
                 ["Logging:LogLevel:Default"] = "Information",
                 ["OpenTelemetry:OtlpEndpoint"] = "http://aspire-dashboard:4317"
             };
@@ -161,10 +157,10 @@ public class LoggingConfigurationTests {
                 .Build( );
 
             // Act & Assert
-            string? filePath = configuration["Logging:FilePath"];
+            string? filePath = configuration["TuneBridge:LogFilePath"];
             string? otlpEndpoint = configuration["OpenTelemetry:OtlpEndpoint"];
 
-            Assert.IsFalse( string.IsNullOrWhiteSpace( filePath ), "File path should be configured" );
+            Assert.IsFalse( string.IsNullOrWhiteSpace( filePath ), "Log File Path should be configured" );
             Assert.IsFalse( string.IsNullOrWhiteSpace( otlpEndpoint ), "OTLP endpoint should be configured" );
 
             // Verify both can be configured simultaneously
@@ -260,12 +256,10 @@ public class LoggingConfigurationTests {
                 $"Expected only 1 /health occurrence (the failed one), but found {healthOccurrences}. Successful health check at Information level should be filtered." );
 
             // Other requests should still be logged
-            Assert.IsTrue( logContent.Contains( "/api/data" ),
-                "Non-health endpoints should be logged" );
+            Assert.Contains( "/api/data", logContent, "Non-health endpoints should be logged" );
 
             // Failed health check (non-Information level) should be logged
-            Assert.IsTrue( logContent.Contains( "500" ),
-                "Failed health check requests should still be logged" );
+            Assert.Contains( "500", logContent, "Failed health check requests should still be logged" );
         } finally {
             // Cleanup
             if (File.Exists( logPath )) {

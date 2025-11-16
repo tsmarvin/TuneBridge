@@ -26,9 +26,8 @@ public class ConfigurationValidationTests {
             ["TuneBridge:DiscordToken"] = string.Empty,
             ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
-            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
-            ["TuneBridge:BlueskyPassword"] = string.Empty,
+            ["TuneBridge:ATProtoIdentifier"] = string.Empty,
+            ["TuneBridge:ATProtoPassword"] = string.Empty,
             ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
@@ -59,9 +58,8 @@ public class ConfigurationValidationTests {
                 ["TuneBridge:DiscordToken"] = string.Empty,
                 ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
                 ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-                ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
-                ["TuneBridge:BlueskyIdentifier"] = string.Empty,
-                ["TuneBridge:BlueskyPassword"] = string.Empty,
+                ["TuneBridge:ATProtoIdentifier"] = string.Empty,
+                ["TuneBridge:ATProtoPassword"] = string.Empty,
                 ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
             };
 
@@ -92,9 +90,8 @@ public class ConfigurationValidationTests {
             ["TuneBridge:DiscordToken"] = string.Empty,
             ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
-            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
-            ["TuneBridge:BlueskyPassword"] = string.Empty,
+            ["TuneBridge:ATProtoIdentifier"] = string.Empty,
+            ["TuneBridge:ATProtoPassword"] = string.Empty,
             ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 
@@ -122,9 +119,8 @@ public class ConfigurationValidationTests {
             ["TuneBridge:DiscordToken"] = string.Empty,
             ["TuneBridge:IdentityConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:BlueskyPdsUrl"] = string.Empty,
-            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
-            ["TuneBridge:BlueskyPassword"] = string.Empty,
+            ["TuneBridge:ATProtoIdentifier"] = string.Empty,
+            ["TuneBridge:ATProtoPassword"] = string.Empty,
             ["TuneBridge:LinkCacheConnectionString"] = "Data Source=TuneBridge;Mode=Memory",
         };
 

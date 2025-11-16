@@ -17,7 +17,7 @@ namespace TuneBridge.Domain.Implementations.Database {
         }
 
         /// <summary>
-        /// Cache entries representing MediaLinkResults stored on Bluesky PDS.
+        /// Cache entries representing MediaLinkResults stored on ATProto PDS.
         /// </summary>
         public DbSet<MediaLinkCacheEntry> CacheEntries { get; set; }
 

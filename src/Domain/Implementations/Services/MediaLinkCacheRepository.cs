@@ -9,23 +9,23 @@ using TuneBridge.Domain.Interfaces;
 namespace TuneBridge.Domain.Implementations.Services {
 
     /// <summary>
-    /// Implementation of <see cref="IMediaLinkCacheService"/> that uses SQLite to track ATProto PDS record locations
+    /// Implementation of <see cref="IMediaLinkCacheRepository"/> that uses SQLite to track ATProto PDS record locations
     /// and ATProto PDS for persistent storage. The SQLite database is used only for efficient lookups; all actual
     /// data is stored on and retrieved from the PDS.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="MediaLinkCacheService"/> class.
+    /// Initializes a new instance of the <see cref="MediaLinkCacheRepository"/> class.
     /// </remarks>
     /// <param name="dbContextFactory">Factory for creating database contexts.</param>
     /// <param name="atprotoStorage">Service for storing and retrieving results from ATProto PDS.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="cacheDays">Number of days to consider cache entries fresh.</param>
-    public class MediaLinkCacheService(
+    public class MediaLinkCacheRepository(
         IDbContextFactory<MediaLinkCacheDbContext> dbContextFactory,
         IATProtoStorageService atprotoStorage,
-        ILogger<MediaLinkCacheService> logger,
+        ILogger<MediaLinkCacheRepository> logger,
         int cacheDays
-    ) : IMediaLinkCacheService {
+    ) : IMediaLinkCacheRepository {
 
         /// <inheritdoc/>
         public async Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultAsync( string inputLink ) {

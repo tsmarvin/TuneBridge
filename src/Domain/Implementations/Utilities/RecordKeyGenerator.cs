@@ -86,11 +86,9 @@ namespace TuneBridge.Domain.Implementations.Utilities {
             string prefix = isAlbum ? "album" : "track";
             string sanitizedId = SanitizeForRkey( externalId );
 
-            if (string.IsNullOrEmpty( sanitizedId )) {
-                throw new ArgumentException( "ExternalId must contain valid characters after sanitization", nameof( externalId ) );
-            }
-
-            return $"{prefix}:{sanitizedId}";
+            return string.IsNullOrEmpty( sanitizedId )
+                ? throw new ArgumentException( "ExternalId must contain valid characters after sanitization", nameof( externalId ) )
+                : $"{prefix}:{sanitizedId}";
         }
 
         /// <summary>

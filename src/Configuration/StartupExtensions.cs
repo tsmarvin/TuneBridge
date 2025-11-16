@@ -145,7 +145,7 @@ namespace TuneBridge.Configuration {
             InitializeCacheDatabase( app.Services );
 
             // Initialize database and seed roles
-            await app.InitializeDatabaseAsync( );
+            _ = await app.InitializeDatabaseAsync( );
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment( )) {
@@ -357,26 +357,24 @@ namespace TuneBridge.Configuration {
         }
 
         private static void ConfigureATProtoIfEnabled( IServiceCollection services, AppSettings settings ) {
-            if (string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) ||
-                string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) ||
-                string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
+            if (string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) ||
+                string.IsNullOrWhiteSpace( settings.ATProtoPassword )) {
                 return;
             }
 
             _ = services.AddSingleton<IATProtoStorageService>( s =>
                 new ATProtoStorageService(
-                    settings.BlueskyPdsUrl,
-                    settings.BlueskyIdentifier,
-                    settings.BlueskyPassword,
+                    settings.ATProtoIdentifier,
+                    settings.ATProtoPassword,
                     s.GetRequiredService<ILogger<ATProtoStorageService>>( )
                 )
             );
 
             // Register cache service as singleton using DbContextFactory so it is root-safe
-            _ = services.AddSingleton<IMediaLinkCacheService>( s => new MediaLinkCacheService(
+            _ = services.AddSingleton<IMediaLinkCacheRepository>( s => new MediaLinkCacheRepository(
                 s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
                 s.GetRequiredService<IATProtoStorageService>( ),
-                s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
+                s.GetRequiredService<ILogger<MediaLinkCacheRepository>>( ),
                 settings.CacheDays
             ) );
         }
@@ -484,13 +482,12 @@ namespace TuneBridge.Configuration {
                 );
 
                 // Wrap with caching if ATProto is configured
-                return !string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
-                    !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
-                    !string.IsNullOrWhiteSpace( settings.BlueskyPassword )
-                    ? new CachedMediaLinkService(
+                return !string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) &&
+                    !string.IsNullOrWhiteSpace( settings.ATProtoPassword )
+                    ? new CachingMediaLinkService(
                         baseService,
-                        s.GetRequiredService<IMediaLinkCacheService>( ),
-                        s.GetRequiredService<ILogger<CachedMediaLinkService>>( )
+                        s.GetRequiredService<IMediaLinkCacheRepository>( ),
+                        s.GetRequiredService<ILogger<CachingMediaLinkService>>( )
                     )
                     : baseService;
             } );
@@ -545,12 +542,12 @@ namespace TuneBridge.Configuration {
         /// </summary>
         /// <param name="builder">The web application builder to configure.</param>
         private static void ConfigureSerilog( WebApplicationBuilder builder ) {
-            string logPath = builder.Configuration["Logging:FilePath"] ?? "/app/data/logs/tunebridge-.log";
+            string logPath = builder.Configuration["TuneBridge:LogFilePath"] ?? "./logs/tunebridge-.log";
 
             try {
                 string? logDir = Path.GetDirectoryName( logPath );
                 if (!string.IsNullOrEmpty( logDir ) && !Directory.Exists( logDir )) {
-                    Directory.CreateDirectory( logDir );
+                    _ = Directory.CreateDirectory( logDir );
                 }
             } catch (Exception ex) {
                 Console.WriteLine( $"Warning: Failed to validate/create log directory: {ex.Message}" );
@@ -617,14 +614,14 @@ namespace TuneBridge.Configuration {
                 return;
             }
 
-            var version = typeof( Program ).Assembly.GetName( ).Version?.ToString( ) ?? "0.0.1";
+            string version = typeof( Program ).Assembly.GetName( ).Version?.ToString( ) ?? "0.0.1";
             _ = builder.Logging.AddOpenTelemetry( options => {
-                options.SetResourceBuilder(
+                _ = options.SetResourceBuilder(
                     ResourceBuilder.CreateDefault( )
                         .AddService( serviceName: "TuneBridge", serviceVersion: version )
                 );
 
-                options.AddOtlpExporter( otlpOptions => {
+                _ = options.AddOtlpExporter( otlpOptions => {
                     otlpOptions.Endpoint = uri;
                 } );
             } );

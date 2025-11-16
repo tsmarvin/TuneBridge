@@ -37,7 +37,7 @@ public class HealthEndpointAuthorizationMiddleware {
 
         // Check if the request is coming from localhost or internal Docker network
         string? remoteIp = context.Connection.RemoteIpAddress?.ToString( );
-        
+
         // Allow localhost and Docker internal IPs (172.x.x.x, 10.x.x.x ranges)
         // Also allow requests from the same host (::1 for IPv6 localhost)
         if (IsInternalRequest( remoteIp )) {
@@ -90,10 +90,6 @@ public class HealthEndpointAuthorizationMiddleware {
         }
 
         // Private network: 192.168.0.0/16 (192.168.0.0 - 192.168.255.255)
-        if (bytes[0] == 192 && bytes[1] == 168) {
-            return true;
-        }
-
-        return false;
+        return bytes[0] == 192 && bytes[1] == 168;
     }
 }

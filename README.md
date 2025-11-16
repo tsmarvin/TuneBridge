@@ -29,7 +29,7 @@ git clone https://github.com/tsmarvin/TuneBridge.git
 cd TuneBridge
 ./setup-secrets.sh
 nano apple_key.p8
-nano bluesky_password.txt
+nano atproto_password.txt
 nano discord_token.txt
 nano spotify_client_secret.txt
 nano tidal_client_secret.txt
@@ -69,7 +69,7 @@ Visit `http://localhost:10000` to start converting links.
 - **[API Reference](docs/API.md)** - Integrate TuneBridge into your applications
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
 - **[Testing Guide](docs/TESTING.md)** - Run and write tests
-- **[Caching Guide](docs/CACHING.md)** - Configure Bluesky PDS caching
+- **[Caching Guide](docs/CACHING.md)** - Configure ATProto PDS caching
 
 ## 🎯 How It Works
 
@@ -102,7 +102,7 @@ When someone shares a Spotify link, TuneBridge responds with a card showing Appl
 ## 🔐 Privacy & Security
 
 - API keys are hashed and never stored in plain text
-- Input URLs with tracking parameters are kept private (not stored on Bluesky PDS)
+- Input URLs with tracking parameters are kept private (not stored on ATProto PDS)
 - Rate limiting ensures fair usage (20 requests/hour per user)
 - All credentials configured via environment variables
 

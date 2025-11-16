@@ -23,13 +23,13 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// <summary>
         /// The NSID (Namespaced Identifier) for the TuneBridge MediaLinkResult lexicon.
         /// </summary>
-        private static readonly Nsid MediaLinkResultCollection = new( "media.tunebridge.dev.lookup.result" );
+        private static readonly Nsid s_mediaLinkResultCollection = new( "media.tunebridge.dev.lookup.result" );
 
         /// <summary>
         /// Static cached dictionary mapping provider strings to SupportedProviders enum values.
         /// Initialized once at startup for O(1) lookups.
         /// </summary>
-        private static readonly Lazy<Dictionary<string, SupportedProviders>> _providerStringToEnum =
+        private static readonly Lazy<Dictionary<string, SupportedProviders>> s_providerStringToEnum =
             new(CreateProviderMappings);
 
         private readonly BlueskyAgent _agent;
@@ -42,12 +42,10 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// <summary>
         /// Initializes a new instance of the <see cref="ATProtoStorageService"/> class.
         /// </summary>
-        /// <param name="pdsUrl">The ATProto PDS URL (e.g., https://bsky.social).</param>
         /// <param name="identifier">The account identifier (handle or DID).</param>
         /// <param name="password">The app password for authentication.</param>
         /// <param name="logger">Logger for diagnostic information.</param>
         public ATProtoStorageService(
-            string pdsUrl,
             string identifier,
             string password,
             ILogger<ATProtoStorageService> logger
@@ -102,7 +100,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 RecordKey recordKey = new( rkey );
                 AtProtoHttpResult<PutRecordResult> putResult = await _agent.PutRecord(
                     record: record,
-                    collection: MediaLinkResultCollection,
+                    collection: s_mediaLinkResultCollection,
                     rKey: recordKey,
                     validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
                 );
@@ -115,7 +113,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // If update failed, try to create new record
                 AtProtoHttpResult<CreateRecordResult> createResult = await _agent.CreateRecord(
                     record: record,
-                    collection: MediaLinkResultCollection,
+                    collection: s_mediaLinkResultCollection,
                     rKey: recordKey,
                     validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
                 );
@@ -180,7 +178,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     return null;
                 }
 
-                string recordUri = $"at://{userDid}/{MediaLinkResultCollection}/{rkey}";
+                string recordUri = $"at://{userDid}/{s_mediaLinkResultCollection}/{rkey}";
                 return await GetMediaLinkResultAsync( recordUri );
             } catch (Exception ex) {
                 _logger.LogError( ex, "Failed to retrieve MediaLinkResult by rkey: {rkey}", rkey );
@@ -207,7 +205,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Update the record on ATProto PDS using PutRecord
                 AtProtoHttpResult<PutRecordResult> putResult = await _agent.PutRecord(
                     record: record,
-                    collection: MediaLinkResultCollection,
+                    collection: s_mediaLinkResultCollection,
                     rKey: atUri.RecordKey,
                     validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
                 );
@@ -324,7 +322,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         private static bool TryParseProvider( string providerString, out SupportedProviders provider ) {
             provider = default;
 
-            return !string.IsNullOrWhiteSpace( providerString ) && _providerStringToEnum.Value.TryGetValue( providerString, out provider );
+            return !string.IsNullOrWhiteSpace( providerString ) && s_providerStringToEnum.Value.TryGetValue( providerString, out provider );
         }
     }
 }

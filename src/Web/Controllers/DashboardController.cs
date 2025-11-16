@@ -37,14 +37,14 @@ public class DashboardController : ControllerBase {
     [Authorize]
     public async Task<IActionResult> Authorize( ) {
         ApplicationUser? user = await _userManager.GetUserAsync( User );
-        
+
         if (user == null) {
             _logger.LogWarning( "Dashboard authorization failed: User not found" );
             return Unauthorized( new { error = "User not authenticated" } );
         }
 
         bool hasAccess = await _userManager.IsInRoleAsync( user, Roles.AspireDashboardAccess );
-        
+
         if (!hasAccess) {
             _logger.LogWarning(
                 "Dashboard authorization denied for user {UserId} - missing {Role} role",

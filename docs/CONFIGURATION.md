@@ -27,12 +27,11 @@ At least one complete set of music provider credentials is required:
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `DISCORD_TOKEN` | Your Discord bot token | No** |
-| `BLUESKY_PDS_URL` | Bluesky PDS URL for storing lookup results | No*** |
-| `BLUESKY_IDENTIFIER` | Bluesky account identifier (handle or DID) | No*** |
-| `BLUESKY_PASSWORD` | Bluesky app password | No*** |
+| `ATPROTO_IDENTIFIER` | ATProto account identifier (handle or DID) | No*** |
+| `ATPROTO_PASSWORD` | ATProto app password | No*** |
 
 \*\* Required only if using Discord integration
-\*\*\* Required only if using Bluesky PDS storage for caching lookup results
+\*\*\* Required only if using ATProto PDS storage for caching lookup results
 
 ### Optional Configuration
 
@@ -44,7 +43,7 @@ At least one complete set of music provider credentials is required:
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
 | `OTLP_ENDPOINT` | OpenTelemetry OTLP endpoint for Aspire Dashboard | `http://aspire-dashboard:4317` |
 | `LOG_FILE_PATH` | File path for log files | `/app/data/logs/tunebridge-.log` |
-| `CACHE_DAYS` | Number of days to cache Bluesky PDS lookup results | `7` |
+| `CACHE_DAYS` | Number of days to cache ATProto PDS lookup results | `7` |
 | `TuneBridge__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=tunebridge.db` |
 | `TuneBridge__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=tunebridge.db` |
 | `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
@@ -79,16 +78,15 @@ At least one complete set of music provider credentials is required:
 3. Create a bot and copy its token
 4. Invite the bot to your server with appropriate permissions (Read Messages, Send Messages, Embed Links, Manage Messages)
 
-### Bluesky PDS Credentials (Optional - for caching)
+### ATProto PDS Credentials (Optional - for caching)
 
-If you want to store lookup results on a Bluesky PDS for persistent caching:
+If you want to store lookup results on a ATProto PDS for persistent caching:
 
-1. Create a Bluesky account at [bsky.app](https://bsky.app) if you don't have one
+1. Create a ATProto account at [bsky.app](https://bsky.app) if you don't have one
 2. Go to Settings → App Passwords
 3. Create a new app password for TuneBridge
-4. Use your handle (e.g., `yourname.bsky.social`) as `BLUESKY_IDENTIFIER`
-5. Use the generated app password as `BLUESKY_PASSWORD`
-6. Set `BLUESKY_PDS_URL` to `https://bsky.social` (or your custom PDS URL)
+4. Use your handle (e.g., `yourname.bsky.social`) as `ATPROTO_IDENTIFIER`
+5. Use the generated app password as `ATPROTO_PASSWORD`
 
 **Note**: Lookup results are stored as custom AT Protocol lexicon records on your PDS. Input links with tracking parameters are kept private in a local SQLite database for privacy protection.
 
@@ -111,19 +109,18 @@ For local development, you can use an `appsettings.json` file instead of environ
     "TidalClientSecret": "your_tidal_client_secret",
     "DiscordToken": "your_bot_token",
     "IdentityConnectionString": "Data Source=tunebridge.db",
-    "BlueskyPdsUrl": "https://bsky.social",
-    "BlueskyIdentifier": "your-handle.bsky.social",
-    "BlueskyPassword": "your-app-password",
+    "ATProtoIdentifier": "your-handle.bsky.social",
+    "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
     "LinkCacheConnectionString": "Data Source=tunebridge.db",
-    "BaseUrl": "localhost"
+    "BaseUrl": "localhost",
+    "LogFilePath": "./logs/tunebridge-.log"
   },
   "Logging": {
     "LogLevel": {
       "Default": "Information",
       "Microsoft.Hosting.Lifetime": "Information"
-    },
-    "FilePath": "/app/data/logs/tunebridge-.log"
+    }
   },
   "OpenTelemetry": {
     "OtlpEndpoint": "http://aspire-dashboard:4317"
@@ -152,7 +149,7 @@ docker run -p 10000:10000 \
 ## Security Best Practices
 
 1. **Never commit credentials to source control** - Always use environment variables or secure secret management
-2. **Use app passwords for Bluesky** - Generate dedicated app passwords instead of using your main account password
+2. **Use app passwords for ATProto** - Generate dedicated app passwords instead of using your main account password
 3. **Rotate API keys regularly** - Periodically regenerate API keys and update your configuration
 4. **Restrict API key permissions** - Only grant the minimum required permissions for each service
 5. **Use HTTPS in production** - Always deploy behind a reverse proxy with SSL/TLS enabled

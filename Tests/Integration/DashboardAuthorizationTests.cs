@@ -51,7 +51,7 @@ public class DashboardAuthorizationTests {
             } );
 
         _client = _factory.CreateClient( );
-        
+
         // Get and store DbContext for cleanup
         using IServiceScope scope = _factory.Services.CreateScope( );
         _dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
@@ -60,13 +60,13 @@ public class DashboardAuthorizationTests {
     [TestCleanup]
     public void Cleanup( ) {
         _client?.Dispose( );
-        
+
         // Clean up the in-memory database
         if (_dbContext != null) {
-            _dbContext.Database.EnsureDeleted( );
+            _ = _dbContext.Database.EnsureDeleted( );
             _dbContext.Dispose( );
         }
-        
+
         _factory?.Dispose( );
     }
 

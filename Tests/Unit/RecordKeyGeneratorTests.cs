@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Types.Enums;
@@ -148,7 +147,7 @@ namespace TuneBridge.Tests.Unit {
             string cardId = RecordKeyGenerator.GenerateCardId( rkey );
 
             // Assert
-            Assert.IsTrue( cardId.Length <= 32, "Card ID should not exceed 32 characters" );
+            Assert.IsLessThanOrEqualTo( 32, cardId.Length, "Card ID should not exceed 32 characters" );
             _ = cardId.All( c => char.IsLetterOrDigit( c ) || c == '-' ).Should( ).BeTrue( "Card ID should be URL-safe" );
             _ = cardId.All( c => !char.IsUpper( c ) ).Should( ).BeTrue( "Card ID should be lowercase" );
         }

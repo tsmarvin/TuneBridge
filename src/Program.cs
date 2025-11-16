@@ -1,5 +1,3 @@
-using OpenTelemetry.Logs;
-using OpenTelemetry.Resources;
 using Serilog;
 using TuneBridge.Configuration;
 
@@ -28,7 +26,7 @@ namespace TuneBridge {
             try {
                 app.Run( );
             } finally {
-                Log.CloseAndFlush();
+                Log.CloseAndFlush( );
             }
         }
     }

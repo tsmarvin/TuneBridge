@@ -82,19 +82,14 @@ namespace TuneBridge.Configuration {
         public int RateLimitRequestsPerHour { get; set; } = 20;
 
         /// <summary>
-        /// The Bluesky PDS instance URL (e.g., https://bsky.social).
+        /// The ATProto account identifier (handle or DID).
         /// </summary>
-        public string BlueskyPdsUrl { get; set; } = string.Empty;
+        public string ATProtoIdentifier { get; set; } = string.Empty;
 
         /// <summary>
-        /// The Bluesky account identifier (handle or DID).
+        /// The ATProto account password or app password.
         /// </summary>
-        public string BlueskyIdentifier { get; set; } = string.Empty;
-
-        /// <summary>
-        /// The Bluesky account password or app password.
-        /// </summary>
-        public string BlueskyPassword { get; set; } = string.Empty;
+        public string ATProtoPassword { get; set; } = string.Empty;
 
         /// <summary>
         /// The number of days to cache MediaLinkResult lookups. Default is 7 days.
@@ -110,6 +105,11 @@ namespace TuneBridge.Configuration {
         /// The base URL for the application (e.g., https://dev.tunebridge.media). Used for generating OpenGraph card URLs.
         /// </summary>
         public string BaseUrl { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The log file path for the service.
+        /// </summary>
+        public string LogFilePath { get; set; } = string.Empty;
 
     }
 }

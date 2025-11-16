@@ -10,15 +10,15 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// This service checks the cache before performing lookups and stores results for future use.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="CachedMediaLinkService"/> class.
+    /// Initializes a new instance of the <see cref="CachingMediaLinkService"/> class.
     /// </remarks>
     /// <param name="innerService">The underlying media link service to decorate with caching.</param>
     /// <param name="cacheService">The cache service for storing and retrieving results.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
-    public partial class CachedMediaLinkService(
+    public partial class CachingMediaLinkService(
         IMediaLinkService innerService,
-        IMediaLinkCacheService cacheService,
-        ILogger<CachedMediaLinkService> logger
+        IMediaLinkCacheRepository cacheService,
+        ILogger<CachingMediaLinkService> logger
     ) : IMediaLinkService {
 
         // Static compiled regex for URL extraction (performance optimization)
@@ -164,7 +164,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             // Simple extraction - look for https:// or http:// followed by URL
             MatchCollection matches = s_urlRegex.Matches( content );
 
-            foreach (System.Text.RegularExpressions.Match match in matches) {
+            foreach (Match match in matches) {
                 if (match.Success) {
                     // Use full match to preserve original scheme
                     string link = match.Value;

@@ -28,9 +28,8 @@ public class MusicLookupControllerTests {
             ["TuneBridge:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
             ["TuneBridge:IdentityConnectionString"] = $"Data Source=MusicLookup_Identity_{Guid.NewGuid():N};Mode=Memory",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:BlueskyPdsUrl"] = "",
-            ["TuneBridge:BlueskyIdentifier"] = "",
-            ["TuneBridge:BlueskyPassword"] = "",
+            ["TuneBridge:ATProtoIdentifier"] = "",
+            ["TuneBridge:ATProtoPassword"] = "",
             ["TuneBridge:LinkCacheConnectionString"] = $"Data Source=MusicLookup_LinkCache_{Guid.NewGuid():N};Mode=Memory",
             ["TuneBridge:RateLimitRequestsPerHour"] = "1000", // Much higher limit for integration tests
         };

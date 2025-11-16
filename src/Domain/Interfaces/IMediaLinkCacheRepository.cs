@@ -5,7 +5,7 @@ namespace TuneBridge.Domain.Interfaces {
     /// <summary>
     /// Service for caching MediaLinkResult lookups using SQLite and ATProto PDS.
     /// </summary>
-    public interface IMediaLinkCacheService {
+    public interface IMediaLinkCacheRepository {
 
         /// <summary>
         /// Attempts to get a cached MediaLinkResult by input link.
