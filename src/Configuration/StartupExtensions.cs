@@ -158,6 +158,8 @@ namespace TuneBridge.Configuration {
             // Configure static file provider with proper MIME types for AT Protocol lexicon files
             FileExtensionContentTypeProvider provider = new( );
             provider.Mappings[".json"] = "application/json";
+            // Serve lexicon files without extension as application/json per ATProto spec
+            provider.Mappings[""] = "application/json";
 
             // Serve .well-known directory with proper content types for AT Protocol lexicons
             _ = app.UseStaticFiles( new StaticFileOptions {
@@ -166,6 +168,11 @@ namespace TuneBridge.Configuration {
                 ContentTypeProvider = provider,
                 ServeUnknownFileTypes = false,
                 OnPrepareResponse = ctx => {
+                    // Serve lexicon files in atproto-lexicon directory as application/json
+                    if (ctx.File.PhysicalPath != null && ctx.File.PhysicalPath.Contains( "atproto-lexicon", StringComparison.OrdinalIgnoreCase )) {
+                        ctx.Context.Response.ContentType = "application/json";
+                    }
+
                     // Add CORS headers to allow ATProto PDS to fetch lexicon files
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Origin", "*" );
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Methods", "GET, HEAD, OPTIONS" );
