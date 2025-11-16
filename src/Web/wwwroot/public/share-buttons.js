@@ -64,7 +64,7 @@ function initializeShareButtons() {
     });
 
     // Handle copy iframe buttons
-    document.querySelectorAll('.copy-iframe-btn').forEach(function (button) {
+    document.querySelectorAll('.copy-embed-btn').forEach(function (button) {
         button.onclick = function () {
             var url = this.getAttribute('data-url');
             var title = JSON.parse(this.getAttribute('data-title'));
@@ -75,6 +75,20 @@ function initializeShareButtons() {
                 showCopyFeedback(button, 'Embed code copied!', false);
             }).catch(function (err) {
                 console.error('Failed to copy embed code:', err);
+                showCopyFeedback(button, 'Failed to copy', true);
+            });
+        };
+    });
+
+    // Handle copy ATProto DID buttons
+    document.querySelectorAll('.copy-atproto-btn').forEach(function (button) {
+        button.onclick = function () {
+            var uri = this.getAttribute('data-uri');
+
+            navigator.clipboard.writeText(uri).then(function () {
+                showCopyFeedback(button, 'ATProto DID copied!', false);
+            }).catch(function (err) {
+                console.error('Failed to copy ATProto DID:', err);
                 showCopyFeedback(button, 'Failed to copy', true);
             });
         };
