@@ -212,15 +212,23 @@ public class LoggingConfigurationTests {
                         : null;
 
                     // Filter MVC controller action execution logs for health endpoint
-                    // Examples: "Route matched...", "Executing controller action...", "Executing OkObjectResult...", "Executed action..."
+                    // Check if this is an MVC/Routing infrastructure log
                     if (sourceContext != null &&
                         (sourceContext.Contains( "Microsoft.AspNetCore.Mvc" ) ||
                          sourceContext.Contains( "Microsoft.AspNetCore.Routing" ))) {
-                        // Check if this is related to the health endpoint
+                        
+                        // Check ActionName property first (most reliable indicator)
+                        if (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue )) {
+                            string actionName = actionValue.ToString( );
+                            if (actionName.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
+                                return true; // Exclude health check related MVC logs
+                            }
+                        }
+
+                        // Also check message text for "Health" keyword as fallback
+                        // This catches logs like "Route matched with {action = "Health", controller = "Home"}"
                         string messageText = logEvent.RenderMessage( );
-                        if (messageText.Contains( "Health", StringComparison.OrdinalIgnoreCase ) ||
-                            (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue ) &&
-                             actionValue.ToString( ).Contains( "Health", StringComparison.OrdinalIgnoreCase ))) {
+                        if (messageText.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
                             return true; // Exclude health check related MVC logs
                         }
                     }
@@ -289,8 +297,8 @@ public class LoggingConfigurationTests {
                 $"Expected only 1 /health occurrence (the failed one), but found {healthOccurrences}. Successful health check at Information level should be filtered." );
 
             // MVC action logs for Health endpoint should be filtered
-            Assert.DoesNotContain( "HomeController.Health", logContent, "Health controller action logs should be filtered" );
-            Assert.DoesNotContain( "action = \"Health\"", logContent, "Health routing logs should be filtered" );
+            Assert.DoesNotContain( "Health() on controller", logContent, "Health controller action logs should be filtered" );
+            Assert.DoesNotContain( "Route matched", logContent, "Health routing logs should be filtered" );
 
             // MVC action logs for other endpoints should still be logged
             Assert.Contains( "Index()", logContent, "Non-health controller action logs should be logged" );
