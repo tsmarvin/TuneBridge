@@ -107,7 +107,7 @@ services:
       - LOG_ENABLED=true
 
   caddy:
-    image: caddy:latest
+    image: ${DOCKERHUB_USERNAME}/caddy-cloudflare-test:latest
     restart: unless-stopped
     ports:
       - "80:80"
@@ -119,6 +119,7 @@ services:
       - DOMAIN=${DOMAIN:-dev.tunebridge.media}
       - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.tunebridge.media}
       - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy-data:/data/caddy
