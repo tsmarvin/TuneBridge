@@ -1,4 +1,4 @@
-# MediaLinkResult Caching with Bluesky PDS Storage
+# MediaLinkResult Caching with ATProto PDS Storage
 
 This document describes the caching and storage system for MediaLinkResult DTOs in TuneBridge.
 
@@ -7,7 +7,7 @@ This document describes the caching and storage system for MediaLinkResult DTOs 
 TuneBridge implements a two-tier caching system for MediaLinkResult lookups:
 
 1. **SQLite Database**: Local cache for fast lookups and tracking input links
-2. **Bluesky PDS**: Persistent storage of MediaLinkResults as Bluesky posts
+2. **ATProto PDS**: Persistent storage of MediaLinkResults as ATProto posts
 
 ## Configuration
 
@@ -16,9 +16,8 @@ Add the following settings to your `appsettings.json`:
 ```json
 {
   "TuneBridge": {
-    "BlueskyPdsUrl": "https://bsky.social",
-    "BlueskyIdentifier": "your-handle.bsky.social",
-    "BlueskyPassword": "your-app-password",
+    "ATProtoIdentifier": "your-handle.bsky.social",
+    "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
     "LinkCacheConnectionString": "Data Source=medialinkscache.db"
   }
@@ -27,26 +26,25 @@ Add the following settings to your `appsettings.json`:
 
 ### Configuration Parameters
 
-- **BlueskyPdsUrl**: The Bluesky PDS instance URL (default: `https://bsky.social`)
-- **BlueskyIdentifier**: Your Bluesky handle or DID
-- **BlueskyPassword**: Your Bluesky password or app password (recommended: use app password)
+- **ATProtoIdentifier**: Your ATProto handle or DID
+- **ATProtoPassword**: Your ATProto password or app password (recommended: use app password)
 - **CacheDays**: Number of days to keep cache entries valid (default: 7)
 - **LinkCacheConnectionString**: SQLite connection string for the cache database (default: `Data Source=tunebridge.db`)
 
-> **Security Note**: Use a Bluesky app password instead of your main account password. Generate an app password at: Settings → App Passwords in Bluesky.
+> **Security Note**: Use a ATProto app password instead of your main account password. Generate an app password at: Settings → App Passwords in ATProto.
 
 ## SQLite Database Schema
 
-The cache database consists of two main tables. **Important**: The SQLite database is used only for efficient lookups to find Bluesky PDS record locations. All actual MediaLinkResult data is stored on and retrieved from the Bluesky PDS.
+The cache database consists of two main tables. **Important**: The SQLite database is used only for efficient lookups to find ATProto PDS record locations. All actual MediaLinkResult data is stored on and retrieved from the ATProto PDS.
 
 ### MediaLinkCacheEntry
 
-Stores Bluesky PDS record locations for efficient lookups.
+Stores ATProto PDS record locations for efficient lookups.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | Id | INTEGER | Primary key |
-| RecordUri | TEXT | AT-URI of the Bluesky record (e.g., `at://did:plc:xxx/media.tunebridge.lookup.result/yyy`) |
+| RecordUri | TEXT | AT-URI of the ATProto record (e.g., `at://did:plc:xxx/media.tunebridge.lookup.result/yyy`) |
 | CreatedAt | DATETIME | When this cache entry was created |
 | LastLookedUpAt | DATETIME | When this record was last looked up or refreshed on PDS (used for staleness check) |
 
@@ -74,7 +72,7 @@ Tracks input links that map to cached results. Multiple input links can point to
 ### Lookup Flow
 
 1. **Cache Check**: When a lookup is requested with input links, the system checks the SQLite database for a matching link
-2. **PDS Fetch**: If found, fetches the actual MediaLinkResult from Bluesky PDS using the stored RecordUri
+2. **PDS Fetch**: If found, fetches the actual MediaLinkResult from ATProto PDS using the stored RecordUri
 3. **Staleness Check**: Checks if the record's `lookedUpAt` timestamp is older than the cache window (X days from `LastLookedUpAt` in SQLite)
 4. **Cache Hit**: If fresh, returns the PDS result
 5. **Cache Miss/Stale**: If not found, missing from PDS, or stale, performs a fresh lookup
@@ -82,8 +80,8 @@ Tracks input links that map to cached results. Multiple input links can point to
 ### Storage Flow
 
 1. **Lookup Execution**: Performs lookup across configured music providers
-2. **Bluesky Storage**: Stores the MediaLinkResult as a Bluesky PDS record with JSON content and current timestamp
-3. **SQLite Storage**: Stores only the Bluesky record URI and lookup timestamp in SQLite (no data duplication)
+2. **ATProto Storage**: Stores the MediaLinkResult as a ATProto PDS record with JSON content and current timestamp
+3. **SQLite Storage**: Stores only the ATProto record URI and lookup timestamp in SQLite (no data duplication)
 4. **Link Association**: Associates all input links with the cache entry in SQLite
 
 ### Record Refresh
@@ -103,11 +101,11 @@ When a new lookup is performed with a link that resolves to an already-cached re
 1. The new link is added to the SQLite `InputLinkEntry` table for future lookups
 2. The SQLite cache entry remains pointed to the same PDS record
 
-**Privacy Protection**: Input links are stored ONLY in the local SQLite database, not on Bluesky PDS. This prevents exposure of potentially tracking-laden URLs (query parameters, referral codes, etc.) on the public Bluesky network while still enabling efficient lookup-to-record mapping locally.
+**Privacy Protection**: Input links are stored ONLY in the local SQLite database, not on ATProto PDS. This prevents exposure of potentially tracking-laden URLs (query parameters, referral codes, etc.) on the public ATProto network while still enabling efficient lookup-to-record mapping locally.
 
 **Important**: There is no practical limit on the number of input links that can be associated with a record in SQLite. All links that resolve to the same music content will be mapped to the same PDS record.
 
-## Bluesky Storage Format
+## ATProto Storage Format
 
 MediaLinkResults are stored as custom AT Protocol records using the `media.tunebridge.lookup.result` lexicon.
 
@@ -188,12 +186,12 @@ Example record structure:
 }
 ```
 
-**Important Privacy Note**: Input links (the URLs users provide) are intentionally NOT stored in Bluesky PDS records. They are tracked only in the local SQLite database. This protects user privacy by not exposing potentially tracking-laden URLs on the public Bluesky network.
+**Important Privacy Note**: Input links (the URLs users provide) are intentionally NOT stored in ATProto PDS records. They are tracked only in the local SQLite database. This protects user privacy by not exposing potentially tracking-laden URLs on the public ATProto network.
 
 ### Benefits of Custom Lexicon
 
 - **Structured Data**: Records are properly typed and validated against the lexicon schema
-- **Queryable**: Can be indexed and queried efficiently by Bluesky infrastructure
+- **Queryable**: Can be indexed and queried efficiently by ATProto infrastructure
 - **Versioned**: Lexicon versioning allows for future schema evolution
 - **Interoperable**: Other AT Protocol clients can understand and display the data
 - **Privacy-Focused**: Input URLs are not stored on PDS, preventing exposure of tracking parameters
@@ -201,10 +199,10 @@ Example record structure:
 
 ## API Interfaces
 
-### IBlueskyStorageService
+### IATProtoStorageService
 
 ```csharp
-public interface IBlueskyStorageService {
+public interface IATProtoStorageService {
     Task<string> StoreMediaLinkResultAsync(MediaLinkResult result);
     Task<MediaLinkResult?> GetMediaLinkResultAsync(string recordUri);
     Task<bool> UpdateMediaLinkResultAsync(string recordUri, MediaLinkResult result);
@@ -212,9 +210,9 @@ public interface IBlueskyStorageService {
 ```
 
 **Methods:**
-- `StoreMediaLinkResultAsync`: Creates a new record on Bluesky PDS
-- `GetMediaLinkResultAsync`: Retrieves a record from Bluesky PDS by its AT-URI
-- `UpdateMediaLinkResultAsync`: Updates an existing record on Bluesky PDS (used for refreshing stale records with new music metadata)
+- `StoreMediaLinkResultAsync`: Creates a new record on ATProto PDS
+- `GetMediaLinkResultAsync`: Retrieves a record from ATProto PDS by its AT-URI
+- `UpdateMediaLinkResultAsync`: Updates an existing record on ATProto PDS (used for refreshing stale records with new music metadata)
 
 ### IMediaLinkCacheService
 
@@ -237,7 +235,7 @@ A decorator for `IMediaLinkService` that transparently adds caching:
 ## Performance Considerations
 
 - **Cache Lookup**: ~1-5ms (SQLite query to find RecordUri)
-- **PDS Fetch**: ~100-500ms (Bluesky PDS API call to retrieve record)
+- **PDS Fetch**: ~100-500ms (ATProto PDS API call to retrieve record)
 - **Fresh Lookup + PDS Storage**: ~500-2000ms (Music provider API calls + PDS record creation/update)
 - **Record Update**: ~100-500ms (PDS API call to update existing record)
 - **Database Size**: Approximately 100-200 bytes per cached link + record URI (no result data stored in SQLite)
@@ -245,7 +243,7 @@ A decorator for `IMediaLinkService` that transparently adds caching:
 ### Key Points
 
 - SQLite is used only for efficient link-to-RecordUri lookups
-- All MediaLinkResult data is stored on and retrieved from Bluesky PDS
+- All MediaLinkResult data is stored on and retrieved from ATProto PDS
 - Stale records are updated on PDS, not replaced
 - No data duplication between SQLite and PDS
 
@@ -281,19 +279,19 @@ The SQLite database file can be backed up while the application is running:
 sqlite3 medialinkscache.db ".backup medialinkscache.backup.db"
 ```
 
-**Note**: Backing up only the SQLite database is insufficient for full data recovery. The actual MediaLinkResult data is stored on Bluesky PDS.
+**Note**: Backing up only the SQLite database is insufficient for full data recovery. The actual MediaLinkResult data is stored on ATProto PDS.
 
 ## Limitations
 
 - Custom lexicon records are stored in the user's AT Protocol repository
-- Records are not displayed as standard posts in Bluesky feeds
+- Records are not displayed as standard posts in ATProto feeds
 - Records are publicly accessible via AT Protocol if you know the record URI
-- Rate limits apply to Bluesky API (authenticated: 3000/hour, 30000/day)
+- Rate limits apply to ATProto API (authenticated: 3000/hour, 30000/day)
 - Maximum record size depends on PDS configuration (typically sufficient for MediaLinkResults)
 
 ## Security Considerations
 
-- Use Bluesky app passwords (not main password)
+- Use ATProto app passwords (not main password)
 - Store credentials securely (environment variables or secret management)
 - SQLite database contains serialized MediaLinkResults (treat as sensitive if results contain user data)
 - No PII is stored in the cache by default

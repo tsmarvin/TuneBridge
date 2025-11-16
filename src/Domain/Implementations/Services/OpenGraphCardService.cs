@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 
 namespace TuneBridge.Domain.Implementations.Services {
@@ -16,17 +17,26 @@ namespace TuneBridge.Domain.Implementations.Services {
         public string BaseUrl => baseUrl;
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
-        private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 24 );
+        private readonly TimeSpan _expirationTime = TimeSpan.FromDays( 6 );
         private int _operationCounter;
-        private const int CleanupInterval = 100;
+        private const int CleanupInterval = 10000;
 
         /// <inheritdoc/>
         public string StoreResult( MediaLinkResult result ) {
             CleanExpiredEntries( );
 
-            string id = Guid.NewGuid().ToString( "N" );
-            DateTime expiry = DateTime.UtcNow.Add( _expirationTime );
-            _store[id] = (result, expiry);
+            // Generate deterministic ID based on rkey (always available with fallback)
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
+            string id = RecordKeyGenerator.GenerateCardId( rkey );
+
+            // Atomically add or update the entry, preserving expiry if not expired
+            _ = _store.AddOrUpdate(
+                id,
+                (result, DateTime.UtcNow.Add( _expirationTime )),
+                ( _, existing ) => existing.Expiry > DateTime.UtcNow
+                    ? (result, existing.Expiry)
+                    : (result, DateTime.UtcNow.Add( _expirationTime ))
+            );
 
             // Generate the OpenGraph card URL
             return $"https://{baseUrl.TrimEnd( '/' )}/card/{id}";

@@ -21,9 +21,8 @@ public class AppSettingsTests {
             ["TuneBridge:DiscordToken"] = "discord_token_here",
             ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
             ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:BlueskyPdsUrl"] = string.Empty, //"https://bsky.social",
-            ["TuneBridge:BlueskyIdentifier"] = string.Empty,
-            ["TuneBridge:BlueskyPassword"] = string.Empty,
+            ["TuneBridge:ATProtoIdentifier"] = string.Empty,
+            ["TuneBridge:ATProtoPassword"] = string.Empty,
             ["TuneBridge:LinkCacheConnectionString"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
 

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Interfaces;
+using TuneBridge.Domain.Types.Constants;
 using TuneBridge.Domain.Types.Enums;
 using TuneBridge.Web.Models;
 
@@ -234,7 +235,7 @@ namespace TuneBridge.Web.Controllers {
         /// Health check endpoint for monitoring and load balancers.
         /// </summary>
         /// <returns>HTTP 200 OK with a simple status message.</returns>
-        [HttpGet( "/health" )]
+        [HttpGet( EndpointPaths.Health )]
         [ResponseCache( Duration = 0, Location = ResponseCacheLocation.None, NoStore = true )]
         public IActionResult Health( ) {
             return Ok( new { status = "healthy", timestamp = DateTime.UtcNow } );

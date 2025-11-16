@@ -107,8 +107,8 @@ A: First, check that the bot is online in your server member list and has the re
 A: Everyone in the channel can see the conversion embeds posted by the bot. The embeds display music service URLs (Spotify, Apple Music, Tidal links) and album artwork so that anyone in the channel can easily access the music from their preferred platform. Your original message is visible to everyone until deleted (which only happens for link-only messages).
 
 **Q: What information does the bot store?**
-A: The bot sees the content of all messages in channels where it has access, including user IDs and message content. However, it does not store or log this information beyond what is necessary for link conversion.  
-The only information stored, or logged, are the parsed URLs shared for conversion purposes and the discord user ID of the person who shared them. The discord user ID will only be logged if an error occurs during processing to help with debugging.  
+A: The bot sees the content of all messages in channels where it has access, including user IDs and message content. However, it does not store or log this information beyond what is necessary for link conversion.
+The only information stored, or logged, are the parsed URLs shared for conversion purposes and the discord user ID of the person who shared them. The discord user ID will only be logged if an error occurs during processing to help with debugging.
 
 
 ---

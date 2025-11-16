@@ -8,13 +8,17 @@ using Microsoft.Extensions.Http.Resilience;
 using Microsoft.OpenApi;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Resources;
 using Polly;
+using Serilog;
 using TuneBridge.Domain.Implementations.Auth;
 using TuneBridge.Domain.Implementations.Database;
 using TuneBridge.Domain.Implementations.Middleware;
 using TuneBridge.Domain.Implementations.Services;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Models;
+using TuneBridge.Domain.Types.Constants;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Configuration {
@@ -37,6 +41,10 @@ namespace TuneBridge.Configuration {
             if (builder.Environment.EnvironmentName != "Testing") {
                 _ = builder.Configuration
                 .ConfigureAppSettings( args );
+
+                // Configure logging after configuration is loaded
+                ConfigureSerilog( builder );
+                ConfigureOpenTelemetry( builder );
             }
 
             IServiceCollection services = builder.Services;
@@ -55,6 +63,21 @@ namespace TuneBridge.Configuration {
             IServiceCollection services,
             IConfiguration config
         ) where TBuilder : IWebHostBuilder {
+            _ = AddTuneBridgeServices( services, config );
+            return builder;
+        }
+
+        /// <summary>
+        /// Registers TuneBridge services, authentication handlers, HTTP clients, and (optional) Discord services directly on an IServiceCollection.
+        /// This is useful for testing scenarios where you don't need a full IWebHostBuilder.
+        /// </summary>
+        /// <param name="services">The service collection to configure.</param>
+        /// <param name="config">The configuration to use for settings.</param>
+        /// <returns>The configured service collection.</returns>
+        internal static IServiceCollection AddTuneBridgeServices(
+            this IServiceCollection services,
+            IConfiguration config
+        ) {
             // Add services to the container.
             _ = services
                 .AddControllersWithViews( )
@@ -81,8 +104,8 @@ namespace TuneBridge.Configuration {
                 p => new OpenGraphCardService( settings.BaseUrl )
             );
 
-            // Optional Bluesky storage and cache services
-            ConfigureBlueskyIfEnabled( services, settings );
+            // Optional ATProto storage and cache services
+            ConfigureATProtoIfEnabled( services, settings );
 
             // Provider registrations (Apple/Spotify/Tidal)
             HashSet<SupportedProviders> enabledProviders = RegisterMusicProviders( services, settings );
@@ -100,7 +123,7 @@ namespace TuneBridge.Configuration {
             _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
             ConfigureDiscordIfEnabled( services, settings );
 
-            return builder;
+            return services;
         }
 
         /// <summary>
@@ -108,7 +131,7 @@ namespace TuneBridge.Configuration {
         /// </summary>
         /// <param name="builder">The builder to create a web application from.</param>
         /// <returns>The configured application.</returns>
-        public static WebApplication ConfigureTuneBridge(
+        public static async Task<WebApplication> ConfigureTuneBridgeAsync(
             this WebApplicationBuilder builder
         ) {
             WebApplication app = builder.Build();
@@ -121,8 +144,8 @@ namespace TuneBridge.Configuration {
             // Initialize cache database if configured
             InitializeCacheDatabase( app.Services );
 
-            // Initialize database
-            _ = app.InitializeDatabase( );
+            // Initialize database and seed roles
+            _ = await app.InitializeDatabaseAsync( );
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment( )) {
@@ -143,7 +166,7 @@ namespace TuneBridge.Configuration {
                 ContentTypeProvider = provider,
                 ServeUnknownFileTypes = false,
                 OnPrepareResponse = ctx => {
-                    // Add CORS headers to allow Bluesky PDS to fetch lexicon files
+                    // Add CORS headers to allow ATProto PDS to fetch lexicon files
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Origin", "*" );
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Methods", "GET, HEAD, OPTIONS" );
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Headers", "Content-Type" );
@@ -155,6 +178,11 @@ namespace TuneBridge.Configuration {
 
             _ = app.UseStaticFiles( ); // Serve static files from wwwroot
             _ = app.UseRouting( );
+
+            // Restrict health endpoint access to internal requests only
+            // NOTE: This middleware is intentionally placed before authentication because it uses IP-based authorization
+            // and does not require authenticated user context. If future changes require authentication, adjust the order accordingly.
+            _ = app.UseMiddleware<HealthEndpointAuthorizationMiddleware>( );
 
             _ = app.UseAuthentication( );
             _ = app.UseAuthorization( );
@@ -199,7 +227,7 @@ namespace TuneBridge.Configuration {
                 .AddEnvironmentVariables( );
 
         /// <summary>
-        /// Initializes the SQLite database for caching if Bluesky PDS is configured.
+        /// Initializes the SQLite database for caching if ATProto PDS is configured.
         /// </summary>
         /// <param name="serviceProvider">The service provider to use for resolving services.</param>
         private static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
@@ -211,10 +239,10 @@ namespace TuneBridge.Configuration {
 
                 using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
                 dbContext.Database.Migrate( );
-                ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
                 logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
             } catch (Exception ex) {
-                ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
                 logger.LogError( ex, "Failed to initialize SQLite cache database" );
             }
         }
@@ -230,13 +258,13 @@ namespace TuneBridge.Configuration {
                 options.Retry.UseJitter = true;
                 options.Retry.MaxRetryAttempts = 5;
                 options.Retry.Delay = TimeSpan.FromSeconds( 1 );
-                options.Retry.MaxDelay = TimeSpan.FromSeconds( 30 );
+                options.Retry.MaxDelay = TimeSpan.FromSeconds( 60 ); // Increased from 30 to 60 seconds
                 options.Retry.ShouldRetryAfterHeader = true; // honor Retry-After
 
                 options.Retry.DisableForUnsafeHttpMethods( ); // Disables retry on POST/PUT/PATCH/DELETE/CONNECT
 
                 // Timeouts (outer total, inner per-attempt)
-                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds( 20 );
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds( 120 );
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 10 );
             } );
         }
@@ -328,27 +356,25 @@ namespace TuneBridge.Configuration {
             } );
         }
 
-        private static void ConfigureBlueskyIfEnabled( IServiceCollection services, AppSettings settings ) {
-            if (string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) ||
-                string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) ||
-                string.IsNullOrWhiteSpace( settings.BlueskyPassword )) {
+        private static void ConfigureATProtoIfEnabled( IServiceCollection services, AppSettings settings ) {
+            if (string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) ||
+                string.IsNullOrWhiteSpace( settings.ATProtoPassword )) {
                 return;
             }
 
-            _ = services.AddSingleton<IBlueskyStorageService>( s =>
-                new BlueskyStorageService(
-                    settings.BlueskyPdsUrl,
-                    settings.BlueskyIdentifier,
-                    settings.BlueskyPassword,
-                    s.GetRequiredService<ILogger<BlueskyStorageService>>( )
+            _ = services.AddSingleton<IATProtoStorageService>( s =>
+                new ATProtoStorageService(
+                    settings.ATProtoIdentifier,
+                    settings.ATProtoPassword,
+                    s.GetRequiredService<ILogger<ATProtoStorageService>>( )
                 )
             );
 
             // Register cache service as singleton using DbContextFactory so it is root-safe
-            _ = services.AddSingleton<IMediaLinkCacheService>( s => new MediaLinkCacheService(
+            _ = services.AddSingleton<IMediaLinkCacheRepository>( s => new MediaLinkCacheRepository(
                 s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
-                s.GetRequiredService<IBlueskyStorageService>( ),
-                s.GetRequiredService<ILogger<MediaLinkCacheService>>( ),
+                s.GetRequiredService<IATProtoStorageService>( ),
+                s.GetRequiredService<ILogger<MediaLinkCacheRepository>>( ),
                 settings.CacheDays
             ) );
         }
@@ -364,8 +390,14 @@ namespace TuneBridge.Configuration {
         }
 
         private static void RegisterAppleIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
+            // Check if Apple Music credentials are provided
             if (string.IsNullOrWhiteSpace( settings.AppleTeamId ) ||
                 string.IsNullOrWhiteSpace( settings.AppleKeyId )) {
+                return;
+            }
+
+            // If Team ID and Key ID are provided, the key path must also be provided and valid
+            if (string.IsNullOrWhiteSpace( settings.AppleKeyPath )) {
                 return;
             }
 
@@ -443,22 +475,22 @@ namespace TuneBridge.Configuration {
             AppSettings settings
         ) {
             _ = services.AddTransient<IMediaLinkService>( s => {
-                DefaultMediaLinkService baseService = new(
-                    GetEnabledProviderServices( enabledProviders, s ),
-                    s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
-                    s.GetRequiredService<JsonSerializerOptions>( )
-                );
+                Dictionary<SupportedProviders, IMusicLookupService> providerServices = GetEnabledProviderServices( enabledProviders, s );
 
-                // Wrap with caching if Bluesky is configured
-                return !string.IsNullOrWhiteSpace( settings.BlueskyPdsUrl ) &&
-                    !string.IsNullOrWhiteSpace( settings.BlueskyIdentifier ) &&
-                    !string.IsNullOrWhiteSpace( settings.BlueskyPassword )
-                    ? new CachedMediaLinkService(
-                        baseService,
-                        s.GetRequiredService<IMediaLinkCacheService>( ),
-                        s.GetRequiredService<ILogger<CachedMediaLinkService>>( )
+                // Use caching service if ATProto is configured, otherwise use default service
+                return !string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) &&
+                    !string.IsNullOrWhiteSpace( settings.ATProtoPassword )
+                    ? new CachingMediaLinkService(
+                        providerServices,
+                        s.GetRequiredService<IMediaLinkCacheRepository>( ),
+                        s.GetRequiredService<ILogger<CachingMediaLinkService>>( ),
+                        s.GetRequiredService<JsonSerializerOptions>( )
                     )
-                    : baseService;
+                    : new DefaultMediaLinkService(
+                        providerServices,
+                        s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
+                        s.GetRequiredService<JsonSerializerOptions>( )
+                    );
             } );
         }
 
@@ -466,6 +498,7 @@ namespace TuneBridge.Configuration {
             IServiceCollection services,
             AppSettings settings
         ) {
+            // Only register Discord services if token is provided and not empty/whitespace
             if (string.IsNullOrWhiteSpace( settings.DiscordToken )) { return; }
 
             _ = services.AddDiscordShardedGateway( options => {
@@ -503,6 +536,100 @@ namespace TuneBridge.Configuration {
                 }
             }
             return results;
+        }
+
+        /// <summary>
+        /// Configures Serilog for file logging with rotation and retention.
+        /// </summary>
+        /// <param name="builder">The web application builder to configure.</param>
+        private static void ConfigureSerilog( WebApplicationBuilder builder ) {
+            string logPath = builder.Configuration["TuneBridge:LogFilePath"] ?? "./logs/tunebridge-.log";
+
+            try {
+                string? logDir = Path.GetDirectoryName( logPath );
+                if (!string.IsNullOrEmpty( logDir ) && !Directory.Exists( logDir )) {
+                    _ = Directory.CreateDirectory( logDir );
+                }
+            } catch (IOException ex) {
+                Console.WriteLine( $"Warning: Failed to validate/create log directory: {ex.Message}" );
+                // Fall back to not configuring file logging
+                return;
+            } catch (UnauthorizedAccessException ex) {
+                Console.WriteLine( $"Warning: Failed to validate/create log directory due to insufficient permissions: {ex.Message}" );
+                // Fall back to not configuring file logging
+                return;
+            }
+
+            Log.Logger = new LoggerConfiguration( )
+                .ReadFrom.Configuration( builder.Configuration )
+                .Filter.ByExcluding( logEvent => {
+                    // Exclude successful health check requests from logs (but keep failures)
+                    // This filters out Information level logs for GET /health with 200 OK status
+                    if (logEvent.Level != Serilog.Events.LogEventLevel.Information) {
+                        return false; // Don't exclude warnings, errors, etc. (allows non-200 status codes and higher log levels to pass through)
+                    }
+
+                    // Check if this is an HTTP request completion log from Serilog.AspNetCore
+                    // The message template for HTTP request completion is typically:
+                    // "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms"
+                    string? messageTemplate = logEvent.MessageTemplate?.Text;
+                    if (messageTemplate == null || !messageTemplate.Contains( "HTTP" )) {
+                        return false;
+                    }
+
+                    // Check if request path is /health
+                    if (
+                        logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
+                        pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
+                        logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
+                        statusValue.ToString( ) == "200"
+                    ) {
+                        return true; // Exclude this successful health check log
+                    }
+
+                    return false;
+                } )
+                .WriteTo.File(
+                    path: logPath,
+                    rollingInterval: RollingInterval.Day,
+                    fileSizeLimitBytes: 10 * 1024 * 1024, // 10MB
+                    retainedFileCountLimit: 5,
+                    rollOnFileSizeLimit: true,
+                    shared: false
+                )
+                .CreateLogger( );
+
+            _ = builder.Host.UseSerilog( );
+        }
+
+        /// <summary>
+        /// Configures OpenTelemetry for OTLP export to Aspire Dashboard.
+        /// </summary>
+        /// <param name="builder">The web application builder to configure.</param>
+        private static void ConfigureOpenTelemetry( WebApplicationBuilder builder ) {
+            string? otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+
+            // Only configure OpenTelemetry if endpoint is provided
+            if (string.IsNullOrWhiteSpace( otlpEndpoint )) {
+                return;
+            }
+
+            if (!Uri.TryCreate( otlpEndpoint, UriKind.Absolute, out Uri? uri )) {
+                Console.WriteLine( $"Warning: Invalid OTLP endpoint URL '{otlpEndpoint}' - OpenTelemetry logging disabled" );
+                return;
+            }
+
+            string version = typeof( Program ).Assembly.GetName( ).Version?.ToString( ) ?? "0.0.1";
+            _ = builder.Logging.AddOpenTelemetry( options => {
+                _ = options.SetResourceBuilder(
+                    ResourceBuilder.CreateDefault( )
+                        .AddService( serviceName: "TuneBridge", serviceVersion: version )
+                );
+
+                _ = options.AddOtlpExporter( otlpOptions => {
+                    otlpOptions.Endpoint = uri;
+                } );
+            } );
         }
     }
 }

@@ -28,17 +28,6 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
                 normalized = normalized[4..];
             }
 
-            // Remove query string and fragment
-            int queryIndex = normalized.IndexOf( '?' );
-            if (queryIndex >= 0) {
-                normalized = normalized[..queryIndex];
-            }
-
-            int fragmentIndex = normalized.IndexOf( '#' );
-            if (fragmentIndex >= 0) {
-                normalized = normalized[..fragmentIndex];
-            }
-
             // Remove trailing slash
             return normalized.TrimEnd( '/' );
         }

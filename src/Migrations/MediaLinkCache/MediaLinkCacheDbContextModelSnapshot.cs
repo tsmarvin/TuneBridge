@@ -15,40 +15,13 @@ namespace TuneBridge.Migrations.MediaLinkCache
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.10");
-
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.InputLinkEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Link")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("MediaLinkCacheEntryId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Link")
-                        .IsUnique();
-
-                    b.HasIndex("MediaLinkCacheEntryId");
-
-                    b.ToTable("InputLinks");
-                });
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
 
             modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaLinkCacheEntry", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Rkey")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
@@ -61,7 +34,7 @@ namespace TuneBridge.Migrations.MediaLinkCache
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                    b.HasKey("Rkey");
 
                     b.HasIndex("LastLookedUpAt");
 
@@ -71,11 +44,46 @@ namespace TuneBridge.Migrations.MediaLinkCache
                     b.ToTable("CacheEntries");
                 });
 
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.InputLinkEntry", b =>
+            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaLookupEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsAlbum")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LookupType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LookupValue")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MediaLinkCacheEntryRkey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MediaLinkCacheEntryRkey");
+
+                    b.HasIndex("LookupValue", "LookupType", "IsAlbum")
+                        .IsUnique();
+
+                    b.ToTable("LookupEntries");
+                });
+
+            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaLookupEntry", b =>
                 {
                     b.HasOne("TuneBridge.Domain.Contracts.Entities.MediaLinkCacheEntry", "MediaLinkCacheEntry")
-                        .WithMany("InputLinks")
-                        .HasForeignKey("MediaLinkCacheEntryId")
+                        .WithMany("LookupEntries")
+                        .HasForeignKey("MediaLinkCacheEntryRkey")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -84,7 +92,7 @@ namespace TuneBridge.Migrations.MediaLinkCache
 
             modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaLinkCacheEntry", b =>
                 {
-                    b.Navigation("InputLinks");
+                    b.Navigation("LookupEntries");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,82 +1,130 @@
 services:
   tunebridge:
-    image: tsmarvin/tunebridge-test:latest
+    image: tsmarvin/tunebridge-test:develop
     container_name: tunebridge
     restart: unless-stopped
-
-    # Ports
-    # Port 80: HTTP (will redirect to HTTPS in production)
-    # Port 443: HTTPS (Caddy auto-manages certificates)
-    ports:
-      - "80:80"
-      - "443:443"
-
-    # Environment variables
-    # Override these in a .env file or docker-compose.override.yml
+    networks:
+      - internal
     environment:
-      # Domain configuration
-      - DOMAIN=${DOMAIN:-dev.tunebridge.media}
-      - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}
-      # TuneBridge configuration
+      - BASEURL=${BASEURL:-dev.tunebridge.media}
       - NODE_NUMBER=${NODE_NUMBER:-100}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
-      # Music provider credentials (at least one required)
+      - OTLP_ENDPOINT=${OTLP_ENDPOINT:-http://aspire-dashboard:4317}
+      - LOG_FILE_PATH=${LOG_FILE_PATH:-/app/data/logs/tunebridge-.log}
       - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
       - APPLE_KEY_ID=${APPLE_KEY_ID:-}
       - APPLE_KEY_PATH=${APPLE_KEY_PATH:-}
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
       - TIDAL_CLIENT_ID=${TIDAL_CLIENT_ID:-}
-      # Optional Bluesky PDS configuration
-      - BLUESKY_PDS_URL=${BLUESKY_PDS_URL:-} # https://bsky.social is the default if you don't have a custom PDS
-      - BLUESKY_IDENTIFIER=${BLUESKY_IDENTIFIER:-}
-
-      # Cache configuration
+      - ATPROTO_IDENTIFIER=${ATPROTO_IDENTIFIER:-}
       - CACHE_DAYS=${CACHE_DAYS:-7}
       - LINK_CACHE_CONNECTION_STRING=${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
-
-      # Database configuration
       - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
-
-      # Authentication and rate limiting
       - RATE_LIMIT_REQUESTS_PER_HOUR=${RATE_LIMIT_REQUESTS_PER_HOUR:-20}
-
-    # Volumes
     volumes:
-      # Persistent data directory
-      - tunebridge-data:/app/data
-      # Caddy data for certificates
-      - caddy-data:/data/caddy
-      - caddy-config:/config/caddy
-      # Caddy logs
-      - caddy-logs:/var/log/caddy
+      - tunebridge-data:/app/data # Persistent data directory
       # Secret mounts (read-only)
       - ./secrets/apple_key.p8:/run/secrets/apple_key:ro
       - ./secrets/spotify_client_secret.txt:/run/secrets/spotify_client_secret:ro
       - ./secrets/tidal_client_secret.txt:/run/secrets/tidal_client_secret:ro
       - ./secrets/discord_token.txt:/run/secrets/discord_token:ro
-      - ./secrets/bluesky_password.txt:/run/secrets/bluesky_password:ro
+      - ./secrets/atproto_password.txt:/run/secrets/atproto_password:ro
       - ./secrets/api_key_salt.txt:/run/secrets/api_key_salt:ro
-
-    # Health check
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:10000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-
-    # Resource limits (adjust as needed)
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 1G
+          cpus: '4'
+          memory: 4G
         reservations:
           cpus: '0.5'
           memory: 256M
 
-# Named volumes for data persistence
+  # Aspire Dashboard for observability and telemetry
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.0
+    container_name: aspire-dashboard
+    restart: unless-stopped
+    expose:
+      - "18888"
+      - "4317"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:18888
+      # Frontend authentication is handled by Caddy forward_auth
+      - DASHBOARD__FRONTEND__AUTHMODE=Unsecured
+      - DASHBOARD__OTLP__ENDPOINTURL=http://+:4317
+      # OTLP endpoint is unsecured for internal network telemetry collection
+      # All containers on the internal network can send telemetry without authentication
+      - DASHBOARD__OTLP__AUTHMODE=Unsecured
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:18888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  pds:
+    image: ghcr.io/atproto-social/pds:latest
+    container_name: pds
+    restart: unless-stopped
+    networks:
+      - internal
+    volumes:
+      - tunebridge-data:/pds
+    environment:
+      - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.tunebridge.media}
+      - PDS_JWT_SECRET=${PDS_JWT_SECRET:-}
+      - PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=${PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX:-}
+      - PDS_ADMIN_PASSWORD=${PDS_ADMIN_PASSWORD:-}
+      - PDS_DATA_DIRECTORY=/pds
+      - PDS_BLOBSTORE_DISK_LOCATION=/pds/blocks
+      - PDS_EMAIL_SMTP_URL=${PDS_EMAIL_SMTP_URL:-smtp://username:clientsecret@smtp.azurecomm.net:587/}
+      - PDS_EMAIL_FROM_ADDRESS=${PDS_EMAIL_SMTP_URL:-}
+      - PDS_BLOB_UPLOAD_LIMIT=52428800
+      - PDS_DID_PLC_URL=https://plc.directory
+      - PDS_BSKY_APP_VIEW_URL=https://api.bsky.app
+      - PDS_BSKY_APP_VIEW_DID=did:web:api.bsky.app
+      - PDS_REPORT_SERVICE_URL=https://mod.bsky.app
+      - PDS_REPORT_SERVICE_DID=did:plc:ar7c4by46qjdydhdevvrndac
+      - PDS_CRAWLERS=https://bsky.network
+      - LOG_ENABLED=true
+
+  caddy:
+    image: caddy:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - public
+      - internal
+    environment:
+      - DOMAIN=${DOMAIN:-dev.tunebridge.media}
+      - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.tunebridge.media}
+      - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data/caddy
+      - caddy-config:/config/caddy
+      - caddy-logs:/var/log/caddy
+
 volumes:
   tunebridge-data:
     driver: local
@@ -86,3 +134,11 @@ volumes:
     driver: local
   caddy-logs:
     driver: local
+
+networks:
+  public:
+    driver: bridge
+
+  internal:
+    driver: bridge
+    internal: true

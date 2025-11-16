@@ -10,34 +10,34 @@ namespace TuneBridge.Migrations.MediaLinkCache {
             _ = migrationBuilder.CreateTable(
                 name: "CacheEntries",
                 columns: table => new {
-                    Id = table.Column<int>( type: "INTEGER", nullable: false )
-                        .Annotation( "Sqlite:Autoincrement", true ),
+                    Rkey = table.Column<string>( type: "TEXT", maxLength: 200, nullable: false ),
                     RecordUri = table.Column<string>( type: "TEXT", maxLength: 500, nullable: false ),
                     CreatedAt = table.Column<DateTime>( type: "TEXT", nullable: false ),
                     LastLookedUpAt = table.Column<DateTime>( type: "TEXT", nullable: false )
                 },
                 constraints: table => {
-                    _ = table.PrimaryKey( "PK_CacheEntries", x => x.Id );
+                    _ = table.PrimaryKey( "PK_CacheEntries", x => x.Rkey );
                 } );
 
             _ = migrationBuilder.CreateTable(
-                name: "InputLinks",
+                name: "LookupEntries",
                 columns: table => new {
                     Id = table.Column<int>( type: "INTEGER", nullable: false )
                         .Annotation( "Sqlite:Autoincrement", true ),
-                    Link = table.Column<string>( type: "TEXT", maxLength: 1000, nullable: false ),
-                    MediaLinkCacheEntryId = table.Column<int>( type: "INTEGER", nullable: false ),
+                    LookupValue = table.Column<string>( type: "TEXT", maxLength: 1000, nullable: false ),
+                    LookupType = table.Column<int>( type: "INTEGER", nullable: false ),
+                    IsAlbum = table.Column<bool>( type: "INTEGER", nullable: false ),
+                    MediaLinkCacheEntryRkey = table.Column<string>( type: "TEXT", maxLength: 200, nullable: false ),
                     CreatedAt = table.Column<DateTime>( type: "TEXT", nullable: false )
                 },
                 constraints: table => {
-                    _ = table.PrimaryKey( "PK_InputLinks", x => x.Id );
+                    _ = table.PrimaryKey( "PK_LookupEntries", x => x.Id );
                     _ = table.ForeignKey(
-                        name: "FK_InputLinks_CacheEntries_MediaLinkCacheEntryId",
-                        column: x => x.MediaLinkCacheEntryId,
+                        name: "FK_LookupEntries_CacheEntries_MediaLinkCacheEntryRkey",
+                        column: x => x.MediaLinkCacheEntryRkey,
                         principalTable: "CacheEntries",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade
-                    );
+                        principalColumn: "Rkey",
+                        onDelete: ReferentialAction.Cascade );
                 } );
 
             _ = migrationBuilder.CreateIndex(
@@ -49,32 +49,27 @@ namespace TuneBridge.Migrations.MediaLinkCache {
                 name: "IX_CacheEntries_RecordUri",
                 table: "CacheEntries",
                 column: "RecordUri",
-                unique: true
-            );
+                unique: true );
 
             _ = migrationBuilder.CreateIndex(
-                name: "IX_InputLinks_Link",
-                table: "InputLinks",
-                column: "Link",
-                unique: true
-            );
+                name: "IX_LookupEntries_LookupValue_LookupType_IsAlbum",
+                table: "LookupEntries",
+                columns: new[] { "LookupValue", "LookupType", "IsAlbum" },
+                unique: true );
 
             _ = migrationBuilder.CreateIndex(
-                name: "IX_InputLinks_MediaLinkCacheEntryId",
-                table: "InputLinks",
-                column: "MediaLinkCacheEntryId"
-            );
+                name: "IX_LookupEntries_MediaLinkCacheEntryRkey",
+                table: "LookupEntries",
+                column: "MediaLinkCacheEntryRkey" );
         }
 
         /// <inheritdoc />
         protected override void Down( MigrationBuilder migrationBuilder ) {
             _ = migrationBuilder.DropTable(
-                name: "InputLinks"
-            );
+                name: "LookupEntries" );
 
             _ = migrationBuilder.DropTable(
-                name: "CacheEntries"
-            );
+                name: "CacheEntries" );
         }
     }
 }

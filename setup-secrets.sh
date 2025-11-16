@@ -58,9 +58,9 @@ create_secret_file "$SECRETS_DIR/discord_token.txt" \
     "Discord bot token" \
     "your_discord_bot_token_here"
 
-create_secret_file "$SECRETS_DIR/bluesky_password.txt" \
-    "Bluesky app password" \
-    "your_bluesky_app_password_here"
+create_secret_file "$SECRETS_DIR/atproto_password.txt" \
+    "ATProto app password" \
+    "your_atproto_app_password_here"
 
 create_secret_file "$SECRETS_DIR/api_key_salt.txt" \
     "API key salt (random string for security)" \

@@ -1,49 +1,162 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.LinkParsers;
 using TuneBridge.Domain.Interfaces;
+using TuneBridge.Domain.Types.Bases;
+using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Implementations.Services {
 
     /// <summary>
-    /// Decorator for <see cref="IMediaLinkService"/> that adds caching with Bluesky PDS storage.
+    /// Decorator for <see cref="IMediaLinkService"/> that adds caching with ATProto PDS storage.
     /// This service checks the cache before performing lookups and stores results for future use.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="CachedMediaLinkService"/> class.
+    /// Initializes a new instance of the <see cref="CachingMediaLinkService"/> class.
     /// </remarks>
-    /// <param name="innerService">The underlying media link service to decorate with caching.</param>
-    /// <param name="cacheService">The cache service for storing and retrieving results.</param>
+    /// <param name="enabledProvidersCollection">Dictionary of active provider services keyed by provider type.</param>
+    /// <param name="cacheRepository">The cache repository for storing and retrieving results.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
-    public partial class CachedMediaLinkService(
-        IMediaLinkService innerService,
-        IMediaLinkCacheService cacheService,
-        ILogger<CachedMediaLinkService> logger
-    ) : IMediaLinkService {
+    /// <param name="serializerOptions">JSON serialization options for logging.</param>
+    public partial class CachingMediaLinkService(
+        Dictionary<SupportedProviders, IMusicLookupService> enabledProvidersCollection,
+        IMediaLinkCacheRepository cacheRepository,
+        ILogger<CachingMediaLinkService> logger,
+        JsonSerializerOptions serializerOptions
+    ) : MediaLinkServiceBase( enabledProvidersCollection, logger, serializerOptions ) {
+
+        private readonly IMediaLinkCacheRepository _cacheRepository = cacheRepository;
 
         // Static compiled regex for URL extraction (performance optimization)
         private static readonly Regex s_urlRegex = UrlRegex( );
 
         /// <inheritdoc/>
-        public async Task<MediaLinkResult?> GetInfoAsync( string title, string artist ) {
-            // Direct title/artist lookups are not cached (no input link to track)
-            return await innerService.GetInfoAsync( title, artist );
+        public override async Task<MediaLinkResult?> GetInfoAsync( string title, string artist ) {
+            // Check cache first
+            (MediaLinkResult result, string recordUri, bool isStale)? cachedResult =
+                await _cacheRepository.TryGetCachedResultByMetadataAsync( title, artist );
+
+            if (cachedResult.HasValue && !cachedResult.Value.isStale) {
+                Logger.LogInformation( "Using fresh cached result from RecordUri: {RecordUri} for title/artist lookup", cachedResult.Value.recordUri );
+                return cachedResult.Value.result;
+            }
+
+            // Perform fresh lookup using base class helper methods
+            (MusicLookupResultDto result, SupportedProviders provider)? lookupResult =
+                await GetMusicLookupResults( title, artist );
+            MediaLinkResult? result = await CombineLookupInfoAsync( lookupResult );
+
+            if (result is null) {
+                return null;
+            }
+
+            try {
+                if (cachedResult.HasValue && cachedResult.Value.isStale) {
+                    // Update existing stale entry
+                    await _cacheRepository.UpdateCacheEntryAsync( cachedResult.Value.recordUri, result, [] );
+                    Logger.LogInformation( "Refreshed stale cache entry: {uri} for title/artist lookup", cachedResult.Value.recordUri );
+                } else {
+                    // Cache as new result
+                    string recordUri = await _cacheRepository.CacheResultAsync( result, [] );
+                    Logger.LogInformation( "Cached new title/artist lookup result to ATProto: {uri}", recordUri );
+                }
+            } catch (DbUpdateException ex) {
+                Logger.LogError( ex, "Database error while caching title/artist lookup result, continuing without caching" );
+            } catch (HttpRequestException ex) {
+                Logger.LogError( ex, "HTTP error while caching title/artist lookup result, continuing without caching" );
+            } catch (InvalidOperationException ex) {
+                Logger.LogError( ex, "Invalid operation while caching title/artist lookup result, continuing without caching" );
+            }
+
+            return result;
         }
 
         /// <inheritdoc/>
-        public async Task<MediaLinkResult?> GetInfoByISRCAsync( string isrc ) {
-            // ISRC lookups are not cached (no input link to track)
-            return await innerService.GetInfoByISRCAsync( isrc );
+        public override async Task<MediaLinkResult?> GetInfoByISRCAsync( string isrc ) {
+            // Check cache first
+            (MediaLinkResult result, string recordUri, bool isStale)? cachedResult =
+                await _cacheRepository.TryGetCachedResultByISRCAsync( isrc );
+
+            if (cachedResult.HasValue && !cachedResult.Value.isStale) {
+                Logger.LogInformation( "Using fresh cached result from RecordUri: {RecordUri} for ISRC lookup", cachedResult.Value.recordUri );
+                return cachedResult.Value.result;
+            }
+
+            // Perform fresh lookup using base class helper methods
+            (MusicLookupResultDto result, SupportedProviders provider)? lookupResult =
+                await GetMusicLookupResults( isrc, false );
+            MediaLinkResult? result = await CombineLookupInfoAsync( lookupResult );
+
+            if (result is null) {
+                return null;
+            }
+
+            try {
+                if (cachedResult.HasValue && cachedResult.Value.isStale) {
+                    // Update existing stale entry
+                    await _cacheRepository.UpdateCacheEntryAsync( cachedResult.Value.recordUri, result, [] );
+                    Logger.LogInformation( "Refreshed stale cache entry: {uri} for ISRC lookup", cachedResult.Value.recordUri );
+                } else {
+                    // Cache as new result
+                    string recordUri = await _cacheRepository.CacheResultAsync( result, [] );
+                    Logger.LogInformation( "Cached new ISRC lookup result to ATProto: {uri}", recordUri );
+                }
+            } catch (DbUpdateException ex) {
+                Logger.LogError( ex, "Database error while caching ISRC lookup result, continuing without caching" );
+            } catch (HttpRequestException ex) {
+                Logger.LogError( ex, "HTTP error while caching ISRC lookup result, continuing without caching" );
+            } catch (InvalidOperationException ex) {
+                Logger.LogError( ex, "Invalid operation while caching ISRC lookup result, continuing without caching" );
+            }
+
+            return result;
         }
 
         /// <inheritdoc/>
-        public async Task<MediaLinkResult?> GetInfoByUPCAsync( string upc ) {
-            // UPC lookups are not cached (no input link to track)
-            return await innerService.GetInfoByUPCAsync( upc );
+        public override async Task<MediaLinkResult?> GetInfoByUPCAsync( string upc ) {
+            // Check cache first
+            (MediaLinkResult result, string recordUri, bool isStale)? cachedResult =
+                await _cacheRepository.TryGetCachedResultByUPCAsync( upc );
+
+            if (cachedResult.HasValue && !cachedResult.Value.isStale) {
+                Logger.LogInformation( "Using fresh cached result from RecordUri: {RecordUri} for UPC lookup", cachedResult.Value.recordUri );
+                return cachedResult.Value.result;
+            }
+
+            // Perform fresh lookup using base class helper methods
+            (MusicLookupResultDto result, SupportedProviders provider)? lookupResult =
+                await GetMusicLookupResults( upc, true );
+            MediaLinkResult? result = await CombineLookupInfoAsync( lookupResult );
+
+            if (result is null) {
+                return null;
+            }
+
+            try {
+                if (cachedResult.HasValue && cachedResult.Value.isStale) {
+                    // Update existing stale entry
+                    await _cacheRepository.UpdateCacheEntryAsync( cachedResult.Value.recordUri, result, [] );
+                    Logger.LogInformation( "Refreshed stale cache entry: {uri} for UPC lookup", cachedResult.Value.recordUri );
+                } else {
+                    // Cache as new result
+                    string recordUri = await _cacheRepository.CacheResultAsync( result, [] );
+                    Logger.LogInformation( "Cached new UPC lookup result to ATProto: {uri}", recordUri );
+                }
+            } catch (DbUpdateException ex) {
+                Logger.LogError( ex, "Database error while caching UPC lookup result, continuing without caching" );
+            } catch (HttpRequestException ex) {
+                Logger.LogError( ex, "HTTP error while caching UPC lookup result, continuing without caching" );
+            } catch (InvalidOperationException ex) {
+                Logger.LogError( ex, "Invalid operation while caching UPC lookup result, continuing without caching" );
+            }
+
+            return result;
         }
 
         /// <inheritdoc/>
-        public async IAsyncEnumerable<MediaLinkResult> GetInfoAsync( string content ) {
+        public override async IAsyncEnumerable<MediaLinkResult> GetInfoAsync( string content ) {
             // Extract links from content for cache checking
             List<string> extractedLinks = ExtractLinks( content );
 
@@ -60,7 +173,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     continue;
                 }
 
-                (MediaLinkResult result, string recordUri, bool isStale)? cachedResult = await cacheService.TryGetCachedResultAsync( link );
+                (MediaLinkResult result, string recordUri, bool isStale)? cachedResult = await _cacheRepository.TryGetCachedResultAsync( link );
                 if (cachedResult.HasValue) {
                     _ = processedLinks.Add( link );
 
@@ -73,7 +186,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                         _ = value.Add( link );
                     } else {
                         // Return fresh cached result
-                        logger.LogInformation( "Using fresh cached result from RecordUri: {RecordUri}", cachedResult.Value.recordUri );
+                        Logger.LogInformation( "Using fresh cached result from RecordUri: {RecordUri}", cachedResult.Value.recordUri );
 
                         // Track fresh entry to associate new links later
                         if (!freshEntries.TryGetValue( cachedResult.Value.recordUri, out HashSet<string>? value )) {
@@ -105,7 +218,11 @@ namespace TuneBridge.Domain.Implementations.Services {
                     yield break;
                 }
 
-                await foreach (MediaLinkResult result in innerService.GetInfoAsync( contentWithNonCachedLinks )) {
+                // Use base class helper methods for fresh lookups
+                Dictionary<MusicLookupResultDto, (SupportedProviders provider, string inputLink)> linkResults =
+                    await GetMusicLookupResults( contentWithNonCachedLinks );
+
+                await foreach (MediaLinkResult result in CombineLookupInfoAsync( linkResults )) {
                     // Determine which input links generated this result
                     List<string> resultInputLinks = [.. result._inputLinks.Select( LinkNormalizer.Normalize )];
 
@@ -132,22 +249,26 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                         if (matchingStaleRecordUri != null) {
                             // Update the existing stale entry
-                            await cacheService.UpdateCacheEntryAsync( matchingStaleRecordUri, result, resultInputLinks );
-                            logger.LogInformation( "Refreshed stale cache entry: {uri}", matchingStaleRecordUri );
+                            await _cacheRepository.UpdateCacheEntryAsync( matchingStaleRecordUri, result, resultInputLinks );
+                            Logger.LogInformation( "Refreshed stale cache entry: {uri}", matchingStaleRecordUri );
 
                             // Remove from stale entries to avoid reprocessing
                             _ = staleEntries.Remove( matchingStaleRecordUri );
                         } else if (matchingFreshRecordUri != null) {
                             // Add new links to existing fresh cache entry
-                            await cacheService.AddInputLinksAsync( matchingFreshRecordUri, resultInputLinks );
-                            logger.LogInformation( "Added new links to existing fresh cache entry: {uri}", matchingFreshRecordUri );
+                            await _cacheRepository.AddInputLinksAsync( matchingFreshRecordUri, resultInputLinks );
+                            Logger.LogInformation( "Added new links to existing fresh cache entry: {uri}", matchingFreshRecordUri );
                         } else {
                             // Cache as a new result
-                            string recordUri = await cacheService.CacheResultAsync( result, resultInputLinks );
-                            logger.LogInformation( "Cached new result to Bluesky: {uri}", recordUri );
+                            string recordUri = await _cacheRepository.CacheResultAsync( result, resultInputLinks );
+                            Logger.LogInformation( "Cached new result to ATProto: {uri}", recordUri );
                         }
-                    } catch (Exception ex) {
-                        logger.LogError( ex, "Failed to cache result, continuing without caching" );
+                    } catch (DbUpdateException ex) {
+                        Logger.LogError( ex, "Database error while caching result, continuing without caching" );
+                    } catch (HttpRequestException ex) {
+                        Logger.LogError( ex, "HTTP error while caching result, continuing without caching" );
+                    } catch (InvalidOperationException ex) {
+                        Logger.LogError( ex, "Invalid operation while caching result, continuing without caching" );
                     }
 
                     yield return result;
@@ -164,7 +285,7 @@ namespace TuneBridge.Domain.Implementations.Services {
             // Simple extraction - look for https:// or http:// followed by URL
             MatchCollection matches = s_urlRegex.Matches( content );
 
-            foreach (System.Text.RegularExpressions.Match match in matches) {
+            foreach (Match match in matches) {
                 if (match.Success) {
                     // Use full match to preserve original scheme
                     string link = match.Value;

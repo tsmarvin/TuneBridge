@@ -4,7 +4,6 @@
     admin off
     # Persist data for certificates
     storage file_system /data/caddy
-    # Email for Let's Encrypt notifications (override with CADDY_ADMIN_EMAIL env var)
     email {$CADDY_ADMIN_EMAIL}
 }
 
@@ -44,8 +43,34 @@
         -X-Powered-By
     }
 
+    # Aspire Dashboard routing with authentication
+    # Route /dashboard requests to the Aspire Dashboard container after checking authorization
+    handle /dashboard* {
+        # Forward auth check - verify user has AspireDashboardAccess role
+        forward_auth tunebridge:10000 {
+            uri /api/dashboard/authorize
+            copy_headers Authorization Cookie
+        }
+
+        # Proxy to Aspire Dashboard container
+        reverse_proxy aspire-dashboard:18888 {
+            # Pass real client IP
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+
+            # Timeouts
+            transport http {
+                read_timeout 30s
+                write_timeout 30s
+                dial_timeout 5s
+            }
+        }
+    }
+
     # Reverse proxy to TuneBridge application
-    reverse_proxy localhost:10000 {
+    reverse_proxy tunebridge:10000 {
         # Health check endpoint
         health_uri /health
         health_interval 10s
@@ -59,7 +84,7 @@
 
         # Timeouts
         transport http {
-            read_timeout 30s
+            read_timeout 180s
             write_timeout 30s
             dial_timeout 5s
         }
@@ -72,4 +97,9 @@
             respond "Service temporarily unavailable. Please try again later." 503
         }
     }
+}
+
+
+*.{$PDS_HOSTNAME}, {$PDS_HOSTNAME} {
+    reverse_proxy pds:3000
 }

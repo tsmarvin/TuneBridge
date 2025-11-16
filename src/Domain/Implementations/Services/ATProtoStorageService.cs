@@ -4,64 +4,62 @@ using idunno.Bluesky;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Contracts.Records;
 using TuneBridge.Domain.Implementations.Extensions;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Implementations.Services {
 
     /// <summary>
-    /// Implementation of <see cref="IBlueskyStorageService"/> that stores MediaLinkResult records on Bluesky PDS
+    /// Implementation of <see cref="IATProtoStorageService"/> that stores MediaLinkResult records on ATProto PDS
     /// as custom lexicon records using the AT Protocol.
     /// </summary>
     /// <remarks>
-    /// This service uses the idunno.Bluesky library to interact with Bluesky PDS.
+    /// This service uses the idunno.Bluesky library to interact with ATProto-compatible PDS instances.
     /// MediaLinkResults are stored as custom media.tunebridge.dev.lookup.result lexicon records.
     /// </remarks>
-    public class BlueskyStorageService : IBlueskyStorageService {
+    public class ATProtoStorageService : IATProtoStorageService {
 
         /// <summary>
         /// The NSID (Namespaced Identifier) for the TuneBridge MediaLinkResult lexicon.
         /// </summary>
-        private static readonly Nsid MediaLinkResultCollection = new( "media.tunebridge.dev.lookup.result" );
+        private static readonly Nsid s_mediaLinkResultCollection = new( "media.tunebridge.dev.lookup.result" );
 
         /// <summary>
         /// Static cached dictionary mapping provider strings to SupportedProviders enum values.
         /// Initialized once at startup for O(1) lookups.
         /// </summary>
-        private static readonly Lazy<Dictionary<string, SupportedProviders>> _providerStringToEnum =
+        private static readonly Lazy<Dictionary<string, SupportedProviders>> s_providerStringToEnum =
             new(CreateProviderMappings);
 
         private readonly BlueskyAgent _agent;
         private readonly string _identifier;
         private readonly string _password;
-        private readonly ILogger<BlueskyStorageService> _logger;
+        private readonly ILogger<ATProtoStorageService> _logger;
         private readonly SemaphoreSlim _authLock = new( 1, 1 );
         private bool _isAuthenticated;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="BlueskyStorageService"/> class.
+        /// Initializes a new instance of the <see cref="ATProtoStorageService"/> class.
         /// </summary>
-        /// <param name="pdsUrl">The Bluesky PDS URL (currently only https://bsky.social is supported).</param>
-        /// <param name="identifier">The Bluesky account identifier (handle or DID).</param>
-        /// <param name="password">The Bluesky app password.</param>
+        /// <param name="identifier">The account identifier (handle or DID).</param>
+        /// <param name="password">The app password for authentication.</param>
         /// <param name="logger">Logger for diagnostic information.</param>
-        /// <exception cref="NotSupportedException">Thrown if pdsUrl is not the default Bluesky PDS.</exception>
-        public BlueskyStorageService(
-            string pdsUrl,
+        public ATProtoStorageService(
             string identifier,
             string password,
-            ILogger<BlueskyStorageService> logger
+            ILogger<ATProtoStorageService> logger
         ) {
             _agent = new BlueskyAgent( );
             _identifier = identifier;
             _password = password;
             _logger = logger;
 
-            _logger.LogInformation( "BlueskyStorageService initialized with default Bluesky PDS" );
+            _logger.LogInformation( "ATProtoStorageService initialized with PDS" );
         }
 
         /// <summary>
-        /// Ensures the agent is authenticated with Bluesky PDS.
+        /// Ensures the agent is authenticated with ATProto PDS.
         /// </summary>
         private async Task EnsureAuthenticatedAsync( ) {
             if (_isAuthenticated) {
@@ -92,25 +90,44 @@ namespace TuneBridge.Domain.Implementations.Services {
             await EnsureAuthenticatedAsync( );
 
             try {
+                // Generate deterministic rkey based on externalId or metadata
+                string rkey = RecordKeyGenerator.GenerateRkey( result );
+
                 // Convert MediaLinkResult DTO to custom record
                 MediaLinkResultRecord record = ConvertToRecord( result );
 
-                // Create the custom record on Bluesky PDS
+                // Try to update existing record first (upsert logic)
+                RecordKey recordKey = new( rkey );
+                AtProtoHttpResult<PutRecordResult> putResult = await _agent.PutRecord(
+                    record: record,
+                    collection: s_mediaLinkResultCollection,
+                    rKey: recordKey,
+                    validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
+                );
+
+                if (putResult.Succeeded && putResult.Result is not null) {
+                    _logger.LogInformation( "Successfully updated existing MediaLinkResult on ATProto PDS: {uri}", putResult.Result.Uri );
+                    return putResult.Result.Uri.ToString( );
+                }
+
+                // If update failed, try to create new record
                 AtProtoHttpResult<CreateRecordResult> createResult = await _agent.CreateRecord(
                     record: record,
-                    collection: MediaLinkResultCollection
+                    collection: s_mediaLinkResultCollection,
+                    rKey: recordKey,
+                    validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
                 );
 
                 if (!createResult.Succeeded || createResult.Result is null) {
                     string errorMsg = createResult.AtErrorDetail?.Message ?? $"HTTP {createResult.StatusCode}";
-                    throw new InvalidOperationException( $"Failed to create record on Bluesky PDS: {errorMsg}" );
+                    throw new InvalidOperationException( $"Failed to create record on ATProto PDS: {errorMsg}" );
                 }
 
-                _logger.LogInformation( "Successfully stored MediaLinkResult on Bluesky PDS: {uri}", createResult.Result.Uri );
+                _logger.LogInformation( "Successfully created MediaLinkResult on ATProto PDS: {uri}", createResult.Result.Uri );
 
                 return createResult.Result.Uri.ToString( );
             } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to store MediaLinkResult on Bluesky PDS" );
+                _logger.LogError( ex, "Failed to store MediaLinkResult on ATProto PDS" );
                 throw;
             }
         }
@@ -123,7 +140,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Parse the AT-URI
                 AtUri atUri = new( recordUri );
 
-                // Get the record from Bluesky PDS
+                // Get the record from ATProto PDS
                 AtProtoHttpResult<AtProtoRepositoryRecord<MediaLinkResultRecord>> getRecordResult = await _agent.GetRecord<MediaLinkResultRecord>(
                     uri: atUri,
                     cid: null
@@ -139,7 +156,32 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                 return mediaLinkResult;
             } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to retrieve MediaLinkResult from Bluesky PDS: {uri}", recordUri );
+                _logger.LogError( ex, "Failed to retrieve MediaLinkResult from ATProto PDS: {uri}", recordUri );
+                return null;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<MediaLinkResult?> GetMediaLinkResultByRkeyAsync( string rkey ) {
+            await EnsureAuthenticatedAsync( );
+
+            try {
+                if (string.IsNullOrWhiteSpace( rkey )) {
+                    _logger.LogWarning( "Cannot retrieve record: rkey is null or empty" );
+                    return null;
+                }
+
+                // Construct the AT-URI using the authenticated user's DID
+                Did? userDid = _agent.Did;
+                if (userDid is null) {
+                    _logger.LogWarning( "Cannot construct AT-URI: user DID not available" );
+                    return null;
+                }
+
+                string recordUri = $"at://{userDid}/{s_mediaLinkResultCollection}/{rkey}";
+                return await GetMediaLinkResultAsync( recordUri );
+            } catch (Exception ex) {
+                _logger.LogError( ex, "Failed to retrieve MediaLinkResult by rkey: {rkey}", rkey );
                 return null;
             }
         }
@@ -160,23 +202,24 @@ namespace TuneBridge.Domain.Implementations.Services {
                 // Convert MediaLinkResult DTO to custom record
                 MediaLinkResultRecord record = ConvertToRecord( result );
 
-                // Update the record on Bluesky PDS using PutRecord
+                // Update the record on ATProto PDS using PutRecord
                 AtProtoHttpResult<PutRecordResult> putResult = await _agent.PutRecord(
                     record: record,
-                    collection: MediaLinkResultCollection,
-                    rKey: atUri.RecordKey
+                    collection: s_mediaLinkResultCollection,
+                    rKey: atUri.RecordKey,
+                    validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
                 );
 
                 if (!putResult.Succeeded) {
                     string errorMsg = putResult.AtErrorDetail?.Message ?? $"HTTP {putResult.StatusCode}";
-                    _logger.LogWarning( "Failed to update record on Bluesky PDS: {error}", errorMsg );
+                    _logger.LogWarning( "Failed to update record on ATProto PDS: {error}", errorMsg );
                     return false;
                 }
 
-                _logger.LogInformation( "Successfully updated MediaLinkResult on Bluesky PDS: {uri}", recordUri );
+                _logger.LogInformation( "Successfully updated MediaLinkResult on ATProto PDS: {uri}", recordUri );
                 return true;
             } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to update MediaLinkResult on Bluesky PDS: {uri}", recordUri );
+                _logger.LogError( ex, "Failed to update MediaLinkResult on ATProto PDS: {uri}", recordUri );
                 return false;
             }
         }
@@ -279,7 +322,7 @@ namespace TuneBridge.Domain.Implementations.Services {
         private static bool TryParseProvider( string providerString, out SupportedProviders provider ) {
             provider = default;
 
-            return !string.IsNullOrWhiteSpace( providerString ) && _providerStringToEnum.Value.TryGetValue( providerString, out provider );
+            return !string.IsNullOrWhiteSpace( providerString ) && s_providerStringToEnum.Value.TryGetValue( providerString, out provider );
         }
     }
 }

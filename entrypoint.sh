@@ -12,8 +12,7 @@ read_secret() {
 }
 
 # ---- Configure defaults ----
-DOMAIN="${DOMAIN:-dev.tunebridge.media}"
-CADDY_ADMIN_EMAIL="${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}"
+BASEURL="${BASEURL:-"dev.tunebridge.media"}"
 NODE_NUMBER="${NODE_NUMBER:-0}"
 DEFAULT_LOGLEVEL="${DEFAULT_LOGLEVEL:-Information}"
 HOSTING_DEFAULT_LOGLEVEL="${HOSTING_DEFAULT_LOGLEVEL:-Information}"
@@ -35,11 +34,10 @@ TIDAL_CLIENT_SECRET="$(read_secret "tidal_client_secret")"
 # Try to read Discord token from Docker secret
 DISCORD_TOKEN="$(read_secret "discord_token")"
 
-# Optional Bluesky PDS configuration
-BLUESKY_PDS_URL="${BLUESKY_PDS_URL:-"https://bsky.social"}"
-BLUESKY_IDENTIFIER="${BLUESKY_IDENTIFIER:-}"
-# Try to read Bluesky password from Docker secret
-BLUESKY_PASSWORD="$(read_secret "bluesky_password")"
+# Optional ATProto PDS configuration
+ATPROTO_IDENTIFIER="${ATPROTO_IDENTIFIER:-}"
+# Try to read ATProto password from Docker secret
+ATPROTO_PASSWORD="$(read_secret "atproto_password")"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
 LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
@@ -50,8 +48,15 @@ IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/
 API_KEY_SALT="$(read_secret "api_key_salt")"
 RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
+# Logging configuration
+LOG_FILE_PATH="${LOG_FILE_PATH:-/app/data/logs/tunebridge-.log}"
+OTLP_ENDPOINT="${OTLP_ENDPOINT:-http://aspire-dashboard:4317}"
+
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
+
+# 0) Create logs directory if it doesn't exist
+mkdir -p /app/data/logs
 
 # 1) Remove existing appsettings.json if present
 [ -f /app/appsettings.json ] && rm -f /app/appsettings.json
@@ -79,40 +84,37 @@ cat > /app/appsettings.json <<EOF
     "IdentityConnectionString": "$(escape_bs "$IDENTITY_CONNECTION_STRING")",
     "ApiKeySalt": "$API_KEY_SALT",
     "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR,
-    "BlueskyPdsUrl": "$BLUESKY_PDS_URL",
-    "BlueskyIdentifier": "$BLUESKY_IDENTIFIER",
-    "BlueskyPassword": "$BLUESKY_PASSWORD",
+    "ATProtoIdentifier": "$ATPROTO_IDENTIFIER",
+    "ATProtoPassword": "$ATPROTO_PASSWORD",
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
-    "BaseUrl": "$DOMAIN"
+    "BaseUrl": "$BASEURL",
+    "LogFilePath": "$(escape_bs "$LOG_FILE_PATH")"
   },
   "Logging": {
     "LogLevel": {
       "Default": "$DEFAULT_LOGLEVEL",
-      "Microsoft.Hosting.Lifetime": "$HOSTING_DEFAULT_LOGLEVEL"
+      "Microsoft.Hosting.Lifetime": "$HOSTING_DEFAULT_LOGLEVEL",
+      "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
+      "Microsoft.AspNetCore.Routing.EndpointMiddleware": "Warning"
     }
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "$DEFAULT_LOGLEVEL",
+      "Override": {
+        "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
+        "Microsoft.AspNetCore.Routing.EndpointMiddleware": "Warning"
+      }
+    }
+  },
+  "OpenTelemetry": {
+    "OtlpEndpoint": "$OTLP_ENDPOINT"
   },
   "AllowedHosts": "*"
 }
 EOF
 
-# 3) Start Caddy in the background
-echo "Starting Caddy reverse proxy..."
-caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
-CADDY_PID=$!
-
-# Set up signal handlers for graceful shutdown
-trap 'echo "Shutting down..."; kill -TERM $CADDY_PID 2>/dev/null; wait $CADDY_PID' SIGTERM SIGINT
-
-# Give Caddy a moment to start
-sleep 2
-
-# Check if Caddy is running
-if ! kill -0 $CADDY_PID 2>/dev/null; then
-    echo "ERROR: Caddy failed to start"
-    exit 1
-fi
-
-# 4) Launch the TuneBridge application
+# 3) Launch the TuneBridge application
 echo "Starting TuneBridge application..."
 exec "/app/TuneBridge"
