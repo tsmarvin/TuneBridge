@@ -102,7 +102,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     record: record,
                     collection: s_mediaLinkResultCollection,
                     rKey: recordKey,
-                    validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
+                    validate: true
                 );
 
                 if (putResult.Succeeded && putResult.Result is not null) {
@@ -115,7 +115,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     record: record,
                     collection: s_mediaLinkResultCollection,
                     rKey: recordKey,
-                    validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
+                    validate: true
                 );
 
                 if (!createResult.Succeeded || createResult.Result is null) {
