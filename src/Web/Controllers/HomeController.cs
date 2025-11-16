@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Constants;
 using TuneBridge.Domain.Types.Enums;
@@ -235,57 +236,14 @@ namespace TuneBridge.Web.Controllers {
         /// Tries multiple lookup strategies: input link, external ID (ISRC/UPC), and metadata.
         /// </summary>
         /// <param name="result">The MediaLinkResult to find in cache.</param>
-        /// <returns>The ATProto DID URI if found in cache, otherwise null.</returns>
+        /// <returns>The ATProto URI if found in cache, otherwise null.</returns>
         private async Task<string?> GetATProtoUriFromCache( MediaLinkResult result ) {
-            if (_cacheRepository == null) {
-                return null;
-            }
-
             try {
-                // Strategy 1: Try to find by input link if available
-                if (result._inputLinks.Count > 0) {
-                    foreach (string inputLink in result._inputLinks) {
-                        var cachedResult =
-                            await _cacheRepository.TryGetCachedResultAsync( inputLink );
-                        if (cachedResult.HasValue) {
-                            return cachedResult.Value.recordUri;
-                        }
-                    }
-                }
-
-                // Strategy 2: Try to find by external ID (ISRC or UPC)
-                MusicLookupResultDto? firstResultWithId = result.Results.Values
-                    .FirstOrDefault( r => !string.IsNullOrWhiteSpace( r.ExternalId ) );
-
-                if (firstResultWithId != null) {
-                    if (firstResultWithId.IsAlbum == true) {
-                        var cachedResult =
-                            await _cacheRepository.TryGetCachedResultByUPCAsync( firstResultWithId.ExternalId );
-                        if (cachedResult.HasValue) {
-                            return cachedResult.Value.recordUri;
-                        }
-                    } else {
-                        var cachedResult =
-                            await _cacheRepository.TryGetCachedResultByISRCAsync( firstResultWithId.ExternalId );
-                        if (cachedResult.HasValue) {
-                            return cachedResult.Value.recordUri;
-                        }
-                    }
-                }
-
-                // Strategy 3: Try to find by metadata (title and artist)
-                MusicLookupResultDto? firstResult = result.Results.Values.FirstOrDefault( );
-                if (firstResult != null &&
-                    !string.IsNullOrWhiteSpace( firstResult.Title ) &&
-                    !string.IsNullOrWhiteSpace( firstResult.Artist )) {
-                    var cachedResult =
-                        await _cacheRepository.TryGetCachedResultByMetadataAsync(
-                            firstResult.Title,
-                            firstResult.Artist );
-                    if (cachedResult.HasValue) {
-                        return cachedResult.Value.recordUri;
-                    }
-                }
+                return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, _cacheRepository );
+            } catch (InvalidOperationException ex) {
+                _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
+            } catch (ArgumentException ex) {
+                _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
             } catch (Exception ex) {
                 _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
             }

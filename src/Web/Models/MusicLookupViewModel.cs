@@ -26,7 +26,7 @@ namespace TuneBridge.Web.Models {
             public string? CardUrl { get; set; }
 
             /// <summary>
-            /// ATProto DID URI for the stored record (at://...).
+            /// ATProto URI for the stored record (at://...).
             /// </summary>
             public string? ATProtoUri { get; set; }
 
