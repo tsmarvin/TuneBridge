@@ -550,8 +550,12 @@ namespace TuneBridge.Configuration {
                 if (!string.IsNullOrEmpty( logDir ) && !Directory.Exists( logDir )) {
                     _ = Directory.CreateDirectory( logDir );
                 }
-            } catch (Exception ex) {
+            } catch (IOException ex) {
                 Console.WriteLine( $"Warning: Failed to validate/create log directory: {ex.Message}" );
+                // Fall back to not configuring file logging
+                return;
+            } catch (UnauthorizedAccessException ex) {
+                Console.WriteLine( $"Warning: Failed to validate/create log directory due to insufficient permissions: {ex.Message}" );
                 // Fall back to not configuring file logging
                 return;
             }

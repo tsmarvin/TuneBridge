@@ -76,7 +76,7 @@ public class DashboardAuthorizationTests {
     [TestMethod]
     public async Task DashboardAuthorize_UnauthenticatedUser_Returns401( ) {
         // Arrange
-        HttpClient client = _factory!.CreateClient( );
+        using HttpClient client = _factory!.CreateClient( );
 
         // Act
         HttpResponseMessage response = await client.GetAsync( "/api/dashboard/authorize" );

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.LinkParsers;
 using TuneBridge.Domain.Interfaces;
@@ -61,8 +62,14 @@ namespace TuneBridge.Domain.Implementations.Services {
                     string recordUri = await _cacheRepository.CacheResultAsync( result, [] );
                     Logger.LogInformation( "Cached new title/artist lookup result to ATProto: {uri}", recordUri );
                 }
+            } catch (DbUpdateException ex) {
+                Logger.LogError( ex, "Database error while caching title/artist lookup result, continuing without caching" );
+            } catch (HttpRequestException ex) {
+                Logger.LogError( ex, "HTTP error while caching title/artist lookup result, continuing without caching" );
+            } catch (InvalidOperationException ex) {
+                Logger.LogError( ex, "Invalid operation while caching title/artist lookup result, continuing without caching" );
             } catch (Exception ex) {
-                Logger.LogError( ex, "Failed to cache title/artist lookup result, continuing without caching" );
+                Logger.LogError( ex, "Unexpected error while caching title/artist lookup result, continuing without caching" );
             }
 
             return result;
@@ -98,8 +105,14 @@ namespace TuneBridge.Domain.Implementations.Services {
                     string recordUri = await _cacheRepository.CacheResultAsync( result, [] );
                     Logger.LogInformation( "Cached new ISRC lookup result to ATProto: {uri}", recordUri );
                 }
+            } catch (DbUpdateException ex) {
+                Logger.LogError( ex, "Database error while caching ISRC lookup result, continuing without caching" );
+            } catch (HttpRequestException ex) {
+                Logger.LogError( ex, "HTTP error while caching ISRC lookup result, continuing without caching" );
+            } catch (InvalidOperationException ex) {
+                Logger.LogError( ex, "Invalid operation while caching ISRC lookup result, continuing without caching" );
             } catch (Exception ex) {
-                Logger.LogError( ex, "Failed to cache ISRC lookup result, continuing without caching" );
+                Logger.LogError( ex, "Unexpected error while caching ISRC lookup result, continuing without caching" );
             }
 
             return result;
@@ -135,8 +148,14 @@ namespace TuneBridge.Domain.Implementations.Services {
                     string recordUri = await _cacheRepository.CacheResultAsync( result, [] );
                     Logger.LogInformation( "Cached new UPC lookup result to ATProto: {uri}", recordUri );
                 }
+            } catch (DbUpdateException ex) {
+                Logger.LogError( ex, "Database error while caching UPC lookup result, continuing without caching" );
+            } catch (HttpRequestException ex) {
+                Logger.LogError( ex, "HTTP error while caching UPC lookup result, continuing without caching" );
+            } catch (InvalidOperationException ex) {
+                Logger.LogError( ex, "Invalid operation while caching UPC lookup result, continuing without caching" );
             } catch (Exception ex) {
-                Logger.LogError( ex, "Failed to cache UPC lookup result, continuing without caching" );
+                Logger.LogError( ex, "Unexpected error while caching UPC lookup result, continuing without caching" );
             }
 
             return result;
