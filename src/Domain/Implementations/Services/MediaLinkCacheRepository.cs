@@ -69,8 +69,17 @@ namespace TuneBridge.Domain.Implementations.Services {
                 }
 
                 return (result, cacheEntry.RecordUri, isStale);
+            } catch (HttpRequestException ex) {
+                logger.LogError( ex, "HTTP error while trying to get cached result" );
+                return null;
+            } catch (DbUpdateException ex) {
+                logger.LogError( ex, "Database error while trying to get cached result" );
+                return null;
+            } catch (InvalidOperationException ex) {
+                logger.LogError( ex, "Invalid operation while trying to get cached result" );
+                return null;
             } catch (Exception ex) {
-                logger.LogError( ex, "Error while trying to get cached result" );
+                logger.LogError( ex, "Unexpected error while trying to get cached result" );
                 return null;
             }
         }
@@ -214,7 +223,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     .Include( le => le.MediaLinkCacheEntry )
                     .FirstOrDefaultAsync( le => le.LookupValue == isrc.Trim() &&
                                                 le.LookupType == LookupEntryType.ExternalId &&
-                                                le.IsAlbum == false );
+                                                !le.IsAlbum );
 
                 if (lookupEntry?.MediaLinkCacheEntry is null) {
                     return null;
@@ -239,8 +248,17 @@ namespace TuneBridge.Domain.Implementations.Services {
                 logger.LogInformation( isStale ? "ISRC cache hit (stale): {uri}" : "ISRC cache hit: {uri}", cacheEntry.RecordUri );
 
                 return (result, cacheEntry.RecordUri, isStale);
+            } catch (HttpRequestException ex) {
+                logger.LogError( ex, "HTTP error while trying to get cached result by ISRC" );
+                return null;
+            } catch (DbUpdateException ex) {
+                logger.LogError( ex, "Database error while trying to get cached result by ISRC" );
+                return null;
+            } catch (InvalidOperationException ex) {
+                logger.LogError( ex, "Invalid operation while trying to get cached result by ISRC" );
+                return null;
             } catch (Exception ex) {
-                logger.LogError( ex, "Error while trying to get cached result by ISRC" );
+                logger.LogError( ex, "Unexpected error while trying to get cached result by ISRC" );
                 return null;
             }
         }
@@ -255,7 +273,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     .Include( le => le.MediaLinkCacheEntry )
                     .FirstOrDefaultAsync( le => le.LookupValue == upc.Trim() &&
                                                 le.LookupType == LookupEntryType.ExternalId &&
-                                                le.IsAlbum == true );
+                                                le.IsAlbum );
 
                 if (lookupEntry?.MediaLinkCacheEntry is null) {
                     return null;
@@ -280,8 +298,17 @@ namespace TuneBridge.Domain.Implementations.Services {
                 logger.LogInformation( isStale ? "UPC cache hit (stale): {uri}" : "UPC cache hit: {uri}", cacheEntry.RecordUri );
 
                 return (result, cacheEntry.RecordUri, isStale);
+            } catch (HttpRequestException ex) {
+                logger.LogError( ex, "HTTP error while trying to get cached result by UPC" );
+                return null;
+            } catch (DbUpdateException ex) {
+                logger.LogError( ex, "Database error while trying to get cached result by UPC" );
+                return null;
+            } catch (InvalidOperationException ex) {
+                logger.LogError( ex, "Invalid operation while trying to get cached result by UPC" );
+                return null;
             } catch (Exception ex) {
-                logger.LogError( ex, "Error while trying to get cached result by UPC" );
+                logger.LogError( ex, "Unexpected error while trying to get cached result by UPC" );
                 return null;
             }
         }
@@ -323,8 +350,17 @@ namespace TuneBridge.Domain.Implementations.Services {
                 logger.LogInformation( isStale ? "Metadata cache hit (stale): {uri}" : "Metadata cache hit: {uri}", cacheEntry.RecordUri );
 
                 return (result, cacheEntry.RecordUri, isStale);
+            } catch (HttpRequestException ex) {
+                logger.LogError( ex, "HTTP error while trying to get cached result by metadata" );
+                return null;
+            } catch (DbUpdateException ex) {
+                logger.LogError( ex, "Database error while trying to get cached result by metadata" );
+                return null;
+            } catch (InvalidOperationException ex) {
+                logger.LogError( ex, "Invalid operation while trying to get cached result by metadata" );
+                return null;
             } catch (Exception ex) {
-                logger.LogError( ex, "Error while trying to get cached result by metadata" );
+                logger.LogError( ex, "Unexpected error while trying to get cached result by metadata" );
                 return null;
             }
         }
@@ -344,12 +380,10 @@ namespace TuneBridge.Domain.Implementations.Services {
             await AddUserInputLookupEntriesAsync( dbContext, rkey, userInputLinks, isAlbum );
 
             // Extract and add service links from the result
-            List<string> serviceLinks = [];
-            foreach (MusicLookupResultDto resultDto in result.Results.Values) {
-                if (!string.IsNullOrWhiteSpace( resultDto.URL )) {
-                    serviceLinks.Add( resultDto.URL );
-                }
-            }
+            List<string> serviceLinks = result.Results.Values
+                .Where( r => !string.IsNullOrWhiteSpace( r.URL ) )
+                .Select( r => r.URL )
+                .ToList();
             await AddLookupEntriesOfTypeAsync( dbContext, rkey, serviceLinks, LookupEntryType.ServiceLink, isAlbum );
 
             // Add external ID if available

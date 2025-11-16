@@ -276,14 +276,12 @@ public class MusicLookupServiceTests {
 
         // Verify Spotify result is present (the main issue being tested)
         // Note: This may fail if Spotify rate limits are hit
-        if (!firstResult.Results.ContainsKey( Domain.Types.Enums.SupportedProviders.Spotify )) {
+        if (!firstResult.Results.TryGetValue( Domain.Types.Enums.SupportedProviders.Spotify, out MusicLookupResultDto? spotifyResult )) {
             Assert.Inconclusive( "Spotify result not found - possibly due to rate limiting" );
             return;
         }
 
-        Assert.IsTrue( firstResult.Results.ContainsKey( Domain.Types.Enums.SupportedProviders.Spotify ),
-            "Spotify should find the track using ISRC US25X1087647" );
-        MusicLookupResultDto spotifyResult = firstResult.Results[Domain.Types.Enums.SupportedProviders.Spotify];
+        Assert.IsNotNull( spotifyResult, "Spotify should find the track using ISRC US25X1087647" );
         Assert.IsNotNull( spotifyResult.Title );
         Assert.IsNotNull( spotifyResult.Artist );
         Assert.IsFalse( string.IsNullOrWhiteSpace( spotifyResult.URL ), "Spotify result should have a URL" );
