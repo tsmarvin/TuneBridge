@@ -80,15 +80,15 @@ function initializeShareButtons() {
         };
     });
 
-    // Handle copy ATProto DID buttons
+    // Handle copy ATProto URI buttons
     document.querySelectorAll('.copy-atproto-btn').forEach(function (button) {
         button.onclick = function () {
             var uri = this.getAttribute('data-uri');
 
             navigator.clipboard.writeText(uri).then(function () {
-                showCopyFeedback(button, 'ATProto DID copied!', false);
+                showCopyFeedback(button, 'ATProto URI copied!', false);
             }).catch(function (err) {
-                console.error('Failed to copy ATProto DID:', err);
+                console.error('Failed to copy ATProto URI:', err);
                 showCopyFeedback(button, 'Failed to copy', true);
             });
         };
