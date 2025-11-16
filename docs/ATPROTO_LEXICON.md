@@ -19,7 +19,9 @@ TuneBridge uses a custom ATProto lexicon to store music lookup results as struct
 
 **NSID (Namespaced Identifier):** `media.tunebridge.dev.lookup.result`
 
-**Authority Domain:** `tunebridge.dev`
+**Deployment Domain:** `dev.tunebridge.media`
+
+**Authority Domain:** `tunebridge.dev` (from NSID reverse-DNS)
 
 According to the ATProto specification, lexicon schemas must be:
 1. Published at a predictable HTTPS endpoint on the authority domain
@@ -36,7 +38,7 @@ src/Web/wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
 
 And is served at:
 ```
-https://tunebridge.dev/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
+https://dev.tunebridge.media/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
 ```
 
 ### Schema Structure
@@ -63,9 +65,16 @@ See the lexicon file for the complete JSON schema definition.
 
 To establish domain authority for the lexicon NSID, you should configure DNS TXT records. This step is **optional but recommended** for full ATProto compliance and enhanced trust.
 
+**Note:** The NSID `media.tunebridge.dev.lookup.result` suggests authority domain `tunebridge.dev`, but TuneBridge is deployed at `dev.tunebridge.media`. You have two options:
+
+1. **Configure DNS for `tunebridge.dev`** (NSID authority domain) with delegation to `dev.tunebridge.media`
+2. **Configure DNS for `dev.tunebridge.media`** (deployment domain) directly
+
+This guide focuses on option 2 (deployment domain configuration) as it's simpler for most deployments.
+
 ### Required DNS TXT Records
 
-Add the following DNS TXT record to your domain (`tunebridge.dev`):
+Add the following DNS TXT record to your deployment domain (`dev.tunebridge.media`):
 
 **Record Type:** TXT  
 **Host/Name:** `_lexicon`  
@@ -74,13 +83,14 @@ Add the following DNS TXT record to your domain (`tunebridge.dev`):
 
 ### Example DNS Configuration
 
+For the deployment domain:
 ```
-_lexicon.tunebridge.dev.    3600    IN    TXT    "did=did:plc:your-did-identifier"
+_lexicon.dev.tunebridge.media.    3600    IN    TXT    "did=did:plc:your-did-identifier"
 ```
 
 Or if using `did:web`:
 ```
-_lexicon.tunebridge.dev.    3600    IN    TXT    "did=did:web:tunebridge.dev"
+_lexicon.dev.tunebridge.media.    3600    IN    TXT    "did=did:web:dev.tunebridge.media"
 ```
 
 ### DNS Provider-Specific Instructions
@@ -167,7 +177,7 @@ https://<your-domain>/.well-known/atproto-lexicon/<full-nsid>
 
 **For TuneBridge:**
 ```
-https://tunebridge.dev/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
+https://dev.tunebridge.media/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
 ```
 
 ### Content Type
@@ -189,7 +199,7 @@ TuneBridge's startup configuration (`StartupExtensions.cs`) automatically:
 After deployment, verify the endpoint is accessible:
 
 ```bash
-curl -i https://tunebridge.dev/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
+curl -i https://dev.tunebridge.media/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
 ```
 
 Expected response:
@@ -266,23 +276,26 @@ ATProto clients resolve lexicon authority in the following order:
 
 ### 1. DNS TXT Record Resolution (Recommended)
 
-Clients query the `_lexicon` TXT record to find the authoritative DID:
+Clients query the `_lexicon` TXT record to find the authoritative DID.
 
+For TuneBridge's deployment domain:
 ```bash
-dig _lexicon.tunebridge.dev TXT
+dig _lexicon.dev.tunebridge.media TXT
 ```
 
 Expected response:
 ```
-_lexicon.tunebridge.dev. 3600 IN TXT "did=did:plc:your-identifier"
+_lexicon.dev.tunebridge.media. 3600 IN TXT "did=did:plc:your-identifier"
 ```
+
+*Note: Theoretically, the NSID authority domain (`tunebridge.dev`) could also be used, but using the deployment domain is simpler.*
 
 ### 2. HTTPS Endpoint Resolution (Fallback)
 
-If DNS TXT record is not found, clients directly fetch from the well-known endpoint:
+If DNS TXT record is not found, clients directly fetch from the deployment endpoint:
 
 ```
-https://tunebridge.dev/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
+https://dev.tunebridge.media/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
 ```
 
 ### 3. DID Method Support
@@ -299,14 +312,14 @@ TuneBridge supports both ATProto DID methods:
 **Setup:**
 1. Create ATProto account on a PDS (e.g., bsky.social)
 2. Retrieve your DID from account settings
-3. Add DNS TXT record: `_lexicon.tunebridge.dev TXT "did=did:plc:your-identifier"`
+3. Add DNS TXT record: `_lexicon.dev.tunebridge.media TXT "did=did:plc:your-identifier"`
 
 #### did:web (Web DID)
 
 - **Format:** `did:web:<domain>`
 - **Resolution:** Via HTTPS at `https://<domain>/.well-known/did.json`
 - **Use Case:** Domain-based identity
-- **Example:** `did:web:tunebridge.dev`
+- **Example:** `did:web:dev.tunebridge.media`
 
 **Setup:**
 1. Create DID document at `src/Web/wwwroot/.well-known/did.json`:
@@ -316,12 +329,12 @@ TuneBridge supports both ATProto DID methods:
        "https://www.w3.org/ns/did/v1",
        "https://w3id.org/security/suites/jws-2020/v1"
      ],
-     "id": "did:web:tunebridge.dev",
+     "id": "did:web:dev.tunebridge.media",
      "verificationMethod": [
        {
-         "id": "did:web:tunebridge.dev#key-1",
+         "id": "did:web:dev.tunebridge.media#key-1",
          "type": "JsonWebKey2020",
-         "controller": "did:web:tunebridge.dev",
+         "controller": "did:web:dev.tunebridge.media",
          "publicKeyJwk": {
            "kty": "EC",
            "crv": "P-256",
@@ -332,14 +345,14 @@ TuneBridge supports both ATProto DID methods:
      ],
      "service": [
        {
-         "id": "did:web:tunebridge.dev#atproto_pds",
+         "id": "did:web:dev.tunebridge.media#atproto_pds",
          "type": "AtprotoPersonalDataServer",
-         "serviceEndpoint": "https://pds.tunebridge.dev"
+         "serviceEndpoint": "https://pds.dev.tunebridge.media"
        }
      ]
    }
    ```
-2. Add DNS TXT record: `_lexicon.tunebridge.dev TXT "did=did:web:tunebridge.dev"`
+2. Add DNS TXT record: `_lexicon.dev.tunebridge.media TXT "did=did:web:dev.tunebridge.media"`
 
 ### Resolution Flow Diagram
 
@@ -351,12 +364,13 @@ TuneBridge supports both ATProto DID methods:
                  │
                  ▼
 ┌─────────────────────────────────────────┐
-│ Extract domain: tunebridge.dev          │
+│ Extract domain from NSID: tunebridge.dev│
+│ Or use deployment domain: dev.tunebridge.media│
 └────────────────┬────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────┐
-│ Query DNS: _lexicon.tunebridge.dev TXT  │
+│ Query DNS: _lexicon.dev.tunebridge.media TXT│
 └────────────┬────────────────────────────┘
              │
     ┌────────┴────────┐
@@ -368,9 +382,10 @@ TuneBridge supports both ATProto DID methods:
     │                 │
     ▼                 ▼
 ┌─────────┐   ┌───────────────────────────┐
-│ Get DID │   │ Fetch from well-known:    │
-│         │   │ /.well-known/atproto-     │
-│         │   │ lexicon/<nsid>            │
+│ Get DID │   │ Fetch from deployment:    │
+│         │   │ https://dev.tunebridge.   │
+│         │   │ media/.well-known/        │
+│         │   │ atproto-lexicon/<nsid>    │
 └───┬─────┘   └───────────┬───────────────┘
     │                     │
     ▼                     │
@@ -395,7 +410,7 @@ After completing the setup, verify your lexicon resolution is working correctly:
 
 Check DNS TXT record:
 ```bash
-dig _lexicon.tunebridge.dev TXT +short
+dig _lexicon.dev.tunebridge.media TXT +short
 ```
 
 Expected output:
@@ -411,7 +426,7 @@ Or use online DNS checkers:
 
 Test the lexicon endpoint:
 ```bash
-curl -i https://tunebridge.dev/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
+curl -i https://dev.tunebridge.media/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
 ```
 
 Verify:
@@ -425,7 +440,7 @@ Verify:
 
 Test cross-origin access:
 ```bash
-curl -i -H "Origin: https://example.com" https://tunebridge.dev/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
+curl -i -H "Origin: https://example.com" https://dev.tunebridge.media/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result
 ```
 
 Verify `Access-Control-Allow-Origin: *` header is present.
@@ -439,7 +454,7 @@ curl https://plc.directory/did:plc:your-identifier
 
 For `did:web`:
 ```bash
-curl https://tunebridge.dev/.well-known/did.json
+curl https://dev.tunebridge.media/.well-known/did.json
 ```
 
 ### 5. ATProto Client Validation
@@ -491,7 +506,7 @@ The PDS should validate the record against the lexicon schema.
 3. Verify record name is exactly `_lexicon` (no trailing dots)
 4. Test with `dig` or `nslookup`:
    ```bash
-   nslookup -type=TXT _lexicon.tunebridge.dev
+   nslookup -type=TXT _lexicon.dev.tunebridge.media
    ```
 
 ### HTTPS Endpoint Issues
@@ -509,7 +524,7 @@ The PDS should validate the record against the lexicon schema.
 **Solutions:**
 1. Verify `StartupExtensions.cs` has proper content-type configuration
 2. Check server logs for static file serving errors
-3. Test with verbose curl: `curl -v https://tunebridge.dev/.well-known/atproto-lexicon/...`
+3. Test with verbose curl: `curl -v https://dev.tunebridge.media/.well-known/atproto-lexicon/...`
 
 ### CORS Issues
 
@@ -552,7 +567,7 @@ The PDS should validate the record against the lexicon schema.
 1. Verify DID document exists at `/.well-known/did.json`
 2. Check DID document JSON is valid
 3. Ensure HTTPS is enabled (HTTP not supported)
-4. Test: `curl https://tunebridge.dev/.well-known/did.json`
+4. Test: `curl https://dev.tunebridge.media/.well-known/did.json`
 
 ### Caching Issues
 
