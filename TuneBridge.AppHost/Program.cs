@@ -15,10 +15,13 @@ namespace TuneBridge.AppHost {
                 DisableDashboard = true
             } );
 
-            // Add the TuneBridge application as the primary service
+            // Add the TuneBridge application as an executable
             // The Aspire Dashboard runs as a separate container (defined in docker-compose.yml)
             // and TuneBridge connects to it via the OTLP endpoint
-            _ = builder.AddProject<Projects.TuneBridge>( "tunebridge" )
+            string dotnetPath = Environment.GetEnvironmentVariable( "DOTNET_ROOT" ) ?? "/usr/share/dotnet/dotnet";
+            string tunebridgeDll = Path.Combine( AppContext.BaseDirectory, "TuneBridge.dll" );
+
+            _ = builder.AddExecutable( "tunebridge", dotnetPath, AppContext.BaseDirectory, tunebridgeDll )
                 .WithHttpEndpoint( port: 10000, name: "http" );
 
             builder.Build( ).Run( );

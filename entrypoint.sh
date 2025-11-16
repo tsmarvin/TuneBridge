@@ -115,6 +115,6 @@ cat > /app/appsettings.json <<EOF
 }
 EOF
 
-# 3) Launch the TuneBridge application
-echo "Starting TuneBridge application..."
-exec "/app/TuneBridge"
+# 3) Launch the Aspire AppHost (which will start the TuneBridge application)
+echo "Starting TuneBridge via Aspire AppHost..."
+exec "/app/TuneBridge.AppHost"
