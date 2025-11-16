@@ -19,7 +19,7 @@ namespace TuneBridge.Tests.Integration;
 /// Integration tests for Aspire Dashboard authorization.
 /// </summary>
 [TestClass]
-public class DashboardAuthorizationTests {
+public class DashboardAuthorizationTests : IDisposable {
     private WebApplicationFactory<Program>? _factory;
     private HttpClient? _client;
     private ApplicationDbContext? _dbContext;
@@ -59,6 +59,10 @@ public class DashboardAuthorizationTests {
 
     [TestCleanup]
     public void Cleanup( ) {
+        Dispose( );
+    }
+
+    public void Dispose( ) {
         _client?.Dispose( );
 
         // Clean up the in-memory database
@@ -68,6 +72,7 @@ public class DashboardAuthorizationTests {
         }
 
         _factory?.Dispose( );
+        GC.SuppressFinalize( this );
     }
 
     /// <summary>
