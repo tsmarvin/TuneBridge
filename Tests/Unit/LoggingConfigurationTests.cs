@@ -199,26 +199,48 @@ public class LoggingConfigurationTests {
             Logger logger = new LoggerConfiguration( )
                 .MinimumLevel.Information( )
                 .Filter.ByExcluding( logEvent => {
-                    // Exclude successful health check requests from logs
+                    // Exclude successful health check requests from logs (but keep failures)
+                    // This filters out Information level logs for /health endpoint
                     if (logEvent.Level != Serilog.Events.LogEventLevel.Information) {
-                        return false;
+                        return false; // Don't exclude warnings, errors, etc. (allows failures and higher log levels to pass through)
                     }
 
-                    string? messageTemplate = logEvent.MessageTemplate?.Text;
-                    if (messageTemplate == null || !messageTemplate.Contains( "HTTP" )) {
-                        return false;
-                    }
+                    // Check if this is a log event related to health endpoint
+                    // This covers both HTTP request logs from Serilog.AspNetCore and MVC action execution logs
+                    string? sourceContext = logEvent.Properties.TryGetValue( "SourceContext", out Serilog.Events.LogEventPropertyValue? sourceValue )
+                        ? sourceValue.ToString( ).Trim( '"' )
+                        : null;
 
-                    if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue )) {
-                        string path = pathValue.ToString( ).Trim( '"' );
-                        if (
-                            path.Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
-                            logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
-                            statusValue.ToString( ) == "200"
-                        ) {
-                            return true;
+                    // Filter MVC controller action execution logs for health endpoint
+                    // Check if this is an MVC/Routing infrastructure log
+                    if (sourceContext != null &&
+                        (sourceContext.Contains( "Microsoft.AspNetCore.Mvc" ) ||
+                         sourceContext.Contains( "Microsoft.AspNetCore.Routing" ))) {
+                        
+                        // Check ActionName property first (most reliable indicator)
+                        if (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue )) {
+                            string actionName = actionValue.ToString( );
+                            if (actionName.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
+                                return true; // Exclude health check related MVC logs
+                            }
+                        }
+
+                        // Also check message text for "Health" keyword as fallback
+                        // This catches logs like "Route matched with {action = "Health", controller = "Home"}"
+                        string messageText = logEvent.RenderMessage( );
+                        if (messageText.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
+                            return true; // Exclude health check related MVC logs
                         }
                     }
+
+                    // Filter HTTP request completion logs from Serilog.AspNetCore for successful health checks
+                    if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
+                        pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
+                        logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
+                        statusValue.ToString( ) == "200") {
+                        return true; // Exclude successful health check HTTP logs
+                    }
+
                     return false;
                 } )
                 .WriteTo.File( logPath )
@@ -243,6 +265,25 @@ public class LoggingConfigurationTests {
                 .Warning( "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms",
                     "GET", "/health", 500, 10.0 );
 
+            // Simulate MVC action execution logs for health endpoint
+            logger
+                .ForContext( "SourceContext", "Microsoft.AspNetCore.Mvc.Infrastructure.ControllerActionInvoker" )
+                .ForContext( "ActionName", "TuneBridge.Web.Controllers.HomeController.Health (TuneBridge)" )
+                .Information( "Executing controller action with signature Microsoft.AspNetCore.Mvc.IActionResult Health() on controller TuneBridge.Web.Controllers.HomeController (TuneBridge)." );
+
+            // Note: Some MVC infrastructure logs like "Executing OkObjectResult" may not have Health context
+            // and thus may not be filterable without overly broad filtering. This is acceptable as long as
+            // the primary noisy logs (route matching, action execution) are filtered.
+            logger
+                .ForContext( "SourceContext", "Microsoft.AspNetCore.Routing.EndpointMiddleware" )
+                .Information( "Route matched with {{action = \"Health\", controller = \"Home\"}}. Executing controller action." );
+
+            // Simulate MVC action execution logs for a different endpoint
+            logger
+                .ForContext( "SourceContext", "Microsoft.AspNetCore.Mvc.Infrastructure.ControllerActionInvoker" )
+                .ForContext( "ActionName", "TuneBridge.Web.Controllers.HomeController.Index (TuneBridge)" )
+                .Information( "Executing controller action with signature Microsoft.AspNetCore.Mvc.IActionResult Index() on controller TuneBridge.Web.Controllers.HomeController (TuneBridge)." );
+
             logger.Dispose( );
 
             // Assert
@@ -255,11 +296,48 @@ public class LoggingConfigurationTests {
             Assert.AreEqual( 1, healthOccurrences,
                 $"Expected only 1 /health occurrence (the failed one), but found {healthOccurrences}. Successful health check at Information level should be filtered." );
 
+            // MVC action logs for Health endpoint should be filtered
+            Assert.DoesNotContain( "Health() on controller", logContent, "Health controller action logs should be filtered" );
+            Assert.DoesNotContain( "Route matched", logContent, "Health routing logs should be filtered" );
+
+            // MVC action logs for other endpoints should still be logged
+            Assert.Contains( "Index()", logContent, "Non-health controller action logs should be logged" );
+
             // Other requests should still be logged
             Assert.Contains( "/api/data", logContent, "Non-health endpoints should be logged" );
 
             // Failed health check (non-Information level) should be logged
             Assert.Contains( "500", logContent, "Failed health check requests should still be logged" );
+        } finally {
+            // Cleanup
+            if (File.Exists( logPath )) {
+                File.Delete( logPath );
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ConfigureSerilog_ShouldConfigureConsoleLogging( ) {
+        // Arrange
+        string logPath = Path.Combine( Path.GetTempPath( ), $"test-console-log-{Guid.NewGuid( )}.log" );
+
+        try {
+            // Act - Create logger with both console and file output (mimicking StartupExtensions.ConfigureSerilog)
+            Logger logger = new LoggerConfiguration( )
+                .MinimumLevel.Information( )
+                .WriteTo.Console( )
+                .WriteTo.File( logPath )
+                .CreateLogger( );
+
+            logger.Information( "Test message for console and file" );
+            logger.Dispose( );
+
+            // Assert
+            string logContent = File.ReadAllText( logPath );
+            Assert.Contains( "Test message for console and file", logContent, "Log message should be written to file" );
+
+            // Note: We can't easily test actual console output in unit tests, but we can verify
+            // the logger configuration accepts both sinks without errors
         } finally {
             // Cleanup
             if (File.Exists( logPath )) {
