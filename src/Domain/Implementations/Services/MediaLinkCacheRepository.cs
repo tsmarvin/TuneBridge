@@ -78,9 +78,6 @@ namespace TuneBridge.Domain.Implementations.Services {
             } catch (InvalidOperationException ex) {
                 logger.LogError( ex, "Invalid operation while trying to get cached result" );
                 return null;
-            } catch (Exception ex) {
-                logger.LogError( ex, "Unexpected error while trying to get cached result" );
-                return null;
             }
         }
 
@@ -257,9 +254,6 @@ namespace TuneBridge.Domain.Implementations.Services {
             } catch (InvalidOperationException ex) {
                 logger.LogError( ex, "Invalid operation while trying to get cached result by ISRC" );
                 return null;
-            } catch (Exception ex) {
-                logger.LogError( ex, "Unexpected error while trying to get cached result by ISRC" );
-                return null;
             }
         }
 
@@ -306,9 +300,6 @@ namespace TuneBridge.Domain.Implementations.Services {
                 return null;
             } catch (InvalidOperationException ex) {
                 logger.LogError( ex, "Invalid operation while trying to get cached result by UPC" );
-                return null;
-            } catch (Exception ex) {
-                logger.LogError( ex, "Unexpected error while trying to get cached result by UPC" );
                 return null;
             }
         }
@@ -358,9 +349,6 @@ namespace TuneBridge.Domain.Implementations.Services {
                 return null;
             } catch (InvalidOperationException ex) {
                 logger.LogError( ex, "Invalid operation while trying to get cached result by metadata" );
-                return null;
-            } catch (Exception ex) {
-                logger.LogError( ex, "Unexpected error while trying to get cached result by metadata" );
                 return null;
             }
         }

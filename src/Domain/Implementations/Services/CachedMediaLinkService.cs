@@ -68,8 +68,6 @@ namespace TuneBridge.Domain.Implementations.Services {
                 Logger.LogError( ex, "HTTP error while caching title/artist lookup result, continuing without caching" );
             } catch (InvalidOperationException ex) {
                 Logger.LogError( ex, "Invalid operation while caching title/artist lookup result, continuing without caching" );
-            } catch (Exception ex) {
-                Logger.LogError( ex, "Unexpected error while caching title/artist lookup result, continuing without caching" );
             }
 
             return result;
@@ -111,8 +109,6 @@ namespace TuneBridge.Domain.Implementations.Services {
                 Logger.LogError( ex, "HTTP error while caching ISRC lookup result, continuing without caching" );
             } catch (InvalidOperationException ex) {
                 Logger.LogError( ex, "Invalid operation while caching ISRC lookup result, continuing without caching" );
-            } catch (Exception ex) {
-                Logger.LogError( ex, "Unexpected error while caching ISRC lookup result, continuing without caching" );
             }
 
             return result;
@@ -154,8 +150,6 @@ namespace TuneBridge.Domain.Implementations.Services {
                 Logger.LogError( ex, "HTTP error while caching UPC lookup result, continuing without caching" );
             } catch (InvalidOperationException ex) {
                 Logger.LogError( ex, "Invalid operation while caching UPC lookup result, continuing without caching" );
-            } catch (Exception ex) {
-                Logger.LogError( ex, "Unexpected error while caching UPC lookup result, continuing without caching" );
             }
 
             return result;
@@ -269,8 +263,12 @@ namespace TuneBridge.Domain.Implementations.Services {
                             string recordUri = await _cacheRepository.CacheResultAsync( result, resultInputLinks );
                             Logger.LogInformation( "Cached new result to ATProto: {uri}", recordUri );
                         }
-                    } catch (Exception ex) {
-                        Logger.LogError( ex, "Failed to cache result, continuing without caching" );
+                    } catch (DbUpdateException ex) {
+                        Logger.LogError( ex, "Database error while caching result, continuing without caching" );
+                    } catch (HttpRequestException ex) {
+                        Logger.LogError( ex, "HTTP error while caching result, continuing without caching" );
+                    } catch (InvalidOperationException ex) {
+                        Logger.LogError( ex, "Invalid operation while caching result, continuing without caching" );
                     }
 
                     yield return result;
