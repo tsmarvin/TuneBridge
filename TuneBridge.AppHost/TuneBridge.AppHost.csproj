@@ -8,8 +8,4 @@
     <StartupObject>TuneBridge.AppHost.Program</StartupObject>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.0.0" />
-  </ItemGroup>
-
 </Project>
