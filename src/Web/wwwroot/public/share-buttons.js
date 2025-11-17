@@ -68,17 +68,37 @@ function initializeShareButtons() {
     document.querySelectorAll('.copy-embed-btn').forEach(function (button) {
         button.onclick = function (e) {
             e.stopPropagation();
-            var url = this.getAttribute('data-url');
-            var title = JSON.parse(this.getAttribute('data-title'));
-            var absoluteUrl = new URL(url, window.location.origin).href;
-            var iframeCode = '<iframe src="' + absoluteUrl + '" width="600" height="600" frameborder="0" title="' + title + '"></iframe>';
+            console.log('Copy embed button clicked');
+            
+            try {
+                var url = this.getAttribute('data-url');
+                var titleAttr = this.getAttribute('data-title');
+                console.log('URL:', url, 'Title attr:', titleAttr);
+                
+                var title;
+                try {
+                    title = JSON.parse(titleAttr);
+                } catch (parseError) {
+                    console.warn('Failed to parse title as JSON, using raw value:', parseError);
+                    title = titleAttr;
+                }
+                
+                var absoluteUrl = new URL(url, window.location.origin).href;
+                var iframeCode = '<iframe src="' + absoluteUrl + '" width="600" height="600" frameborder="0" title="' + title + '"></iframe>';
+                
+                console.log('Generated iframe code:', iframeCode);
 
-            navigator.clipboard.writeText(iframeCode).then(function () {
-                showCopyFeedback(button, 'Embed code copied!', false);
-            }).catch(function (err) {
-                console.error('Failed to copy embed code:', err);
+                navigator.clipboard.writeText(iframeCode).then(function () {
+                    console.log('Successfully copied to clipboard');
+                    showCopyFeedback(button, 'Embed code copied!', false);
+                }).catch(function (err) {
+                    console.error('Failed to copy embed code:', err);
+                    showCopyFeedback(button, 'Failed to copy', true);
+                });
+            } catch (err) {
+                console.error('Error in copy embed handler:', err);
                 showCopyFeedback(button, 'Failed to copy', true);
-            });
+            }
         };
     });
 
