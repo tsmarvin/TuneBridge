@@ -417,6 +417,10 @@ ViewData["Title"] = "Music Lookup";
     // Handle form submission for all modes with server-side rendering
     lookupForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      
+      // Close keyboard on mobile devices
+      document.activeElement?.blur();
+      
       const mode = (modeRadios.find(r => r.checked) || {}).value;
       const status = $('status');
       const result = $('result');
