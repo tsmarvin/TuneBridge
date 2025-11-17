@@ -90,8 +90,8 @@ function initializeShareButtons() {
                 }
                 
                 var absoluteUrl = new URL(embedUrl, window.location.origin).href;
-                // Card dimensions: width matches max-width of card (515px), height adjusted for compact card (~250px)
-                var iframeCode = '<iframe src="' + absoluteUrl + '" width="515" height="250" frameborder="0" allowtransparency="true" style="max-width: 100%;" title="' + title + '"></iframe>';
+                // Card dimensions: width matches max-width of card (515px), height ~220px for compact display
+                var iframeCode = '<iframe src="' + absoluteUrl + '" width="515" height="220" frameborder="0" allowtransparency="true" style="max-width: 100%;" title="' + title + '"></iframe>';
                 
                 console.log('Generated iframe code:', iframeCode);
 
