@@ -16,14 +16,14 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// </summary>
     /// <remarks>
     /// This service uses the idunno.Bluesky library to interact with ATProto-compatible PDS instances.
-    /// MediaLinkResults are stored as custom media.tunebridge.dev.lookup.result lexicon records.
+    /// MediaLinkResults are stored as custom media.tunebridge.dev.lookup lexicon records.
     /// </remarks>
     public class ATProtoStorageService : IATProtoStorageService {
 
         /// <summary>
         /// The NSID (Namespaced Identifier) for the TuneBridge MediaLinkResult lexicon.
         /// </summary>
-        private static readonly Nsid s_mediaLinkResultCollection = new( "media.tunebridge.dev.lookup.result" );
+        private static readonly Nsid s_mediaLinkResultCollection = new( "media.tunebridge.dev.lookup" );
 
         /// <summary>
         /// Static cached dictionary mapping provider strings to SupportedProviders enum values.
@@ -102,7 +102,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     record: record,
                     collection: s_mediaLinkResultCollection,
                     rKey: recordKey,
-                    validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
+                    validate: false // PDS Resolution not enabled yet
                 );
 
                 if (putResult.Succeeded && putResult.Result is not null) {
@@ -115,7 +115,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     record: record,
                     collection: s_mediaLinkResultCollection,
                     rKey: recordKey,
-                    validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
+                    validate: false // PDS Resolution not enabled yet
                 );
 
                 if (!createResult.Succeeded || createResult.Result is null) {
