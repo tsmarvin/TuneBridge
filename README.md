@@ -100,7 +100,8 @@ When someone shares a Spotify link, TuneBridge responds with a card showing Appl
 
 ## 🛠️ Built With
 
-- **.NET 10.0** - Modern, cross-platform framework
+- **.NET 10.0** - Modern, cross-platform framework with Aspire orchestration
+- **Aspire AppHost** - Unified startup orchestration and observability integration
 - **Apple MusicKit API** - Apple Music integration
 - **Spotify Web API** - Spotify integration
 - **Tidal API** - Tidal integration

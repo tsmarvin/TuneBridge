@@ -34,10 +34,17 @@ Docker Compose deployment includes:
 #### Architecture
 
 The Docker Compose setup consists of:
-1. **TuneBridge Application** - .NET 9.0 web application (port 10000)
-2. **Caddy Reverse Proxy** - Automatic HTTPS with Let's Encrypt (ports 80/443)
-3. **Docker Secrets** - Secure credential management
-4. **Persistent Volumes** - Data and certificate storage
+1. **TuneBridge Application** - .NET 10.0 web application orchestrated by Aspire AppHost (port 10000)
+2. **Aspire Dashboard** - Observability and telemetry dashboard (port 18888, internal)
+3. **Caddy Reverse Proxy** - Automatic HTTPS with Let's Encrypt (ports 80/443)
+4. **Docker Secrets** - Secure credential management
+5. **Persistent Volumes** - Data and certificate storage
+
+The application uses the **Aspire AppHost** pattern for unified startup orchestration, providing:
+- Centralized configuration management
+- Integrated telemetry and observability
+- Simplified deployment and startup
+- Connection to the Aspire Dashboard for monitoring
 
 #### Configuration
 

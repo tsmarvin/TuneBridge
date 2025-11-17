@@ -50,7 +50,8 @@ RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
 # Logging configuration
 LOG_FILE_PATH="${LOG_FILE_PATH:-/app/data/logs/tunebridge-.log}"
-OTLP_ENDPOINT="${OTLP_ENDPOINT:-http://aspire-dashboard:4317}"
+# OTLP endpoint is now localhost since the Aspire Dashboard runs in the same container via AppHost
+OTLP_ENDPOINT="${OTLP_ENDPOINT:-http://localhost:4317}"
 
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
@@ -115,6 +116,6 @@ cat > /app/appsettings.json <<EOF
 }
 EOF
 
-# 3) Launch the TuneBridge application
-echo "Starting TuneBridge application..."
-exec "/app/TuneBridge"
+# 3) Launch the Aspire AppHost (which will start the TuneBridge application)
+echo "Starting TuneBridge via Aspire AppHost..."
+exec "/app/TuneBridge.AppHost"
