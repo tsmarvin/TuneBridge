@@ -72,4 +72,116 @@ public class OpenGraphCardServiceTests {
         // Assert
         Assert.StartsWith( $"https://{baseUrl}/card/", cardUrl, "Card URL should start with base URL" );
     }
+
+    [TestMethod]
+    public void StoreMultipleResults_WhenCalled_ReturnsMultiCardUrl( ) {
+        // Arrange
+        string baseUrl = "tunebridge.media";
+        IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
+        List<MediaLinkResult> results = [
+            new MediaLinkResult {
+                Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+                    {
+                        SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                            Title = "Test Track 1",
+                            Artist = "Test Artist",
+                            URL = "https://music.apple.com/us/album/test/123",
+                            IsAlbum = false,
+                            IsPrimary = true
+                        }
+                    }
+                }
+            },
+            new MediaLinkResult {
+                Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+                    {
+                        SupportedProviders.Spotify, new MusicLookupResultDto {
+                            Title = "Test Track 2",
+                            Artist = "Test Artist",
+                            URL = "https://open.spotify.com/track/456",
+                            IsAlbum = false,
+                            IsPrimary = true
+                        }
+                    }
+                }
+            }
+        ];
+
+        // Act
+        string multiCardUrl = service.StoreMultipleResults( results );
+
+        // Assert
+        Assert.StartsWith( $"https://{baseUrl}/card/multi/", multiCardUrl, "Multi-card URL should start with base URL and include /multi/" );
+    }
+
+    [TestMethod]
+    public void StoreMultipleResults_WhenEmptyCollection_ThrowsArgumentException( ) {
+        // Arrange
+        string baseUrl = "tunebridge.media";
+        IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
+        List<MediaLinkResult> emptyResults = [];
+
+        // Act & Assert
+        _ = Assert.ThrowsExactly<ArgumentException>( ( ) => service.StoreMultipleResults( emptyResults ) );
+    }
+
+    [TestMethod]
+    public void GetMultipleResults_WhenStoredAndNotExpired_ReturnsResults( ) {
+        // Arrange
+        string baseUrl = "tunebridge.media";
+        IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
+        List<MediaLinkResult> results = [
+            new MediaLinkResult {
+                Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+                    {
+                        SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                            Title = "Test Track 1",
+                            Artist = "Test Artist",
+                            URL = "https://music.apple.com/us/album/test/123",
+                            IsAlbum = false,
+                            IsPrimary = true
+                        }
+                    }
+                }
+            },
+            new MediaLinkResult {
+                Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+                    {
+                        SupportedProviders.Spotify, new MusicLookupResultDto {
+                            Title = "Test Track 2",
+                            Artist = "Test Artist",
+                            URL = "https://open.spotify.com/track/456",
+                            IsAlbum = false,
+                            IsPrimary = true
+                        }
+                    }
+                }
+            }
+        ];
+
+        // Act
+        string multiCardUrl = service.StoreMultipleResults( results );
+        string id = multiCardUrl.Split( '/' ).Last( );
+        IReadOnlyList<MediaLinkResult>? retrievedResults = service.GetMultipleResults( id );
+
+        // Assert
+        Assert.IsNotNull( retrievedResults, "Retrieved results should not be null" );
+        Assert.HasCount( 2, retrievedResults, "Should retrieve the same number of results" );
+        Assert.AreEqual( "Test Track 1", retrievedResults[0].Results[SupportedProviders.AppleMusic].Title );
+        Assert.AreEqual( "Test Track 2", retrievedResults[1].Results[SupportedProviders.Spotify].Title );
+    }
+
+    [TestMethod]
+    public void GetMultipleResults_WhenNotFound_ReturnsNull( ) {
+        // Arrange
+        string baseUrl = "tunebridge.media";
+        IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
+        string nonExistentId = "nonexistent-id";
+
+        // Act
+        IReadOnlyList<MediaLinkResult>? result = service.GetMultipleResults( nonExistentId );
+
+        // Assert
+        Assert.IsNull( result, "Should return null for non-existent ID" );
+    }
 }
