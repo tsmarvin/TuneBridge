@@ -40,6 +40,43 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaL
     }
 
     /// <summary>
+    /// Displays an embeddable compact card view for a stored MediaLinkResult.
+    /// This endpoint is designed for iframe embedding and shows the music lookup card style.
+    /// </summary>
+    /// <param name="id">The unique identifier of the stored result.</param>
+    /// <returns>A minimal HTML page with just the card suitable for iframe embedding.</returns>
+    [HttpGet( "{id}/embed" )]
+    public async Task<IActionResult> Embed( string id ) {
+        MediaLinkResult? result = _cardService.GetResult( id );
+
+        if (result == null) {
+            return NotFound( "Card not found or expired" );
+        }
+
+        // Get the primary provider and result for display
+        var primaryProvider = result.Results.Keys.FirstOrDefault( );
+        var primaryResult = result.Results.Values.FirstOrDefault( );
+
+        if (primaryResult == null) {
+            return NotFound( "No results found" );
+        }
+
+        // Try to get ATProto URI from cache
+        var atProtoUri = await GetATProtoUriFromCache( result );
+
+        // Create a view model for the embed view
+        var viewModel = new {
+            Result = result,
+            PrimaryProvider = primaryProvider,
+            PrimaryResult = primaryResult,
+            CardUrl = $"https://{_cardService.BaseUrl}/card/{id}",
+            ATProtoUri = atProtoUri
+        };
+
+        return View( viewModel );
+    }
+
+    /// <summary>
     /// Attempts to retrieve the ATProto URI for a MediaLinkResult from the cache.
     /// Tries multiple lookup strategies: external ID (ISRC/UPC) and metadata.
     /// </summary>

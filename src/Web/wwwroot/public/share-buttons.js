@@ -83,8 +83,14 @@ function initializeShareButtons() {
                     title = titleAttr;
                 }
                 
-                var absoluteUrl = new URL(url, window.location.origin).href;
-                var iframeCode = '<iframe src="' + absoluteUrl + '" width="600" height="600" frameborder="0" title="' + title + '"></iframe>';
+                // Convert card URL to embed URL by appending /embed
+                var embedUrl = url;
+                if (!embedUrl.endsWith('/embed')) {
+                    embedUrl = embedUrl + '/embed';
+                }
+                
+                var absoluteUrl = new URL(embedUrl, window.location.origin).href;
+                var iframeCode = '<iframe src="' + absoluteUrl + '" width="400" height="600" frameborder="0" allowtransparency="true" title="' + title + '"></iframe>';
                 
                 console.log('Generated iframe code:', iframeCode);
 
