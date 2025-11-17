@@ -586,7 +586,7 @@ namespace TuneBridge.Configuration {
                     if (sourceContext != null &&
                         (sourceContext.Contains( "Microsoft.AspNetCore.Mvc" ) ||
                          sourceContext.Contains( "Microsoft.AspNetCore.Routing" ))) {
-                        
+
                         // Check ActionName property first (most reliable indicator)
                         if (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue )) {
                             string actionName = actionValue.ToString( );

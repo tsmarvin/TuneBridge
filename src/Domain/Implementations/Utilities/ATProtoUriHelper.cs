@@ -28,7 +28,7 @@ namespace TuneBridge.Domain.Implementations.Utilities {
             // Strategy 1: Try to find by input link if available
             if (includeInputLinkStrategy && result._inputLinks.Count > 0) {
                 foreach (string inputLink in result._inputLinks) {
-                    var cachedResult = await cacheRepository.TryGetCachedResultAsync( inputLink );
+                    (MediaLinkResult result, string recordUri, bool isStale)? cachedResult = await cacheRepository.TryGetCachedResultAsync( inputLink );
                     if (cachedResult.HasValue) {
                         return cachedResult.Value.recordUri;
                     }
@@ -41,12 +41,12 @@ namespace TuneBridge.Domain.Implementations.Utilities {
 
             if (firstResultWithId != null) {
                 if (firstResultWithId.IsAlbum == true) {
-                    var cachedResult = await cacheRepository.TryGetCachedResultByUPCAsync( firstResultWithId.ExternalId );
+                    (MediaLinkResult result, string recordUri, bool isStale)? cachedResult = await cacheRepository.TryGetCachedResultByUPCAsync( firstResultWithId.ExternalId );
                     if (cachedResult.HasValue) {
                         return cachedResult.Value.recordUri;
                     }
                 } else {
-                    var cachedResult = await cacheRepository.TryGetCachedResultByISRCAsync( firstResultWithId.ExternalId );
+                    (MediaLinkResult result, string recordUri, bool isStale)? cachedResult = await cacheRepository.TryGetCachedResultByISRCAsync( firstResultWithId.ExternalId );
                     if (cachedResult.HasValue) {
                         return cachedResult.Value.recordUri;
                     }
@@ -58,7 +58,7 @@ namespace TuneBridge.Domain.Implementations.Utilities {
             if (firstResult != null &&
                 !string.IsNullOrWhiteSpace( firstResult.Title ) &&
                 !string.IsNullOrWhiteSpace( firstResult.Artist )) {
-                var cachedResult = await cacheRepository.TryGetCachedResultByMetadataAsync(
+                (MediaLinkResult result, string recordUri, bool isStale)? cachedResult = await cacheRepository.TryGetCachedResultByMetadataAsync(
                     firstResult.Title,
                     firstResult.Artist );
                 if (cachedResult.HasValue) {

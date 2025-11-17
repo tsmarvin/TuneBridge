@@ -3,6 +3,7 @@ using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Extensions;
 using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
+using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Web.Controllers;
 
@@ -54,15 +55,15 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaL
         }
 
         // Get the primary provider and result for display
-        var primaryProvider = result.Results.Keys.FirstOrDefault( );
-        var primaryResult = result.Results.Values.FirstOrDefault( );
+        SupportedProviders primaryProvider = result.Results.Keys.FirstOrDefault( );
+        MusicLookupResultDto? primaryResult = result.Results.Values.FirstOrDefault( );
 
         if (primaryResult == null) {
             return NotFound( "No results found" );
         }
 
         // Try to get ATProto URI from cache
-        var atProtoUri = await GetATProtoUriFromCache( result );
+        string? atProtoUri = await GetATProtoUriFromCache( result );
 
         // Create a view model for the embed view
         var viewModel = new {
