@@ -54,34 +54,6 @@
                 {
                     <div class="embed-title">@(primaryResult?.Title ?? "Unknown Title")</div>
                 }
-                @if (!string.IsNullOrWhiteSpace(cardUrl))
-                {
-                    <div class="share-dropdown">
-                        <button class="share-button" type="button" aria-expanded="false" aria-haspopup="true" title="Share">
-                            <img src="/public/Share_arrow.png" alt="Share" class="share-arrow-icon" />
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li>
-                                <button class="dropdown-item copy-link-btn" type="button" data-url="@cardUrl">
-                                    <span class="dropdown-icon">📋</span> Copy Link
-                                </button>
-                            </li>
-                            <li>
-                                <button class="dropdown-item copy-embed-btn" type="button" data-url="@cardUrl" data-title="@Html.Raw(System.Text.Json.JsonSerializer.Serialize(primaryResult?.Title ?? "Music Link"))">
-                                    <span class="dropdown-icon">🖼️</span> Copy Embed
-                                </button>
-                            </li>
-                            @if (!string.IsNullOrWhiteSpace(atProtoUri))
-                            {
-                                <li>
-                                    <button class="dropdown-item copy-atproto-btn" type="button" data-uri="@atProtoUri">
-                                        <span class="dropdown-icon">🔗</span> Copy ATProto URI
-                                    </button>
-                                </li>
-                            }
-                        </ul>
-                    </div>
-                }
             </div>
         </div>
         <div class="embed-header">
@@ -124,23 +96,13 @@
             }
         </div>
     </div>
-    
-    <script src="~/public/share-buttons.js"></script>
-    <script>
-        // Initialize share buttons when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeShareButtons);
-        } else {
-            initializeShareButtons();
-        }
-    </script>
 </body>
 </html>
 
 @functions {
     IHtmlContent GetProviderLogo(SupportedProviders provider)
     {
-        // Embed view uses light background, so use dark logos
+        // Use light theme logos by default, CSS will handle dark theme switching via display property
         var lightThemeLogo = provider switch
         {
             SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_blk_072720.svg",
@@ -158,10 +120,8 @@
         };
 
         return new HtmlString($@"
-            <picture>
-                <source srcset=""{darkThemeLogo}"" media=""(prefers-color-scheme: dark)"" class=""provider-logo provider-logo-dark"">
-                <img src=""{lightThemeLogo}"" alt=""{provider.GetDescription()}"" class=""provider-logo provider-logo-light"" />
-            </picture>
+            <img src=""{lightThemeLogo}"" alt=""{provider.GetDescription()}"" class=""provider-logo provider-logo-light"" />
+            <img src=""{darkThemeLogo}"" alt=""{provider.GetDescription()}"" class=""provider-logo provider-logo-dark"" />
         ");
     }
 
