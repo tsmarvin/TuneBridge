@@ -78,6 +78,30 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaL
     }
 
     /// <summary>
+    /// Displays a page with multiple embedded cards in a responsive grid layout.
+    /// </summary>
+    /// <param name="id">The unique identifier of the stored results collection.</param>
+    /// <param name="cols">Optional number of columns for the grid (default: 3, max: 4).</param>
+    /// <returns>A page displaying all cards in a grid layout.</returns>
+    [HttpGet( "multi/{id}" )]
+    public IActionResult MultiCard( string id, int cols = 3 ) {
+        IReadOnlyList<MediaLinkResult>? results = _cardService.GetMultipleResults( id );
+
+        if (results == null || results.Count == 0) {
+            return NotFound( "Cards not found or expired" );
+        }
+
+        // Clamp columns between 1 and 4
+        cols = Math.Clamp( cols, 1, 4 );
+
+        ViewBag.Columns = cols;
+        ViewBag.MultiCardId = id;
+        ViewBag.BaseUrl = _cardService.BaseUrl;
+
+        return View( results );
+    }
+
+    /// <summary>
     /// Attempts to retrieve the ATProto URI for a MediaLinkResult from the cache.
     /// Tries multiple lookup strategies: external ID (ISRC/UPC) and metadata.
     /// </summary>

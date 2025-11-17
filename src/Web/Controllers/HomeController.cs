@@ -58,10 +58,14 @@ namespace TuneBridge.Web.Controllers {
 
             // Perform lookup server-side and collect all results
             MusicLookupViewModel viewModel = new( );
+            List<MediaLinkResult> allResults = [];
+            
             await foreach (MediaLinkResult result in _mediaLinkService.GetInfoAsync( uri )) {
                 if (result.Results.Count == 0) {
                     continue; // Skip empty results
                 }
+
+                allResults.Add( result );
 
                 // Find primary result
                 MusicLookupResultDto? primaryResult = null;
@@ -102,6 +106,9 @@ namespace TuneBridge.Web.Controllers {
 
             if (viewModel.Items.Count == 0) {
                 viewModel.Message = "No results found";
+            } else if (viewModel.Items.Count > 1 && _cardService?.IsEnabled == true) {
+                // Store multiple results for sharing
+                viewModel.MultiCardUrl = _cardService.StoreMultipleResults( allResults );
             }
 
             return PartialView( "_LookupResults", viewModel );

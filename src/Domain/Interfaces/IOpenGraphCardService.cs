@@ -30,5 +30,19 @@ namespace TuneBridge.Domain.Interfaces {
         /// <param name="id">The unique identifier of the result.</param>
         /// <returns>The media link result, or null if not found or expired.</returns>
         MediaLinkResult? GetResult( string id );
+
+        /// <summary>
+        /// Stores a collection of MediaLinkResult objects and returns a unique identifier for the collection.
+        /// </summary>
+        /// <param name="results">The collection of media link results to store.</param>
+        /// <returns>A link to the stored multi-card page.</returns>
+        string StoreMultipleResults( IEnumerable<MediaLinkResult> results );
+
+        /// <summary>
+        /// Retrieves a collection of MediaLinkResult objects by its unique identifier.
+        /// </summary>
+        /// <param name="id">The unique identifier of the collection.</param>
+        /// <returns>The collection of media link results, or null if not found or expired.</returns>
+        IReadOnlyList<MediaLinkResult>? GetMultipleResults( string id );
     }
 }

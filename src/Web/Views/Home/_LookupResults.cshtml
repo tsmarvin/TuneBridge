@@ -8,6 +8,30 @@
 }
 else if (Model.Items.Any())
 {
+    @if (Model.Items.Count > 1 && !string.IsNullOrWhiteSpace(Model.MultiCardUrl))
+    {
+        <div class="mb-3 d-flex justify-content-end">
+            <div class="share-results-dropdown">
+                <button class="btn btn-outline-primary share-results-button" type="button" aria-expanded="false" aria-haspopup="true">
+                    <img src="/public/Share_arrow.png" alt="" class="share-arrow-icon me-1" />
+                    Share All Results
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <button class="dropdown-item copy-multi-link-btn" type="button" data-multi-card-url="@Model.MultiCardUrl">
+                            <span class="dropdown-icon">📋</span> Copy Share Link
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item copy-multi-embed-btn" type="button" data-multi-card-url="@Model.MultiCardUrl" data-result-count="@Model.Items.Count">
+                            <span class="dropdown-icon">🖼️</span> Copy Embed Code
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    }
+    
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
         @foreach (var item in Model.Items)
         {

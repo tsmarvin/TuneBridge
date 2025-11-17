@@ -17,6 +17,11 @@ namespace TuneBridge.Web.Models {
         public string? Message { get; set; }
 
         /// <summary>
+        /// URL to the multi-card page when multiple results are present.
+        /// </summary>
+        public string? MultiCardUrl { get; set; }
+
+        /// <summary>
         /// Individual result item with card URL and metadata.
         /// </summary>
         public class MusicLookupResultItem {
