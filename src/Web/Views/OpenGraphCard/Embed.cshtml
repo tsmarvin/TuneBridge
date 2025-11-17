@@ -16,7 +16,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@(primaryResult?.Title ?? "Music Card")</title>
+    <link rel="stylesheet" href="~/public/docfx.min.css">
     <link rel="stylesheet" href="~/public/main.css">
+    <link rel="stylesheet" href="~/public/TuneBridge.styles.css">
+    <script>
+        // FOUC mitigation: Apply theme before page render
+        // NOTE: This logic must stay synchronized with docfx.min.js theme management
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+    </script>
     <style>
         body {
             margin: 0;
