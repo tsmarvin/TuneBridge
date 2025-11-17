@@ -111,7 +111,7 @@ MediaLinkResults are stored as custom AT Protocol records using the `media.tuneb
 
 ### Lexicon Definition
 
-The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result` and served at `https://<your-domain>/.well-known/atproto-lexicon/media.tunebridge.dev.lookup.result`:
+The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup` and served at `https://<your-domain>/.well-known/atproto-lexicon/media.tunebridge.dev.lookup`:
 
 ```json
 {

@@ -16,14 +16,14 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// </summary>
     /// <remarks>
     /// This service uses the idunno.Bluesky library to interact with ATProto-compatible PDS instances.
-    /// MediaLinkResults are stored as custom media.tunebridge.dev.lookup.result lexicon records.
+    /// MediaLinkResults are stored as custom media.tunebridge.dev.lookup lexicon records.
     /// </remarks>
     public class ATProtoStorageService : IATProtoStorageService {
 
         /// <summary>
         /// The NSID (Namespaced Identifier) for the TuneBridge MediaLinkResult lexicon.
         /// </summary>
-        private static readonly Nsid s_mediaLinkResultCollection = new( "media.tunebridge.dev.lookup.result" );
+        private static readonly Nsid s_mediaLinkResultCollection = new( "media.tunebridge.dev.lookup" );
 
         /// <summary>
         /// Static cached dictionary mapping provider strings to SupportedProviders enum values.
