@@ -1,65 +1,23 @@
-using System.Diagnostics;
+var builder = DistributedApplication.CreateBuilder( args );
 
-namespace TuneBridge.AppHost {
-    /// <summary>
-    /// Entry point for the TuneBridge AppHost, which provides unified startup
-    /// for the TuneBridge application with Aspire Dashboard integration.
-    /// </summary>
-    public class Program {
-        /// <summary>
-        /// Main entry point for the AppHost. Starts the TuneBridge web application
-        /// with unified configuration and telemetry.
-        /// </summary>
-        /// <param name="args">Command-line arguments for configuration overrides.</param>
-        public static async Task<int> Main( string[] args ) {
-            Console.WriteLine( "========================================" );
-            Console.WriteLine( "TuneBridge AppHost starting..." );
-            Console.WriteLine( $"Working directory: {Environment.CurrentDirectory}" );
-            Console.WriteLine( $"Base directory: {AppContext.BaseDirectory}" );
-            Console.WriteLine( "========================================\n" );
+// Add the Aspire Dashboard as a resource
+// The dashboard provides observability and telemetry for the distributed application
+var dashboard = builder.AddContainer( "aspire-dashboard", "mcr.microsoft.com/dotnet/aspire-dashboard", "13.0" )
+    .WithEnvironment( "ASPNETCORE_ENVIRONMENT", "Production" )
+    .WithEnvironment( "ASPNETCORE_URLS", "http://+:18888" )
+    .WithEnvironment( "DASHBOARD__FRONTEND__AUTHMODE", "Unsecured" )
+    .WithEnvironment( "DASHBOARD__OTLP__ENDPOINTURL", "http://+:4317" )
+    .WithEnvironment( "DASHBOARD__OTLP__AUTHMODE", "Unsecured" )
+    .WithHttpEndpoint( port: 18888, name: "http" )
+    .WithEndpoint( port: 4317, name: "otlp", scheme: "http" );
 
-            // Locate the TuneBridge executable
-            string tunebridgePath = Path.Combine( AppContext.BaseDirectory, "TuneBridge" );
-            if (!File.Exists( tunebridgePath )) {
-                tunebridgePath = Path.Combine( AppContext.BaseDirectory, "TuneBridge.dll" );
-            }
+// Add the TuneBridge application as an executable
+// TuneBridge is the main web application that provides music link conversion services
+string dotnetPath = "dotnet";
+string tunebridgeDll = Path.Combine( AppContext.BaseDirectory, "TuneBridge.dll" );
 
-            if (!File.Exists( tunebridgePath )) {
-                Console.Error.WriteLine( $"ERROR: Could not find TuneBridge executable at {tunebridgePath}" );
-                return 1;
-            }
+var tunebridge = builder.AddExecutable( "tunebridge", dotnetPath, AppContext.BaseDirectory, tunebridgeDll )
+    .WithHttpEndpoint( port: 10000, name: "http" )
+    .WithEnvironment( "OTLP_ENDPOINT", $"http://{dashboard.Resource.Name}:4317" );
 
-            Console.WriteLine( $"Starting TuneBridge from: {tunebridgePath}\n" );
-
-            // Start the TuneBridge application as a child process
-            ProcessStartInfo startInfo = new( ) {
-                FileName = tunebridgePath.EndsWith( ".dll" ) ? "dotnet" : tunebridgePath,
-                Arguments = tunebridgePath.EndsWith( ".dll" ) ? $"\"{tunebridgePath}\"" : string.Empty,
-                UseShellExecute = false,
-                RedirectStandardOutput = false,
-                RedirectStandardError = false,
-                WorkingDirectory = AppContext.BaseDirectory
-            };
-
-            // Pass through all arguments
-            if (args.Length > 0) {
-                startInfo.Arguments += " " + string.Join( " ", args );
-            }
-
-            using Process? process = Process.Start( startInfo );
-            if (process == null) {
-                Console.Error.WriteLine( "ERROR: Failed to start TuneBridge process" );
-                return 1;
-            }
-
-            Console.WriteLine( $"TuneBridge started with PID: {process.Id}" );
-            Console.WriteLine( "AppHost will now wait for TuneBridge to complete...\n" );
-
-            // Wait for the process to exit
-            await process.WaitForExitAsync( );
-
-            Console.WriteLine( $"\nTuneBridge exited with code: {process.ExitCode}" );
-            return process.ExitCode;
-        }
-    }
-}
+builder.Build( ).Run( );
