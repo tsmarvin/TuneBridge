@@ -150,5 +150,21 @@ public class WebLookupTests {
         Assert.IsFalse( hasResults, "Should have no results for invalid URL" );
     }
 
+    [TestMethod]
+    [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
+    public async Task MultiCard_WithNonExistentId_ReturnsNotFound( ) {
+        // Arrange
+        string nonExistentId = "nonexistent-multi-card-id";
+
+        // Act
+        HttpResponseMessage response = await s_client!.GetAsync(
+            $"/card/multi/{nonExistentId}",
+            TestContext.CancellationToken
+        );
+
+        // Assert
+        Assert.AreEqual( HttpStatusCode.NotFound, response.StatusCode );
+    }
+
     public TestContext TestContext { get; set; } = null!;
 }

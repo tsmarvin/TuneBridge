@@ -67,7 +67,7 @@ function initializeShareButtons() {
     });
 
     // Close dropdown when clicking outside
-    document.onclick = function (e) {
+    document.addEventListener('click', function (e) {
         if (!e.target.closest('.share-dropdown') && !e.target.closest('.share-results-dropdown')) {
             // Close individual share dropdowns
             document.querySelectorAll('.share-dropdown.show').forEach(function (dropdown) {
@@ -87,12 +87,14 @@ function initializeShareButtons() {
                 if (button) button.setAttribute('aria-expanded', 'false');
             });
         }
-    };
+    });
 
     // Handle copy link buttons
     document.querySelectorAll('.copy-link-btn').forEach(function (button) {
+        console.log('Registering copy-link-btn handler');
         button.onclick = function (e) {
             e.stopPropagation();
+            console.log('Copy link button clicked');
             var url = this.getAttribute('data-url');
             var absoluteUrl = new URL(url, window.location.origin).href;
 
@@ -107,6 +109,7 @@ function initializeShareButtons() {
 
     // Handle copy iframe buttons
     document.querySelectorAll('.copy-embed-btn').forEach(function (button) {
+        console.log('Registering copy-embed-btn handler');
         button.onclick = function (e) {
             e.stopPropagation();
             console.log('Copy embed button clicked');
@@ -152,8 +155,10 @@ function initializeShareButtons() {
 
     // Handle copy ATProto URI buttons
     document.querySelectorAll('.copy-atproto-btn').forEach(function (button) {
+        console.log('Registering copy-atproto-btn handler');
         button.onclick = function (e) {
             e.stopPropagation();
+            console.log('Copy ATProto URI button clicked');
             var uri = this.getAttribute('data-uri');
 
             navigator.clipboard.writeText(uri).then(function () {
