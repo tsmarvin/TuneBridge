@@ -44,39 +44,49 @@ Create a Cloudflare API token with the following permissions:
    - **Zone Resources**: Include your domain (e.g., `tunebridge.media`)
 4. Copy the generated token
 
-### 2. Environment Variables
+### 2. Secret File Setup
 
-Add the Cloudflare API token to your `.env` file:
+Run the setup script to create the secrets directory and files:
 
 ```bash
-# Cloudflare API Token for DNS challenges
-CLOUDFLARE_API_TOKEN=your_cloudflare_api_token_here
+./setup-secrets.sh
+```
 
-# Docker Hub username (for pulling custom Caddy image)
-DOCKERHUB_USERNAME=tsmarvin
+Then edit the Cloudflare API token file with your actual token:
+
+```bash
+nano secrets/cloudflare_api_token.txt
+# Paste your Cloudflare API token and save
+```
+
+Ensure proper permissions:
+
+```bash
+chmod 600 secrets/cloudflare_api_token.txt
 ```
 
 ### 3. Docker Compose Configuration
 
-The `docker-compose.yml` is already configured to use the custom Caddy image:
+The `docker-compose.yml` is already configured to mount the Cloudflare token as a Docker secret:
 
 ```yaml
 caddy:
   image: ${DOCKERHUB_USERNAME}/caddy-cloudflare-test:latest
-  environment:
-    - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+  volumes:
+    # Secret mounts (read-only)
+    - ./secrets/cloudflare_api_token.txt:/run/secrets/cloudflare_api_token:ro
   # ... other configuration
 ```
 
 ### 4. Caddyfile Configuration
 
-The wildcard domain configuration in `Caddyfile` uses the Cloudflare DNS plugin:
+The wildcard domain configuration in `Caddyfile` reads the token from the secret file:
 
 ```caddyfile
 *.{$PDS_HOSTNAME}, {$PDS_HOSTNAME} {
     # Use Cloudflare DNS challenge for wildcard certificate
     tls {
-        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+        dns cloudflare {file /run/secrets/cloudflare_api_token}
     }
     
     reverse_proxy pds:3000
@@ -87,18 +97,24 @@ The wildcard domain configuration in `Caddyfile` uses the Cloudflare DNS plugin:
 
 ### Using Docker Compose
 
-1. Set up your environment:
+1. Set up secrets:
 ```bash
-cp .env.example .env
-nano .env  # Add your CLOUDFLARE_API_TOKEN
+./setup-secrets.sh
+nano secrets/cloudflare_api_token.txt  # Add your Cloudflare API token
 ```
 
-2. Start the services:
+2. Configure environment:
+```bash
+cp .env.example .env
+nano .env  # Configure your domain and other settings
+```
+
+3. Start the services:
 ```bash
 docker-compose up -d
 ```
 
-3. Verify the certificate:
+4. Verify the certificate:
 ```bash
 docker-compose logs caddy | grep -i certificate
 ```
@@ -140,9 +156,9 @@ The workflow:
 
 ### Token Storage
 
-- Store the API token in environment variables (`.env` file)
-- Never commit the token to version control
-- Use Docker secrets or secret management systems in production
+- Store the API token in the `secrets/` directory (`cloudflare_api_token.txt`)
+- Never commit the token to version control (excluded via `.gitignore`)
+- Use Docker Swarm secrets or Kubernetes secrets for production deployments
 - Rotate tokens regularly
 
 ### Network Security
@@ -166,9 +182,9 @@ networks:
 
 **Solutions**:
 
-1. Verify Cloudflare API token is set:
+1. Verify Cloudflare API token is mounted:
    ```bash
-   docker-compose exec caddy sh -c 'echo $CLOUDFLARE_API_TOKEN'
+   docker-compose exec caddy cat /run/secrets/cloudflare_api_token
    ```
 
 2. Check Caddy logs:

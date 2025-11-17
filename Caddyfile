@@ -103,7 +103,7 @@
 *.{$PDS_HOSTNAME}, {$PDS_HOSTNAME} {
     # Use Cloudflare DNS challenge for wildcard certificate
     tls {
-        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+        dns cloudflare {file /run/secrets/cloudflare_api_token}
     }
     
     reverse_proxy pds:3000

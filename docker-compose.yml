@@ -119,12 +119,13 @@ services:
       - DOMAIN=${DOMAIN:-dev.tunebridge.media}
       - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.tunebridge.media}
       - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}
-      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy-data:/data/caddy
       - caddy-config:/config/caddy
       - caddy-logs:/var/log/caddy
+      # Secret mounts (read-only)
+      - ./secrets/cloudflare_api_token.txt:/run/secrets/cloudflare_api_token:ro
 
 volumes:
   tunebridge-data:
