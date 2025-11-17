@@ -5,7 +5,7 @@ namespace TuneBridge.Domain.Contracts.Records {
 
     /// <summary>
     /// AT Protocol record for TuneBridge MediaLinkResult.
-    /// Corresponds to the media.tunebridge.dev.lookup.result lexicon.
+    /// Corresponds to the media.tunebridge.dev.lookup lexicon.
     /// Note: Input links are tracked only in SQLite for privacy - not stored on PDS.
     /// </summary>
     public sealed record MediaLinkResultRecord : AtProtoRecord {

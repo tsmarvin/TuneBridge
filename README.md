@@ -77,6 +77,7 @@ Visit `http://localhost:10000` to start converting links.
 - **[Caddy Cloudflare Guide](docs/CADDY_CLOUDFLARE.md)** - Configure Cloudflare DNS for wildcard certificates
 - **[Testing Guide](docs/TESTING.md)** - Run and write tests
 - **[Caching Guide](docs/CACHING.md)** - Configure ATProto PDS caching
+- **[ATProto Lexicon Setup](docs/ATPROTO_LEXICON.md)** - Configure lexicon resolution and DNS for ATProto compliance
 
 ## 🎯 How It Works
 

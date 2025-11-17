@@ -38,6 +38,19 @@ else if (Model.Items.Any())
                                                 <span class="dropdown-icon">📋</span> Copy Link
                                             </button>
                                         </li>
+                                        <li>
+                                            <button class="dropdown-item copy-embed-btn" type="button" data-url="@item.CardUrl" data-title="@Html.Raw(System.Text.Json.JsonSerializer.Serialize(item.PrimaryResult.Title ?? "Music Link"))">
+                                                <span class="dropdown-icon">🖼️</span> Copy Embed
+                                            </button>
+                                        </li>
+                                        @if (!string.IsNullOrWhiteSpace(item.ATProtoUri))
+                                        {
+                                            <li>
+                                                <button class="dropdown-item copy-atproto-btn" type="button" data-uri="@item.ATProtoUri">
+                                                    <span class="dropdown-icon">🔗</span> Copy ATProto URI
+                                                </button>
+                                            </li>
+                                        }
                                     </ul>
                                 </div>
                             }
