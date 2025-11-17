@@ -102,7 +102,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     record: record,
                     collection: s_mediaLinkResultCollection,
                     rKey: recordKey,
-                    validate: true
+                    validate: false // PDS Resolution not enabled yet
                 );
 
                 if (putResult.Succeeded && putResult.Result is not null) {
@@ -115,7 +115,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                     record: record,
                     collection: s_mediaLinkResultCollection,
                     rKey: recordKey,
-                    validate: true
+                    validate: false // PDS Resolution not enabled yet
                 );
 
                 if (!createResult.Succeeded || createResult.Result is null) {
