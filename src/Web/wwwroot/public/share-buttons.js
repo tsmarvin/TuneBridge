@@ -50,7 +50,8 @@ function initializeShareButtons() {
 
     // Handle copy link buttons
     document.querySelectorAll('.copy-link-btn').forEach(function (button) {
-        button.onclick = function () {
+        button.onclick = function (e) {
+            e.stopPropagation();
             var url = this.getAttribute('data-url');
             var absoluteUrl = new URL(url, window.location.origin).href;
 
@@ -64,17 +65,60 @@ function initializeShareButtons() {
     });
 
     // Handle copy iframe buttons
-    document.querySelectorAll('.copy-iframe-btn').forEach(function (button) {
-        button.onclick = function () {
-            var url = this.getAttribute('data-url');
-            var title = JSON.parse(this.getAttribute('data-title'));
-            var absoluteUrl = new URL(url, window.location.origin).href;
-            var iframeCode = '<iframe src="' + absoluteUrl + '" width="600" height="600" frameborder="0" title="' + title + '"></iframe>';
+    document.querySelectorAll('.copy-embed-btn').forEach(function (button) {
+        button.onclick = function (e) {
+            e.stopPropagation();
+            console.log('Copy embed button clicked');
+            
+            try {
+                var url = this.getAttribute('data-url');
+                var titleAttr = this.getAttribute('data-title');
+                console.log('URL:', url, 'Title attr:', titleAttr);
+                
+                var title;
+                try {
+                    title = JSON.parse(titleAttr);
+                } catch (parseError) {
+                    console.warn('Failed to parse title as JSON, using raw value:', parseError);
+                    title = titleAttr;
+                }
+                
+                // Convert card URL to embed URL by appending /embed
+                var embedUrl = url;
+                if (!embedUrl.endsWith('/embed')) {
+                    embedUrl = embedUrl + '/embed';
+                }
+                
+                var absoluteUrl = new URL(embedUrl, window.location.origin).href;
+                // Card dimensions: width matches max-width of card (515px), height ~225px for compact display
+                var iframeCode = '<iframe src="' + absoluteUrl + '" width="515" height="225" frameborder="0" allowtransparency="true" style="max-width: 100%;" title="' + title + '"></iframe>';
+                
+                console.log('Generated iframe code:', iframeCode);
 
-            navigator.clipboard.writeText(iframeCode).then(function () {
-                showCopyFeedback(button, 'Embed code copied!', false);
+                navigator.clipboard.writeText(iframeCode).then(function () {
+                    console.log('Successfully copied to clipboard');
+                    showCopyFeedback(button, 'Embed code copied!', false);
+                }).catch(function (err) {
+                    console.error('Failed to copy embed code:', err);
+                    showCopyFeedback(button, 'Failed to copy', true);
+                });
+            } catch (err) {
+                console.error('Error in copy embed handler:', err);
+                showCopyFeedback(button, 'Failed to copy', true);
+            }
+        };
+    });
+
+    // Handle copy ATProto URI buttons
+    document.querySelectorAll('.copy-atproto-btn').forEach(function (button) {
+        button.onclick = function (e) {
+            e.stopPropagation();
+            var uri = this.getAttribute('data-uri');
+
+            navigator.clipboard.writeText(uri).then(function () {
+                showCopyFeedback(button, 'ATProto URI copied!', false);
             }).catch(function (err) {
-                console.error('Failed to copy embed code:', err);
+                console.error('Failed to copy ATProto URI:', err);
                 showCopyFeedback(button, 'Failed to copy', true);
             });
         };
