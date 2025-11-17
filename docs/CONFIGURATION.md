@@ -30,8 +30,8 @@ At least one complete set of music provider credentials is required:
 | `ATPROTO_IDENTIFIER` | ATProto account identifier (handle or DID) | No*** |
 | `ATPROTO_PASSWORD` | ATProto app password | No*** |
 
-\*\* Required only if using Discord integration
-\*\*\* Required only if using ATProto PDS storage for caching lookup results
+\*\* Required only if using Discord integration  
+\*\*\* Required only if using ATProto PDS storage for caching lookup results. See [ATProto Lexicon Resolution Setup Guide](ATPROTO_LEXICON.md) for complete configuration instructions.
 
 ### Optional Configuration
 
