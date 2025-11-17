@@ -17,7 +17,7 @@ namespace TuneBridge.Domain.Contracts.Entities {
         public string Rkey { get; set; } = string.Empty;
 
         /// <summary>
-        /// The AT-URI of the record on ATProto PDS (e.g., at://did:plc:xxx/media.tunebridge.dev.lookup.result/yyy).
+        /// The AT-URI of the record on ATProto PDS (e.g., at://did:plc:xxx/media.tunebridge.dev.lookup/yyy).
         /// This is deterministically generated based on the rkey.
         /// </summary>
         public string RecordUri { get; set; } = string.Empty;

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Constants;
 using TuneBridge.Domain.Types.Enums;
@@ -14,6 +15,7 @@ namespace TuneBridge.Web.Controllers {
         private readonly ILogger<HomeController> _logger;
         private readonly IMediaLinkService? _mediaLinkService;
         private readonly IOpenGraphCardService? _cardService;
+        private readonly IMediaLinkCacheRepository? _cacheRepository;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="HomeController"/> class.
@@ -21,10 +23,12 @@ namespace TuneBridge.Web.Controllers {
         /// <param name="logger">The logger for recording diagnostic information.</param>
         /// <param name="mediaLinkService">Optional music lookup service.</param>
         /// <param name="cardService">Optional OpenGraph card service.</param>
-        public HomeController( ILogger<HomeController> logger, IMediaLinkService? mediaLinkService = null, IOpenGraphCardService? cardService = null ) {
+        /// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
+        public HomeController( ILogger<HomeController> logger, IMediaLinkService? mediaLinkService = null, IOpenGraphCardService? cardService = null, IMediaLinkCacheRepository? cacheRepository = null ) {
             _logger = logger;
             _mediaLinkService = mediaLinkService;
             _cardService = cardService;
+            _cacheRepository = cacheRepository;
         }
 
         /// <summary>
@@ -84,8 +88,12 @@ namespace TuneBridge.Web.Controllers {
                     cardUrl = _cardService.StoreResult( result );
                 }
 
+                // Get ATProto URI from cache if available
+                string? atProtoUri = await GetATProtoUriFromCache( result );
+
                 viewModel.Items.Add( new MusicLookupViewModel.MusicLookupResultItem {
                     CardUrl = cardUrl,
+                    ATProtoUri = atProtoUri,
                     Result = result,
                     PrimaryProvider = primaryProvider,
                     PrimaryResult = primaryResult
@@ -119,7 +127,7 @@ namespace TuneBridge.Web.Controllers {
             }
 
             MediaLinkResult? result = await _mediaLinkService.GetInfoByISRCAsync( isrc );
-            return CreateViewModelFromResult( result, "No results found for ISRC" );
+            return await CreateViewModelFromResult( result, "No results found for ISRC" );
         }
 
         /// <summary>
@@ -142,7 +150,7 @@ namespace TuneBridge.Web.Controllers {
             }
 
             MediaLinkResult? result = await _mediaLinkService.GetInfoByUPCAsync( upc );
-            return CreateViewModelFromResult( result, "No results found for UPC" );
+            return await CreateViewModelFromResult( result, "No results found for UPC" );
         }
 
         /// <summary>
@@ -166,7 +174,7 @@ namespace TuneBridge.Web.Controllers {
             }
 
             MediaLinkResult? result = await _mediaLinkService.GetInfoAsync( title, artist );
-            return CreateViewModelFromResult( result, "No results found for title/artist" );
+            return await CreateViewModelFromResult( result, "No results found for title/artist" );
         }
 
         /// <summary>
@@ -175,7 +183,7 @@ namespace TuneBridge.Web.Controllers {
         /// <param name="result">The lookup result.</param>
         /// <param name="noResultsMessage">Message to display when no results found.</param>
         /// <returns>Partial view with the created view model.</returns>
-        private IActionResult CreateViewModelFromResult( MediaLinkResult? result, string noResultsMessage ) {
+        private async Task<IActionResult> CreateViewModelFromResult( MediaLinkResult? result, string noResultsMessage ) {
             MusicLookupViewModel viewModel = new( );
 
             if (result == null || result.Results.Count == 0) {
@@ -209,14 +217,38 @@ namespace TuneBridge.Web.Controllers {
                 cardUrl = _cardService.StoreResult( result );
             }
 
+            // Get ATProto URI from cache if available
+            string? atProtoUri = await GetATProtoUriFromCache( result );
+
             viewModel.Items.Add( new MusicLookupViewModel.MusicLookupResultItem {
                 CardUrl = cardUrl,
+                ATProtoUri = atProtoUri,
                 Result = result,
                 PrimaryProvider = primaryProvider,
                 PrimaryResult = primaryResult
             } );
 
             return PartialView( "_LookupResults", viewModel );
+        }
+
+        /// <summary>
+        /// Attempts to retrieve the ATProto URI for a MediaLinkResult from the cache.
+        /// Tries multiple lookup strategies: input link, external ID (ISRC/UPC), and metadata.
+        /// </summary>
+        /// <param name="result">The MediaLinkResult to find in cache.</param>
+        /// <returns>The ATProto URI if found in cache, otherwise null.</returns>
+        private async Task<string?> GetATProtoUriFromCache( MediaLinkResult result ) {
+            try {
+                return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, _cacheRepository );
+            } catch (InvalidOperationException ex) {
+                _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
+            } catch (ArgumentException ex) {
+                _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
+            } catch (Exception ex) {
+                _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
+            }
+
+            return null;
         }
 
         /// <summary>

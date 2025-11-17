@@ -164,8 +164,14 @@ namespace TuneBridge.Configuration {
                 FileProvider = new PhysicalFileProvider( Path.Combine( builder.Environment.WebRootPath, ".well-known" ) ),
                 RequestPath = "/.well-known",
                 ContentTypeProvider = provider,
-                ServeUnknownFileTypes = false,
+                ServeUnknownFileTypes = true, // Allow serving files without extensions (required for ATProto lexicons)
+                DefaultContentType = "application/octet-stream", // Default for unknown types
                 OnPrepareResponse = ctx => {
+                    // Serve lexicon files in atproto-lexicon directory as application/json
+                    if (ctx.File.PhysicalPath != null && ctx.File.PhysicalPath.Contains( "atproto-lexicon", StringComparison.OrdinalIgnoreCase )) {
+                        ctx.Context.Response.ContentType = "application/json; charset=utf-8";
+                    }
+
                     // Add CORS headers to allow ATProto PDS to fetch lexicon files
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Origin", "*" );
                     ctx.Context.Response.Headers.Append( "Access-Control-Allow-Methods", "GET, HEAD, OPTIONS" );
@@ -580,7 +586,7 @@ namespace TuneBridge.Configuration {
                     if (sourceContext != null &&
                         (sourceContext.Contains( "Microsoft.AspNetCore.Mvc" ) ||
                          sourceContext.Contains( "Microsoft.AspNetCore.Routing" ))) {
-                        
+
                         // Check ActionName property first (most reliable indicator)
                         if (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue )) {
                             string actionName = actionValue.ToString( );
