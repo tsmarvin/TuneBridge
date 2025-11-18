@@ -26,6 +26,7 @@ APPLE_KEY_PATH="${APPLE_KEY_PATH:-}"
 # Try to read Spotify client secret from Docker secret
 SPOTIFY_CLIENT_ID="${SPOTIFY_CLIENT_ID:-}"
 SPOTIFY_CLIENT_SECRET="$(read_secret "spotify_client_secret")"
+SPOTIFY_REDIRECT_URI="${SPOTIFY_REDIRECT_URI:-https://${BASEURL}/spotify/callback}"
 
 # Try to read Tidal client secret from Docker secret
 TIDAL_CLIENT_ID="${TIDAL_CLIENT_ID:-}"
@@ -78,6 +79,7 @@ cat > /app/appsettings.json <<EOF
     "AppleKeyPath": "$(escape_bs "$APPLE_KEY_PATH")",
     "SpotifyClientId": "$SPOTIFY_CLIENT_ID",
     "SpotifyClientSecret": "$SPOTIFY_CLIENT_SECRET",
+    "SpotifyRedirectUri": "$SPOTIFY_REDIRECT_URI",
     "TidalClientId": "$TIDAL_CLIENT_ID",
     "TidalClientSecret": "$TIDAL_CLIENT_SECRET",
     "DiscordToken": "$DISCORD_TOKEN",

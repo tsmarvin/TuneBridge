@@ -1,0 +1,92 @@
+@{
+    ViewData["Title"] = "Spotify Playlists";
+}
+
+<div class="container mt-4">
+    <h1>Spotify Playlists</h1>
+    
+    <div id="auth-status" class="mb-4">
+        <p>Checking authentication status...</p>
+    </div>
+
+    <div id="auth-section" style="display: none;">
+        <div class="alert alert-info">
+            <p>To access your Spotify playlists, you need to authenticate with Spotify.</p>
+            <a href="/spotify/authorize" class="btn btn-success">Connect to Spotify</a>
+        </div>
+    </div>
+
+    <div id="playlists-section" style="display: none;">
+        <h2>Your Playlists</h2>
+        <div id="playlists-loading" class="mb-3">
+            <p>Loading playlists...</p>
+        </div>
+        <div id="playlists-list"></div>
+    </div>
+</div>
+
+<script>
+    async function checkAuthStatus() {
+        try {
+            const response = await fetch('/spotify/status');
+            const data = await response.json();
+            
+            document.getElementById('auth-status').style.display = 'none';
+            
+            if (data.isAuthenticated) {
+                document.getElementById('playlists-section').style.display = 'block';
+                loadPlaylists();
+            } else {
+                document.getElementById('auth-section').style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Error checking auth status:', error);
+            document.getElementById('auth-status').innerHTML = '<p class="text-danger">Error checking authentication status.</p>';
+        }
+    }
+
+    async function loadPlaylists() {
+        try {
+            const response = await fetch('/spotify/playlists/list');
+            
+            if (!response.ok) {
+                throw new Error('Failed to load playlists');
+            }
+            
+            const data = await response.json();
+            document.getElementById('playlists-loading').style.display = 'none';
+            
+            const playlistsList = document.getElementById('playlists-list');
+            
+            if (data.playlists && data.playlists.length > 0) {
+                playlistsList.innerHTML = '<div class="list-group">' +
+                    data.playlists.map(playlist => `
+                        <div class="list-group-item">
+                            <h5>${escapeHtml(playlist.name)}</h5>
+                            <p class="mb-1">
+                                <strong>Owner:</strong> ${escapeHtml(playlist.owner || 'Unknown')}<br>
+                                <strong>Tracks:</strong> ${playlist.trackCount}<br>
+                                <a href="${escapeHtml(playlist.url)}" target="_blank">Open in Spotify</a>
+                            </p>
+                        </div>
+                    `).join('') +
+                    '</div>';
+            } else {
+                playlistsList.innerHTML = '<p>No playlists found.</p>';
+            }
+        } catch (error) {
+            console.error('Error loading playlists:', error);
+            document.getElementById('playlists-loading').innerHTML = '<p class="text-danger">Error loading playlists.</p>';
+        }
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Check auth status on page load
+    checkAuthStatus();
+</script>

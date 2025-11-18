@@ -52,6 +52,11 @@ namespace TuneBridge.Configuration {
         public string SpotifyClientSecret { get; set; } = string.Empty;
 
         /// <summary>
+        /// The Spotify OAuth redirect URI for user authentication.
+        /// </summary>
+        public string SpotifyRedirectUri { get; set; } = string.Empty;
+
+        /// <summary>
         /// The Tidal API client ID.
         /// </summary>
         public string TidalClientId { get; set; } = string.Empty;

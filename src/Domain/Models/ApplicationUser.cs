@@ -27,4 +27,19 @@ public class ApplicationUser : IdentityUser {
     /// Start of the current rate limit window.
     /// </summary>
     public DateTime? RateLimitWindowStart { get; set; }
+
+    /// <summary>
+    /// Spotify OAuth access token for user-specific API access.
+    /// </summary>
+    public string? SpotifyAccessToken { get; set; }
+
+    /// <summary>
+    /// Spotify OAuth refresh token for renewing access.
+    /// </summary>
+    public string? SpotifyRefreshToken { get; set; }
+
+    /// <summary>
+    /// Timestamp when the Spotify access token expires.
+    /// </summary>
+    public DateTime? SpotifyTokenExpiry { get; set; }
 }
