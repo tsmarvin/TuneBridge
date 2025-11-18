@@ -25,8 +25,8 @@ if (app.Environment.IsDevelopment( )) {
 }
 
 app.UseRouting( );
-app.UseAuthentication( );
-app.UseAuthorization( );
+// Note: ApiService is internal-only, accessed via service discovery from Web
+// Authentication is handled by the Web layer before calling this service
 
 app.MapControllers( );
 app.MapDefaultEndpoints( );
