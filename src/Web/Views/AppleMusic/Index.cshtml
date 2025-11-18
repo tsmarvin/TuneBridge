@@ -41,6 +41,18 @@
             
             <div id="selectedPlaylist" class="alert alert-success d-none mt-3">
                 <strong>Selected Playlist:</strong> <span id="selectedPlaylistName"></span>
+                <div class="mt-2">
+                    <button id="processPlaylistBtn" class="btn btn-sm btn-primary">Process Playlist</button>
+                </div>
+            </div>
+
+            <div id="processingStatus" class="d-none mt-3">
+                <div id="processingLoading" class="d-none">
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Processing playlist...
+                </div>
+                <div id="processingError" class="alert alert-danger d-none"></div>
+                <div id="processingSuccess" class="alert alert-success d-none"></div>
             </div>
         </div>
 
@@ -61,9 +73,15 @@
         const playlistsList = document.getElementById('playlistsList');
         const selectedPlaylist = document.getElementById('selectedPlaylist');
         const selectedPlaylistName = document.getElementById('selectedPlaylistName');
+        const processPlaylistBtn = document.getElementById('processPlaylistBtn');
+        const processingStatus = document.getElementById('processingStatus');
+        const processingLoading = document.getElementById('processingLoading');
+        const processingError = document.getElementById('processingError');
+        const processingSuccess = document.getElementById('processingSuccess');
         const error = document.getElementById('error');
 
         let musicKitInstance = null;
+        let selectedPlaylistId = null;
 
         // Wait for MusicKit to load
         document.addEventListener('musickitloaded', async function() {
@@ -227,11 +245,101 @@
             items.forEach(item => item.classList.remove('active'));
             event.target.classList.add('active');
             
+            // Store selected playlist ID
+            selectedPlaylistId = playlist.id;
+            
             // Show selected playlist
             selectedPlaylistName.textContent = playlist.name;
             selectedPlaylist.classList.remove('d-none');
             
+            // Reset processing status
+            processingStatus.classList.add('d-none');
+            processingLoading.classList.add('d-none');
+            processingError.classList.add('d-none');
+            processingSuccess.classList.add('d-none');
+            
             console.log('Selected playlist:', playlist);
         }
+
+        // Process selected playlist
+        processPlaylistBtn.addEventListener('click', async function() {
+            if (!selectedPlaylistId) {
+                return;
+            }
+
+            processPlaylistBtn.disabled = true;
+            processPlaylistBtn.textContent = 'Processing...';
+            processingStatus.classList.remove('d-none');
+            processingLoading.classList.remove('d-none');
+            processingError.classList.add('d-none');
+            processingSuccess.classList.add('d-none');
+
+            try {
+                // First, process the playlist to get track URLs
+                const processResponse = await fetch('/applemusic/process-playlist', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        playlistId: selectedPlaylistId
+                    })
+                });
+
+                if (!processResponse.ok) {
+                    const data = await processResponse.json();
+                    throw new Error(data.message || 'Failed to process playlist');
+                }
+
+                const processData = await processResponse.json();
+                processingLoading.classList.add('d-none');
+
+                if (!processData.success) {
+                    // Check if playlist is too large
+                    if (processData.tooLarge) {
+                        processingError.innerHTML = `<strong>❌ Playlist too large</strong><br>${processData.message}`;
+                        processingError.classList.remove('d-none');
+                        processPlaylistBtn.disabled = false;
+                        processPlaylistBtn.textContent = 'Process Playlist';
+                        return;
+                    }
+
+                    throw new Error(processData.message || 'Failed to process playlist');
+                }
+
+                // Now send the URLs to the URLList endpoint
+                const urlListResponse = await fetch('/music/lookup/urlList', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        uri: processData.trackUrls.join('\n')
+                    })
+                });
+
+                if (!urlListResponse.ok) {
+                    throw new Error('Failed to lookup track URLs');
+                }
+
+                const urlListData = await urlListResponse.json();
+                
+                processingSuccess.innerHTML = `<strong>✅ Success!</strong><br>Processed ${processData.trackCount} tracks from the playlist.<br>Found ${urlListData.length} matching results.`;
+                processingSuccess.classList.remove('d-none');
+                
+                console.log('URL List Results:', urlListData);
+
+            } catch (err) {
+                console.error('Process playlist error:', err);
+                processingLoading.classList.add('d-none');
+                processingError.innerHTML = `<strong>Error:</strong> ${err.message}`;
+                processingError.classList.remove('d-none');
+            } finally {
+                processPlaylistBtn.disabled = false;
+                processPlaylistBtn.textContent = 'Process Playlist';
+            }
+        });
     </script>
 }

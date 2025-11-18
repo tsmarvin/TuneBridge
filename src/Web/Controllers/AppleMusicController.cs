@@ -189,4 +189,111 @@ public class AppleMusicController : Controller {
             expiresAt = user.AppleMusicTokenExpiration
         } );
     }
+
+    /// <summary>Request for processing a playlist.</summary>
+    /// <param name="PlaylistId">Apple Music playlist ID.</param>
+    public record ProcessPlaylistRequest( string PlaylistId );
+
+    /// <summary>
+    /// Processes a playlist by fetching its tracks and converting them via URLList endpoint.
+    /// Only processes playlists with less than 100 tracks.
+    /// </summary>
+    /// <param name="request">Request containing the playlist ID to process.</param>
+    /// <returns>Processing result with track URLs or error message.</returns>
+    /// <response code="200">Playlist processed successfully or rejected due to size.</response>
+    /// <response code="400">Invalid request.</response>
+    /// <response code="401">User not authenticated or token expired.</response>
+    /// <response code="500">Failed to process playlist.</response>
+    [HttpPost]
+    [Route( "applemusic/process-playlist" )]
+    public async Task<IActionResult> ProcessPlaylist( [FromBody] ProcessPlaylistRequest request ) {
+        if (!ModelState.IsValid) {
+            return BadRequest( ModelState );
+        }
+
+        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        if (user == null) {
+            return Unauthorized( new { message = "User not authenticated" } );
+        }
+
+        if (string.IsNullOrEmpty( user.AppleMusicUserToken )) {
+            return Unauthorized( new { message = "Apple Music token not found. Please authenticate first." } );
+        }
+
+        if (user.AppleMusicTokenExpiration.HasValue && user.AppleMusicTokenExpiration.Value < DateTime.UtcNow) {
+            return Unauthorized( new { message = "Apple Music token expired. Please authenticate again." } );
+        }
+
+        try {
+            HttpClient client = _httpClientFactory.CreateClient( "musickit-api" );
+            
+            // Add developer token (JWT) for API authentication
+            if (_jwtHandler != null) {
+                client.DefaultRequestHeaders.Authorization = _jwtHandler.NewAuthenticationHeader( );
+            }
+            
+            // Add user token for accessing user's library
+            client.DefaultRequestHeaders.Add( "Music-User-Token", user.AppleMusicUserToken );
+
+            // Fetch playlist tracks
+            string url = $"https://api.music.apple.com/v1/me/library/playlists/{request.PlaylistId}/tracks";
+            HttpResponseMessage response = await client.GetAsync( url );
+
+            if (!response.IsSuccessStatusCode) {
+                _logger.LogError( "Failed to retrieve playlist tracks for user {UserId}: {StatusCode}", user.Id, response.StatusCode );
+                return StatusCode( (int)response.StatusCode, new { message = "Failed to retrieve playlist tracks from Apple Music" } );
+            }
+
+            string content = await response.Content.ReadAsStringAsync( );
+            using JsonDocument doc = JsonDocument.Parse( content );
+
+            // Count tracks and extract URLs
+            List<string> trackUrls = [];
+            if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
+                int trackCount = dataElement.GetArrayLength( );
+
+                // Check if playlist has more than 100 tracks
+                if (trackCount > 100) {
+                    _logger.LogWarning( "Playlist has {TrackCount} tracks, exceeds limit of 100 for user {UserId}", trackCount, user.Id );
+                    return Ok( new {
+                        success = false,
+                        tooLarge = true,
+                        trackCount = trackCount,
+                        message = $"This playlist has {trackCount} tracks. We currently only support playlists with 100 tracks or fewer."
+                    } );
+                }
+
+                // Extract track URLs
+                foreach (JsonElement track in dataElement.EnumerateArray( )) {
+                    if (track.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
+                        attributesElement.TryGetProperty( "url", out JsonElement urlElement )) {
+                        string? trackUrl = urlElement.GetString( );
+                        if (!string.IsNullOrEmpty( trackUrl )) {
+                            trackUrls.Add( trackUrl );
+                        }
+                    }
+                }
+
+                _logger.LogInformation( "Processing playlist with {TrackCount} tracks for user {UserId}", trackCount, user.Id );
+            }
+
+            if (trackUrls.Count == 0) {
+                return Ok( new {
+                    success = false,
+                    message = "No tracks found in playlist"
+                } );
+            }
+
+            // Return the URLs for the frontend to process
+            return Ok( new {
+                success = true,
+                trackCount = trackUrls.Count,
+                trackUrls = trackUrls
+            } );
+
+        } catch (Exception ex) {
+            _logger.LogError( ex, "Error processing playlist for user {UserId}", user.Id );
+            return StatusCode( 500, new { message = "An error occurred while processing the playlist" } );
+        }
+    }
 }
