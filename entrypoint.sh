@@ -40,10 +40,11 @@ ATPROTO_IDENTIFIER="${ATPROTO_IDENTIFIER:-}"
 ATPROTO_PASSWORD="$(read_secret "atproto_password")"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
-LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
+# Separate database files for better separation of concerns
+LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge-cache.db}"
 
 # Authentication and rate limiting configuration
-IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
+IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge-identity.db}"
 # Try to read API key salt from Docker secret
 API_KEY_SALT="$(read_secret "api_key_salt")"
 RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
