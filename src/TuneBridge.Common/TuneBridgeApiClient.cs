@@ -64,8 +64,14 @@ public class TuneBridgeApiClient(
             }
 
             return await response.Content.ReadAsStreamAsync( cancellationToken );
-        } catch (Exception ex) {
-            logger.LogError( ex, "Failed to get response from TuneBridge for URL: {url}", url );
+        } catch (HttpRequestException ex) {
+            logger.LogError( ex, "HTTP request failed for TuneBridge URL: {url}", url );
+            return null;
+        } catch (TaskCanceledException ex) {
+            logger.LogWarning( ex, "Request to TuneBridge timed out for URL: {url}", url );
+            return null;
+        } catch (OperationCanceledException ex) {
+            logger.LogDebug( ex, "Request to TuneBridge was cancelled for URL: {url}", url );
             return null;
         }
     }

@@ -213,11 +213,9 @@ public static class Extensions {
     /// <param name="groupName">The name of the group to extract.</param>
     /// <returns>An enumerable of all group values found.</returns>
     public static IEnumerable<string> GetGroupValues( this Regex regex, string input, string groupName ) {
-        foreach (Match match in regex.Matches( input )) {
-            if (match.Groups.ContainsKey( groupName )) {
-                yield return match.Groups[groupName].Value;
-            }
-        }
+        return regex.Matches( input )
+            .Where( match => match.Groups.ContainsKey( groupName ) )
+            .Select( match => match.Groups[groupName].Value );
     }
 
     /// <summary>
@@ -230,7 +228,7 @@ public static class Extensions {
     public static string GetDescription<T>( this T enumValue )
         where T : struct {
         Type type = enumValue.GetType();
-        if (type.IsEnum == false) {
+        if (!type.IsEnum) {
             throw new ArgumentException( "Must be an Enum!", nameof( enumValue ) );
         }
 

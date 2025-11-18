@@ -135,8 +135,12 @@ public class JetstreamMonitorService(
                 // Store links in database
                 await StoreMusicLinksAsync( detectedLinks, postUri, cancellationToken );
             }
-        } catch (Exception ex) {
-            logger.LogDebug( ex, "Failed to process Jetstream message" );
+        } catch (JsonException ex) {
+            logger.LogDebug( ex, "Failed to parse Jetstream message JSON" );
+        } catch (OperationCanceledException ex) {
+            logger.LogDebug( ex, "Processing Jetstream message was cancelled" );
+        } catch (InvalidOperationException ex) {
+            logger.LogWarning( ex, "Invalid operation while processing Jetstream message" );
         }
     }
 
@@ -195,8 +199,12 @@ public class JetstreamMonitorService(
                 }
 
                 _ = await dbContext.SaveChangesAsync( cancellationToken );
-            } catch (Exception ex) {
-                logger.LogError( ex, "Failed to store music link: {url}", url );
+            } catch (DbUpdateException ex) {
+                logger.LogError( ex, "Database error while storing music link: {url}", url );
+            } catch (OperationCanceledException ex) {
+                logger.LogDebug( ex, "Storing music link was cancelled: {url}", url );
+            } catch (InvalidOperationException ex) {
+                logger.LogError( ex, "Invalid operation while storing music link: {url}", url );
             }
         }
     }
@@ -215,8 +223,12 @@ public class JetstreamMonitorService(
                     Console.WriteLine( $"  TuneBridge messages:\n{string.Join( ", ", result.Messages )}" );
                 }
             }
-        } catch (Exception ex) {
-            logger.LogWarning( ex, "Failed to submit URL to TuneBridge: {url}", url );
+        } catch (HttpRequestException ex) {
+            logger.LogWarning( ex, "HTTP error submitting URL to TuneBridge: {url}", url );
+        } catch (TaskCanceledException ex) {
+            logger.LogDebug( ex, "Submission to TuneBridge timed out: {url}", url );
+        } catch (OperationCanceledException ex) {
+            logger.LogDebug( ex, "Submission to TuneBridge was cancelled: {url}", url );
         }
     }
 }

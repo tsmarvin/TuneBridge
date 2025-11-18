@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TuneBridge.ApiService\TuneBridge.ApiService.csproj" />
-    <ProjectReference Include="..\TuneBridge.JetstreamMonitor\TuneBridge.JetStreamMonitor.csproj" />
+    <ProjectReference Include="..\TuneBridge.JetstreamMonitor\TuneBridge.JetstreamMonitor.csproj" />
     <ProjectReference Include="..\TuneBridge.Web\TuneBridge.Web.csproj" />
   </ItemGroup>
 

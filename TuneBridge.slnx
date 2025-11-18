@@ -37,7 +37,7 @@
     <Project Path="src/TuneBridge.AppHost/TuneBridge.AppHost.csproj" />
     <Project Path="src/TuneBridge.Common/TuneBridge.Common.csproj" />
     <Project Path="src/TuneBridge.Core/TuneBridge.Core.csproj" Id="89c169d2-442f-45f8-8b9e-a7a9a74e9929" />
-    <Project Path="src/TuneBridge.JetstreamMonitor/TuneBridge.JetStreamMonitor.csproj" />
+    <Project Path="src/TuneBridge.JetstreamMonitor/TuneBridge.JetstreamMonitor.csproj" />
     <Project Path="src/TuneBridge.Web/TuneBridge.Web.csproj" />
   </Folder>
 </Solution>

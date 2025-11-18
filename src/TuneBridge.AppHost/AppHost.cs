@@ -8,7 +8,7 @@ namespace TuneBridge.AppHost {
                                                 .WithHttpHealthCheck( "/health" );
 
             _ = builder
-                .AddProject<Projects.TuneBridge_JetStreamMonitor>( "jetstreammonitor" )
+                .AddProject<Projects.TuneBridge_JetstreamMonitor>( "jetstreammonitor" )
                 .WithReference( apiService )
                 .WaitFor( apiService );
 
