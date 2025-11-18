@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TuneBridge.Common\TuneBridge.Common.csproj" />
+    <ProjectReference Include="..\TuneBridge.Core\TuneBridge.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

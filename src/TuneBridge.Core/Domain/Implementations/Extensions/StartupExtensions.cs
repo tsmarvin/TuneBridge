@@ -26,7 +26,7 @@ namespace TuneBridge.Core.Domain.Implementations.Extensions {
     /// <summary>
     /// Extension methods for configuring the TuneBridge services and HTTP client resilience (retry) policies.
     /// </summary>
-    internal static class StartupExtensions {
+    public static class StartupExtensions {
 
         /// <summary>
         /// Registers TuneBridge services, authentication handlers, HTTP clients, and (optional) Discord services.
@@ -60,7 +60,7 @@ namespace TuneBridge.Core.Domain.Implementations.Extensions {
         /// <param name="services">The service collection to configure.</param>
         /// <param name="config">The configuration to use for settings.</param>
         /// <returns>The configured service collection.</returns>
-        internal static IServiceCollection AddTuneBridgeServices(
+        public static IServiceCollection AddTuneBridgeServices(
             this IServiceCollection services,
             IConfiguration config
         ) {

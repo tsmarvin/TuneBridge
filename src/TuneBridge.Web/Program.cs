@@ -1,37 +1,18 @@
 using TuneBridge.Common;
+using TuneBridge.Web;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Add service defaults & Aspire client integrations.
-builder.AddCommon( );
+// Configure Web services (Identity, authentication, etc.)
+_ = builder.ConfigureTuneBridgeServices( args );
 
-// Add services to the container.
-builder.Services.AddRazorComponents( )
-    .AddInteractiveServerComponents( );
-
-builder.Services.AddOutputCache( );
-
+// Add HTTP client for API service communication
 builder.Services.AddHttpClient<TuneBridgeApiClient>( client => {
     client.BaseAddress = new( "https+http://apiservice" );
 } );
 
-WebApplication app = builder.Build();
-
-if (!app.Environment.IsDevelopment( )) {
-    _ = app.UseExceptionHandler( "/Error", createScopeForErrors: true );
-    _ = app.UseHsts( );
-}
-
-app.UseHttpsRedirection( );
-
-app.UseAntiforgery( );
-
-app.UseOutputCache( );
-
-app.MapStaticAssets( );
-
-//app.MapRazorComponents<App>( )
-//    .AddInteractiveServerRenderMode( );
+// Configure the web application with middleware and database initialization
+WebApplication app = await builder.ConfigureWebApp( );
 
 app.MapDefaultEndpoints( );
 

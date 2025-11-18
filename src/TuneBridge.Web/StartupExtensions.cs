@@ -238,6 +238,22 @@ namespace TuneBridge.Web {
             }
         }
 
+        /// <summary>
+        /// Configures the application settings by adding command line arguments, environment variables, and the appsettings.json file.
+        /// </summary>
+        /// <param name="config">The configuration builder to extend.</param>
+        /// <param name="args">Command line arguments passed to the application.</param>
+        /// <returns>The updated <see cref="IConfigurationBuilder"/>.</returns>
+        private static IConfigurationBuilder ConfigureAppSettings(
+            this IConfigurationBuilder config,
+            string[] args
+        ) => config.AddJsonFile(
+                    path: "appsettings.json",
+                    optional: false,
+                    reloadOnChange: false
+                ).AddCommandLine( args )
+                .AddEnvironmentVariables( );
+
         #endregion App Configuration
     }
 }
