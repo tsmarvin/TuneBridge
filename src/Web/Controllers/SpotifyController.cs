@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using TuneBridge.Configuration;
 using TuneBridge.Domain.Models;
 
@@ -12,7 +13,7 @@ namespace TuneBridge.Web.Controllers;
 /// Controller for Spotify OAuth authentication and playlist management.
 /// Provides endpoints for user authentication with Spotify and playlist access.
 /// </summary>
-public class SpotifyController : Controller {
+public partial class SpotifyController : Controller {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ILogger<SpotifyController> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -72,7 +73,7 @@ public class SpotifyController : Controller {
     [Route( "spotify/callback" )]
     public async Task<IActionResult> Callback( string? code, string? error ) {
         if (!string.IsNullOrEmpty( error )) {
-            _logger.LogWarning( "Spotify OAuth error: {Error}", error );
+            _logger.LogWarning( "Spotify OAuth error: {Error}", SanitizeForLogging( error ) );
             return RedirectToAction( "PlaylistsPage" );
         }
 
@@ -240,4 +241,18 @@ public class SpotifyController : Controller {
             return false;
         }
     }
+
+    /// <summary>
+    /// Sanitizes user input for safe logging by removing ASCII control characters.
+    /// </summary>
+    /// <param name="input">The user-provided string to sanitize</param>
+    /// <returns>A sanitized string safe for logging</returns>
+    private static string SanitizeForLogging( string? input ) {
+        if (string.IsNullOrWhiteSpace( input )) { return string.Empty; }
+        // Remove all ASCII control characters (0x00-0x1F, 0x7F) to prevent log injection and forging
+        return LogSanitizer( ).Replace( input, string.Empty );
+    }
+
+    [GeneratedRegex( @"[\x00-\x1F\x7F]" )]
+    private static partial Regex LogSanitizer( );
 }
