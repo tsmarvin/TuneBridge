@@ -6,7 +6,7 @@ using TuneBridge.JetStreamMonitor.Infrastructure;
 
 namespace TuneBridge.JetStreamMonitor {
     public class Program {
-        public static void Main( string[] args ) {
+        public static async Task Main( string[] args ) {
             HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
             AppSettings settings = new();
             builder.Configuration.GetRequiredSection( "JetStreamMonitor" ).Bind( settings );
@@ -29,7 +29,15 @@ namespace TuneBridge.JetStreamMonitor {
             _ = builder.Services.AddHostedService<JetstreamMonitorService>( );
 
             IHost host = builder.Build();
-            host.Run( );
+            
+            // Initialize database
+            using (var scope = host.Services.CreateScope()) {
+                var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<JetstreamMonitorContext>>();
+                using var context = await factory.CreateDbContextAsync();
+                await context.Database.MigrateAsync();
+            }
+            
+            await host.RunAsync();
         }
     }
 }

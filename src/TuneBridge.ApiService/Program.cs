@@ -1,5 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using TuneBridge.Common;
 using TuneBridge.Core.Domain.Implementations.Extensions;
+using TuneBridge.Core.Infrastructure.Context;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +18,12 @@ builder.Services.AddProblemDetails( );
 builder.Services.AddOpenApi( );
 
 WebApplication app = builder.Build();
+
+// Initialize database
+using (var scope = app.Services.CreateScope()) {
+    var context = scope.ServiceProvider.GetRequiredService<MediaLinkCacheDbContext>();
+    await context.Database.MigrateAsync();
+}
 
 // Configure the HTTP request pipeline.
 app.UseExceptionHandler( );

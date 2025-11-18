@@ -77,7 +77,7 @@ namespace TuneBridge.Web {
             IServiceCollection services,
             AppSettings settings
         ) {
-            _ = services.AddDbContext<IdentityDbContext>( options =>
+            _ = services.AddDbContext<ApplicationDbContext>( options =>
                 options.UseSqlite( settings.IdentityConnectionString )
             );
 
@@ -93,7 +93,7 @@ namespace TuneBridge.Web {
                 options.User.RequireUniqueEmail = true;
             } )
             .AddRoles<IdentityRole>( )
-            .AddEntityFrameworkStores<IdentityDbContext>( )
+            .AddEntityFrameworkStores<ApplicationDbContext>( )
             .AddSignInManager( )
             .AddDefaultTokenProviders( );
 
@@ -215,7 +215,7 @@ namespace TuneBridge.Web {
         /// <returns>The web application for method chaining.</returns>
         private static async Task<WebApplication> InitializeDatabaseAsync( this WebApplication app ) {
             using IServiceScope scope = app.Services.CreateScope( );
-            IdentityDbContext context = scope.ServiceProvider.GetRequiredService<IdentityDbContext>( );
+            ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
             RoleManager<IdentityRole> roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>( );
 
             // Apply pending migrations and create the database if it doesn't exist
