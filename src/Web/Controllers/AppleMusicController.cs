@@ -127,6 +127,13 @@ public class AppleMusicController : Controller {
 
         try {
             HttpClient client = _httpClientFactory.CreateClient( "musickit-api" );
+            
+            // Add developer token (JWT) for API authentication
+            if (_jwtHandler != null) {
+                client.DefaultRequestHeaders.Authorization = _jwtHandler.NewAuthenticationHeader( );
+            }
+            
+            // Add user token for accessing user's library
             client.DefaultRequestHeaders.Add( "Music-User-Token", user.AppleMusicUserToken );
 
             HttpResponseMessage response = await client.GetAsync( "https://api.music.apple.com/v1/me/library/playlists" );
