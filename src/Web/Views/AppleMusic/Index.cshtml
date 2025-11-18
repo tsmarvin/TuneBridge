@@ -1,0 +1,237 @@
+@{
+    ViewData["Title"] = "Apple Music Library";
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-title">Apple Music Library Access</h2>
+        
+        <div id="statusSection" class="mb-4">
+            <h5>Authentication Status</h5>
+            <div id="statusMessage" class="alert alert-info">
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Checking authentication status...
+            </div>
+        </div>
+
+        <div id="authSection" class="d-none mb-4">
+            <h5>Connect to Apple Music</h5>
+            <p class="text-muted">
+                Authenticate with Apple Music to access your library and playlists.
+            </p>
+            <button id="authorizeBtn" class="btn btn-primary">
+                Connect Apple Music
+            </button>
+        </div>
+
+        <div id="playlistsSection" class="d-none">
+            <h5>Your Playlists</h5>
+            <p class="text-muted">
+                Select a playlist from your Apple Music library.
+            </p>
+            
+            <div id="playlistsLoading" class="d-none mb-3">
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Loading playlists...
+            </div>
+            
+            <div id="playlistsError" class="alert alert-danger d-none"></div>
+            
+            <div id="playlistsList" class="list-group"></div>
+            
+            <div id="selectedPlaylist" class="alert alert-success d-none mt-3">
+                <strong>Selected Playlist:</strong> <span id="selectedPlaylistName"></span>
+            </div>
+        </div>
+
+        <div id="error" class="alert alert-danger d-none mt-3"></div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js" async></script>
+    <script>
+        const statusSection = document.getElementById('statusSection');
+        const statusMessage = document.getElementById('statusMessage');
+        const authSection = document.getElementById('authSection');
+        const authorizeBtn = document.getElementById('authorizeBtn');
+        const playlistsSection = document.getElementById('playlistsSection');
+        const playlistsLoading = document.getElementById('playlistsLoading');
+        const playlistsError = document.getElementById('playlistsError');
+        const playlistsList = document.getElementById('playlistsList');
+        const selectedPlaylist = document.getElementById('selectedPlaylist');
+        const selectedPlaylistName = document.getElementById('selectedPlaylistName');
+        const error = document.getElementById('error');
+
+        let musicKitInstance = null;
+
+        // Wait for MusicKit to load
+        document.addEventListener('musickitloaded', async function() {
+            try {
+                // Configure MusicKit - the developer token is automatically fetched from the server
+                await MusicKit.configure({
+                    developerToken: await getDeveloperToken(),
+                    app: {
+                        name: 'TuneBridge',
+                        build: '1.0.0'
+                    }
+                });
+
+                musicKitInstance = MusicKit.getInstance();
+                
+                // Check authentication status
+                await checkAuthStatus();
+                
+            } catch (err) {
+                console.error('MusicKit configuration error:', err);
+                statusMessage.classList.remove('alert-info');
+                statusMessage.classList.add('alert-danger');
+                statusMessage.innerHTML = 'Failed to initialize Apple Music: ' + err.message;
+            }
+        });
+
+        // Get developer token from server
+        async function getDeveloperToken() {
+            // For now, we'll need to add an endpoint to generate this
+            // The AppleJwtHandler already exists, we just need to expose it
+            const response = await fetch('/applemusic/developer-token');
+            const data = await response.json();
+            return data.token;
+        }
+
+        // Check authentication status
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/applemusic/status', { credentials: 'same-origin' });
+                const data = await response.json();
+
+                if (data.hasToken && !data.isExpired) {
+                    // User is authenticated
+                    statusMessage.classList.remove('alert-info');
+                    statusMessage.classList.add('alert-success');
+                    statusMessage.innerHTML = '✓ Connected to Apple Music';
+                    
+                    // Show playlists section
+                    playlistsSection.classList.remove('d-none');
+                    
+                    // Load playlists
+                    await loadPlaylists();
+                } else {
+                    // User needs to authenticate
+                    statusSection.classList.add('d-none');
+                    authSection.classList.remove('d-none');
+                }
+            } catch (err) {
+                console.error('Status check error:', err);
+                statusMessage.classList.remove('alert-info');
+                statusMessage.classList.add('alert-danger');
+                statusMessage.innerHTML = 'Failed to check authentication status: ' + err.message;
+            }
+        }
+
+        // Authorize with Apple Music
+        authorizeBtn.addEventListener('click', async function() {
+            authorizeBtn.disabled = true;
+            authorizeBtn.textContent = 'Connecting...';
+            error.classList.add('d-none');
+
+            try {
+                // Request user authorization
+                const userToken = await musicKitInstance.authorize();
+                
+                // Store the token on the server
+                const response = await fetch('/applemusic/store-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        userToken: userToken,
+                        expiresInMs: 15552000000 // 180 days in milliseconds (default MusicKit token expiration)
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.message || 'Failed to store token');
+                }
+
+                // Hide auth section, show status as connected
+                authSection.classList.add('d-none');
+                statusSection.classList.remove('d-none');
+                statusMessage.classList.remove('alert-info');
+                statusMessage.classList.add('alert-success');
+                statusMessage.innerHTML = '✓ Connected to Apple Music';
+                
+                // Show playlists section
+                playlistsSection.classList.remove('d-none');
+                
+                // Load playlists
+                await loadPlaylists();
+
+            } catch (err) {
+                console.error('Authorization error:', err);
+                error.textContent = 'Failed to connect to Apple Music: ' + err.message;
+                error.classList.remove('d-none');
+                authorizeBtn.disabled = false;
+                authorizeBtn.textContent = 'Connect Apple Music';
+            }
+        });
+
+        // Load playlists
+        async function loadPlaylists() {
+            playlistsLoading.classList.remove('d-none');
+            playlistsError.classList.add('d-none');
+            playlistsList.innerHTML = '';
+            selectedPlaylist.classList.add('d-none');
+
+            try {
+                const response = await fetch('/applemusic/playlists', { credentials: 'same-origin' });
+                
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.message || 'Failed to load playlists');
+                }
+
+                const data = await response.json();
+                playlistsLoading.classList.add('d-none');
+
+                if (!data.playlists || data.playlists.length === 0) {
+                    playlistsError.textContent = 'No playlists found in your library.';
+                    playlistsError.classList.remove('d-none');
+                    return;
+                }
+
+                // Display playlists
+                data.playlists.forEach(playlist => {
+                    const item = document.createElement('button');
+                    item.className = 'list-group-item list-group-item-action';
+                    item.textContent = playlist.name;
+                    item.onclick = () => selectPlaylist(playlist);
+                    playlistsList.appendChild(item);
+                });
+
+            } catch (err) {
+                console.error('Load playlists error:', err);
+                playlistsLoading.classList.add('d-none');
+                playlistsError.textContent = 'Failed to load playlists: ' + err.message;
+                playlistsError.classList.remove('d-none');
+            }
+        }
+
+        // Select a playlist
+        function selectPlaylist(playlist) {
+            // Highlight selected item
+            const items = playlistsList.querySelectorAll('.list-group-item');
+            items.forEach(item => item.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Show selected playlist
+            selectedPlaylistName.textContent = playlist.name;
+            selectedPlaylist.classList.remove('d-none');
+            
+            console.log('Selected playlist:', playlist);
+        }
+    </script>
+}

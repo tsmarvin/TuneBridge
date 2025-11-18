@@ -4,6 +4,7 @@
             <div class="d-flex align-items-center gap-3">
                 <a href="https://github.com/tsmarvin/TuneBridge" target="_blank" class="nav-link">GitHub</a>
                 <a href="https://docs.tunebridge.media/" target="_blank" class="nav-link">Docs</a>
+                <a href="/applemusic" class="nav-link" id="appleMusicLink" style="display: none;">Apple Music</a>
             </div>
             <a class="navbar-brand position-absolute start-50 translate-middle-x" href="/">
                 TuneBridge
@@ -41,6 +42,7 @@
     // Populate auth area (Login/Register or Logout) on every page
     (function () {
         const userArea = document.getElementById('userArea');
+        const appleMusicLink = document.getElementById('appleMusicLink');
         if (!userArea) return;
         async function refresh() {
             try {
@@ -52,6 +54,10 @@
                         try { await fetch('/account/logout', { method: 'POST', credentials: 'same-origin' }); } catch { }
                         location.reload();
                     });
+                    // Show Apple Music link for authenticated users
+                    if (appleMusicLink) {
+                        appleMusicLink.style.display = '';
+                    }
                 } else {
                     userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
                 }
