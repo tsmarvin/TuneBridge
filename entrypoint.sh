@@ -62,7 +62,7 @@ mkdir -p /app/data/logs
 # 1) Remove existing appsettings.json if present
 [ -f /app/appsettings.json ] && rm -f /app/appsettings.json
 
-# 2) Create new appsettings.json
+# 2) Create new appsettings.json for AppHost
 cat > /app/appsettings.json <<EOF
 {
   "Kestrel": {
@@ -82,15 +82,22 @@ cat > /app/appsettings.json <<EOF
     "TidalClientId": "$TIDAL_CLIENT_ID",
     "TidalClientSecret": "$TIDAL_CLIENT_SECRET",
     "DiscordToken": "$DISCORD_TOKEN",
-    "IdentityConnectionString": "$(escape_bs "$IDENTITY_CONNECTION_STRING")",
-    "ApiKeySalt": "$API_KEY_SALT",
-    "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR,
     "ATProtoIdentifier": "$ATPROTO_IDENTIFIER",
     "ATProtoPassword": "$ATPROTO_PASSWORD",
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
-    "BaseUrl": "$BASEURL",
     "LogFilePath": "$(escape_bs "$LOG_FILE_PATH")"
+  },
+  "Identity": {
+    "IdentityConnectionString": "$(escape_bs "$IDENTITY_CONNECTION_STRING")",
+    "ApiKeySalt": "$API_KEY_SALT",
+    "RateLimitRequestsPerHour": "$RATE_LIMIT_REQUESTS_PER_HOUR",
+    "BaseUrl": "$BASEURL"
+  },
+  "JetStreamMonitor": {
+    "ApiHostUrlBase": "http://apiservice",
+    "DBConnectionString": "Data Source=/app/data/jetstream-monitor.db",
+    "JetstreamEndpoint": "wss://jetstream2.us-east.bsky.network/subscribe"
   },
   "Logging": {
     "LogLevel": {
