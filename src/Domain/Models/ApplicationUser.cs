@@ -27,4 +27,19 @@ public class ApplicationUser : IdentityUser {
     /// Start of the current rate limit window.
     /// </summary>
     public DateTime? RateLimitWindowStart { get; set; }
+
+    /// <summary>
+    /// Tidal OAuth access token for user's library and playlist access.
+    /// </summary>
+    public string? TidalAccessToken { get; set; }
+
+    /// <summary>
+    /// Tidal OAuth refresh token for obtaining new access tokens.
+    /// </summary>
+    public string? TidalRefreshToken { get; set; }
+
+    /// <summary>
+    /// Expiration time of the Tidal access token.
+    /// </summary>
+    public DateTime? TidalTokenExpiry { get; set; }
 }

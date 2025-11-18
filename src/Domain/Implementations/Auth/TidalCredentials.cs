@@ -26,6 +26,16 @@ namespace TuneBridge.Domain.Implementations.Auth {
         string clientSecret
     ) {
         /// <summary>
+        /// The Client ID from the Tidal Developer app.
+        /// </summary>
+        public string ClientId { get; } = clientId;
+
+        /// <summary>
+        /// The Client Secret from the Tidal Developer app.
+        /// </summary>
+        public string ClientSecret { get; } = clientSecret;
+
+        /// <summary>
         /// The Base64-encoded representation of "clientId:clientSecret", ready for use in HTTP Basic
         /// authentication headers. This is the format required by the Tidal token endpoint per
         /// OAuth 2.0 client credentials specification (RFC 6749, Section 2.3.1).

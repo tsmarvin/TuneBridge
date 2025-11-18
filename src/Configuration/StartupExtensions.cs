@@ -470,6 +470,7 @@ namespace TuneBridge.Configuration {
 
             _ = services.AddSingleton( new TidalCredentials( settings.TidalClientId, settings.TidalClientSecret ) );
             _ = services.AddTransient<TidalTokenHandler>( );
+            _ = services.AddTransient<TidalUserAuthHandler>( );
             _ = services.AddTransient<TidalLookupService>( );
 
             _ = enabledProviders.Add( SupportedProviders.Tidal );
