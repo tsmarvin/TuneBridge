@@ -9,19 +9,19 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
 # Copy all project files for restore
-COPY src/TuneBridge/TuneBridge.csproj src/TuneBridge/
+COPY src/TuneBridge.WebServer/TuneBridge.WebServer.csproj src/TuneBridge.WebServer/
 COPY src/TuneBridge.AppHost/TuneBridge.AppHost.csproj src/TuneBridge.AppHost/
 
 # Restore dependencies
 RUN dotnet restore "src/TuneBridge.AppHost/TuneBridge.AppHost.csproj"
-RUN dotnet restore "src/TuneBridge/TuneBridge.csproj"
+RUN dotnet restore "src/TuneBridge.WebServer/TuneBridge.WebServer.csproj"
 
 # Copy all source files
-COPY src/TuneBridge/ src/TuneBridge/
+COPY src/TuneBridge.WebServer/ src/TuneBridge.WebServer/
 COPY src/TuneBridge.AppHost/ src/TuneBridge.AppHost/
 
 # Build projects
-RUN dotnet build "src/TuneBridge/TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "src/TuneBridge.WebServer/TuneBridge.WebServer.csproj" -c $BUILD_CONFIGURATION -o /app/build
 RUN dotnet build "src/TuneBridge.AppHost/TuneBridge.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish both projects to the final stage
@@ -29,7 +29,7 @@ FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
 
 # Publish TuneBridge to /app/publish (main application)
-RUN dotnet publish "src/TuneBridge/TuneBridge.csproj" -c $BUILD_CONFIGURATION -o /app/publish
+RUN dotnet publish "src/TuneBridge.WebServer/TuneBridge.WebServer.csproj" -c $BUILD_CONFIGURATION -o /app/publish
 
 # Publish AppHost to the same directory so it can find TuneBridge.dll
 RUN dotnet publish "src/TuneBridge.AppHost/TuneBridge.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/publish

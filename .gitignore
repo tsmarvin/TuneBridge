@@ -92,3 +92,5 @@ caddy-logs/
 
 # macOS file
 .DS_Store
+
+logs/

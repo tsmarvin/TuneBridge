@@ -1,14 +1,17 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Aspire.AppHost.Sdk/13.0.0">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>36b93340-20a0-4b11-a03e-74e87d6e1602</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.0.0" />
+    <ProjectReference Include="..\TuneBridge.ApiService\TuneBridge.ApiService.csproj" />
+    <ProjectReference Include="..\TuneBridge.JetstreamMonitor\TuneBridge.JetStreamMonitor.csproj" />
+    <ProjectReference Include="..\TuneBridge.Web\TuneBridge.Web.csproj" />
   </ItemGroup>
 
 </Project>

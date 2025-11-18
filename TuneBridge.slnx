@@ -1,0 +1,43 @@
+<Solution>
+  <Folder Name="/.github/">
+    <File Path=".github/copilot-instructions.md" />
+  </Folder>
+  <Folder Name="/.github/workflows/">
+    <File Path=".github/workflows/docker-publish.yml" />
+    <File Path=".github/workflows/docs.yml" />
+    <File Path=".github/workflows/scorecard.yml" />
+    <File Path=".github/workflows/tests.yml" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path="docs/API.md" />
+    <File Path="docs/ATPROTO_LEXICON.md" />
+    <File Path="docs/CACHING.md" />
+    <File Path="docs/CONFIGURATION.md" />
+    <File Path="docs/DEPLOYMENT.md" />
+    <File Path="docs/DISCORD_BOT.md" />
+    <File Path="docs/QUICKSTART.md" />
+    <File Path="docs/toc.yml" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".env.example" />
+    <File Path=".gitignore" />
+    <File Path="Caddyfile" />
+    <File Path="CNAME" />
+    <File Path="docfx.json" />
+    <File Path="docker-compose.yml" />
+    <File Path="Dockerfile" />
+    <File Path="entrypoint.sh" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+    <File Path="setup-secrets.sh" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/TuneBridge.ApiService/TuneBridge.ApiService.csproj" />
+    <Project Path="src/TuneBridge.AppHost/TuneBridge.AppHost.csproj" />
+    <Project Path="src/TuneBridge.Common/TuneBridge.Common.csproj" />
+    <Project Path="src/TuneBridge.Core/TuneBridge.Core.csproj" Id="89c169d2-442f-45f8-8b9e-a7a9a74e9929" />
+    <Project Path="src/TuneBridge.JetstreamMonitor/TuneBridge.JetStreamMonitor.csproj" />
+    <Project Path="src/TuneBridge.Web/TuneBridge.Web.csproj" />
+  </Folder>
+</Solution>
