@@ -73,11 +73,9 @@ public class PlaylistsController( IPlaylistService? playlistService, ILogger<Pla
 
         try {
             bool deleted = await _playlistService.DeletePlaylistAsync( id, userId );
-            if (deleted) {
-                return Ok( new { message = "Playlist deleted successfully" } );
-            } else {
-                return NotFound( new { error = "Playlist not found or you don't have permission to delete it" } );
-            }
+            return deleted
+                ? Ok( new { message = "Playlist deleted successfully" } )
+                : NotFound( new { error = "Playlist not found or you don't have permission to delete it" } );
         } catch (Exception ex) {
             _logger?.LogError( ex, "Error deleting playlist {PlaylistId} for user {UserId}", id, userId );
             return StatusCode( 500, new { error = "Failed to delete playlist" } );

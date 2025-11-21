@@ -162,16 +162,26 @@
         // Create checkbox overlay
         const checkbox = document.createElement('div');
         checkbox.className = 'card-selection-checkbox';
-        checkbox.innerHTML = `
-            <input type="checkbox" id="select-${cardId}" data-card-id="${cardId}" data-rkey="${rkey}">
-            <label for="select-${cardId}"></label>
-        `;
+        
+        // Create input element safely
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.id = `select-${cardId}`;
+        input.setAttribute('data-card-id', cardId);
+        input.setAttribute('data-rkey', rkey);
+        
+        // Create label element safely
+        const label = document.createElement('label');
+        label.setAttribute('for', `select-${cardId}`);
+        
+        // Append elements
+        checkbox.appendChild(input);
+        checkbox.appendChild(label);
 
         // Insert at the beginning of the card
         card.insertBefore(checkbox, card.firstChild);
 
         // Add change event listener to checkbox input
-        const input = checkbox.querySelector('input');
         input.addEventListener('change', (e) => {
             handleCardSelection(e.target.checked, cardId, rkey, card);
         });

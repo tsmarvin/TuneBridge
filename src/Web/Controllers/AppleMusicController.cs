@@ -151,16 +151,18 @@ public class AppleMusicController(
 
             List<object> playlists = [];
             if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
-                foreach (JsonElement playlist in dataElement.EnumerateArray( )) {
-                    if (playlist.TryGetProperty( "id", out JsonElement idElement ) &&
-                        playlist.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
-                        attributesElement.TryGetProperty( "name", out JsonElement nameElement )) {
-                        playlists.Add( new {
-                            id = idElement.GetString( ),
-                            name = nameElement.GetString( )
-                        } );
-                    }
-                }
+                playlists.AddRange(
+                    dataElement.EnumerateArray()
+                        .Where( playlist =>
+                            playlist.TryGetProperty( "id", out _ ) &&
+                            playlist.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
+                            attributesElement.TryGetProperty( "name", out _ )
+                        )
+                        .Select( playlist => new {
+                            id = playlist.GetProperty( "id" ).GetString( ),
+                            name = playlist.GetProperty( "attributes" ).GetProperty( "name" ).GetString( )
+                        } )
+                );
             }
 
             return Ok( new { playlists = playlists } );
@@ -172,9 +174,10 @@ public class AppleMusicController(
     }
 
     /// <summary>
-    /// Gets the current authentication status for Apple Music.
+    /// Retrieves song information from Apple Music by song IDs.
     /// </summary>
-    /// <returns>Authentication status including whether token exists and is valid.</returns>
+    /// <param name="songIds">Array of Apple Music song IDs to retrieve.</param>
+    /// <returns>List of MediaLinkResult objects for the requested songs.</returns>
     [HttpPost]
     [Route( "applemusic/getsongsbyid" )]
     public async Task<IActionResult> GetSongsByID( [FromBody] string[] songIds ) {
@@ -302,17 +305,21 @@ public class AppleMusicController(
 
                 // Extract track IDs from current page
                 if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
-                    foreach (JsonElement track in dataElement.EnumerateArray( )) {
-                        if (track.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
-                            attributesElement.TryGetProperty( "playParams", out JsonElement playParamsElement ) &&
-                            playParamsElement.TryGetProperty( "catalogId", out JsonElement catalogIdElement )
-                        ) {
-                            string? trackId = catalogIdElement.GetString( );
-                            if (!string.IsNullOrWhiteSpace( trackId )) {
-                                trackIds.Add( trackId );
-                            }
-                        }
-                    }
+                    trackIds.AddRange(
+                        dataElement.EnumerateArray()
+                            .Where( track =>
+                                track.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
+                                attributesElement.TryGetProperty( "playParams", out JsonElement playParamsElement ) &&
+                                playParamsElement.TryGetProperty( "catalogId", out JsonElement catalogIdElement ) &&
+                                !string.IsNullOrWhiteSpace( catalogIdElement.GetString( ) )
+                            )
+                            .Select( track =>
+                                track.GetProperty( "attributes" )
+                                    .GetProperty( "playParams" )
+                                    .GetProperty( "catalogId" )
+                                    .GetString( )!
+                            )
+                    );
 
                     totalTracks = trackIds.Count;
                 }
@@ -452,9 +459,10 @@ public class AppleMusicController(
                 await Response.Body.FlushAsync( );
 
                 processedCount++;
-                await Task.Delay( 250 );
             } catch (Exception ex) {
-                logger.LogError( ex, "Error processing song {SongId}", songId );
+                // Sanitize songId for logging to prevent log forging
+                string safeSongId = songId.Length > 50 ? songId[..50] : songId;
+                logger.LogError( ex, "Error processing song {SongId}", safeSongId );
                 errorCount++;
             }
         }

@@ -94,26 +94,23 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             MediaLinkResult? result = _cardService?.GetResult( cardId );
 
             // If not found in cache, try to reconstruct from rkey
-            if (result == null && _cardService != null) {
-                // Parse rkey to determine if it's ISRC/UPC based or metadata based
-                if (rkey.StartsWith( "track:" ) || rkey.StartsWith( "album:" )) {
-                    // Extract the external ID and type
-                    string[] parts = rkey.Split( ':', 2 );
-                    if (parts.Length == 2) {
-                        bool isAlbum = parts[0] == "album";
-                        string externalId = parts[1];
+            if (result == null && _cardService != null && (rkey.StartsWith( "track:" ) || rkey.StartsWith( "album:" ))) {
+                // Extract the external ID and type
+                string[] parts = rkey.Split( ':', 2 );
+                if (parts.Length == 2) {
+                    bool isAlbum = parts[0] == "album";
+                    string externalId = parts[1];
 
-                        // Lookup by ISRC/UPC using media link service
-                        result = isAlbum
-                            ? await _mediaLinkService?.GetInfoByUPCAsync( externalId )!
-                            : await _mediaLinkService?.GetInfoByISRCAsync( externalId )!;
+                    // Lookup by ISRC/UPC using media link service
+                    result = isAlbum
+                        ? await _mediaLinkService?.GetInfoByUPCAsync( externalId )!
+                        : await _mediaLinkService?.GetInfoByISRCAsync( externalId )!;
 
-                        // If we successfully recreated the result, store it back in the card service
-                        if (result != null) {
-                            string newCardUrl = _cardService.StoreResult( result );
-                            _logger?.LogInformation( "Regenerated card {CardId} from rkey {Rkey} for playlist {PlaylistId}",
-                                cardId, rkey, id );
-                        }
+                    // If we successfully recreated the result, store it back in the card service
+                    if (result != null) {
+                        _ = _cardService.StoreResult( result );
+                        _logger?.LogInformation( "Regenerated card {CardId} from rkey {Rkey} for playlist {PlaylistId}",
+                            cardId, rkey, id );
                     }
                 }
             }
@@ -182,21 +179,19 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             MediaLinkResult? result = _cardService?.GetResult( cardId );
 
             // Try to regenerate if not in cache
-            if (result == null && _cardService != null) {
-                if (rkey.StartsWith( "track:" ) || rkey.StartsWith( "album:" )) {
-                    string[] parts = rkey.Split( ':', 2 );
-                    if (parts.Length == 2) {
-                        bool isAlbum = parts[0] == "album";
-                        string externalId = parts[1];
+            if (result == null && _cardService != null && (rkey.StartsWith( "track:" ) || rkey.StartsWith( "album:" ))) {
+                string[] parts = rkey.Split( ':', 2 );
+                if (parts.Length == 2) {
+                    bool isAlbum = parts[0] == "album";
+                    string externalId = parts[1];
 
-                        result = isAlbum
-                            ? await _mediaLinkService?.GetInfoByUPCAsync( externalId )!
-                            : await _mediaLinkService?.GetInfoByISRCAsync( externalId )!;
+                    result = isAlbum
+                        ? await _mediaLinkService?.GetInfoByUPCAsync( externalId )!
+                        : await _mediaLinkService?.GetInfoByISRCAsync( externalId )!;
 
-                        if (result != null) {
-                            _ = _cardService.StoreResult( result );
-                            _logger?.LogInformation( "Regenerated card {CardId} for playlist embed {PlaylistId}", cardId, id );
-                        }
+                    if (result != null) {
+                        _ = _cardService.StoreResult( result );
+                        _logger?.LogInformation( "Regenerated card {CardId} for playlist embed {PlaylistId}", cardId, id );
                     }
                 }
             }

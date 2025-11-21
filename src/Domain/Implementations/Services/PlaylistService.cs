@@ -13,7 +13,7 @@ namespace TuneBridge.Domain.Implementations.Services {
     public class PlaylistService( string baseUrl, IDbContextFactory<ApplicationDbContext> contextFactory ) : IPlaylistService {
 
         /// <inheritdoc/>
-        public bool IsEnabled => string.IsNullOrWhiteSpace( baseUrl ) == false;
+        public bool IsEnabled => !string.IsNullOrWhiteSpace( baseUrl );
 
         /// <inheritdoc/>
         public string BaseUrl => baseUrl;
