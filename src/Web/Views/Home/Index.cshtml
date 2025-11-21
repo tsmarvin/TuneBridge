@@ -442,13 +442,12 @@ ViewData["Title"] = "Music Lookup";
       lookupForm.querySelector('button[type="submit"]').disabled = true;
 
       try {
-        // All modes now use server-side rendering with form data
-        let endpoint = lookupForm.action;
+        let endpoint = '';
         const formData = new FormData();
 
         switch (mode) {
           case 'url':
-            endpoint = '/Home/LookupResults';
+            endpoint = '/Home/LookupResultsStream';
             const urlValue = $('url').value.trim();
             if (!urlValue) {
               throw new Error('Please enter a music link');
@@ -493,25 +492,123 @@ ViewData["Title"] = "Music Lookup";
         resultsSection.classList.remove('d-none');
 
         if (res.ok) {
-          const html = await res.text();
-          cardsContainer.innerHTML = html;
+          // For streaming URL endpoint, process the stream
+          if (mode === 'url') {
+            // Prepare grid container for streaming results
+            cardsContainer.innerHTML = '<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3"></div>';
+            const gridContainer = cardsContainer.querySelector('.row');
 
-          // Initialize share buttons for dynamically loaded content
-          if (typeof initializeShareButtons === 'function') {
-            setTimeout(initializeShareButtons, 100);
-          }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let cardCount = 0;
 
-          // Count results
-          const resultCards = cardsContainer.querySelectorAll('.embed-card');
-          if (resultCards.length > 0) {
-            status.textContent = `Found ${resultCards.length} result${resultCards.length > 1 ? 's' : ''}`;
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (value) {
+                buffer += decoder.decode(value, { stream: !done });
+                
+                // Process complete HTML elements from buffer
+                let lastClosingDiv = buffer.lastIndexOf('</div>');
+                if (lastClosingDiv !== -1) {
+                  const completeHTML = buffer.substring(0, lastClosingDiv + 6);
+                  buffer = buffer.substring(lastClosingDiv + 6);
+                  
+                  // Check for completion marker
+                  const tempDiv = document.createElement('div');
+                  tempDiv.innerHTML = completeHTML;
+                  const completionMarker = tempDiv.querySelector('[data-stream-complete="true"]');
+                  
+                  if (completionMarker) {
+                    const processed = parseInt(completionMarker.getAttribute('data-processed') || '0');
+                    const errors = parseInt(completionMarker.getAttribute('data-errors') || '0');
+                    
+                    // Remove the completion marker from HTML
+                    completionMarker.remove();
+                    
+                    // Add remaining cards if any
+                    if (tempDiv.children.length > 0) {
+                      for (const child of Array.from(tempDiv.children)) {
+                        if (child.classList.contains('col')) {
+                          gridContainer.appendChild(child);
+                          cardCount++;
+                        } else {
+                          cardsContainer.appendChild(child);
+                        }
+                      }
+                    }
+                    
+                    // Update summary
+                    if (cardCount > 0) {
+                      let message = `Found ${cardCount} result${cardCount > 1 ? 's' : ''}`;
+                      if (errors > 0) {
+                        message += ` (${errors} could not be matched)`;
+                      }
+                      status.textContent = message;
+                      
+                      // Initialize share buttons
+                      if (typeof initializeShareButtons === 'function') {
+                        setTimeout(initializeShareButtons, 100);
+                      }
+                    } else {
+                      status.textContent = 'No matches found';
+                      cardsContainer.innerHTML = `
+                        <div class="alert alert-warning">
+                          <strong>No matches found</strong><br/>
+                          Try a different search or check that the link is valid and the content is available in your region.
+                        </div>`;
+                    }
+                    
+                    break;
+                  } else {
+                    // Add cards to grid
+                    for (const child of Array.from(tempDiv.children)) {
+                      if (child.classList.contains('col')) {
+                        gridContainer.appendChild(child);
+                        cardCount++;
+                        
+                        // Update progress
+                        status.textContent = `Found ${cardCount} result${cardCount > 1 ? 's' : ''}...`;
+                      } else if (child.classList.contains('alert')) {
+                        cardsContainer.appendChild(child);
+                      }
+                    }
+                    
+                    // Initialize share buttons for newly added cards
+                    if (typeof initializeShareButtons === 'function') {
+                      initializeShareButtons();
+                    }
+                  }
+                }
+              }
+              
+              if (done) {
+                break;
+              }
+            }
           } else {
-            status.textContent = 'No matches found';
-            cardsContainer.innerHTML = `
-                              <div class="alert alert-warning">
-                              <strong>No matches found</strong><br/>
-                              Try a different search or check that the link is valid and the content is available in your region.
-                              </div>`;
+            // For non-streaming endpoints (ISRC, UPC, Title), use the existing approach
+            const html = await res.text();
+            cardsContainer.innerHTML = html;
+
+            // Initialize share buttons for dynamically loaded content
+            if (typeof initializeShareButtons === 'function') {
+              setTimeout(initializeShareButtons, 100);
+            }
+
+            // Count results
+            const resultCards = cardsContainer.querySelectorAll('.embed-card');
+            if (resultCards.length > 0) {
+              status.textContent = `Found ${resultCards.length} result${resultCards.length > 1 ? 's' : ''}`;
+            } else {
+              status.textContent = 'No matches found';
+              cardsContainer.innerHTML = `
+                <div class="alert alert-warning">
+                  <strong>No matches found</strong><br/>
+                  Try a different search or check that the link is valid and the content is available in your region.
+                </div>`;
+            }
           }
         } else if (res.status === 401) {
           result.textContent = JSON.stringify({

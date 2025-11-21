@@ -13,8 +13,7 @@ namespace TuneBridge.Domain.Contracts.Records {
         /// <summary>
         /// Creates a new instance of <see cref="MediaLinkResultRecord"/>.
         /// </summary>
-        public MediaLinkResultRecord( ) : base( ) {
-        }
+        public MediaLinkResultRecord( ) : base( ) { }
 
         /// <summary>
         /// Creates a new instance of <see cref="MediaLinkResultRecord"/>.

@@ -104,6 +104,14 @@ namespace TuneBridge.Configuration {
                 p => new OpenGraphCardService( settings.BaseUrl )
             );
 
+            // Playlist service (singleton with DbContextFactory for thread-safe database access)
+            _ = services.AddSingleton<IPlaylistService, PlaylistService>(
+                p => new PlaylistService( settings.BaseUrl, p.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( ) )
+            );
+
+            // Register playlist cleanup background service
+            _ = services.AddHostedService<PlaylistCleanupService>( );
+
             // Optional ATProto storage and cache services
             ConfigureATProtoIfEnabled( services, settings );
 
@@ -259,30 +267,61 @@ namespace TuneBridge.Configuration {
         /// <param name="builder">The HTTP client builder to configure.</param>
         /// <returns>The configured <see cref="IHttpStandardResiliencePipelineBuilder"/>.</returns>
         private static IHttpStandardResiliencePipelineBuilder AddStandardResilience( this IHttpClientBuilder builder ) {
-            return builder.AddStandardResilienceHandler( options => {
+            IHttpStandardResiliencePipelineBuilder resilienceBuilder = builder.AddStandardResilienceHandler( options => {
                 options.Retry.BackoffType = DelayBackoffType.Exponential;
                 options.Retry.UseJitter = true;
                 options.Retry.MaxRetryAttempts = 5;
-                options.Retry.Delay = TimeSpan.FromSeconds( 1 );
-                options.Retry.MaxDelay = TimeSpan.FromSeconds( 60 ); // Increased from 30 to 60 seconds
+                options.Retry.Delay = TimeSpan.FromSeconds( 3 );
+                options.Retry.MaxDelay = TimeSpan.FromMinutes( 5 ); // Increased from 60 seconds to 5 minutes
                 options.Retry.ShouldRetryAfterHeader = true; // honor Retry-After
 
                 options.Retry.DisableForUnsafeHttpMethods( ); // Disables retry on POST/PUT/PATCH/DELETE/CONNECT
 
-                // Timeouts (outer total, inner per-attempt)
-                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds( 120 );
+                // Timeouts (outer total increased to 10 minutes, inner per-attempt)
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( 10 ); // Increased from 120 seconds to 10 minutes
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 10 );
             } );
-        }
 
+            // Add retry logging via Configure overload that provides service provider
+            _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {
+                Microsoft.Extensions.Logging.ILogger logger = sp.GetRequiredService<ILoggerFactory>( ).CreateLogger( "HttpResilience" );
+                options.Retry.OnRetry = args => {
+                    TimeSpan? retryAfter = args.Outcome.Result?.Headers?.RetryAfter?.Delta;
+                    double retryAfterSeconds = retryAfter?.TotalSeconds ?? 0;
+
+                    if (retryAfterSeconds > 0) {
+                        logger.LogWarning(
+                            "HTTP request failed (Attempt {AttemptNumber}/{MaxAttempts}). Retrying after {RetryAfterSeconds} seconds due to Retry-After header. Uri: {Uri}",
+                            args.AttemptNumber,
+                            options.Retry.MaxRetryAttempts,
+                            retryAfterSeconds,
+                            args.Outcome.Result?.RequestMessage?.RequestUri
+                        );
+                    } else {
+                        logger.LogWarning(
+                            "HTTP request failed (Attempt {AttemptNumber}/{MaxAttempts}). Retrying with exponential backoff. Uri: {Uri}",
+                            args.AttemptNumber,
+                            options.Retry.MaxRetryAttempts,
+                            args.Outcome.Result?.RequestMessage?.RequestUri
+                        );
+                    }
+
+                    return default;
+                };
+            } );
+
+            return resilienceBuilder;
+        }
         private static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
-            _ = services.AddDbContext<ApplicationDbContext>( options =>
+            // Register DbContext factory for on-demand instance creation
+            // Controllers and services will use IDbContextFactory<ApplicationDbContext> to create scoped instances when needed
+            _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
                 options.UseSqlite( settings.IdentityConnectionString )
             );
 
             // Register a factory for MediaLinkCacheDbContext to be consumed from singleton services safely
-            _ = services.AddDbContextFactory<MediaLinkCacheDbContext>(
-                opts => opts.UseSqlite( settings.LinkCacheConnectionString )
+            _ = services.AddDbContextFactory<MediaLinkCacheDbContext>( options =>
+                options.UseSqlite( settings.LinkCacheConnectionString )
             );
         }
 
@@ -302,6 +341,12 @@ namespace TuneBridge.Configuration {
             .AddEntityFrameworkStores<ApplicationDbContext>( )
             .AddSignInManager( )
             .AddDefaultTokenProviders( );
+
+            // Register scoped ApplicationDbContext for Identity framework using the factory
+            _ = services.AddScoped( sp => {
+                IDbContextFactory<ApplicationDbContext> factory = sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( );
+                return factory.CreateDbContext( );
+            } );
         }
 
         private static void ConfigureApiKeyAuth( IServiceCollection services, AppSettings settings ) {
@@ -381,7 +426,8 @@ namespace TuneBridge.Configuration {
                 s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
                 s.GetRequiredService<IATProtoStorageService>( ),
                 s.GetRequiredService<ILogger<MediaLinkCacheRepository>>( ),
-                settings.CacheDays
+                settings.CacheDays,
+                settings.ATProtoUserDID
             ) );
         }
 

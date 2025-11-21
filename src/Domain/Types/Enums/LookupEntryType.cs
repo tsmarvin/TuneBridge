@@ -5,23 +5,18 @@ namespace TuneBridge.Domain.Types.Enums {
     /// </summary>
     public enum LookupEntryType {
         /// <summary>
-        /// User-provided input link (may contain tracking parameters, stored privately).
+        /// URL from any source (user input or service API).
         /// </summary>
-        UserInput = 0,
-
-        /// <summary>
-        /// Clean link provided by a music service API.
-        /// </summary>
-        ServiceLink = 1,
+        Url = 0,
 
         /// <summary>
         /// External identifier (ISRC for tracks, UPC for albums).
         /// </summary>
-        ExternalId = 2,
+        ExternalId = 1,
 
         /// <summary>
         /// Metadata combination (title|artist).
         /// </summary>
-        Metadata = 3
+        Metadata = 2
     }
 }

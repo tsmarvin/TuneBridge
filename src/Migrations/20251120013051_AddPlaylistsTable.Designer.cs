@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TuneBridge.Domain.Models;
 
@@ -10,9 +11,11 @@ using TuneBridge.Domain.Models;
 namespace TuneBridge.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251120013051_AddPlaylistsTable")]
+    partial class AddPlaylistsTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
@@ -152,11 +155,6 @@ namespace TuneBridge.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CardIds")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CardRkeys")
                         .IsRequired()
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");

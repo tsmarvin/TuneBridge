@@ -40,6 +40,8 @@ namespace TuneBridge.Domain.Types.Bases {
         public abstract Task<MediaLinkResult?> GetInfoByISRCAsync( string isrc );
         /// <inheritdoc/>
         public abstract Task<MediaLinkResult?> GetInfoByUPCAsync( string upc );
+        /// <inheritdoc/>
+        public abstract Task<MediaLinkResult?> GetInfoByProviderIdAsync( string providerId, SupportedProviders provider, bool isAlbum );
 
         #region Base Class Defaults
 
@@ -138,6 +140,39 @@ namespace TuneBridge.Domain.Types.Bases {
         }
 
         /// <summary>
+        /// Performs the initial provider ID lookup for a specific service.
+        /// </summary>
+        /// <param name="providerId">The provider-specific identifier.</param>
+        /// <param name="provider">The provider to query.</param>
+        /// <param name="isAlbum">Indicates whether to search for album entries (true) or track entries (false).</param>
+        /// <returns>The <see cref="MusicLookupResultDto"/> for the <paramref name="provider"/>.</returns>
+        protected async Task<MusicLookupResultDto?> GetMusicLookupResultsByProviderId(
+            string providerId,
+            SupportedProviders provider,
+            bool isAlbum
+        ) {
+            try {
+                if (string.IsNullOrWhiteSpace( providerId )) { return null; }
+
+                if (!EnabledProviders.TryGetValue( provider, out IMusicLookupService? svc )) {
+                    Logger.LogWarning( "Provider {provider} is not enabled or configured", provider );
+                    return null;
+                }
+                MusicLookupResultDto? lookup = await svc.GetInfoByIDAsync( providerId, isAlbum );
+                if (lookup is not null) {
+                    lookup.IsPrimary = true;
+                    return lookup;
+                }
+            } catch (Exception ex) {
+                Logger.LogError( ex, "Failed while getting initial media link lookup data by providerId." );
+                Logger.LogTrace( "providerId: '{providerId}', provider: {provider}, isAlbum: {isAlbum}",
+                    SanitizeForLogging( providerId ), provider, isAlbum );
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Combines lookup results from a single provider into a MediaLinkResult and syncs with other providers.
         /// </summary>
         /// <param name="lookupResults">Optional tuple containing the DTO and provider information.</param>
@@ -227,7 +262,11 @@ namespace TuneBridge.Domain.Types.Bases {
                     Logger.LogError( ex,
                         "Error during secondary lookup via {additionalProvider} for artist '{artist}', title " +
                         "'{title}' externalId '{externalId}' isAlbum={isAlbum} originalProvider(s)={provider}",
-                        provider, firstValue.Artist, firstValue.Title, firstValue.ExternalId, firstValue.IsAlbum,
+                        provider,
+                        firstValue.Artist,
+                        firstValue.Title,
+                        firstValue.ExternalId,
+                        firstValue.IsAlbum,
                         string.Join( ", ", completedList.Select( l => l.ToString( ) ) )
                     );
                     Logger.LogTrace( JsonSerializer.Serialize( input, SerializerOptions ) );
@@ -236,7 +275,7 @@ namespace TuneBridge.Domain.Types.Bases {
             return input;
         }
 
-        [GeneratedRegex( @"[Hh][Tt]{2}[Pp][Ss]:\/\/(?<Link>\w[\w\/\=\?\.\:\-%&]*)" )]
+        [GeneratedRegex( @"(?<Url>[Hh][Tt]{2}[Pp][Ss]:\/\/(?<Link>\w[\w\/\=\?\.\:\-%&]*))" )]
         private protected static partial Regex ValidHttpsLink( );
 
         /// <summary>

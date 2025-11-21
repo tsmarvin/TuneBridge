@@ -18,7 +18,17 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// This service uses the idunno.Bluesky library to interact with ATProto-compatible PDS instances.
     /// MediaLinkResults are stored as custom media.tunebridge.dev.lookup lexicon records.
     /// </remarks>
-    public class ATProtoStorageService : IATProtoStorageService {
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="ATProtoStorageService"/> class.
+    /// </remarks>
+    /// <param name="identifier">The account identifier (handle or DID).</param>
+    /// <param name="password">The app password for authentication.</param>
+    /// <param name="logger">Logger for diagnostic information.</param>
+    public class ATProtoStorageService(
+        string identifier,
+        string password,
+        ILogger<ATProtoStorageService> logger
+    ) : IATProtoStorageService {
 
         /// <summary>
         /// The NSID (Namespaced Identifier) for the TuneBridge MediaLinkResult lexicon.
@@ -30,60 +40,12 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// Initialized once at startup for O(1) lookups.
         /// </summary>
         private static readonly Lazy<Dictionary<string, SupportedProviders>> s_providerStringToEnum =
-            new(CreateProviderMappings);
+                                                                                new(CreateProviderMappings);
 
-        private readonly BlueskyAgent _agent;
-        private readonly string _identifier;
-        private readonly string _password;
-        private readonly ILogger<ATProtoStorageService> _logger;
+        private readonly BlueskyAgent _agent = new( );
         private readonly SemaphoreSlim _authLock = new( 1, 1 );
         private bool _isAuthenticated;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ATProtoStorageService"/> class.
-        /// </summary>
-        /// <param name="identifier">The account identifier (handle or DID).</param>
-        /// <param name="password">The app password for authentication.</param>
-        /// <param name="logger">Logger for diagnostic information.</param>
-        public ATProtoStorageService(
-            string identifier,
-            string password,
-            ILogger<ATProtoStorageService> logger
-        ) {
-            _agent = new BlueskyAgent( );
-            _identifier = identifier;
-            _password = password;
-            _logger = logger;
-
-            _logger.LogInformation( "ATProtoStorageService initialized with PDS" );
-        }
-
-        /// <summary>
-        /// Ensures the agent is authenticated with ATProto PDS.
-        /// </summary>
-        private async Task EnsureAuthenticatedAsync( ) {
-            if (_isAuthenticated) {
-                return;
-            }
-
-            await _authLock.WaitAsync( );
-            try {
-                if (_isAuthenticated) {
-                    return;
-                }
-
-                AtProtoHttpResult<bool> loginResult = await _agent.Login( _identifier, _password );
-                if (!loginResult.Succeeded) {
-                    string errorMsg = loginResult.AtErrorDetail?.Message ?? $"HTTP {loginResult.StatusCode}";
-                    throw new InvalidOperationException( $"Failed to authenticate to PDS: {errorMsg}" );
-                }
-
-                _isAuthenticated = true;
-                _logger.LogInformation( "Successfully authenticated to PDS" );
-            } finally {
-                _ = _authLock.Release( );
-            }
-        }
 
         /// <inheritdoc/>
         public async Task<string> StoreMediaLinkResultAsync( MediaLinkResult result ) {
@@ -106,7 +68,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 );
 
                 if (putResult.Succeeded && putResult.Result is not null) {
-                    _logger.LogInformation( "Successfully updated existing MediaLinkResult on ATProto PDS: {uri}", putResult.Result.Uri );
+                    logger.LogInformation( "Successfully updated existing MediaLinkResult on ATProto PDS: {uri}", putResult.Result.Uri );
                     return putResult.Result.Uri.ToString( );
                 }
 
@@ -123,11 +85,11 @@ namespace TuneBridge.Domain.Implementations.Services {
                     throw new InvalidOperationException( $"Failed to create record on ATProto PDS: {errorMsg}" );
                 }
 
-                _logger.LogInformation( "Successfully created MediaLinkResult on ATProto PDS: {uri}", createResult.Result.Uri );
+                logger.LogInformation( "Successfully created MediaLinkResult on ATProto PDS: {uri}", createResult.Result.Uri );
 
                 return createResult.Result.Uri.ToString( );
             } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to store MediaLinkResult on ATProto PDS" );
+                logger.LogError( ex, "Failed to store MediaLinkResult on ATProto PDS" );
                 throw;
             }
         }
@@ -146,81 +108,41 @@ namespace TuneBridge.Domain.Implementations.Services {
                     cid: null
                 );
 
-                if (!getRecordResult.Succeeded || getRecordResult.Result?.Value is null) {
-                    _logger.LogWarning( "Record not found: {uri}", recordUri );
-                    return null;
+                if (getRecordResult.Succeeded && getRecordResult.Result?.Value is not null) {
+                    // Convert the custom record back to MediaLinkResult DTO
+                    return ConvertFromRecord( getRecordResult.Result.Value );
+                } else if (!getRecordResult.Succeeded) {
+                    string errorMsg = getRecordResult.AtErrorDetail?.Message ?? $"HTTP {getRecordResult.StatusCode}";
+                    logger.LogWarning( "Failed to get record from ATProto PDS: {error}", errorMsg );
                 }
 
-                // Convert the custom record back to MediaLinkResult DTO
-                MediaLinkResult mediaLinkResult = ConvertFromRecord( getRecordResult.Result.Value );
-
-                return mediaLinkResult;
+                return null;
             } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to retrieve MediaLinkResult from ATProto PDS: {uri}", recordUri );
+                logger.LogError( ex, "Failed to retrieve MediaLinkResult from ATProto PDS: {uri}", recordUri );
                 return null;
             }
         }
 
-        /// <inheritdoc/>
-        public async Task<MediaLinkResult?> GetMediaLinkResultByRkeyAsync( string rkey ) {
-            await EnsureAuthenticatedAsync( );
+        /// <summary>
+        /// Ensures the agent is authenticated with ATProto PDS.
+        /// </summary>
+        private async Task EnsureAuthenticatedAsync( ) {
+            if (_isAuthenticated) { return; }
 
+            await _authLock.WaitAsync( );
             try {
-                if (string.IsNullOrWhiteSpace( rkey )) {
-                    _logger.LogWarning( "Cannot retrieve record: rkey is null or empty" );
-                    return null;
+                if (_isAuthenticated) { return; }
+
+                AtProtoHttpResult<bool> loginResult = await _agent.Login( identifier, password );
+                if (!loginResult.Succeeded) {
+                    string errorMsg = loginResult.AtErrorDetail?.Message ?? $"HTTP {loginResult.StatusCode}";
+                    throw new InvalidOperationException( $"Failed to authenticate to PDS: {errorMsg}" );
                 }
 
-                // Construct the AT-URI using the authenticated user's DID
-                Did? userDid = _agent.Did;
-                if (userDid is null) {
-                    _logger.LogWarning( "Cannot construct AT-URI: user DID not available" );
-                    return null;
-                }
-
-                string recordUri = $"at://{userDid}/{s_mediaLinkResultCollection}/{rkey}";
-                return await GetMediaLinkResultAsync( recordUri );
-            } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to retrieve MediaLinkResult by rkey: {rkey}", rkey );
-                return null;
-            }
-        }
-
-        /// <inheritdoc/>
-        public async Task<bool> UpdateMediaLinkResultAsync( string recordUri, MediaLinkResult result ) {
-            await EnsureAuthenticatedAsync( );
-
-            try {
-                // Parse the AT-URI to get repo and rkey
-                AtUri atUri = new( recordUri );
-
-                if (atUri.RecordKey is null) {
-                    _logger.LogWarning( "Invalid AT-URI, missing record key: {uri}", recordUri );
-                    return false;
-                }
-
-                // Convert MediaLinkResult DTO to custom record
-                MediaLinkResultRecord record = ConvertToRecord( result );
-
-                // Update the record on ATProto PDS using PutRecord
-                AtProtoHttpResult<PutRecordResult> putResult = await _agent.PutRecord(
-                    record: record,
-                    collection: s_mediaLinkResultCollection,
-                    rKey: atUri.RecordKey,
-                    validate: false // Disable validation per requirement (PDS doesn't support lexicon discovery)
-                );
-
-                if (!putResult.Succeeded) {
-                    string errorMsg = putResult.AtErrorDetail?.Message ?? $"HTTP {putResult.StatusCode}";
-                    _logger.LogWarning( "Failed to update record on ATProto PDS: {error}", errorMsg );
-                    return false;
-                }
-
-                _logger.LogInformation( "Successfully updated MediaLinkResult on ATProto PDS: {uri}", recordUri );
-                return true;
-            } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to update MediaLinkResult on ATProto PDS: {uri}", recordUri );
-                return false;
+                _isAuthenticated = true;
+                logger.LogInformation( "Successfully authenticated to PDS" );
+            } finally {
+                _ = _authLock.Release( );
             }
         }
 
@@ -263,7 +185,9 @@ namespace TuneBridge.Domain.Implementations.Services {
         /// Note: Input links are not stored in PDS records, only provider results.
         /// </summary>
         private static MediaLinkResult ConvertFromRecord( MediaLinkResultRecord record ) {
-            MediaLinkResult result = new( );
+            MediaLinkResult result = new( ){
+                LookedUpAt = record.LookedUpAt.UtcDateTime
+            };
 
             foreach (ProviderResultRecord providerResult in record.Results) {
                 // Try to parse provider using consistent logic, skip if unknown
@@ -322,7 +246,8 @@ namespace TuneBridge.Domain.Implementations.Services {
         private static bool TryParseProvider( string providerString, out SupportedProviders provider ) {
             provider = default;
 
-            return !string.IsNullOrWhiteSpace( providerString ) && s_providerStringToEnum.Value.TryGetValue( providerString, out provider );
+            return !string.IsNullOrWhiteSpace( providerString )
+                && s_providerStringToEnum.Value.TryGetValue( providerString, out provider );
         }
     }
 }

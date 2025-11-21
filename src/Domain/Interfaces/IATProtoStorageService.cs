@@ -24,20 +24,6 @@ namespace TuneBridge.Domain.Interfaces {
         /// <returns>The MediaLinkResult, or null if not found.</returns>
         Task<MediaLinkResult?> GetMediaLinkResultAsync( string recordUri );
 
-        /// <summary>
-        /// Retrieves a MediaLinkResult from ATProto PDS by its rkey.
-        /// </summary>
-        /// <param name="rkey">The record key (e.g., "track:USRC12345678" or "album:123456789012").</param>
-        /// <returns>The MediaLinkResult, or null if not found.</returns>
-        Task<MediaLinkResult?> GetMediaLinkResultByRkeyAsync( string rkey );
-
-        /// <summary>
-        /// Updates an existing MediaLinkResult record on ATProto PDS.
-        /// </summary>
-        /// <param name="recordUri">The AT-URI of the record to update.</param>
-        /// <param name="result">The updated MediaLinkResult.</param>
-        /// <returns>True if the update was successful, false otherwise.</returns>
-        Task<bool> UpdateMediaLinkResultAsync( string recordUri, MediaLinkResult result );
     }
 }
 

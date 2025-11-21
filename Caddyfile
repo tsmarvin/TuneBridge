@@ -82,9 +82,9 @@
         header_up X-Forwarded-Proto {scheme}
         header_up X-Forwarded-Host {host}
 
-        # Timeouts
+        # Timeouts - increased read timeout to 10 minutes to accommodate retry-after delays
         transport http {
-            read_timeout 180s
+            read_timeout 600s
             write_timeout 30s
             dial_timeout 5s
         }

@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace TuneBridge.Migrations.MediaLinkCache {
     /// <inheritdoc />
-    public partial class MediaLinkCacheInitial : Migration {
+    public partial class InitialCreate : Migration {
         /// <inheritdoc />
         protected override void Up( MigrationBuilder migrationBuilder ) {
             _ = migrationBuilder.CreateTable(
@@ -40,6 +40,26 @@ namespace TuneBridge.Migrations.MediaLinkCache {
                         onDelete: ReferentialAction.Cascade );
                 } );
 
+            _ = migrationBuilder.CreateTable(
+                name: "ProviderEntries",
+                columns: table => new {
+                    Id = table.Column<int>( type: "INTEGER", nullable: false )
+                        .Annotation( "Sqlite:Autoincrement", true ),
+                    Provider = table.Column<int>( type: "INTEGER", nullable: false ),
+                    ProviderId = table.Column<string>( type: "TEXT", maxLength: 200, nullable: false ),
+                    MediaLinkCacheEntryRkey = table.Column<string>( type: "TEXT", maxLength: 200, nullable: false ),
+                    CreatedAt = table.Column<DateTime>( type: "TEXT", nullable: false )
+                },
+                constraints: table => {
+                    _ = table.PrimaryKey( "PK_ProviderEntries", x => x.Id );
+                    _ = table.ForeignKey(
+                        name: "FK_ProviderEntries_CacheEntries_MediaLinkCacheEntryRkey",
+                        column: x => x.MediaLinkCacheEntryRkey,
+                        principalTable: "CacheEntries",
+                        principalColumn: "Rkey",
+                        onDelete: ReferentialAction.Cascade );
+                } );
+
             _ = migrationBuilder.CreateIndex(
                 name: "IX_CacheEntries_LastLookedUpAt",
                 table: "CacheEntries",
@@ -61,12 +81,31 @@ namespace TuneBridge.Migrations.MediaLinkCache {
                 name: "IX_LookupEntries_MediaLinkCacheEntryRkey",
                 table: "LookupEntries",
                 column: "MediaLinkCacheEntryRkey" );
+
+            _ = migrationBuilder.CreateIndex(
+                name: "IX_ProviderEntries_MediaLinkCacheEntryRkey",
+                table: "ProviderEntries",
+                column: "MediaLinkCacheEntryRkey" );
+
+            _ = migrationBuilder.CreateIndex(
+                name: "IX_ProviderEntries_Provider_ProviderId",
+                table: "ProviderEntries",
+                columns: new[] { "Provider", "ProviderId" },
+                unique: true );
+
+            _ = migrationBuilder.CreateIndex(
+                name: "IX_ProviderEntries_ProviderId",
+                table: "ProviderEntries",
+                column: "ProviderId" );
         }
 
         /// <inheritdoc />
         protected override void Down( MigrationBuilder migrationBuilder ) {
             _ = migrationBuilder.DropTable(
                 name: "LookupEntries" );
+
+            _ = migrationBuilder.DropTable(
+                name: "ProviderEntries" );
 
             _ = migrationBuilder.DropTable(
                 name: "CacheEntries" );
