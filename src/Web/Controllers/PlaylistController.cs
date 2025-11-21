@@ -18,6 +18,28 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
     private readonly ILogger<PlaylistController>? _logger = logger;
 
     /// <summary>
+    /// Sanitizes a string for safe logging by removing or replacing characters that could cause log forging.
+    /// </summary>
+    /// <param name="input">The input string to sanitize.</param>
+    /// <param name="maxLength">Maximum length to truncate to (default 100).</param>
+    /// <returns>Sanitized string safe for logging.</returns>
+    private static string SanitizeForLog( string? input, int maxLength = 100 ) {
+        if (string.IsNullOrEmpty( input )) {
+            return string.Empty;
+        }
+
+        // Remove newlines, carriage returns, and other control characters
+        string sanitized = input.Replace( "\r", "" ).Replace( "\n", "" ).Replace( "\t", " " );
+        
+        // Truncate if too long
+        if (sanitized.Length > maxLength) {
+            sanitized = sanitized[..maxLength];
+        }
+
+        return sanitized;
+    }
+
+    /// <summary>
     /// Creates a new playlist from a list of card IDs.
     /// </summary>
     /// <param name="request">Request containing card IDs and optional metadata.</param>
@@ -83,7 +105,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
         // Ensure we have matching counts
         if (cardIds.Length != cardRkeys.Length) {
             _logger?.LogWarning( "Playlist {PlaylistId} has mismatched card IDs ({CardIdCount}) and rkeys ({RkeyCount})",
-                id, cardIds.Length, cardRkeys.Length );
+                SanitizeForLog( id, 50 ), cardIds.Length, cardRkeys.Length );
         }
 
         for (int i = 0; i < Math.Min( cardIds.Length, cardRkeys.Length ); i++) {
@@ -110,14 +132,14 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
                         _logger?.LogInformation( "Regenerated card {CardId} from rkey {Rkey} for playlist {PlaylistId}",
-                            cardId, rkey, id );
+                            SanitizeForLog( cardId, 50 ), SanitizeForLog( rkey, 50 ), SanitizeForLog( id, 50 ) );
                     }
                 }
             }
 
             if (result == null) {
                 _logger?.LogWarning( "Unable to load or regenerate card {CardId} (rkey: {Rkey}) for playlist {PlaylistId}",
-                    cardId, rkey, id );
+                    SanitizeForLog( cardId, 50 ), SanitizeForLog( rkey, 50 ), SanitizeForLog( id, 50 ) );
                 continue;
             }
 
@@ -191,13 +213,15 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
 
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
-                        _logger?.LogInformation( "Regenerated card {CardId} for playlist embed {PlaylistId}", cardId, id );
+                        _logger?.LogInformation( "Regenerated card {CardId} for playlist embed {PlaylistId}", 
+                            SanitizeForLog( cardId, 50 ), SanitizeForLog( id, 50 ) );
                     }
                 }
             }
 
             if (result == null) {
-                _logger?.LogWarning( "Unable to load or regenerate card {CardId} for playlist embed {PlaylistId}", cardId, id );
+                _logger?.LogWarning( "Unable to load or regenerate card {CardId} for playlist embed {PlaylistId}", 
+                    SanitizeForLog( cardId, 50 ), SanitizeForLog( id, 50 ) );
                 continue;
             }
 

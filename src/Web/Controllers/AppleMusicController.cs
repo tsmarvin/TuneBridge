@@ -49,6 +49,28 @@ public class AppleMusicController(
     public IActionResult Index( ) => View( );
 
     /// <summary>
+    /// Sanitizes a string for safe logging by removing or replacing characters that could cause log forging.
+    /// </summary>
+    /// <param name="input">The input string to sanitize.</param>
+    /// <param name="maxLength">Maximum length to truncate to (default 100).</param>
+    /// <returns>Sanitized string safe for logging.</returns>
+    private static string SanitizeForLog( string? input, int maxLength = 100 ) {
+        if (string.IsNullOrEmpty( input )) {
+            return string.Empty;
+        }
+
+        // Remove newlines, carriage returns, and other control characters
+        string sanitized = input.Replace( "\r", "" ).Replace( "\n", "" ).Replace( "\t", " " );
+        
+        // Truncate if too long
+        if (sanitized.Length > maxLength) {
+            sanitized = sanitized[..maxLength];
+        }
+
+        return sanitized;
+    }
+
+    /// <summary>
     /// Gets a developer token for MusicKit JS authentication.
     /// </summary>
     /// <returns>Developer token.</returns>
@@ -460,9 +482,7 @@ public class AppleMusicController(
 
                 processedCount++;
             } catch (Exception ex) {
-                // Sanitize songId for logging to prevent log forging
-                string safeSongId = songId.Length > 50 ? songId[..50] : songId;
-                logger.LogError( ex, "Error processing song {SongId}", safeSongId );
+                logger.LogError( ex, "Error processing song {SongId}", SanitizeForLog( songId, 50 ) );
                 errorCount++;
             }
         }
