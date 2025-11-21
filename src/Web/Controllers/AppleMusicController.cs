@@ -302,17 +302,18 @@ public class AppleMusicController(
 
                 // Extract track IDs from current page
                 if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
-                    var validTrackIds = dataElement.EnumerateArray( )
-                        .Where( t => t.TryGetProperty( "attributes", out JsonElement attr ) &&
-                                     attr.TryGetProperty( "playParams", out JsonElement playParams ) &&
-                                     playParams.TryGetProperty( "catalogId", out JsonElement catalogId ) &&
-                                     !string.IsNullOrWhiteSpace( catalogId.GetString( ) ) )
-                        .Select( t => t.GetProperty( "attributes" )
-                                       .GetProperty( "playParams" )
-                                       .GetProperty( "catalogId" )
-                                       .GetString( )! );
+                    foreach (JsonElement track in dataElement.EnumerateArray( )
+                        .Where( t => t.TryGetProperty( "attributes", out _ ) )) {
+                        if (track.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
+                            attributesElement.TryGetProperty( "playParams", out JsonElement playParamsElement ) &&
+                            playParamsElement.TryGetProperty( "catalogId", out JsonElement catalogIdElement )) {
+                            string? trackId = catalogIdElement.GetString( );
+                            if (!string.IsNullOrWhiteSpace( trackId )) {
+                                trackIds.Add( trackId );
+                            }
+                        }
+                    }
 
-                    trackIds.AddRange( validTrackIds );
                     totalTracks = trackIds.Count;
                 }
 
