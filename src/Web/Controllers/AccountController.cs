@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using TuneBridge.Domain.Contracts.Entities;
 using TuneBridge.Domain.Implementations.Auth;
 using TuneBridge.Domain.Models;
 
@@ -233,7 +235,7 @@ public class AccountController : Controller {
 
     /// <summary>
     /// Downloads all personal data associated with the authenticated user.
-    /// Returns a JSON file containing account information and metadata.
+    /// Returns a JSON file containing account information, playlists, and metadata.
     /// </summary>
     /// <returns>JSON file with personal data.</returns>
     /// <response code="200">Personal data downloaded successfully.</response>
@@ -241,11 +243,16 @@ public class AccountController : Controller {
     [Authorize]
     [HttpPost]
     [Route( "account/download-data" )]
-    public async Task<IActionResult> DownloadPersonalData( ) {
+    public async Task<IActionResult> DownloadPersonalData( [FromServices] TuneBridge.Domain.Interfaces.IPlaylistService? playlistService ) {
         ApplicationUser? user = await _userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( );
         }
+
+        // Get user's playlists
+        List<PlaylistEntry> playlists = playlistService != null
+            ? await playlistService.ExportUserDataAsync( user.Id )
+            : [];
 
         var personalData = new {
             exportDate = DateTime.UtcNow,
@@ -258,14 +265,25 @@ public class AccountController : Controller {
             rateLimitingData = new {
                 requestCount = user.RequestCount,
                 rateLimitWindowStart = user.RateLimitWindowStart
-            }
+            },
+            thirdParty = new {
+                appleMusicTokenExpiration = user.AppleMusicTokenExpiration
+            },
+            playlists = playlists.Select( p => new {
+                playlistId = p.PlaylistId,
+                title = p.Title,
+                description = p.Description,
+                cardIds = p.CardIds.Split( ',', StringSplitOptions.RemoveEmptyEntries ).ToList( ),
+                createdAt = p.CreatedAt,
+                url = $"https://{Request.Host}/playlist/{p.PlaylistId}"
+            } )
         };
 
         _logger.LogInformation( "User downloaded personal data with ID: {UserId}", user.Id );
 
-        string json = System.Text.Json.JsonSerializer.Serialize(
+        string json = JsonSerializer.Serialize(
             personalData,
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }
+            new JsonSerializerOptions { WriteIndented = true }
         );
 
         return File(

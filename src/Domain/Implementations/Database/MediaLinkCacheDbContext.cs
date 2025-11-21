@@ -26,6 +26,11 @@ namespace TuneBridge.Domain.Implementations.Database {
         /// </summary>
         public DbSet<MediaLookupEntry> LookupEntries { get; set; }
 
+        /// <summary>
+        /// Provider-specific entries that map to cache entries (provider IDs).
+        /// </summary>
+        public DbSet<MediaProviderEntry> ProviderEntries { get; set; }
+
         /// <inheritdoc/>
         protected override void OnModelCreating( ModelBuilder modelBuilder ) {
             base.OnModelCreating( modelBuilder );
@@ -72,6 +77,34 @@ namespace TuneBridge.Domain.Implementations.Database {
 
                 _ = entity.HasOne( e => e.MediaLinkCacheEntry )
                     .WithMany( c => c.LookupEntries )
+                    .HasForeignKey( e => e.MediaLinkCacheEntryRkey )
+                    .OnDelete( DeleteBehavior.Cascade );
+            } );
+
+            // Configure MediaProviderEntry
+            _ = modelBuilder.Entity<MediaProviderEntry>( entity => {
+                _ = entity.HasKey( e => e.Id );
+                _ = entity.Property( e => e.Provider )
+                    .IsRequired( );
+                _ = entity.Property( e => e.ProviderId )
+                    .IsRequired( )
+                    .HasMaxLength( 200 );
+                _ = entity.Property( e => e.MediaLinkCacheEntryRkey )
+                    .IsRequired( )
+                    .HasMaxLength( 200 );
+                _ = entity.Property( e => e.CreatedAt )
+                    .IsRequired( );
+
+                // Composite unique index on Provider and ProviderId
+                // This ensures each provider ID is only stored once per provider
+                _ = entity.HasIndex( e => new { e.Provider, e.ProviderId } )
+                    .IsUnique( );
+
+                // Index on ProviderId for fast lookups by provider-specific ID
+                _ = entity.HasIndex( e => e.ProviderId );
+
+                _ = entity.HasOne( e => e.MediaLinkCacheEntry )
+                    .WithMany( c => c.ProviderEntries )
                     .HasForeignKey( e => e.MediaLinkCacheEntryRkey )
                     .OnDelete( DeleteBehavior.Cascade );
             } );

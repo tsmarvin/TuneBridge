@@ -5,7 +5,7 @@
 <div class="card mb-4">
     <div class="card-body">
         <h2 class="card-title">Apple Music Library Access</h2>
-        
+
         <div id="statusSection" class="mb-4">
             <h5>Authentication Status</h5>
             <div id="statusMessage" class="alert alert-info">
@@ -29,16 +29,16 @@
             <p class="text-muted">
                 Select a playlist from your Apple Music library.
             </p>
-            
+
             <div id="playlistsLoading" class="d-none mb-3">
                 <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
                 Loading playlists...
             </div>
-            
+
             <div id="playlistsError" class="alert alert-danger d-none"></div>
-            
+
             <div id="playlistsList" class="list-group"></div>
-            
+
             <div id="selectedPlaylist" class="alert alert-success d-none mt-3">
                 <strong>Selected Playlist:</strong> <span id="selectedPlaylistName"></span>
                 <div class="mt-2">
@@ -49,14 +49,24 @@
             <div id="processingStatus" class="d-none mt-3">
                 <div id="processingLoading" class="d-none">
                     <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    Processing playlist...
+                    <span id="processingLoadingText">Processing playlist...</span>
                 </div>
                 <div id="processingError" class="alert alert-danger d-none"></div>
-                <div id="processingSuccess" class="alert alert-success d-none"></div>
             </div>
         </div>
 
         <div id="error" class="alert alert-danger d-none mt-3"></div>
+    </div>
+</div>
+
+<!-- Results Section -->
+<div id="resultsSection" class="d-none">
+    <div class="card">
+        <div class="card-body">
+            <h3 class="card-title mb-3">Results</h3>
+            <div id="resultsSummary" class="alert alert-info d-none"></div>
+            <div id="cardsContainer"></div>
+        </div>
     </div>
 </div>
 
@@ -76,9 +86,12 @@
         const processPlaylistBtn = document.getElementById('processPlaylistBtn');
         const processingStatus = document.getElementById('processingStatus');
         const processingLoading = document.getElementById('processingLoading');
+        const processingLoadingText = document.getElementById('processingLoadingText');
         const processingError = document.getElementById('processingError');
-        const processingSuccess = document.getElementById('processingSuccess');
         const error = document.getElementById('error');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultsSummary = document.getElementById('resultsSummary');
+        const cardsContainer = document.getElementById('cardsContainer');
 
         let musicKitInstance = null;
         let selectedPlaylistId = null;
@@ -96,10 +109,10 @@
                 });
 
                 musicKitInstance = MusicKit.getInstance();
-                
+
                 // Check authentication status
                 await checkAuthStatus();
-                
+
             } catch (err) {
                 console.error('MusicKit configuration error:', err);
                 statusMessage.classList.remove('alert-info');
@@ -110,8 +123,6 @@
 
         // Get developer token from server
         async function getDeveloperToken() {
-            // For now, we'll need to add an endpoint to generate this
-            // The AppleJwtHandler already exists, we just need to expose it
             const response = await fetch('/applemusic/developer-token');
             const data = await response.json();
             return data.token;
@@ -128,10 +139,10 @@
                     statusMessage.classList.remove('alert-info');
                     statusMessage.classList.add('alert-success');
                     statusMessage.innerHTML = '✓ Connected to Apple Music';
-                    
+
                     // Show playlists section
                     playlistsSection.classList.remove('d-none');
-                    
+
                     // Load playlists
                     await loadPlaylists();
                 } else {
@@ -156,7 +167,7 @@
             try {
                 // Request user authorization
                 const userToken = await musicKitInstance.authorize();
-                
+
                 // Store the token on the server
                 const response = await fetch('/applemusic/store-token', {
                     method: 'POST',
@@ -181,10 +192,10 @@
                 statusMessage.classList.remove('alert-info');
                 statusMessage.classList.add('alert-success');
                 statusMessage.innerHTML = '✓ Connected to Apple Music';
-                
+
                 // Show playlists section
                 playlistsSection.classList.remove('d-none');
-                
+
                 // Load playlists
                 await loadPlaylists();
 
@@ -206,7 +217,7 @@
 
             try {
                 const response = await fetch('/applemusic/playlists', { credentials: 'same-origin' });
-                
+
                 if (!response.ok) {
                     const data = await response.json();
                     throw new Error(data.message || 'Failed to load playlists');
@@ -226,7 +237,7 @@
                     const item = document.createElement('button');
                     item.className = 'list-group-item list-group-item-action';
                     item.textContent = playlist.name;
-                    item.onclick = () => selectPlaylist(playlist);
+                    item.onclick = (e) => selectPlaylist(playlist, e.currentTarget);
                     playlistsList.appendChild(item);
                 });
 
@@ -239,25 +250,29 @@
         }
 
         // Select a playlist
-        function selectPlaylist(playlist) {
+        function selectPlaylist(playlist, clickedElement) {
             // Highlight selected item
             const items = playlistsList.querySelectorAll('.list-group-item');
             items.forEach(item => item.classList.remove('active'));
-            event.target.classList.add('active');
-            
+            clickedElement.classList.add('active');
+
             // Store selected playlist ID
             selectedPlaylistId = playlist.id;
-            
+
             // Show selected playlist
             selectedPlaylistName.textContent = playlist.name;
             selectedPlaylist.classList.remove('d-none');
-            
-            // Reset processing status
+
+            // Reset processing status and results
             processingStatus.classList.add('d-none');
             processingLoading.classList.add('d-none');
             processingError.classList.add('d-none');
-            processingSuccess.classList.add('d-none');
-            
+            // Remove any dynamically added warning messages
+            processingStatus.querySelectorAll('.alert-warning').forEach(el => el.remove());
+            resultsSection.classList.add('d-none');
+            resultsSummary.classList.add('d-none');
+            cardsContainer.innerHTML = '';
+
             console.log('Selected playlist:', playlist);
         }
 
@@ -271,11 +286,14 @@
             processPlaylistBtn.textContent = 'Processing...';
             processingStatus.classList.remove('d-none');
             processingLoading.classList.remove('d-none');
+            processingLoadingText.textContent = 'Processing playlist...';
             processingError.classList.add('d-none');
-            processingSuccess.classList.add('d-none');
+            resultsSection.classList.add('d-none');
+            resultsSummary.classList.add('d-none');
+            cardsContainer.innerHTML = '';
 
             try {
-                // First, process the playlist to get track URLs
+                // First, process the playlist to get track IDs
                 const processResponse = await fetch('/applemusic/process-playlist', {
                     method: 'POST',
                     headers: {
@@ -293,43 +311,133 @@
                 }
 
                 const processData = await processResponse.json();
-                processingLoading.classList.add('d-none');
 
                 if (!processData.success) {
-                    // Check if playlist is too large
-                    if (processData.tooLarge) {
-                        processingError.innerHTML = `<strong>❌ Playlist too large</strong><br>${processData.message}`;
-                        processingError.classList.remove('d-none');
-                        processPlaylistBtn.disabled = false;
-                        processPlaylistBtn.textContent = 'Process Playlist';
-                        return;
-                    }
-
                     throw new Error(processData.message || 'Failed to process playlist');
                 }
 
-                // Now send the URLs to the URLList endpoint
-                const urlListResponse = await fetch('/music/lookup/urlList', {
+                // Update loading text
+                processingLoadingText.textContent = `Looking up ${processData.trackCount} tracks...`;
+
+                // Show warning if playlist is large (but continue processing)
+                if (processData.tooLarge) {
+                    const warningDiv = document.createElement('div');
+                    warningDiv.className = 'alert alert-warning mt-3';
+                    warningDiv.innerHTML = `<strong>Large Playlist</strong><br>${processData.message}`;
+                    processingStatus.appendChild(warningDiv);
+                }
+
+                // Show results section and prepare container
+                resultsSection.classList.remove('d-none');
+                cardsContainer.innerHTML = '<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3"></div>';
+                const gridContainer = cardsContainer.querySelector('.row');
+
+                // Stream results as they're processed
+                const streamResponse = await fetch('/applemusic/playlist-results-stream', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     credentials: 'same-origin',
-                    body: JSON.stringify({
-                        uri: processData.trackUrls.join('\n')
-                    })
+                    body: JSON.stringify(processData.trackIds)
                 });
 
-                if (!urlListResponse.ok) {
-                    throw new Error('Failed to lookup track URLs');
+                if (!streamResponse.ok) {
+                    throw new Error('Failed to lookup track information');
                 }
 
-                const urlListData = await urlListResponse.json();
-                
-                processingSuccess.innerHTML = `<strong>✅ Success!</strong><br>Processed ${processData.trackCount} tracks from the playlist.<br>Found ${urlListData.length} matching results.`;
-                processingSuccess.classList.remove('d-none');
-                
-                console.log('URL List Results:', urlListData);
+                const reader = streamResponse.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let cardCount = 0;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (value) {
+                        buffer += decoder.decode(value, { stream: !done });
+                        
+                        // Process complete HTML elements from buffer
+                        let lastClosingDiv = buffer.lastIndexOf('</div>');
+                        if (lastClosingDiv !== -1) {
+                            const completeHTML = buffer.substring(0, lastClosingDiv + 6);
+                            buffer = buffer.substring(lastClosingDiv + 6);
+                            
+                            // Check for completion marker
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = completeHTML;
+                            const completionMarker = tempDiv.querySelector('[data-stream-complete="true"]');
+                            
+                            if (completionMarker) {
+                                const processed = parseInt(completionMarker.getAttribute('data-processed') || '0');
+                                const errors = parseInt(completionMarker.getAttribute('data-errors') || '0');
+                                
+                                // Remove the completion marker from HTML
+                                completionMarker.remove();
+                                
+                                // Add remaining cards if any
+                                if (tempDiv.children.length > 0) {
+                                    for (const child of Array.from(tempDiv.children)) {
+                                        if (child.classList.contains('col')) {
+                                            gridContainer.appendChild(child);
+                                            cardCount++;
+                                        } else {
+                                            cardsContainer.appendChild(child);
+                                        }
+                                    }
+                                }
+                                
+                                // Update summary
+                                processingLoading.classList.add('d-none');
+                                resultsSummary.classList.remove('d-none');
+                                
+                                if (cardCount > 0) {
+                                    resultsSummary.className = 'alert alert-success';
+                                    let message = `Found ${cardCount} result${cardCount > 1 ? 's' : ''} from ${processData.trackCount} tracks`;
+                                    if (errors > 0) {
+                                        message += ` (${errors} track${errors > 1 ? 's' : ''} could not be matched)`;
+                                    }
+                                    resultsSummary.textContent = message;
+                                    
+                                    // Initialize share buttons
+                                    if (typeof initializeShareButtons === 'function') {
+                                        setTimeout(initializeShareButtons, 100);
+                                    }
+                                    
+                                    // Scroll to results
+                                    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                } else {
+                                    resultsSummary.className = 'alert alert-warning';
+                                    resultsSummary.textContent = 'No matching results found for the tracks in this playlist.';
+                                }
+                                
+                                break;
+                            } else {
+                                // Add cards to grid
+                                for (const child of Array.from(tempDiv.children)) {
+                                    if (child.classList.contains('col')) {
+                                        gridContainer.appendChild(child);
+                                        cardCount++;
+                                        
+                                        // Update progress
+                                        processingLoadingText.textContent = `Found ${cardCount} of ${processData.trackCount} tracks...`;
+                                    } else if (child.classList.contains('alert')) {
+                                        cardsContainer.appendChild(child);
+                                    }
+                                }
+                                
+                                // Initialize share buttons for newly added cards
+                                if (typeof initializeShareButtons === 'function') {
+                                    initializeShareButtons();
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (done) {
+                        break;
+                    }
+                }
 
             } catch (err) {
                 console.error('Process playlist error:', err);

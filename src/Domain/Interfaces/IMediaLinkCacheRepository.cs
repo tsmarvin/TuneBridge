@@ -1,4 +1,5 @@
 using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Interfaces {
 
@@ -37,26 +38,26 @@ namespace TuneBridge.Domain.Interfaces {
         Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByMetadataAsync( string title, string artist );
 
         /// <summary>
-        /// Stores a MediaLinkResult in the cache and on ATProto PDS.
+        /// Attempts to get a cached MediaLinkResult by provider-specific ID.
         /// </summary>
-        /// <param name="result">The MediaLinkResult to cache.</param>
-        /// <param name="inputLinks">The input links that generated this result.</param>
-        /// <returns>The ATProto record URI.</returns>
-        Task<string> CacheResultAsync( MediaLinkResult result, IEnumerable<string> inputLinks );
+        /// <param name="providerId">The provider-specific identifier (e.g., Apple Music catalog ID, Spotify track/album ID).</param>
+        /// <param name="provider">The music provider that the ID belongs to.</param>
+        /// <param name="isAlbum">True to look up an album, false to look up a track.</param>
+        /// <returns>A tuple containing the cached result, its ATProto record URI, and staleness indicator, or null if not found.</returns>
+        Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByProviderIdAsync( string providerId, SupportedProviders provider, bool isAlbum );
 
         /// <summary>
-        /// Updates an existing cache entry with a fresh lookup result.
+        /// Stores or updates (upserts) a MediaLinkResult in the cache and on ATProto PDS.
         /// </summary>
-        /// <param name="recordUri">The ATProto record URI of the existing cache entry.</param>
-        /// <param name="result">The updated MediaLinkResult.</param>
-        /// <param name="inputLinks">All input links to associate with this result.</param>
-        Task UpdateCacheEntryAsync( string recordUri, MediaLinkResult result, IEnumerable<string> inputLinks );
+        /// <param name="result">The MediaLinkResult to cache.</param>
+        /// <returns>The ATProto record URI.</returns>
+        Task<string> CacheResultAsync( MediaLinkResult result );
 
         /// <summary>
         /// Adds additional input links to an existing cache entry.
         /// </summary>
         /// <param name="recordUri">The ATProto record URI of the cache entry.</param>
-        /// <param name="newLinks">The new input links to associate with the cache entry.</param>
-        Task AddInputLinksAsync( string recordUri, IEnumerable<string> newLinks );
+        /// <param name="result">The result object containing the new input links to associate with the cache entry.</param>
+        Task AddInputLinksAsync( string recordUri, MediaLinkResult result );
     }
 }

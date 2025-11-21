@@ -1,9 +1,16 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using TuneBridge.Domain.Models;
+using Microsoft.AspNetCore.Mvc.ViewEngines;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Auth;
-using System.Text.Json;
+using TuneBridge.Domain.Implementations.Utilities;
+using TuneBridge.Domain.Interfaces;
+using TuneBridge.Domain.Models;
+using TuneBridge.Domain.Types.Enums;
+using TuneBridge.Web.Models;
 
 namespace TuneBridge.Web.Controllers;
 
@@ -11,39 +18,35 @@ namespace TuneBridge.Web.Controllers;
 /// Controller for Apple Music user authentication and playlist management.
 /// Provides endpoints for storing user tokens and listing playlists.
 /// </summary>
+/// <remarks>
+/// Initializes a new instance of the <see cref="AppleMusicController"/> class.
+/// </remarks>
+/// <param name="userManager">User manager for ASP.NET Identity.</param>
+/// <param name="httpClientFactory">HTTP client factory for making API requests.</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+/// <param name="mediaLinkService">The media link service used to lookup other track references.</param>
+/// <param name="viewEngine">View engine for rendering partial views to strings.</param>
+/// <param name="jwtHandler">JWT handler for generating Apple Music developer tokens.</param>
+/// <param name="cardService">Optional OpenGraph card service.</param>
+/// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
 [Authorize]
-public class AppleMusicController : Controller {
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILogger<AppleMusicController> _logger;
-    private readonly AppleJwtHandler? _jwtHandler;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AppleMusicController"/> class.
-    /// </summary>
-    /// <param name="userManager">User manager for ASP.NET Identity.</param>
-    /// <param name="httpClientFactory">HTTP client factory for making API requests.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    /// <param name="jwtHandler">JWT handler for generating Apple Music developer tokens (optional).</param>
-    public AppleMusicController(
-        UserManager<ApplicationUser> userManager,
-        IHttpClientFactory httpClientFactory,
-        ILogger<AppleMusicController> logger,
-        AppleJwtHandler? jwtHandler = null ) {
-        _userManager = userManager;
-        _httpClientFactory = httpClientFactory;
-        _logger = logger;
-        _jwtHandler = jwtHandler;
-    }
+public class AppleMusicController(
+    UserManager<ApplicationUser> userManager,
+    IHttpClientFactory httpClientFactory,
+    ILogger<AppleMusicController> logger,
+    IMediaLinkService mediaLinkService,
+    ICompositeViewEngine viewEngine,
+    AppleJwtHandler? jwtHandler = null,
+    IOpenGraphCardService? cardService = null,
+    IMediaLinkCacheRepository? cacheRepository = null
+) : Controller {
 
     /// <summary>
     /// Displays the Apple Music authentication page.
     /// </summary>
     [HttpGet]
     [Route( "applemusic" )]
-    public IActionResult Index( ) {
-        return View( );
-    }
+    public IActionResult Index( ) => View( );
 
     /// <summary>
     /// Gets a developer token for MusicKit JS authentication.
@@ -54,12 +57,12 @@ public class AppleMusicController : Controller {
     [HttpGet]
     [Route( "applemusic/developer-token" )]
     public IActionResult GetDeveloperToken( ) {
-        if (_jwtHandler == null) {
+        if (jwtHandler == null) {
             return StatusCode( 503, new { message = "Apple Music service is not configured" } );
         }
 
-        string token = _jwtHandler.NewAuthenticationHeader( ).Parameter ?? string.Empty;
-        return Ok( new { token = token } );
+        string token = jwtHandler.NewAuthenticationHeader( ).Parameter ?? string.Empty;
+        return Ok( new { token } );
     }
 
     /// <summary>Request for storing Apple Music user token.</summary>
@@ -82,7 +85,7 @@ public class AppleMusicController : Controller {
             return BadRequest( ModelState );
         }
 
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( );
         }
@@ -90,14 +93,14 @@ public class AppleMusicController : Controller {
         user.AppleMusicUserToken = request.UserToken;
         user.AppleMusicTokenExpiration = DateTime.UtcNow.AddMilliseconds( request.ExpiresInMs );
 
-        Microsoft.AspNetCore.Identity.IdentityResult result = await _userManager.UpdateAsync( user );
+        Microsoft.AspNetCore.Identity.IdentityResult result = await userManager.UpdateAsync( user );
 
         if (!result.Succeeded) {
-            _logger.LogError( "Failed to store Apple Music token for user {UserId}", user.Id );
+            logger.LogError( "Failed to store Apple Music token for user {UserId}", user.Id );
             return BadRequest( new { message = "Failed to store token" } );
         }
 
-        _logger.LogInformation( "Apple Music token stored for user {UserId}", user.Id );
+        logger.LogInformation( "Apple Music token stored for user {UserId}", user.Id );
 
         return Ok( new { message = "Token stored successfully" } );
     }
@@ -112,7 +115,7 @@ public class AppleMusicController : Controller {
     [HttpGet]
     [Route( "applemusic/playlists" )]
     public async Task<IActionResult> GetPlaylists( ) {
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( new { message = "User not authenticated" } );
         }
@@ -126,20 +129,20 @@ public class AppleMusicController : Controller {
         }
 
         try {
-            HttpClient client = _httpClientFactory.CreateClient( "musickit-api" );
-            
+            HttpClient client = httpClientFactory.CreateClient( "musickit-api" );
+
             // Add developer token (JWT) for API authentication
-            if (_jwtHandler != null) {
-                client.DefaultRequestHeaders.Authorization = _jwtHandler.NewAuthenticationHeader( );
+            if (jwtHandler != null) {
+                client.DefaultRequestHeaders.Authorization = jwtHandler.NewAuthenticationHeader( );
             }
-            
+
             // Add user token for accessing user's library
             client.DefaultRequestHeaders.Add( "Music-User-Token", user.AppleMusicUserToken );
 
             HttpResponseMessage response = await client.GetAsync( "https://api.music.apple.com/v1/me/library/playlists" );
 
             if (!response.IsSuccessStatusCode) {
-                _logger.LogError( "Failed to retrieve playlists for user {UserId}: {StatusCode}", user.Id, response.StatusCode );
+                logger.LogError( "Failed to retrieve playlists for user {UserId}: {StatusCode}", user.Id, response.StatusCode );
                 return StatusCode( (int)response.StatusCode, new { message = "Failed to retrieve playlists from Apple Music" } );
             }
 
@@ -163,9 +166,55 @@ public class AppleMusicController : Controller {
             return Ok( new { playlists = playlists } );
 
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error retrieving playlists for user {UserId}", user.Id );
+            logger.LogError( ex, "Error retrieving playlists for user {UserId}", user.Id );
             return StatusCode( 500, new { message = "An error occurred while retrieving playlists" } );
         }
+    }
+
+    /// <summary>
+    /// Gets the current authentication status for Apple Music.
+    /// </summary>
+    /// <returns>Authentication status including whether token exists and is valid.</returns>
+    [HttpPost]
+    [Route( "applemusic/getsongsbyid" )]
+    public async Task<IActionResult> GetSongsByID( [FromBody] string[] songIds ) {
+        ApplicationUser? user = await userManager.GetUserAsync( User );
+        if (user == null) {
+            return Unauthorized( );
+        }
+        if (jwtHandler == null) {
+            return StatusCode( 503, new { message = "Apple Music service is not configured" } );
+        }
+        List<MediaLinkResult> results = [];
+
+        foreach (string songId in songIds) {
+            MediaLinkResult? result = await mediaLinkService.GetInfoByProviderIdAsync( songId, SupportedProviders.AppleMusic, false );
+            if (result != null) {
+                results.Add( result );
+            }
+        }
+
+        return Ok( new { results } );
+    }
+
+    /// <summary>
+    /// Attempts to retrieve the ATProto URI for a MediaLinkResult from the cache.
+    /// Tries multiple lookup strategies: input link, external ID (ISRC/UPC), and metadata.
+    /// </summary>
+    /// <param name="result">The MediaLinkResult to find in cache.</param>
+    /// <returns>The ATProto URI if found in cache, otherwise null.</returns>
+    private async Task<string?> GetATProtoUriFromCache( MediaLinkResult result ) {
+        try {
+            return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, cacheRepository );
+        } catch (InvalidOperationException ex) {
+            logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
+        } catch (ArgumentException ex) {
+            logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
+        } catch (Exception ex) {
+            logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -175,7 +224,7 @@ public class AppleMusicController : Controller {
     [HttpGet]
     [Route( "applemusic/status" )]
     public async Task<IActionResult> GetStatus( ) {
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( );
         }
@@ -184,8 +233,8 @@ public class AppleMusicController : Controller {
         bool isExpired = user.AppleMusicTokenExpiration.HasValue && user.AppleMusicTokenExpiration.Value < DateTime.UtcNow;
 
         return Ok( new {
-            hasToken = hasToken,
-            isExpired = isExpired,
+            hasToken,
+            isExpired,
             expiresAt = user.AppleMusicTokenExpiration
         } );
     }
@@ -211,7 +260,7 @@ public class AppleMusicController : Controller {
             return BadRequest( ModelState );
         }
 
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( new { message = "User not authenticated" } );
         }
@@ -225,75 +274,226 @@ public class AppleMusicController : Controller {
         }
 
         try {
-            HttpClient client = _httpClientFactory.CreateClient( "musickit-api" );
-            
+            HttpClient client = httpClientFactory.CreateClient( "musickit-api" );
+
             // Add developer token (JWT) for API authentication
-            if (_jwtHandler != null) {
-                client.DefaultRequestHeaders.Authorization = _jwtHandler.NewAuthenticationHeader( );
+            if (jwtHandler != null) {
+                client.DefaultRequestHeaders.Authorization = jwtHandler.NewAuthenticationHeader( );
             }
-            
+
             // Add user token for accessing user's library
             client.DefaultRequestHeaders.Add( "Music-User-Token", user.AppleMusicUserToken );
 
-            // Fetch playlist tracks
-            string url = $"https://api.music.apple.com/v1/me/library/playlists/{request.PlaylistId}/tracks";
-            HttpResponseMessage response = await client.GetAsync( url );
+            // Fetch all playlist tracks with pagination
+            List<string> trackIds = [];
+            string? nextUrl = $"https://api.music.apple.com/v1/me/library/playlists/{request.PlaylistId}/tracks";
+            int totalTracks = 0;
 
-            if (!response.IsSuccessStatusCode) {
-                _logger.LogError( "Failed to retrieve playlist tracks for user {UserId}: {StatusCode}", user.Id, response.StatusCode );
-                return StatusCode( (int)response.StatusCode, new { message = "Failed to retrieve playlist tracks from Apple Music" } );
-            }
+            while (!string.IsNullOrEmpty( nextUrl )) {
+                HttpResponseMessage response = await client.GetAsync( nextUrl );
 
-            string content = await response.Content.ReadAsStringAsync( );
-            using JsonDocument doc = JsonDocument.Parse( content );
-
-            // Count tracks and extract URLs
-            List<string> trackUrls = [];
-            if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
-                int trackCount = dataElement.GetArrayLength( );
-
-                // Check if playlist has more than 100 tracks
-                if (trackCount > 100) {
-                    _logger.LogWarning( "Playlist has {TrackCount} tracks, exceeds limit of 100 for user {UserId}", trackCount, user.Id );
-                    return Ok( new {
-                        success = false,
-                        tooLarge = true,
-                        trackCount = trackCount,
-                        message = $"This playlist has {trackCount} tracks. We currently only support playlists with 100 tracks or fewer."
-                    } );
+                if (!response.IsSuccessStatusCode) {
+                    logger.LogError( "Failed to retrieve playlist tracks for user {UserId}: {StatusCode}", user.Id, response.StatusCode );
+                    return StatusCode( (int)response.StatusCode, new { message = "Failed to retrieve playlist tracks from Apple Music" } );
                 }
 
-                // Extract track URLs
-                foreach (JsonElement track in dataElement.EnumerateArray( )) {
-                    if (track.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
-                        attributesElement.TryGetProperty( "url", out JsonElement urlElement )) {
-                        string? trackUrl = urlElement.GetString( );
-                        if (!string.IsNullOrEmpty( trackUrl )) {
-                            trackUrls.Add( trackUrl );
+                string content = await response.Content.ReadAsStringAsync( );
+                using JsonDocument doc = JsonDocument.Parse( content );
+
+                // Extract track IDs from current page
+                if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
+                    foreach (JsonElement track in dataElement.EnumerateArray( )) {
+                        if (track.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
+                            attributesElement.TryGetProperty( "playParams", out JsonElement playParamsElement ) &&
+                            playParamsElement.TryGetProperty( "catalogId", out JsonElement catalogIdElement )
+                        ) {
+                            string? trackId = catalogIdElement.GetString( );
+                            if (!string.IsNullOrWhiteSpace( trackId )) {
+                                trackIds.Add( trackId );
+                            }
                         }
                     }
+
+                    totalTracks = trackIds.Count;
                 }
 
-                _logger.LogInformation( "Processing playlist with {TrackCount} tracks for user {UserId}", trackCount, user.Id );
+                // Check for next page
+                nextUrl = null;
+                if (doc.RootElement.TryGetProperty( "next", out JsonElement nextElement )) {
+                    string? nextPath = nextElement.GetString( );
+                    if (!string.IsNullOrWhiteSpace( nextPath )) {
+                        // Apple Music API returns a path like "/v1/me/library/playlists/.../tracks?offset=100"
+                        // We need to construct the full URL
+                        nextUrl = nextPath.StartsWith( "http" )
+                            ? nextPath
+                            : $"https://api.music.apple.com{nextPath}";
+                    }
+                }
             }
 
-            if (trackUrls.Count == 0) {
+            logger.LogInformation( "Retrieved {TotalTracks} tracks from playlist for user {UserId}", totalTracks, user.Id );
+
+            // Check if playlist has more than 100 tracks
+            if (totalTracks > 100) {
+                return Ok( new {
+                    success = true,
+                    tooLarge = true,
+                    trackCount = totalTracks,
+                    trackIds = trackIds,
+                    message = $"This playlist has {totalTracks} tracks. This process may take an extended period of time."
+                } );
+            }
+
+            if (trackIds.Count == 0) {
                 return Ok( new {
                     success = false,
                     message = "No tracks found in playlist"
                 } );
             }
 
-            // Return the URLs for the frontend to process
+            // Return the track IDs for the frontend to process
             return Ok( new {
                 success = true,
-                trackCount = trackUrls.Count,
-                trackUrls = trackUrls
+                trackCount = trackIds.Count,
+                trackIds = trackIds
             } );
 
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error processing playlist for user {UserId}", user.Id );
+            logger.LogError( ex, "Error processing playlist for user {UserId}", user.Id );
             return StatusCode( 500, new { message = "An error occurred while processing the playlist" } );
         }
+    }
+
+    /// <summary>
+    /// Streams playlist lookup results progressively as they're retrieved.
+    /// Returns chunked HTML that can be appended to the DOM.
+    /// </summary>
+    /// <param name="songIds">Array of Apple Music song IDs to lookup.</param>
+    /// <returns>Streamed partial views as chunks.</returns>
+    /// <response code="200">Results streamed successfully.</response>
+    /// <response code="401">User not authenticated.</response>
+    /// <response code="503">Apple Music service not available.</response>
+    [HttpPost]
+    [Route( "applemusic/playlist-results-stream" )]
+    public async Task PlaylistResultsStream( [FromBody] string[] songIds ) {
+        ApplicationUser? user = await userManager.GetUserAsync( User );
+        if (user == null) {
+            Response.StatusCode = 401;
+            await Response.WriteAsync( "<div class=\"alert alert-danger\">Authentication required</div>" );
+            return;
+        }
+
+        if (jwtHandler == null) {
+            Response.StatusCode = 503;
+            await Response.WriteAsync( "<div class=\"alert alert-danger\">Apple Music service is not configured</div>" );
+            return;
+        }
+
+        Response.ContentType = "text/html; charset=utf-8";
+        Response.Headers.Append( "Cache-Control", "no-cache" );
+        Response.Headers.Append( "X-Accel-Buffering", "no" ); // Disable nginx buffering
+
+        int processedCount = 0;
+        int errorCount = 0;
+
+        foreach (string songId in songIds) {
+            try {
+                MediaLinkResult? lookupResult = await mediaLinkService.GetInfoByProviderIdAsync( songId, SupportedProviders.AppleMusic, false );
+                if (lookupResult == null) {
+                    errorCount++;
+                    continue;
+                }
+
+                if (lookupResult.Results.Count == 0) {
+                    errorCount++;
+                    continue;
+                }
+
+                // Find primary result
+                MusicLookupResultDto? primaryResult = null;
+                SupportedProviders primaryProvider = SupportedProviders.AppleMusic;
+                foreach ((SupportedProviders provider, MusicLookupResultDto dto) in lookupResult.Results) {
+                    if (dto.IsPrimary) {
+                        primaryResult = dto;
+                        primaryProvider = provider;
+                        break;
+                    }
+                    if (primaryResult == null) {
+                        primaryResult = dto;
+                        primaryProvider = provider;
+                    }
+                }
+
+                if (primaryResult == null) {
+                    errorCount++;
+                    continue;
+                }
+
+                // Get card URL and ATProto URI
+                string? cardUrl = null;
+                if (cardService?.IsEnabled == true) {
+                    cardUrl = cardService.StoreResult( lookupResult );
+                }
+
+                string? atProtoUri = await GetATProtoUriFromCache( lookupResult );
+
+                // Create single-item model
+                MusicLookupViewModel.MusicLookupResultItem item = new( ) {
+                    CardUrl = cardUrl,
+                    ATProtoUri = atProtoUri,
+                    Result = lookupResult,
+                    PrimaryProvider = primaryProvider,
+                    PrimaryResult = primaryResult
+                };
+
+                // Render partial view to string and stream it
+                string html = await RenderViewToStringAsync( "_LookupResultCard", item );
+                await Response.WriteAsync( html );
+                await Response.Body.FlushAsync( );
+
+                processedCount++;
+                await Task.Delay( 250 );
+            } catch (Exception ex) {
+                logger.LogError( ex, "Error processing song {SongId}", songId );
+                errorCount++;
+            }
+        }
+
+        // Send completion status as a hidden data element
+        if (processedCount == 0 && errorCount > 0) {
+            await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found for the tracks in this playlist</div>" );
+        } else if (errorCount > 0) {
+            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" );
+        } else {
+            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" );
+        }
+    }
+
+    /// <summary>
+    /// Helper method to render a view to a string for streaming.
+    /// </summary>
+    /// <param name="viewName">Name of the view to render.</param>
+    /// <param name="model">Model to pass to the view.</param>
+    /// <returns>Rendered HTML string.</returns>
+    private async Task<string> RenderViewToStringAsync( string viewName, object model ) {
+        ViewData.Model = model;
+        using StringWriter sw = new( );
+        ViewEngineResult viewResult = viewEngine.FindView( ControllerContext, viewName, false );
+
+        if (!viewResult.Success) {
+            throw new InvalidOperationException( $"View '{viewName}' not found" );
+        }
+
+        Microsoft.AspNetCore.Mvc.Rendering.ViewContext viewContext = new(
+            ControllerContext,
+            viewResult.View,
+            ViewData,
+            TempData,
+            sw,
+            new HtmlHelperOptions( )
+        );
+
+        await viewResult.View.RenderAsync( viewContext );
+        return sw.ToString( );
     }
 }

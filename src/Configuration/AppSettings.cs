@@ -92,6 +92,11 @@ namespace TuneBridge.Configuration {
         public string ATProtoPassword { get; set; } = string.Empty;
 
         /// <summary>
+        /// The ATProto account did (Decentralized Identifier).
+        /// </summary>
+        public string ATProtoUserDID { get; set; } = string.Empty;
+
+        /// <summary>
         /// The number of days to cache MediaLinkResult lookups. Default is 7 days.
         /// </summary>
         public int CacheDays { get; set; } = 7;

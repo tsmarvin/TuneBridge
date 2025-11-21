@@ -107,6 +107,22 @@ namespace TuneBridge.Domain.Implementations.Services {
                 )
                 : null;
 
+        /// <inheritdoc/>
+        public override async Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum ) {
+            string requestUri = isAlbum
+                ? AppleMusicLinkParser.GetAlbumIdUri( DefaultStorefront, providerId )
+                : AppleMusicLinkParser.GetSongIdUri( DefaultStorefront, providerId );
+
+            string requestKey = isAlbum ? "albumId " : "songId ";
+            return ParseAppleMusicResponse(
+                await NewMusicApiRequest( requestUri, requestKey ),
+                requestKey,
+                DefaultStorefront,
+                isAlbum,
+                true
+            );
+        }
+
         #endregion IMusicLookupService Public
 
         #region IMusicLookupService Private Methods

@@ -1,4 +1,5 @@
 using TuneBridge.Domain.Contracts.DTOs;
+using TuneBridge.Domain.Types.Enums;
 
 namespace TuneBridge.Domain.Interfaces {
     /// <summary>
@@ -72,5 +73,26 @@ namespace TuneBridge.Domain.Interfaces {
         /// of URLs (e.g., music.apple.com/us/* vs music.apple.com/gb/*).
         /// </remarks>
         IAsyncEnumerable<MediaLinkResult> GetInfoAsync( string content );
+
+        /// <summary>
+        /// Performs a lookup of a track or album using a provider-specific identifier.
+        /// This method queries the specified provider for the content ID and then attempts to find
+        /// matching content across all other configured providers.
+        /// </summary>
+        /// <param name="providerId">
+        /// The provider-specific identifier for the track or album (e.g., Apple Music catalog ID,
+        /// Spotify track/album ID, Tidal track/album ID).
+        /// </param>
+        /// <param name="provider">
+        /// The music provider that the ID belongs to.
+        /// </param>
+        /// <param name="isAlbum">
+        /// True to look up an album, false to look up a track.
+        /// </param>
+        /// <returns>
+        /// A <see cref="MediaLinkResult"/> with URLs from all providers where the content was found,
+        /// or null if the provider ID is not found in the specified provider's catalog.
+        /// </returns>
+        Task<MediaLinkResult?> GetInfoByProviderIdAsync( string providerId, SupportedProviders provider, bool isAlbum );
     }
 }

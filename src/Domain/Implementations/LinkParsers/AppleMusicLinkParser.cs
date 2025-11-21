@@ -73,6 +73,24 @@ namespace TuneBridge.Domain.Implementations.LinkParsers {
         }
 
         /// <summary>
+        /// Constructs an API URI for searching songs by ID.
+        /// </summary>
+        /// <param name="storefront">The market region/storefront.</param>
+        /// <param name="songId">The song ID to search for.</param>
+        /// <returns>The API URI for song search.</returns>
+        public static string GetSongIdUri( string storefront, string songId )
+            => GetSongsURI( storefront, songId );
+
+        /// <summary>
+        /// Constructs an API URI for searching albums by ID.
+        /// </summary>
+        /// <param name="storefront">The market region/storefront.</param>
+        /// <param name="albumId">The album ID to search for.</param>
+        /// <returns>The API URI for album search.</returns>
+        public static string GetAlbumIdUri( string storefront, string albumId )
+            => GetAlbumsURI( storefront, albumId );
+
+        /// <summary>
         /// Constructs an API URI for searching artists by name.
         /// </summary>
         /// <param name="storefront">The market region/storefront.</param>
