@@ -13,18 +13,14 @@
     <div class="embed-card h-100" style="border-left-color: @borderColor;" data-rkey="@rkey">
         <div class="embed-header-top">
             <div class="embed-title-row">
-                @if (!string.IsNullOrWhiteSpace(Model.CardUrl))
-                {
+                @if (!string.IsNullOrWhiteSpace(Model.CardUrl)) {
                     <a href="@Model.CardUrl" target="_blank" rel="noopener noreferrer" class="embed-title">
                         @(Model.PrimaryResult.Title ?? "Unknown Title")
                     </a>
-                }
-                else
-                {
+                } else {
                     <div class="embed-title">@(Model.PrimaryResult.Title ?? "Unknown Title")</div>
                 }
-                @if (!string.IsNullOrWhiteSpace(Model.CardUrl))
-                {
+                @if (!string.IsNullOrWhiteSpace(Model.CardUrl)) {
                     <div class="share-dropdown">
                         <button class="share-button" type="button" aria-expanded="false" aria-haspopup="true" title="Share">
                             <img src="/public/Share_arrow.png" alt="Share" class="share-arrow-icon" />
@@ -32,19 +28,18 @@
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li>
                                 <button class="dropdown-item copy-link-btn" type="button" data-url="@Model.CardUrl">
-                                    <span class="dropdown-icon">??</span> Copy Link
+                                    <span class="dropdown-icon">📋</span> Copy Link
                                 </button>
                             </li>
                             <li>
                                 <button class="dropdown-item copy-embed-btn" type="button" data-url="@Model.CardUrl" data-title="@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.PrimaryResult.Title ?? "Music Link"))">
-                                    <span class="dropdown-icon">???</span> Copy Embed
+                                    <span class="dropdown-icon">🖼️</span> Copy Embed
                                 </button>
                             </li>
-                            @if (!string.IsNullOrWhiteSpace(Model.ATProtoUri))
-                            {
+                            @if (!string.IsNullOrWhiteSpace(Model.ATProtoUri)) {
                                 <li>
                                     <button class="dropdown-item copy-atproto-btn" type="button" data-uri="@Model.ATProtoUri">
-                                        <span class="dropdown-icon">??</span> Copy ATProto URI
+                                        <span class="dropdown-icon">🔗</span> Copy ATProto URI
                                     </button>
                                 </li>
                             }
@@ -54,24 +49,19 @@
             </div>
         </div>
         <div class="embed-header">
-            @if (!string.IsNullOrWhiteSpace(Model.PrimaryResult.ArtUrl))
-            {
-                @if (!string.IsNullOrWhiteSpace(Model.CardUrl))
-                {
+            @if (!string.IsNullOrWhiteSpace(Model.PrimaryResult.ArtUrl)) {
+                @if (!string.IsNullOrWhiteSpace(Model.CardUrl)) {
                     <a href="@Model.CardUrl" target="_blank" rel="noopener noreferrer">
                         <img src="@Model.PrimaryResult.ArtUrl" alt="@Model.PrimaryResult.Title artwork" class="embed-image" />
                     </a>
-                }
-                else
-                {
+                } else {
                     <img src="@Model.PrimaryResult.ArtUrl" alt="@Model.PrimaryResult.Title artwork" class="embed-image" />
                 }
             }
             <div class="embed-content">
                 <div class="embed-info">
                     Artist: @(Model.PrimaryResult.Artist ?? "Unknown")
-                    @if (!string.IsNullOrWhiteSpace(Model.PrimaryResult.ExternalId))
-                    {
+                    @if (!string.IsNullOrWhiteSpace(Model.PrimaryResult.ExternalId)) {
                         var idType = Model.PrimaryResult.IsAlbum == true ? "UPC" : "ISRC";
                         <text><br /></text>@idType<text>: </text>@Model.PrimaryResult.ExternalId
                     }
@@ -79,8 +69,7 @@
             </div>
         </div>
         <div class="embed-providers">
-            @foreach (var providerResult in Model.Result.Results)
-            {
+            @foreach (var providerResult in Model.Result.Results) {
                 <a href="@providerResult.Value.URL" target="_blank" rel="noopener noreferrer" class="provider-button">
                     <span class="provider-icon provider-icon-@providerResult.Key.ToString().ToLowerInvariant()">
                         @GetProviderLogo(providerResult.Key)
@@ -93,15 +82,13 @@
 </div>
 
 @functions {
-    IHtmlContent GetProviderLogo(SupportedProviders provider)
-    {
+    IHtmlContent GetProviderLogo(SupportedProviders provider) {
         // Dark backgrounds need LIGHT logos, light backgrounds need DARK logos
-        var darkThemeLogo = provider switch
-        {
+        var darkThemeLogo = provider switch {
             SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_wht_072720.svg",
             SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_RGB.svg",
             SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-white-cmyk.png",
-            _ => ""
+            _ => "🎧"
         };
 
         var lightThemeLogo = provider switch
@@ -109,24 +96,18 @@
             SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_blk_072720.svg",
             SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_CMYK.svg",
             SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-black-cmyk.png",
-            _ => ""
+            _ => "🎧"
         };
-
-        if (string.IsNullOrEmpty(lightThemeLogo))
-        {
-            return new HtmlString("??");
-        }
 
         var altText = GetProviderName(provider) + " logo";
 
         // Return both images with classes for CSS-based theme switching
-        return new HtmlString($@"<img src=""{lightThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-light"" /><img src=""{darkThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-dark"" />");
+        return new HtmlString($@"<img src=""{lightThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-light"" />
+<img src=""{darkThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-dark"" />");
     }
 
-    string GetProviderName(SupportedProviders provider)
-    {
-        return provider switch
-        {
+    string GetProviderName(SupportedProviders provider) {
+        return provider switch {
             SupportedProviders.Spotify => "Spotify",
             SupportedProviders.AppleMusic => "Apple Music",
             SupportedProviders.Tidal => "Tidal",
@@ -134,10 +115,8 @@
         };
     }
 
-    string GetProviderColor(SupportedProviders provider)
-    {
-        return provider switch
-        {
+    string GetProviderColor(SupportedProviders provider) {
+        return provider switch {
             SupportedProviders.AppleMusic => "#D60017",
             SupportedProviders.Spotify => "#1ED760",
             SupportedProviders.Tidal => "#000000",
