@@ -11,7 +11,7 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb {
                 name: "CacheEntries",
                 columns: table => new {
                     Rkey = table.Column<string>( type: "TEXT", maxLength: 200, nullable: false ),
-                    CardId = table.Column<string>( type: "TEXT", maxLength: 64, nullable: true ),
+                    CardId = table.Column<string>( type: "TEXT", maxLength: 64, nullable: false ),
                     RecordUri = table.Column<string>( type: "TEXT", maxLength: 500, nullable: false ),
                     CreatedAt = table.Column<DateTime>( type: "TEXT", nullable: false ),
                     LastLookedUpAt = table.Column<DateTime>( type: "TEXT", nullable: false )

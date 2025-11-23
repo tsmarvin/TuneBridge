@@ -11,7 +11,7 @@ using TuneBridge.Domain.Implementations.Database;
 namespace TuneBridge.Migrations.MediaLinkCacheDb
 {
     [DbContext(typeof(MediaLinkCacheDbContext))]
-    [Migration("20251123063621_InitialCreate")]
+    [Migration("20251123065702_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -27,6 +27,7 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CardId")
+                        .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 

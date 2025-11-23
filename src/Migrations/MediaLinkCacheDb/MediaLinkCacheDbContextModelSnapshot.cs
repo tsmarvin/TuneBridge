@@ -24,6 +24,7 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CardId")
+                        .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 

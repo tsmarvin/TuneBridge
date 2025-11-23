@@ -164,8 +164,6 @@ namespace TuneBridge.Domain.Implementations.Services {
                 } else {
                     // Update existing entry
                     existingEntry.LastLookedUpAt = DateTime.UtcNow;
-                    // Ensure cardId persisted (might be null from older rows)
-                    if (string.IsNullOrWhiteSpace( existingEntry.CardId )) { existingEntry.CardId = cardId; }
                     logger.LogInformation( "Updated existing local lookup cache entry with rkey: {rkey} and cardId: {cardId}", rkey, cardId );
                 }
                 _ = await dbContext.SaveChangesAsync( );
