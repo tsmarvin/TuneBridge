@@ -324,7 +324,12 @@ public class AppleMusicController(
 
                 // Check for pagination: look for a "next" link in the response
                 if (doc.RootElement.TryGetProperty( "next", out JsonElement nextElement )) {
-                    nextUrl = nextElement.GetString( );
+                    var nextValue = nextElement.GetString();
+                    if (!string.IsNullOrEmpty(nextValue) && !nextValue.StartsWith("http", StringComparison.OrdinalIgnoreCase)) {
+                        nextUrl = "https://api.music.apple.com" + nextValue;
+                    } else {
+                        nextUrl = nextValue;
+                    }
                 } else {
                     nextUrl = null; // No more pages
                 }
@@ -344,6 +349,7 @@ public class AppleMusicController(
                 message = "Playlist processed successfully",
                 trackCount = trackIds.Count,
                 trackIds,
+                tooLarge = trackIds.Count > 100
             } );
 
         } catch (Exception ex) {

@@ -207,7 +207,7 @@ namespace TuneBridge.Configuration {
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
-                    "script-src 'self' 'unsafe-inline' https://js-cdn.music.apple.com",
+                    "script-src 'self' https://js-cdn.music.apple.com",
                     "style-src 'self' 'unsafe-inline'",
                     "img-src 'self' data: https:",
                     "font-src 'self' data:",
