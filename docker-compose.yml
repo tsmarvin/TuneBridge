@@ -1,8 +1,5 @@
 services:
   tunebridge:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: tsmarvin/tunebridge-test:develop
     container_name: tunebridge
     restart: unless-stopped

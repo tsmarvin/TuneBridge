@@ -204,12 +204,13 @@ namespace TuneBridge.Configuration {
                 // Build CSP policy
                 // Allow MusicKit JS CDN, Cloudflare analytics, nonce-based inline styles, and API calls to music providers
                 // Allow framing for embed endpoints, Apple Music integration, and playlist pages
-                string frameAncestors = (isEmbed || isAppleMusic) ? "*" : "'self'";
+                // Note: frame-ancestors uses https: scheme instead of * to support HTTPS framing
+                string frameAncestors = (isEmbed || isAppleMusic) ? "https:" : "'self'";
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
                     $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com https://static.cloudflareinsights.com",
-                    $"style-src 'self' 'nonce-{nonce}'",
+                    $"style-src 'self' 'nonce-{nonce}' 'unsafe-inline'",
                     "img-src 'self' data: https:",
                     "font-src 'self' data:",
                     "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com https://cloudflareinsights.com",
