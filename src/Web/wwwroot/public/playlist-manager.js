@@ -411,6 +411,13 @@
         if (!document.getElementById('playlistStyles')) {
             const style = document.createElement('style');
             style.id = 'playlistStyles';
+            
+            // Apply CSP nonce if available for secure inline styles
+            const nonce = document.querySelector('meta[name="csp-nonce"]')?.content;
+            if (nonce) {
+                style.setAttribute('nonce', nonce);
+            }
+            
             style.textContent = `
                 .playlist-toolbar {
                     position: sticky;

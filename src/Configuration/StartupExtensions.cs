@@ -210,7 +210,7 @@ namespace TuneBridge.Configuration {
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
                     $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com https://static.cloudflareinsights.com",
-                    $"style-src 'self' 'nonce-{nonce}' 'unsafe-inline'",
+                    $"style-src 'self' 'nonce-{nonce}'",
                     "img-src 'self' data: https:",
                     "font-src 'self' data:",
                     "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com https://cloudflareinsights.com",
