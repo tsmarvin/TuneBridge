@@ -26,9 +26,18 @@ let selectedPlaylistId = null;
 
 // Developer token fetch
 async function getDeveloperToken() {
-    const response = await fetch('/applemusic/developer-token');
-    const data = await response.json();
-    return data.token;
+    try {
+        const response = await fetch('/applemusic/developer-token');
+        if (!response.ok) {
+            throw new Error('Failed to fetch developer token: ' + response.status + ' ' + response.statusText);
+        }
+        const data = await response.json();
+        return data.token;
+    } catch (err) {
+        // Re-throw with context, preserving original error
+        console.error('Error fetching developer token:', err);
+        throw err;
+    }
 }
 
 // Check auth status
@@ -263,8 +272,14 @@ window.addEventListener('musickitloaded', async () => {
         initAuthorizationHandler();
         initProcessHandler();
     } catch (err) {
-        statusMessage.classList.remove('alert-info');
-        statusMessage.classList.add('alert-danger');
-        statusMessage.innerHTML = 'Failed to initialize Apple Music: ' + err.message;
+        console.error('Failed to initialize Apple Music:', err);
+        if (statusMessage) {
+            statusMessage.classList.remove('alert-info');
+            statusMessage.classList.add('alert-danger');
+            statusMessage.innerHTML = 'Failed to initialize Apple Music: ' + err.message;
+        } else {
+            // Fallback: log to console when status message element is not available
+            console.error('Status message element not found. Unable to display error in UI.');
+        }
     }
 });
