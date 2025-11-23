@@ -193,6 +193,38 @@ namespace TuneBridge.Configuration {
             _ = app.UseStaticFiles( ); // Serve static files from wwwroot
             _ = app.UseRouting( );
 
+            // CSP middleware: adds Content-Security-Policy header. Relax frame-ancestors for embed endpoints.
+            AppSettings cspSettings = settings; // reuse bound settings
+            _ = app.Use( async ( ctx, next ) => {
+                // Skip for static files already having headers
+                string path = ctx.Request.Path.Value ?? string.Empty;
+                bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
+
+                // Build CSP policy
+                // Allow MusicKit JS CDN, inline styles needed by Razor and DocFX, and API calls to music providers
+                string frameAncestors = isEmbed ? "*" : "'self'"; // Allow any site to embed cards & playlists
+                string baseUrlHost = cspSettings.BaseUrl; // e.g., dev.tunebridge.media
+
+                string csp = string.Join( "; ", new[] {
+                    "default-src 'self'",
+                    "script-src 'self' 'unsafe-inline' https://js-cdn.music.apple.com",
+                    "style-src 'self' 'unsafe-inline'",
+                    "img-src 'self' data: https:",
+                    "font-src 'self' data:",
+                    "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com",
+                    "media-src 'self' https:",
+                    "frame-ancestors " + frameAncestors,
+                    "object-src 'none'",
+                    "base-uri 'self'",
+                    "form-action 'self'"
+                } );
+
+                _ = ctx.Response.Headers.Remove( "Content-Security-Policy" );
+                ctx.Response.Headers.Append( "Content-Security-Policy", csp );
+
+                await next( );
+            } );
+
             // Restrict health endpoint access to internal requests only
             // NOTE: This middleware is intentionally placed before authentication because it uses IP-based authorization
             // and does not require authenticated user context. If future changes require authentication, adjust the order accordingly.
