@@ -412,7 +412,7 @@ namespace TuneBridge.Web.Controllers {
                         processedCount++;
 
                     } catch (Exception ex) {
-                        logger.LogError( ex, "Error processing individual result for URI: {Uri}", uri );
+                        logger.LogError( ex, "Error processing individual result for URI: {Uri}", uri.SanitizeForLogging( ) );
                         errorCount++;
                     }
                 }
@@ -429,7 +429,7 @@ namespace TuneBridge.Web.Controllers {
                 }
 
             } catch (Exception ex) {
-                logger.LogError( ex, "Error during lookup stream for URI: {Uri}", uri );
+                logger.LogError( ex, "Error during lookup stream for URI: {Uri}", uri.SanitizeForLogging( ) );
                 await Response.WriteAsync( $"<div class=\"alert alert-danger\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount + 1}\">An error occurred during lookup: {ex.Message}</div>" );
             }
         }

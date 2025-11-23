@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Contracts.Entities;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Web.Models;
 
@@ -16,28 +17,6 @@ public class PlaylistsController( IPlaylistService? playlistService, ILogger<Pla
 
     private readonly IPlaylistService? _playlistService = playlistService;
     private readonly ILogger<PlaylistsController>? _logger = logger;
-
-    /// <summary>
-    /// Sanitizes a string for safe logging by removing or replacing characters that could cause log forging.
-    /// </summary>
-    /// <param name="input">The input string to sanitize.</param>
-    /// <param name="maxLength">Maximum length to truncate to (default 100).</param>
-    /// <returns>Sanitized string safe for logging.</returns>
-    private static string SanitizeForLog( string? input, int maxLength = 100 ) {
-        if (string.IsNullOrEmpty( input )) {
-            return string.Empty;
-        }
-
-        // Remove newlines, carriage returns, and other control characters
-        string sanitized = input.Replace( "\r", "" ).Replace( "\n", "" ).Replace( "\t", " " );
-        
-        // Truncate if too long
-        if (sanitized.Length > maxLength) {
-            sanitized = sanitized[..maxLength];
-        }
-
-        return sanitized;
-    }
 
     /// <summary>
     /// Displays the user's playlists.
@@ -59,14 +38,14 @@ public class PlaylistsController( IPlaylistService? playlistService, ILogger<Pla
             List<PlaylistEntry> playlists = await _playlistService.GetUserPlaylistsAsync( userId );
 
             PlaylistsViewModel viewModel = new( ) {
-                Playlists = playlists.Select( p => new PlaylistsViewModel.PlaylistSummary {
+                Playlists = [.. playlists.Select( p => new PlaylistsViewModel.PlaylistSummary {
                     PlaylistId = p.PlaylistId,
                     Title = p.Title ?? "Untitled Playlist",
                     Description = p.Description,
                     ItemCount = p.CardIds.Split( ',', StringSplitOptions.RemoveEmptyEntries ).Length,
                     CreatedAt = p.CreatedAt,
                     PlaylistUrl = $"https://{_playlistService.BaseUrl}/playlist/{p.PlaylistId}"
-                } ).ToList( )
+                } )]
             };
 
             return View( "Index", viewModel );
@@ -99,8 +78,7 @@ public class PlaylistsController( IPlaylistService? playlistService, ILogger<Pla
                 ? Ok( new { message = "Playlist deleted successfully" } )
                 : NotFound( new { error = "Playlist not found or you don't have permission to delete it" } );
         } catch (Exception ex) {
-            _logger?.LogError( ex, "Error deleting playlist {PlaylistId} for user {UserId}", 
-                SanitizeForLog( id, 50 ), userId );
+            _logger?.LogError( ex, "Error deleting playlist {PlaylistId} for user {UserId}", id.SanitizeForLogging( ), userId );
             return StatusCode( 500, new { error = "Failed to delete playlist" } );
         }
     }

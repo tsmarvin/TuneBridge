@@ -49,28 +49,6 @@ public class AppleMusicController(
     public IActionResult Index( ) => View( );
 
     /// <summary>
-    /// Sanitizes a string for safe logging by removing or replacing characters that could cause log forging.
-    /// </summary>
-    /// <param name="input">The input string to sanitize.</param>
-    /// <param name="maxLength">Maximum length to truncate to (default 100).</param>
-    /// <returns>Sanitized string safe for logging.</returns>
-    private static string SanitizeForLog( string? input, int maxLength = 100 ) {
-        if (string.IsNullOrEmpty( input )) {
-            return string.Empty;
-        }
-
-        // Remove newlines, carriage returns, and other control characters
-        string sanitized = input.Replace( "\r", "" ).Replace( "\n", "" ).Replace( "\t", " " );
-        
-        // Truncate if too long
-        if (sanitized.Length > maxLength) {
-            sanitized = sanitized[..maxLength];
-        }
-
-        return sanitized;
-    }
-
-    /// <summary>
     /// Gets a developer token for MusicKit JS authentication.
     /// </summary>
     /// <returns>Developer token.</returns>
@@ -174,7 +152,7 @@ public class AppleMusicController(
             List<object> playlists = [];
             if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
                 playlists.AddRange(
-                    dataElement.EnumerateArray()
+                    dataElement.EnumerateArray( )
                         .Where( playlist =>
                             playlist.TryGetProperty( "id", out _ ) &&
                             playlist.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
@@ -187,7 +165,7 @@ public class AppleMusicController(
                 );
             }
 
-            return Ok( new { playlists = playlists } );
+            return Ok( new { playlists } );
 
         } catch (Exception ex) {
             logger.LogError( ex, "Error retrieving playlists for user {UserId}", user.Id );
@@ -328,7 +306,7 @@ public class AppleMusicController(
                 // Extract track IDs from current page
                 if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
                     trackIds.AddRange(
-                        dataElement.EnumerateArray()
+                        dataElement.EnumerateArray( )
                             .Where( track =>
                                 track.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
                                 attributesElement.TryGetProperty( "playParams", out JsonElement playParamsElement ) &&
@@ -368,7 +346,7 @@ public class AppleMusicController(
                     success = true,
                     tooLarge = true,
                     trackCount = totalTracks,
-                    trackIds = trackIds,
+                    trackIds,
                     message = $"This playlist has {totalTracks} tracks. This process may take an extended period of time."
                 } );
             }
@@ -384,7 +362,7 @@ public class AppleMusicController(
             return Ok( new {
                 success = true,
                 trackCount = trackIds.Count,
-                trackIds = trackIds
+                trackIds
             } );
 
         } catch (Exception ex) {
@@ -482,7 +460,7 @@ public class AppleMusicController(
 
                 processedCount++;
             } catch (Exception ex) {
-                logger.LogError( ex, "Error processing song {SongId}", SanitizeForLog( songId, 50 ) );
+                logger.LogError( ex, "Error processing song {SongId}", songId.SanitizeForLogging( ) );
                 errorCount++;
             }
         }

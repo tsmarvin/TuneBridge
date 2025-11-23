@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Contracts.Entities;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Web.Models;
+using System.Security.Claims;
 
 namespace TuneBridge.Web.Controllers;
 
@@ -16,28 +18,6 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
     private readonly IOpenGraphCardService? _cardService = cardService;
     private readonly IMediaLinkService? _mediaLinkService = mediaLinkService;
     private readonly ILogger<PlaylistController>? _logger = logger;
-
-    /// <summary>
-    /// Sanitizes a string for safe logging by removing or replacing characters that could cause log forging.
-    /// </summary>
-    /// <param name="input">The input string to sanitize.</param>
-    /// <param name="maxLength">Maximum length to truncate to (default 100).</param>
-    /// <returns>Sanitized string safe for logging.</returns>
-    private static string SanitizeForLog( string? input, int maxLength = 100 ) {
-        if (string.IsNullOrEmpty( input )) {
-            return string.Empty;
-        }
-
-        // Remove newlines, carriage returns, and other control characters
-        string sanitized = input.Replace( "\r", "" ).Replace( "\n", "" ).Replace( "\t", " " );
-        
-        // Truncate if too long
-        if (sanitized.Length > maxLength) {
-            sanitized = sanitized[..maxLength];
-        }
-
-        return sanitized;
-    }
 
     /// <summary>
     /// Creates a new playlist from a list of card IDs.
@@ -64,13 +44,22 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
 
         try {
             // Get user ID if authenticated
-            string? userId = User?.Identity?.IsAuthenticated == true ? User.FindFirst( System.Security.Claims.ClaimTypes.NameIdentifier )?.Value : null;
+            string? userId = User?.Identity?.IsAuthenticated == true
+                                ? User.FindFirst( ClaimTypes.NameIdentifier )?.Value
+                                : null;
 
             // Only allow title and description for authenticated users
             string? title = userId != null ? request.Title : null;
             string? description = userId != null ? request.Description : null;
 
-            string playlistUrl = await _playlistService.CreatePlaylistAsync( request.CardIds, request.CardRkeys, title, description, userId );
+            string playlistUrl = await _playlistService.CreatePlaylistAsync(
+                                            request.CardIds,
+                                            request.CardRkeys,
+                                            title,
+                                            description,
+                                            userId
+                                        );
+
             return Ok( new { playlistUrl } );
         } catch (ArgumentException ex) {
             return BadRequest( new { error = ex.Message } );
@@ -104,8 +93,10 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
 
         // Ensure we have matching counts
         if (cardIds.Length != cardRkeys.Length) {
-            _logger?.LogWarning( "Playlist {PlaylistId} has mismatched card IDs ({CardIdCount}) and rkeys ({RkeyCount})",
-                SanitizeForLog( id, 50 ), cardIds.Length, cardRkeys.Length );
+            _logger?.LogWarning(
+                "Playlist {PlaylistId} has mismatched card IDs ({CardIdCount}) and rkeys ({RkeyCount})",
+                id.SanitizeForLogging( ), cardIds.Length, cardRkeys.Length
+            );
         }
 
         for (int i = 0; i < Math.Min( cardIds.Length, cardRkeys.Length ); i++) {
@@ -132,14 +123,16 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
                         _logger?.LogInformation( "Regenerated card {CardId} from rkey {Rkey} for playlist {PlaylistId}",
-                            SanitizeForLog( cardId, 50 ), SanitizeForLog( rkey, 50 ), SanitizeForLog( id, 50 ) );
+                            cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( ) );
                     }
                 }
             }
 
             if (result == null) {
-                _logger?.LogWarning( "Unable to load or regenerate card {CardId} (rkey: {Rkey}) for playlist {PlaylistId}",
-                    SanitizeForLog( cardId, 50 ), SanitizeForLog( rkey, 50 ), SanitizeForLog( id, 50 ) );
+                _logger?.LogWarning(
+                    "Unable to load or regenerate card {CardId} (rkey: {Rkey}) for playlist {PlaylistId}",
+                    cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( )
+                );
                 continue;
             }
 
@@ -213,15 +206,19 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
 
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
-                        _logger?.LogInformation( "Regenerated card {CardId} for playlist embed {PlaylistId}", 
-                            SanitizeForLog( cardId, 50 ), SanitizeForLog( id, 50 ) );
+                        _logger?.LogInformation(
+                            "Regenerated card {CardId} for playlist embed {PlaylistId}",
+                            cardId.SanitizeForLogging( ), id.SanitizeForLogging( )
+                        );
                     }
                 }
             }
 
             if (result == null) {
-                _logger?.LogWarning( "Unable to load or regenerate card {CardId} for playlist embed {PlaylistId}", 
-                    SanitizeForLog( cardId, 50 ), SanitizeForLog( id, 50 ) );
+                _logger?.LogWarning(
+                    "Unable to load or regenerate card {CardId} for playlist embed {PlaylistId}",
+                    cardId.SanitizeForLogging( ), id.SanitizeForLogging( )
+                );
                 continue;
             }
 
