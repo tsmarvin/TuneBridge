@@ -308,9 +308,17 @@ public class AppleMusicController(
                 // Extract track IDs
                 if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
                     trackIds.AddRange(
-                        dataElement.EnumerateArray()
-                            .Select( trackElement => trackElement.TryGetProperty( "id", out JsonElement idElement ) && !string.IsNullOrEmpty( idElement.GetString() ) ? idElement.GetString()! : null )
-                            .Where( id => id != null )!
+                        dataElement.EnumerateArray( )
+                            .Select( trackElement => {
+                                return (
+                                    trackElement.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
+                                    attributesElement.TryGetProperty( "playParams", out JsonElement playParamsElement ) &&
+                                    playParamsElement.TryGetProperty( "catalogId", out JsonElement idElement )
+                                )
+                                ? idElement.GetString( )
+                                : null;
+                            } )
+                            .Where( id => !string.IsNullOrEmpty( id ) )!
                     );
                 }
 
@@ -323,7 +331,7 @@ public class AppleMusicController(
 
                 // Apple Music API limit: 100 tracks per request, cap processing at 1000 tracks
                 if (doc.RootElement.TryGetProperty( "data", out JsonElement trackDataElement )) {
-                    totalTracks += trackDataElement.GetArrayLength();
+                    totalTracks += trackDataElement.GetArrayLength( );
                 }
                 if (totalTracks >= 1000) {
                     logger.LogWarning( "Playlist {PlaylistId} exceeds 1000 tracks, processing limited to first 1000 tracks", playlistId );
@@ -419,8 +427,7 @@ public class AppleMusicController(
                 await Response.WriteAsync( html );
                 await Response.Body.FlushAsync( );
                 processedCount++;
-            }
-            catch (Exception ex) {
+            } catch (Exception ex) {
                 logger.LogError( ex, "Error processing song {SongId}", songId.SanitizeForLogging( ) );
                 errorCount++;
             }
@@ -444,8 +451,7 @@ public class AppleMusicController(
         using StringWriter sw = new();
         ViewEngineResult viewResult = viewEngine.FindView( ControllerContext, viewName, false );
 
-        if (!viewResult.Success)
-        {
+        if (!viewResult.Success) {
             throw new InvalidOperationException( $"View '{viewName}' not found" );
         }
 
