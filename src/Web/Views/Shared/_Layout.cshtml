@@ -1,5 +1,7 @@
 @{
     var title = ViewData["Title"] as string ?? string.Empty;
+    // Get CSP nonce from HttpContext
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -17,7 +19,7 @@
     <meta name="loc:changeTheme" content="Change theme">
     <script type="module" src="~/public/docfx.min.js"></script>
     <script src="~/public/share-buttons.js"></script>
-    <script>
+    <script nonce="@cspNonce">
         // FOUC mitigation: Apply theme before page render
         // NOTE: This logic must stay synchronized with docfx.min.js theme management
         // If theme logic in docfx.min.js changes, update this inline script accordingly

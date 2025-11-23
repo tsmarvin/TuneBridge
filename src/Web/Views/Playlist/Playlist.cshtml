@@ -4,6 +4,8 @@
 @using Microsoft.AspNetCore.Html 
 @{
     ViewData["Title"] = Model.Title;
+    // Get CSP nonce from HttpContext
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 
 <div class="card mb-4">
@@ -45,9 +47,10 @@
         } else {
             <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
                 @foreach (var item in Model.Items) {
-                    var borderColor = item.Result.Results.Keys.FirstOrDefault().GetProviderHexColor( );
+                    var primaryProvider = item.Result.Results.Keys.FirstOrDefault();
+                    var providerClass = $"provider-{primaryProvider.ToString().ToLowerInvariant()}";
                     <div class="col">
-                        <div class="embed-card h-100" style="border-left-color: @borderColor;">
+                        <div class="embed-card h-100 @providerClass">
                             <div class="embed-header-top">
                                 <div class="embed-title-row">
                                     <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer" class="embed-title">
@@ -108,7 +111,7 @@
 </div>
 
 @section Scripts {
-    <script>
+    <script nonce="@cspNonce">
         // Initialize share buttons when DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeShareButtons);

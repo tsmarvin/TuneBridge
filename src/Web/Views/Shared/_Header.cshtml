@@ -1,10 +1,14 @@
+@{
+    // Get CSP nonce from HttpContext
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
+}
 <header class="bg-body border-bottom">
     <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
         <div class="container-xxl">
             <div class="d-flex align-items-center gap-3">
                 <a href="https://github.com/tsmarvin/TuneBridge" target="_blank" class="nav-link">GitHub</a>
                 <a href="https://docs.tunebridge.media/" target="_blank" class="nav-link">Docs</a>
-                <a href="/playlists" class="nav-link" id="playlistsLink" style="display: none;">Playlists</a>
+                <a href="/playlists" class="nav-link nav-link-hidden" id="playlistsLink">Playlists</a>
             </div>
             <a class="navbar-brand position-absolute start-50 translate-middle-x" href="/">
                 TuneBridge
@@ -19,7 +23,7 @@
     </nav>
 </header>
 
-<script>
+<script nonce="@cspNonce">
     (function () {
         const btn = document.getElementById('themeToggle');
         if (!btn) return;
@@ -56,7 +60,7 @@
                     });
                     // Show Playlists link for authenticated users (Apple Music is a sub-page)
                     if (playlistsLink) {
-                        playlistsLink.style.display = '';
+                        playlistsLink.classList.remove('nav-link-hidden');
                     }
                 } else {
                     userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';

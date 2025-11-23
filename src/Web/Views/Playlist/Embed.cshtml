@@ -3,6 +3,9 @@
 @using TuneBridge.Domain.Types.Enums
 @{
     Layout = null;
+    
+    // Get CSP nonce from HttpContext
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -11,7 +14,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>@Model.Title</title>
 
-    <script>
+    <script nonce="@cspNonce">
         (function () {
             const root = document.documentElement;
             root.removeAttribute('data-bs-theme'); // Remove any existing theme attr to avoid stale state
@@ -19,7 +22,7 @@
         })();
     </script>
 
-    <style>
+    <style nonce="@cspNonce">
         :root {
             font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.35;

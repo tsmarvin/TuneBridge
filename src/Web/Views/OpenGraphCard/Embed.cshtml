@@ -8,7 +8,10 @@
     var primaryResult = Model.PrimaryResult as TuneBridge.Domain.Contracts.DTOs.MusicLookupResultDto;
     var cardUrl = Model.CardUrl as string;
     var atProtoUri = Model.ATProtoUri as string;
-    var borderColor = primaryProvider.GetProviderHexColor( );
+    var providerClass = $"provider-{primaryProvider.ToString().ToLowerInvariant()}";
+    
+    // Get CSP nonce from HttpContext
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -20,14 +23,14 @@
     <link rel="stylesheet" href="~/public/main.css">
     <link rel="stylesheet" href="~/public/TuneBridge.styles.css">
 
-    <script>
+    <script nonce="@cspNonce">
         (function () {
             const root = document.documentElement;
             root.removeAttribute('data-bs-theme'); // Remove any existing theme attr to avoid stale state
             root.setAttribute('data-bs-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         })();
     </script>
-    <style>
+    <style nonce="@cspNonce">
         body {
             margin: 0;
             padding: 0;
@@ -44,7 +47,7 @@
     </style>
 </head>
 <body>
-    <div class="embed-card" style="border-left-color: @borderColor;">
+    <div class="embed-card @providerClass">
         <div class="embed-header-top">
             <div class="embed-title-row">
                 @if (!string.IsNullOrWhiteSpace(cardUrl)) {

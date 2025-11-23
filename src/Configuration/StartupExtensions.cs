@@ -197,14 +197,18 @@ namespace TuneBridge.Configuration {
                 string path = ctx.Request.Path.Value ?? string.Empty;
                 bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
 
+                // Generate a unique nonce for this request to allow inline styles
+                string nonce = Convert.ToBase64String( System.Security.Cryptography.RandomNumberGenerator.GetBytes( 16 ) );
+                ctx.Items["CSPNonce"] = nonce;
+
                 // Build CSP policy
-                // Allow MusicKit JS CDN, inline styles needed by Razor and DocFX, and API calls to music providers
+                // Allow MusicKit JS CDN, nonce-based inline styles, and API calls to music providers
                 string frameAncestors = isEmbed ? "*" : "'self'"; // Allow any site to embed cards & playlists
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
-                    "script-src 'self' https://js-cdn.music.apple.com",
-                    "style-src 'self' 'unsafe-inline'",
+                    $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com",
+                    $"style-src 'self' 'nonce-{nonce}'",
                     "img-src 'self' data: https:",
                     "font-src 'self' data:",
                     "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com",

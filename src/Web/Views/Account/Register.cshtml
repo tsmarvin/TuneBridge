@@ -1,5 +1,6 @@
 @{
     ViewData["Title"] = "Register";
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 @using Microsoft.AspNetCore.Identity
 @inject Microsoft.Extensions.Options.IOptions<IdentityOptions> IdentityOptionsAccessor
@@ -54,7 +55,7 @@
 </div>
 
 @section Scripts {
-    <script>
+    <script nonce="@cspNonce">
         const email = document.getElementById('email');
         const password = document.getElementById('password');
         const confirmPassword = document.getElementById('confirmPassword');
