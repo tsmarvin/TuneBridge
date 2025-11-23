@@ -293,7 +293,7 @@ public class AppleMusicController(
             List<string> trackIds = [];
             string? nextUrl = $"https://api.music.apple.com/v1/me/library/playlists/{playlistId}/tracks";
             int totalTracks = 0;
-
+            bool overonekay = false;
             while (!string.IsNullOrEmpty( nextUrl )) {
                 HttpResponseMessage response = await client.GetAsync( nextUrl );
 
@@ -325,8 +325,8 @@ public class AppleMusicController(
 
                 // Check for pagination: look for a "next" link in the response
                 if (doc.RootElement.TryGetProperty( "next", out JsonElement nextElement )) {
-                    var nextValue = nextElement.GetString();
-                    nextUrl = (!string.IsNullOrEmpty(nextValue) && !nextValue.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    string? nextValue = nextElement.GetString( );
+                    nextUrl = (!string.IsNullOrEmpty( nextValue ) && !nextValue.StartsWith( "http", StringComparison.OrdinalIgnoreCase ))
                         ? "https://api.music.apple.com" + nextValue
                         : nextValue;
                 } else {
@@ -338,6 +338,7 @@ public class AppleMusicController(
                     totalTracks += trackDataElement.GetArrayLength( );
                 }
                 if (totalTracks >= 1000) {
+                    overonekay = true;
                     logger.LogWarning( "Playlist {PlaylistId} exceeds 1000 tracks, processing limited to first 1000 tracks", playlistId );
                     break;
                 }
@@ -345,7 +346,7 @@ public class AppleMusicController(
 
             return Ok( new {
                 success = true,
-                message = "Playlist processed successfully",
+                message = overonekay ? $"First {totalTracks} items processed successfully" : "Playlist processed successfully",
                 trackCount = trackIds.Count,
                 trackIds,
                 tooLarge = trackIds.Count > 100
