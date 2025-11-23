@@ -11,8 +11,8 @@ using TuneBridge.Domain.Models;
 namespace TuneBridge.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251120013051_AddPlaylistsTable")]
-    partial class AddPlaylistsTable
+    [Migration("20251123063610_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -155,6 +155,11 @@ namespace TuneBridge.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CardIds")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CardRkeys")
                         .IsRequired()
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");

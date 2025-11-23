@@ -146,30 +146,27 @@ namespace TuneBridge.Domain.Implementations.Services {
         public async Task AddInputLinksAsync( string recordUri, MediaLinkResult result ) {
             try {
                 using MediaLinkCacheDbContext dbContext = dbContextFactory.CreateDbContext( );
-
-                // Check if a local cache entry already exists for this rkey
                 string rkey = RecordKeyGenerator.GenerateRkey( result );
-                MediaLinkCacheEntry? existingEntry = await dbContext
-                                                            .CacheEntries
-                                                            .FirstOrDefaultAsync( ce => ce.Rkey ==  rkey );
-
-                // Get first result to determine IsAlbum
+                string cardId = RecordKeyGenerator.GenerateCardId( rkey );
+                MediaLinkCacheEntry? existingEntry = await dbContext.CacheEntries.FirstOrDefaultAsync( ce => ce.Rkey == rkey );
                 bool isAlbum = result.Results.Values.First( ).IsAlbum ?? false;
-
                 if (existingEntry == null) {
                     // Create new cache entry
                     MediaLinkCacheEntry cacheEntry = new( ) {
                         Rkey = rkey,
+                        CardId = cardId,
                         RecordUri = recordUri,
                         CreatedAt = DateTime.UtcNow,
                         LastLookedUpAt = DateTime.UtcNow
                     };
                     _ = dbContext.CacheEntries.Add( cacheEntry );
-                    logger.LogInformation( "Created new local lookup cache entry with rkey: {rkey}", rkey );
+                    logger.LogInformation( "Created new local lookup cache entry with rkey: {rkey} and cardId: {cardId}", rkey, cardId );
                 } else {
                     // Update existing entry
                     existingEntry.LastLookedUpAt = DateTime.UtcNow;
-                    logger.LogInformation( "Updated existing local lookup cache entry with rkey: {rkey}", rkey );
+                    // Ensure cardId persisted (might be null from older rows)
+                    if (string.IsNullOrWhiteSpace( existingEntry.CardId )) { existingEntry.CardId = cardId; }
+                    logger.LogInformation( "Updated existing local lookup cache entry with rkey: {rkey} and cardId: {cardId}", rkey, cardId );
                 }
                 _ = await dbContext.SaveChangesAsync( );
                 await AddLinkLookupEntriesAsync( dbContext, rkey, result, isAlbum );

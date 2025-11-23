@@ -17,6 +17,12 @@ namespace TuneBridge.Domain.Contracts.Entities {
         public string Rkey { get; set; } = string.Empty;
 
         /// <summary>
+        /// The deterministic card ID derived from the rkey (hash-based, URL safe) used for /card/{id} endpoints.
+        /// Stored to allow reverse lookup across restarts (hash is one-way so we must persist mapping).
+        /// </summary>
+        public string? CardId { get; set; }
+
+        /// <summary>
         /// The AT-URI of the record on ATProto PDS (e.g., at://did:plc:xxx/media.tunebridge.dev.lookup/yyy).
         /// This is deterministically generated based on the rkey.
         /// </summary>

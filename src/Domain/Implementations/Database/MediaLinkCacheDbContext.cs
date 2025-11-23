@@ -48,10 +48,13 @@ namespace TuneBridge.Domain.Implementations.Database {
                     .IsRequired( );
                 _ = entity.Property( e => e.LastLookedUpAt )
                     .IsRequired( );
+                _ = entity.Property( e => e.CardId )
+                    .HasMaxLength( 64 );
 
                 _ = entity.HasIndex( e => e.RecordUri )
                     .IsUnique( );
                 _ = entity.HasIndex( e => e.LastLookedUpAt );
+                _ = entity.HasIndex( e => e.CardId );
             } );
 
             // Configure MediaLookupEntry

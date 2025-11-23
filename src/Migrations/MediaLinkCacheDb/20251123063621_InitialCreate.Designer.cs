@@ -8,10 +8,10 @@ using TuneBridge.Domain.Implementations.Database;
 
 #nullable disable
 
-namespace TuneBridge.Migrations.MediaLinkCache
+namespace TuneBridge.Migrations.MediaLinkCacheDb
 {
     [DbContext(typeof(MediaLinkCacheDbContext))]
-    [Migration("20251119072235_InitialCreate")]
+    [Migration("20251123063621_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -26,6 +26,10 @@ namespace TuneBridge.Migrations.MediaLinkCache
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CardId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -38,6 +42,8 @@ namespace TuneBridge.Migrations.MediaLinkCache
                         .HasColumnType("TEXT");
 
                     b.HasKey("Rkey");
+
+                    b.HasIndex("CardId");
 
                     b.HasIndex("LastLookedUpAt");
 
