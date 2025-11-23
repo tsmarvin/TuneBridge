@@ -33,6 +33,9 @@
         }
     }
     Layout = null;
+    
+    // Get CSP nonce from HttpContext
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -61,7 +64,7 @@
         <meta name="twitter:image" content="@image" />
     }
 
-    <style>
+    <style nonce="@cspNonce">
         :root {
             font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.6;
@@ -297,6 +300,33 @@
             flex-shrink: 0;
         }
 
+        .badge-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .badge-container {
+            display: flex;
+            align-items: center;
+        }
+
+        .type-badge + .type-badge {
+            margin-left: 0.5rem;
+        }
+
+        .listen-heading {
+            margin-top: 0;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+        }
+
+        .footer-link {
+            color: inherit;
+            text-decoration: none;
+        }
+
         @@media (max-width: 640px) {
             body {
                 padding: 1rem;
@@ -327,12 +357,12 @@
         }
 
         <div class="card-body">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                <div>
+            <div class="badge-row">
+                <div class="badge-container">
                     <div class="type-badge">@musicType</div>
 
                     @if (!string.IsNullOrWhiteSpace(externalId)) {
-                        <div class="type-badge" style="margin-left: 0.5rem;">@externalIdType: @externalId</div>
+                        <div class="type-badge">@externalIdType: @externalId</div>
                     }
                 </div>
 
@@ -363,7 +393,7 @@
                 </div>
             </div>
 
-            <h2 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem;">Listen on:</h2>
+            <h2 class="listen-heading">Listen on:</h2>
 
             <div class="providers">
                 @if (Model != null) {
@@ -384,8 +414,7 @@
 
         <div class="footer">
             @if (!string.IsNullOrWhiteSpace(baseUrl)) {
-                <a href="https://@baseUrl" target="_blank" rel="noopener noreferrer"
-                    style="color: inherit; text-decoration: none;">Powered by TuneBridge</a>
+                <a href="https://@baseUrl" target="_blank" rel="noopener noreferrer" class="footer-link">Powered by TuneBridge</a>
             } else {
                 <span>Powered by TuneBridge</span>
             }
@@ -393,7 +422,7 @@
     </div>
 
     <script src="/public/share-buttons.js"></script>
-    <script>
+    <script nonce="@cspNonce">
         // Initialize share buttons when DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeShareButtons);

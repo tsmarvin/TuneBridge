@@ -1,5 +1,6 @@
 @{
 ViewData["Title"] = "Music Lookup";
+var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 
 <div class="card mb-4">
@@ -7,15 +8,15 @@ ViewData["Title"] = "Music Lookup";
 
     <div class="d-flex justify-content-between align-items-start mb-3">
       <h2 class="card-title mb-0">Music Lookup</h2>
-      <button class="btn btn-outline-secondary btn-sm rounded-circle" type="button" data-bs-toggle="collapse"
+      <button class="btn btn-outline-secondary btn-sm rounded-circle btn-help-icon" type="button" data-bs-toggle="collapse"
         data-bs-target="#howItWorksContent" aria-expanded="false" aria-controls="howItWorksContent"
-        title="How It Works" style="width: 32px; height: 32px;">
+        title="How It Works">
         <strong>?</strong>
       </button>
     </div>
 
     <!-- How It Works (Collapsible) -->
-    <div id="howItWorksContent" class="collapse mb-4" style="transition: height 0.35s ease;">
+    <div id="howItWorksContent" class="collapse collapse-with-transition mb-4">
       <div class="alert alert-info">
         <h6 class="alert-heading">How It Works</h6>
         <ol class="mb-0 ps-3">
@@ -61,7 +62,7 @@ ViewData["Title"] = "Music Lookup";
       </div>
     </fieldset>
 
-    <div id="inputs" class="mb-3" style="position: relative;">
+    <div id="inputs" class="mb-3">
       <div id="protectedModeOverlay" class="protected-mode-overlay d-none">
         <div class="overlay-content">
           <p class="mb-0">
@@ -201,7 +202,7 @@ ViewData["Title"] = "Music Lookup";
 </div>
 
 @section Scripts {
-<script>
+<script nonce="@cspNonce">
   (() => {
     const $ = (id) => document.getElementById(id);
     const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));

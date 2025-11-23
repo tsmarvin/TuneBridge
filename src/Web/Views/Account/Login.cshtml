@@ -1,5 +1,6 @@
 @{
     ViewData["Title"] = "Login";
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 
 <div class="card mb-4">
@@ -37,7 +38,7 @@
 </div>
 
 @section Scripts {
-    <script>
+    <script nonce="@cspNonce">
         const email = document.getElementById('email');
         const password = document.getElementById('password');
         const loginBtn = document.getElementById('loginBtn');

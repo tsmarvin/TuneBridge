@@ -1,6 +1,7 @@
 @model TuneBridge.Web.Models.PlaylistsViewModel
 @{
     ViewData["Title"] = "My Playlists";
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 
 <div class="card mb-4">
@@ -87,7 +88,7 @@
 </div>
 
 @section Scripts {
-    <script>
+    <script nonce="@cspNonce">
         // Copy playlist link
         document.querySelectorAll('.copy-playlist-link').forEach(btn => {
             btn.addEventListener('click', async () => {

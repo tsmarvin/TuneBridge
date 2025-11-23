@@ -463,6 +463,15 @@ html[data-bs-theme="dark"] .embed-card[style*="border-left-color: rgb(0, 0, 0)"]
   min-height: 300px;
 }
 
+.btn-help-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.collapse-with-transition {
+  transition: height 0.35s ease;
+}
+
 .protected-mode-overlay {
   position: absolute;
   inset: 0;
@@ -514,4 +523,12 @@ html[data-bs-theme="dark"] .protected-mode-overlay {
 
 .overlay-content a:hover {
   color: var(--bs-link-hover-color);
+}
+
+.modal-hidden {
+  display: none;
+}
+
+.nav-link-hidden {
+  display: none;
 }

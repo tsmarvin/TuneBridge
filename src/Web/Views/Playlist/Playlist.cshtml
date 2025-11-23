@@ -4,6 +4,24 @@
 @using Microsoft.AspNetCore.Html 
 @{
     ViewData["Title"] = Model.Title;
+    // Get CSP nonce from HttpContext
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
+    // Pre-generate card IDs
+    var cardIds = Model.Items.Select((item, index) => (item, id: $"playlist-card-{index}")).ToList();
+}
+
+@if (Model.Items.Any()) {
+    @* Generate styles for each card with dynamic border colors *@
+    <style nonce="@cspNonce">
+        @foreach (var (item, id) in cardIds) {
+            var borderColor = item.Result.Results.Keys.FirstOrDefault().GetProviderHexColor();
+            <text>
+        #@id {
+            border-left-color: @borderColor;
+        }
+            </text>
+        }
+    </style>
 }
 
 <div class="card mb-4">
@@ -44,10 +62,9 @@
             </div>
         } else {
             <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
-                @foreach (var item in Model.Items) {
-                    var borderColor = item.Result.Results.Keys.FirstOrDefault().GetProviderHexColor( );
+                @foreach (var (item, id) in cardIds) {
                     <div class="col">
-                        <div class="embed-card h-100" style="border-left-color: @borderColor;">
+                        <div id="@id" class="embed-card h-100">
                             <div class="embed-header-top">
                                 <div class="embed-title-row">
                                     <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer" class="embed-title">
@@ -108,7 +125,7 @@
 </div>
 
 @section Scripts {
-    <script>
+    <script nonce="@cspNonce">
         // Initialize share buttons when DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeShareButtons);
