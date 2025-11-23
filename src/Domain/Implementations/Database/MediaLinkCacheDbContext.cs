@@ -6,15 +6,11 @@ namespace TuneBridge.Domain.Implementations.Database {
     /// <summary>
     /// Database context for storing MediaLinkResult cache entries and lookup entries.
     /// </summary>
-    public class MediaLinkCacheDbContext : DbContext {
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="MediaLinkCacheDbContext"/> class.
-        /// </summary>
-        /// <param name="options">The database context configuration options.</param>
-        public MediaLinkCacheDbContext( DbContextOptions<MediaLinkCacheDbContext> options )
-            : base( options ) {
-        }
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="MediaLinkCacheDbContext"/> class.
+    /// </remarks>
+    /// <param name="options">The database context configuration options.</param>
+    public class MediaLinkCacheDbContext( DbContextOptions<MediaLinkCacheDbContext> options ) : DbContext( options ) {
 
         /// <summary>
         /// Cache entries representing MediaLinkResults stored on ATProto PDS.
@@ -48,10 +44,13 @@ namespace TuneBridge.Domain.Implementations.Database {
                     .IsRequired( );
                 _ = entity.Property( e => e.LastLookedUpAt )
                     .IsRequired( );
+                _ = entity.Property( e => e.CardId )
+                    .HasMaxLength( 64 );
 
                 _ = entity.HasIndex( e => e.RecordUri )
                     .IsUnique( );
                 _ = entity.HasIndex( e => e.LastLookedUpAt );
+                _ = entity.HasIndex( e => e.CardId );
             } );
 
             // Configure MediaLookupEntry

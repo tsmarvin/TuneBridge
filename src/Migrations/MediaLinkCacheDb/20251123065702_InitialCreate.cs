@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace TuneBridge.Migrations.MediaLinkCache {
+namespace TuneBridge.Migrations.MediaLinkCacheDb {
     /// <inheritdoc />
     public partial class InitialCreate : Migration {
         /// <inheritdoc />
@@ -11,6 +11,7 @@ namespace TuneBridge.Migrations.MediaLinkCache {
                 name: "CacheEntries",
                 columns: table => new {
                     Rkey = table.Column<string>( type: "TEXT", maxLength: 200, nullable: false ),
+                    CardId = table.Column<string>( type: "TEXT", maxLength: 64, nullable: false ),
                     RecordUri = table.Column<string>( type: "TEXT", maxLength: 500, nullable: false ),
                     CreatedAt = table.Column<DateTime>( type: "TEXT", nullable: false ),
                     LastLookedUpAt = table.Column<DateTime>( type: "TEXT", nullable: false )
@@ -59,6 +60,11 @@ namespace TuneBridge.Migrations.MediaLinkCache {
                         principalColumn: "Rkey",
                         onDelete: ReferentialAction.Cascade );
                 } );
+
+            _ = migrationBuilder.CreateIndex(
+                name: "IX_CacheEntries_CardId",
+                table: "CacheEntries",
+                column: "CardId" );
 
             _ = migrationBuilder.CreateIndex(
                 name: "IX_CacheEntries_LastLookedUpAt",
