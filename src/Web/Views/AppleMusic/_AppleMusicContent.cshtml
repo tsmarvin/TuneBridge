@@ -1,0 +1,72 @@
+@* Shared Apple Music Integration markup (no scripts). Used by /applemusic full page and /playlists/applemusic dynamic loader. *@
+@{
+    ViewData["Title"] = ViewData["Title"] ?? "Apple Music Library";
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-title">Apple Music Library Access</h2>
+
+        <div id="statusSection" class="mb-4">
+            <h5>Authentication Status</h5>
+            <div id="statusMessage" class="alert alert-info">
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Checking authentication status...
+            </div>
+        </div>
+
+        <div id="authSection" class="d-none mb-4">
+            <h5>Connect to Apple Music</h5>
+            <p class="text-muted">
+                Authenticate with Apple Music to access your library and playlists.
+            </p>
+            <button id="authorizeBtn" class="btn btn-primary">
+                Connect Apple Music
+            </button>
+        </div>
+
+        <div id="playlistsSection" class="d-none">
+            <h5>Your Playlists</h5>
+            <p class="text-muted">
+                Select a playlist from your Apple Music library.
+            </p>
+
+            <div id="playlistsLoading" class="d-none mb-3">
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Loading playlists...
+            </div>
+
+            <div id="playlistsError" class="alert alert-danger d-none"></div>
+
+            <div id="playlistsList" class="list-group"></div>
+
+            <div id="selectedPlaylist" class="alert alert-success d-none mt-3">
+                <strong>Selected Playlist:</strong> <span id="selectedPlaylistName"></span>
+                <div class="mt-2">
+                    <button id="processPlaylistBtn" class="btn btn-sm btn-primary">Process Playlist</button>
+                </div>
+            </div>
+
+            <div id="processingStatus" class="d-none mt-3">
+                <div id="processingLoading" class="d-none">
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span id="processingLoadingText">Processing playlist...</span>
+                </div>
+                <div id="processingError" class="alert alert-danger d-none"></div>
+            </div>
+        </div>
+
+        <div id="error" class="alert alert-danger d-none mt-3"></div>
+    </div>
+</div>
+
+<!-- Results Section -->
+<div id="resultsSection" class="d-none">
+    <div class="card">
+        <div class="card-body">
+            <h3 class="card-title mb-3">Results</h3>
+            <div id="resultsSummary" class="alert alert-info d-none"></div>
+            <div id="cardsContainer"></div>
+        </div>
+    </div>
+</div>

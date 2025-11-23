@@ -5,13 +5,14 @@
 @using Microsoft.AspNetCore.Html
 
 @{
-    var borderColor = Model.PrimaryProvider.GetProviderHexColor( );
     // Generate rkey for this card
     var rkey = RecordKeyGenerator.GenerateRkey(Model.Result);
+    // Use provider enum value as a class for styling
+    var providerClass = $"provider-{Model.PrimaryProvider.ToString().ToLowerInvariant()}";
 }
 
 <div class="col">
-    <div class="embed-card h-100" style="border-left-color: @borderColor;" data-rkey="@rkey">
+    <div class="embed-card h-100 @providerClass" data-rkey="@rkey">
         <div class="embed-header-top">
             <div class="embed-title-row">
                 @if (!string.IsNullOrWhiteSpace(Model.CardUrl)) {

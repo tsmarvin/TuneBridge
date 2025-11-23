@@ -125,6 +125,7 @@ namespace TuneBridge.Domain.Implementations.Services {
                 (MediaLinkResult result, string recordUri, bool isStale)? cachedResult = await _cacheRepository.TryGetCachedResultAsync( link );
                 if (cachedResult.HasValue && !cachedResult.Value.isStale) {
                     Logger.LogInformation( "Using fresh cached result from RecordUri: {RecordUri} for provider ID lookup", cachedResult.Value.recordUri );
+                    cachedResult.Value.result._inputLinks.Add( link );
                     yield return cachedResult.Value.result;
                     continue;
                 }
@@ -140,12 +141,14 @@ namespace TuneBridge.Domain.Implementations.Services {
 
                     if (cachedResult.HasValue && !cachedResult.Value.isStale) {
                         Logger.LogInformation( "Using fresh cached result from RecordUri: {RecordUri} for provider ID lookup", cachedResult.Value.recordUri );
+                        cachedResult.Value.result._inputLinks.Add( link );
                         yield return cachedResult.Value.result;
                         continue;
                     }
 
                     MediaLinkResult result = (await CombineLookupInfoAsync( (dto, provider) ))!;
                     _ = await _cacheRepository.CacheResultAsync( result );
+                    result._inputLinks.Add( link );
                     yield return result;
                 }
             }

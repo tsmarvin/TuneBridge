@@ -1,5 +1,6 @@
 @{
     ViewData["Title"] = "User Settings";
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
 
 <div class="card mb-4">
@@ -101,8 +102,7 @@
 </div>
 
 <!-- API Key Reset Modal -->
-<div id="confirmModal" class="modal" tabindex="-1" role="dialog" aria-labelledby="confirmModalTitle" aria-hidden="true"
-     style="display: none;">
+<div id="confirmModal" class="modal modal-hidden" tabindex="-1" role="dialog" aria-labelledby="confirmModalTitle" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -130,8 +130,8 @@
 </div>
 
 <!-- Account Deletion Modal -->
-<div id="deleteConfirmModal" class="modal" tabindex="-1" role="dialog" aria-labelledby="deleteConfirmModalTitle"
-     aria-hidden="true" style="display: none;">
+<div id="deleteConfirmModal" class="modal modal-hidden" tabindex="-1" role="dialog" aria-labelledby="deleteConfirmModalTitle"
+     aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -169,7 +169,7 @@
 </div>
 
 @section Scripts {
-    <script>
+    <script nonce="@cspNonce">
         const userEmailEl = document.getElementById('userEmail');
         const userIdEl = document.getElementById('userId');
         const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');

@@ -9,9 +9,9 @@
 } else if (Model.Items.Any()) {
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
         @foreach (var item in Model.Items) {
-            var borderColor = item.PrimaryProvider.GetProviderHexColor( );
+            var providerClass = $"provider-{item.PrimaryProvider.ToString().ToLowerInvariant()}";
             <div class="col">
-                <div class="embed-card h-100" style="border-left-color: @borderColor;">
+                <div class="embed-card h-100 @providerClass">
                     <div class="embed-header-top">
                         <div class="embed-title-row">
                             @if (!string.IsNullOrWhiteSpace(item.CardUrl)) {

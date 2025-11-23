@@ -190,6 +190,40 @@ namespace TuneBridge.Configuration {
                 }
             } );
 
+            // CSP middleware: adds Content-Security-Policy header. Relax frame-ancestors for embed endpoints.
+            // Must be placed before the main UseStaticFiles() call (see line 227) to ensure CSP headers are applied to those responses.
+            _ = app.Use( async ( ctx, next ) => {
+                string path = ctx.Request.Path.Value ?? string.Empty;
+                bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
+
+                // Generate a unique nonce for this request to allow inline scripts and styles
+                string nonce = Convert.ToBase64String( System.Security.Cryptography.RandomNumberGenerator.GetBytes( 16 ) );
+                ctx.Items["CSPNonce"] = nonce;
+
+                // Build CSP policy
+                // Allow MusicKit JS CDN, nonce-based inline styles, and API calls to music providers
+                string frameAncestors = isEmbed ? "*" : "'self'"; // Allow any site to embed cards & playlists
+
+                string csp = string.Join( "; ", new[] {
+                    "default-src 'self'",
+                    $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com",
+                    $"style-src 'self' 'nonce-{nonce}'",
+                    "img-src 'self' data: https:",
+                    "font-src 'self' data:",
+                    "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com",
+                    "media-src 'self' https:",
+                    "frame-ancestors " + frameAncestors,
+                    "object-src 'none'",
+                    "base-uri 'self'",
+                    "form-action 'self'"
+                } );
+
+                _ = ctx.Response.Headers.Remove( "Content-Security-Policy" );
+                ctx.Response.Headers.Append( "Content-Security-Policy", csp );
+
+                await next( );
+            } );
+
             _ = app.UseStaticFiles( ); // Serve static files from wwwroot
             _ = app.UseRouting( );
 
