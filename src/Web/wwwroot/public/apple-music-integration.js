@@ -75,22 +75,18 @@ async function loadPlaylists() {
         const response = await fetch('/applemusic/playlists', { credentials: 'same-origin' });
         if (!response.ok) {
             let errorMessage = 'Failed to load playlists';
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
+            try {
+                const text = await response.text();
+                // Try to parse as JSON first
                 try {
-                    const data = await response.json();
+                    const data = JSON.parse(text);
                     errorMessage = data.message || errorMessage;
-                } catch (parseErr) {
-                    // Ignore JSON parse error, use default message
-                }
-            } else {
-                // Try to get text message if available
-                try {
-                    const text = await response.text();
+                } catch (jsonErr) {
+                    // If not JSON, use the raw text if available
                     if (text) errorMessage = text;
-                } catch (e) {
-                    // Ignore
                 }
+            } catch (e) {
+                // Ignore text read error, use default message
             }
             throw new Error(errorMessage);
         }
@@ -151,15 +147,17 @@ async function processSelectedPlaylist() {
         if (!processResponse.ok) {
             let errorMessage = 'Failed to process playlist';
             try {
-                const data = await processResponse.json();
-                errorMessage = data.message || errorMessage;
-            } catch (jsonErr) {
+                const text = await processResponse.text();
+                // Try to parse as JSON first
                 try {
-                    const text = await processResponse.text();
-                    errorMessage = text || errorMessage;
-                } catch (textErr) {
-                    // ignore, use default errorMessage
+                    const data = JSON.parse(text);
+                    errorMessage = data.message || errorMessage;
+                } catch (jsonErr) {
+                    // If not JSON, use the raw text if available
+                    if (text) errorMessage = text;
                 }
+            } catch (e) {
+                // Ignore text read error, use default message
             }
             throw new Error(errorMessage);
         }
@@ -269,15 +267,17 @@ function initAuthorizationHandler() {
             if (!response.ok) {
                 let errorMessage = 'Failed to store token';
                 try {
-                    const data = await response.json();
-                    errorMessage = data.message || errorMessage;
-                } catch (jsonErr) {
+                    const text = await response.text();
+                    // Try to parse as JSON first
                     try {
-                        const text = await response.text();
-                        errorMessage = text || errorMessage;
-                    } catch (textErr) {
-                        // ignore, use default errorMessage
+                        const data = JSON.parse(text);
+                        errorMessage = data.message || errorMessage;
+                    } catch (jsonErr) {
+                        // If not JSON, use the raw text if available
+                        if (text) errorMessage = text;
                     }
+                } catch (e) {
+                    // Ignore text read error, use default message
                 }
                 throw new Error(errorMessage);
             }
