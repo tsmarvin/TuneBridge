@@ -307,12 +307,11 @@ public class AppleMusicController(
 
                 // Extract track IDs
                 if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
-                    foreach (JsonElement trackElement in dataElement.EnumerateArray( )) {
-                        if (trackElement.TryGetProperty( "id", out JsonElement idElement )) {
-                            string? idStr = idElement.GetString();
-                            if (!string.IsNullOrEmpty( idStr )) { trackIds.Add( idStr ); }
-                        }
-                    }
+                    trackIds.AddRange(
+                        dataElement.EnumerateArray()
+                            .Where( trackElement => trackElement.TryGetProperty( "id", out JsonElement idElement ) && !string.IsNullOrEmpty( idElement.GetString() ) )
+                            .Select( trackElement => trackElement.GetProperty( "id" ).GetString()! )
+                    );
                 }
 
                 // Check for pagination: look for a "next" link in the response
@@ -322,24 +321,18 @@ public class AppleMusicController(
                     nextUrl = null; // No more pages
                 }
 
-                totalTracks += dataElement.GetArrayLength( );
                 // Apple Music API limit: 100 tracks per request, cap processing at 1000 tracks
+                if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElementForCount )) {
+                    totalTracks += dataElementForCount.GetArrayLength();
+                }
                 if (totalTracks >= 1000) {
                     logger.LogWarning( "Playlist {PlaylistId} exceeds 1000 tracks, processing limited to first 1000 tracks", playlistId );
                     break;
                 }
             }
 
-            // Now `trackIds` contains all track IDs from the playlist, process them as needed
-            List<MediaLinkResult> mediaLinks = [];
-            foreach (string trackId in trackIds) {
-                MediaLinkResult? mediaLink = await mediaLinkService.GetInfoByProviderIdAsync( trackId, SupportedProviders.AppleMusic, false );
-                if (mediaLink != null) {
-                    mediaLinks.Add( mediaLink );
-                }
-            }
-
             return Ok( new {
+                success = true,
                 message = "Playlist processed successfully",
                 trackCount = trackIds.Count,
                 trackIds,
@@ -377,25 +370,68 @@ public class AppleMusicController(
         Response.ContentType = "text/html; charset=utf-8";
         Response.Headers.Append( "Cache-Control", "no-cache" );
         Response.Headers.Append( "X-Accel-Buffering", "no" );
-        int processedCount = 0; int errorCount = 0;
+        int processedCount = 0;
+        int errorCount = 0;
         foreach (string songId in songIds) {
             try {
                 MediaLinkResult? lookupResult = await mediaLinkService.GetInfoByProviderIdAsync( songId, SupportedProviders.AppleMusic, false );
-                if (lookupResult == null || lookupResult.Results.Count == 0) { errorCount++; continue; }
-                MusicLookupResultDto? primaryResult = null; SupportedProviders primaryProvider = SupportedProviders.AppleMusic;
-                foreach ((SupportedProviders provider, MusicLookupResultDto dto) in lookupResult.Results) {
-                    if (dto.IsPrimary) { primaryResult = dto; primaryProvider = provider; break; }
-                    if (primaryResult == null) { primaryResult = dto; primaryProvider = provider; }
+                if (lookupResult == null || lookupResult.Results.Count == 0) {
+                    errorCount++;
+                    continue;
                 }
-                if (primaryResult == null) { errorCount++; continue; }
-                string? cardUrl = null; if (cardService?.IsEnabled == true) { cardUrl = cardService.StoreResult( lookupResult ); }
+
+                MusicLookupResultDto? primaryResult = null;
+                SupportedProviders primaryProvider = SupportedProviders.AppleMusic;
+                foreach ((SupportedProviders provider, MusicLookupResultDto dto) in lookupResult.Results) {
+                    if (dto.IsPrimary) {
+                        primaryResult = dto;
+                        primaryProvider = provider;
+                        break;
+                    }
+                    if (primaryResult == null) {
+                        primaryResult = dto;
+                        primaryProvider = provider;
+                    }
+                }
+
+                if (primaryResult == null) {
+                    errorCount++;
+                    continue;
+                }
+
+                string? cardUrl = null;
+                if (cardService?.IsEnabled == true) {
+                    cardUrl = cardService.StoreResult( lookupResult );
+                }
+
                 string? atProtoUri = await GetATProtoUriFromCache( lookupResult );
-                MusicLookupViewModel.MusicLookupResultItem item = new( ) { CardUrl = cardUrl, ATProtoUri = atProtoUri, Result = lookupResult, PrimaryProvider = primaryProvider, PrimaryResult = primaryResult };
+
+                MusicLookupViewModel.MusicLookupResultItem item = new( )
+                {
+                    CardUrl = cardUrl,
+                    ATProtoUri = atProtoUri,
+                    Result = lookupResult,
+                    PrimaryProvider = primaryProvider,
+                    PrimaryResult = primaryResult
+                };
+
                 string html = await RenderViewToStringAsync( "_LookupResultCard", item );
-                await Response.WriteAsync( html ); await Response.Body.FlushAsync( ); processedCount++;
-            } catch (Exception ex) { logger.LogError( ex, "Error processing song {SongId}", songId.SanitizeForLogging( ) ); errorCount++; }
+                await Response.WriteAsync( html );
+                await Response.Body.FlushAsync( );
+                processedCount++;
+            }
+            catch (Exception ex) {
+                logger.LogError( ex, "Error processing song {SongId}", songId.SanitizeForLogging( ) );
+                errorCount++;
+            }
         }
-        if (processedCount == 0 && errorCount > 0) { await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found for the tracks in this playlist</div>" ); } else if (errorCount > 0) { await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" ); } else { await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" ); }
+        if (processedCount == 0 && errorCount > 0) {
+            await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found for the tracks in this playlist</div>" );
+        } else if (errorCount > 0) {
+            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" );
+        } else {
+            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" );
+        }
     }
 
     /// <summary>Returns Apple Music integration partial view content without layout.</summary>
@@ -404,9 +440,25 @@ public class AppleMusicController(
     public IActionResult ContentPartial( ) => PartialView( "_AppleMusicContent" );
 
     private async Task<string> RenderViewToStringAsync( string viewName, object model ) {
-        ViewData.Model = model; using StringWriter sw = new( ); ViewEngineResult viewResult = viewEngine.FindView( ControllerContext, viewName, false );
-        if (!viewResult.Success) { throw new InvalidOperationException( $"View '{viewName}' not found" ); }
-        Microsoft.AspNetCore.Mvc.Rendering.ViewContext viewContext = new( ControllerContext, viewResult.View, ViewData, TempData, sw, new HtmlHelperOptions( ) );
-        await viewResult.View.RenderAsync( viewContext ); return sw.ToString( );
+        ViewData.Model = model;
+        using StringWriter sw = new();
+        ViewEngineResult viewResult = viewEngine.FindView( ControllerContext, viewName, false );
+
+        if (!viewResult.Success)
+        {
+            throw new InvalidOperationException( $"View '{viewName}' not found" );
+        }
+
+        Microsoft.AspNetCore.Mvc.Rendering.ViewContext viewContext = new(
+            ControllerContext,
+            viewResult.View,
+            ViewData,
+            TempData,
+            sw,
+            new HtmlHelperOptions()
+        );
+
+        await viewResult.View.RenderAsync( viewContext );
+        return sw.ToString( );
     }
 }
