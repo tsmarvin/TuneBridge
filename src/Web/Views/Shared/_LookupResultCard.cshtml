@@ -8,19 +8,12 @@
     var borderColor = Model.PrimaryProvider.GetProviderHexColor( );
     // Generate rkey for this card
     var rkey = RecordKeyGenerator.GenerateRkey(Model.Result);
-    // Get CSP nonce from HttpContext
-    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
-    var cardId = $"card-{Guid.NewGuid():N}";
+    // Use provider enum value as a class for styling
+    var providerClass = $"provider-{Model.PrimaryProvider.ToString().ToLowerInvariant()}";
 }
 
-<style nonce="@cspNonce">
-    #@cardId {
-        border-left-color: @borderColor;
-    }
-</style>
-
 <div class="col">
-    <div id="@cardId" class="embed-card h-100" data-rkey="@rkey">
+    <div class="embed-card h-100 @providerClass" data-rkey="@rkey" data-border-color="@borderColor">
         <div class="embed-header-top">
             <div class="embed-title-row">
                 @if (!string.IsNullOrWhiteSpace(Model.CardUrl)) {

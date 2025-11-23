@@ -135,6 +135,24 @@ body:not([data-search])[data-layout=conceptual]>main>.content> :not(article) {
   max-width: 515px;
 }
 
+/* Provider-specific border colors */
+.embed-card.provider-applemusic {
+  border-left-color: #D60017;
+}
+
+.embed-card.provider-spotify {
+  border-left-color: #1ED760;
+}
+
+.embed-card.provider-tidal {
+  border-left-color: #000000;
+}
+
+/* Fallback for unknown providers */
+.embed-card[data-border-color]:not(.provider-applemusic):not(.provider-spotify):not(.provider-tidal) {
+  border-left-color: #6366F1;
+}
+
 .embed-header-top {
   margin-bottom: 0.5rem;
 }
@@ -435,8 +453,7 @@ html[data-bs-theme="dark"] .embed-card {
 }
 
 /* Tidal cards: white left border in dark mode */
-html[data-bs-theme="dark"] .embed-card[style*="border-left-color: #000000"],
-html[data-bs-theme="dark"] .embed-card[style*="border-left-color: rgb(0, 0, 0)"] {
+html[data-bs-theme="dark"] .embed-card.provider-tidal {
   border-left-color: #FFFFFF !important;
 }
 
@@ -449,10 +466,8 @@ html[data-bs-theme="dark"] .embed-card[style*="border-left-color: rgb(0, 0, 0)"]
   }
 
   /* Tidal cards: white left border in dark mode */
-  html[data-bs-theme="auto"] .embed-card[style*="border-left-color: #000000"],
-  html[data-bs-theme="auto"] .embed-card[style*="border-left-color: rgb(0, 0, 0)"],
-  html:not([data-bs-theme]) .embed-card[style*="border-left-color: #000000"],
-  html:not([data-bs-theme]) .embed-card[style*="border-left-color: rgb(0, 0, 0)"] {
+  html[data-bs-theme="auto"] .embed-card.provider-tidal,
+  html:not([data-bs-theme]) .embed-card.provider-tidal {
     border-left-color: #FFFFFF !important;
   }
 }
