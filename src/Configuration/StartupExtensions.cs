@@ -201,16 +201,16 @@ namespace TuneBridge.Configuration {
                 ctx.Items["CSPNonce"] = nonce;
 
                 // Build CSP policy
-                // Allow MusicKit JS CDN, nonce-based inline styles, and API calls to music providers
+                // Allow MusicKit JS CDN, Cloudflare analytics, nonce-based inline styles, and API calls to music providers
                 string frameAncestors = isEmbed ? "*" : "'self'"; // Allow any site to embed cards & playlists
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
-                    $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com",
+                    $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com https://static.cloudflareinsights.com",
                     $"style-src 'self' 'nonce-{nonce}'",
                     "img-src 'self' data: https:",
                     "font-src 'self' data:",
-                    "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com",
+                    "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com https://cloudflareinsights.com",
                     "media-src 'self' https:",
                     "frame-ancestors " + frameAncestors,
                     "object-src 'none'",
