@@ -288,8 +288,10 @@ public class AppleMusicController(
             client.DefaultRequestHeaders.Add( "Music-User-Token", user.AppleMusicUserToken );
 
             // Fetch all playlist tracks with pagination
+            string playlistId = request.PlaylistId.SanitizeForLogging( );
+
             List<string> trackIds = [];
-            string? nextUrl = $"https://api.music.apple.com/v1/me/library/playlists/{request.PlaylistId}/tracks";
+            string? nextUrl = $"https://api.music.apple.com/v1/me/library/playlists/{playlistId}/tracks";
             int totalTracks = 0;
 
             while (!string.IsNullOrEmpty( nextUrl )) {
@@ -323,7 +325,7 @@ public class AppleMusicController(
                 totalTracks += dataElement.GetArrayLength( );
                 // Apple Music API limit: 100 tracks per request, cap processing at 1000 tracks
                 if (totalTracks >= 1000) {
-                    logger.LogWarning( "Playlist {PlaylistId} exceeds 1000 tracks, processing limited to first 1000 tracks", request.PlaylistId );
+                    logger.LogWarning( "Playlist {PlaylistId} exceeds 1000 tracks, processing limited to first 1000 tracks", playlistId );
                     break;
                 }
             }
