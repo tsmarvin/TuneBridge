@@ -26,9 +26,16 @@ let selectedPlaylistId = null;
 
 // Developer token fetch
 async function getDeveloperToken() {
-    const response = await fetch('/applemusic/developer-token');
-    const data = await response.json();
-    return data.token;
+    try {
+        const response = await fetch('/applemusic/developer-token');
+        if (!response.ok) {
+            throw new Error('Failed to fetch developer token: ' + response.status + ' ' + response.statusText);
+        }
+        const data = await response.json();
+        return data.token;
+    } catch (err) {
+        throw new Error('Error fetching developer token: ' + err.message);
+    }
 }
 
 // Check auth status
@@ -263,8 +270,12 @@ window.addEventListener('musickitloaded', async () => {
         initAuthorizationHandler();
         initProcessHandler();
     } catch (err) {
-        statusMessage.classList.remove('alert-info');
-        statusMessage.classList.add('alert-danger');
-        statusMessage.innerHTML = 'Failed to initialize Apple Music: ' + err.message;
+        if (statusMessage) {
+            statusMessage.classList.remove('alert-info');
+            statusMessage.classList.add('alert-danger');
+            statusMessage.innerHTML = 'Failed to initialize Apple Music: ' + err.message;
+        } else {
+            alert('Failed to initialize Apple Music: ' + err.message);
+        }
     }
 });

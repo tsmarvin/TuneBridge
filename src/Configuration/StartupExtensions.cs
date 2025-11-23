@@ -190,20 +190,16 @@ namespace TuneBridge.Configuration {
                 }
             } );
 
-            _ = app.UseStaticFiles( ); // Serve static files from wwwroot
-            _ = app.UseRouting( );
-
             // CSP middleware: adds Content-Security-Policy header. Relax frame-ancestors for embed endpoints.
+            // Must be placed before UseStaticFiles() to ensure CSP headers are applied to all responses.
             AppSettings cspSettings = settings; // reuse bound settings
             _ = app.Use( async ( ctx, next ) => {
-                // Skip for static files already having headers
                 string path = ctx.Request.Path.Value ?? string.Empty;
                 bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
 
                 // Build CSP policy
                 // Allow MusicKit JS CDN, inline styles needed by Razor and DocFX, and API calls to music providers
                 string frameAncestors = isEmbed ? "*" : "'self'"; // Allow any site to embed cards & playlists
-                string baseUrlHost = cspSettings.BaseUrl; // e.g., dev.tunebridge.media
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
@@ -224,6 +220,9 @@ namespace TuneBridge.Configuration {
 
                 await next( );
             } );
+
+            _ = app.UseStaticFiles( ); // Serve static files from wwwroot
+            _ = app.UseRouting( );
 
             // Restrict health endpoint access to internal requests only
             // NOTE: This middleware is intentionally placed before authentication because it uses IP-based authorization

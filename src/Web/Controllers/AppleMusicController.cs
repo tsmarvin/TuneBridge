@@ -318,18 +318,17 @@ public class AppleMusicController(
                                 ? idElement.GetString( )
                                 : null;
                             } )
-                            .Where( id => !string.IsNullOrEmpty( id ) )!
+                            .Where( id => !string.IsNullOrEmpty( id ) )
+                            .Cast<string>( )
                     );
                 }
 
                 // Check for pagination: look for a "next" link in the response
                 if (doc.RootElement.TryGetProperty( "next", out JsonElement nextElement )) {
                     var nextValue = nextElement.GetString();
-                    if (!string.IsNullOrEmpty(nextValue) && !nextValue.StartsWith("http", StringComparison.OrdinalIgnoreCase)) {
-                        nextUrl = "https://api.music.apple.com" + nextValue;
-                    } else {
-                        nextUrl = nextValue;
-                    }
+                    nextUrl = (!string.IsNullOrEmpty(nextValue) && !nextValue.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                        ? "https://api.music.apple.com" + nextValue
+                        : nextValue;
                 } else {
                     nextUrl = null; // No more pages
                 }
