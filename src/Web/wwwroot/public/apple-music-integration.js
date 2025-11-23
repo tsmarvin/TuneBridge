@@ -44,6 +44,9 @@ async function getDeveloperToken() {
 async function checkAuthStatus() {
     try {
         const response = await fetch('/applemusic/status', { credentials: 'same-origin' });
+        if (!response.ok) {
+            throw new Error('Failed to fetch auth status: ' + response.status + ' ' + response.statusText);
+        }
         const data = await response.json();
         if (data.hasToken && !data.isExpired) {
             statusMessage.classList.remove('alert-info');
@@ -71,8 +74,21 @@ async function loadPlaylists() {
     try {
         const response = await fetch('/applemusic/playlists', { credentials: 'same-origin' });
         if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.message || 'Failed to load playlists');
+            let errorMessage = 'Failed to load playlists';
+            try {
+                const text = await response.text();
+                // Try to parse as JSON first
+                try {
+                    const data = JSON.parse(text);
+                    errorMessage = data.message || errorMessage;
+                } catch (jsonErr) {
+                    // If not JSON, use the raw text if available
+                    if (text) errorMessage = text;
+                }
+            } catch (e) {
+                // Ignore text read error, use default message
+            }
+            throw new Error(errorMessage);
         }
         const data = await response.json();
         playlistsLoading.classList.add('d-none');
@@ -129,8 +145,21 @@ async function processSelectedPlaylist() {
             body: JSON.stringify({ playlistId: selectedPlaylistId })
         });
         if (!processResponse.ok) {
-            const data = await processResponse.json();
-            throw new Error(data.message || 'Failed to process playlist');
+            let errorMessage = 'Failed to process playlist';
+            try {
+                const text = await processResponse.text();
+                // Try to parse as JSON first
+                try {
+                    const data = JSON.parse(text);
+                    errorMessage = data.message || errorMessage;
+                } catch (jsonErr) {
+                    // If not JSON, use the raw text if available
+                    if (text) errorMessage = text;
+                }
+            } catch (e) {
+                // Ignore text read error, use default message
+            }
+            throw new Error(errorMessage);
         }
         const processData = await processResponse.json();
         if (!processData.success) {
@@ -236,8 +265,21 @@ function initAuthorizationHandler() {
                 body: JSON.stringify({ userToken, expiresInMs: 15552000000 }) // 180 days
             });
             if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.message || 'Failed to store token');
+                let errorMessage = 'Failed to store token';
+                try {
+                    const text = await response.text();
+                    // Try to parse as JSON first
+                    try {
+                        const data = JSON.parse(text);
+                        errorMessage = data.message || errorMessage;
+                    } catch (jsonErr) {
+                        // If not JSON, use the raw text if available
+                        if (text) errorMessage = text;
+                    }
+                } catch (e) {
+                    // Ignore text read error, use default message
+                }
+                throw new Error(errorMessage);
             }
             authSection.classList.add('d-none');
             statusSection.classList.remove('d-none');

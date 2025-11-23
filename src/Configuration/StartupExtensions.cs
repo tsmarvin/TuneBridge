@@ -192,12 +192,11 @@ namespace TuneBridge.Configuration {
 
             // CSP middleware: adds Content-Security-Policy header. Relax frame-ancestors for embed endpoints.
             // Must be placed before UseStaticFiles() to ensure CSP headers are applied to all responses.
-            AppSettings cspSettings = settings; // reuse bound settings
             _ = app.Use( async ( ctx, next ) => {
                 string path = ctx.Request.Path.Value ?? string.Empty;
                 bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
 
-                // Generate a unique nonce for this request to allow inline styles
+                // Generate a unique nonce for this request to allow inline scripts and styles
                 string nonce = Convert.ToBase64String( System.Security.Cryptography.RandomNumberGenerator.GetBytes( 16 ) );
                 ctx.Items["CSPNonce"] = nonce;
 
