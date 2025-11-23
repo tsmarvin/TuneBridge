@@ -346,7 +346,7 @@ public class AppleMusicController(
 
             return Ok( new {
                 success = true,
-                message = overonekay ? $"First {totalTracks} items processed successfully" : "Playlist processed successfully",
+                message = overonekay ? $"First {trackIds.Count} items processed successfully" : "Playlist processed successfully",
                 trackCount = trackIds.Count,
                 trackIds,
                 tooLarge = trackIds.Count > 100

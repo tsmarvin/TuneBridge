@@ -47,9 +47,6 @@ async function checkAuthStatus() {
         if (!response.ok) {
             throw new Error('Failed to fetch auth status: ' + response.status + ' ' + response.statusText);
         }
-        if (!response.ok) {
-            throw new Error('Failed to fetch auth status: ' + response.status + ' ' + response.statusText);
-        }
         const data = await response.json();
         if (data.hasToken && !data.isExpired) {
             statusMessage.classList.remove('alert-info');
