@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TuneBridge.Domain.Models;
 
 #nullable disable
@@ -14,7 +15,7 @@ namespace TuneBridge.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.10");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
@@ -144,6 +145,51 @@ namespace TuneBridge.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.PlaylistEntry", b =>
+                {
+                    b.Property<string>("PlaylistId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CardIds")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CardRkeys")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("PlaylistId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Playlists");
+                });
+
             modelBuilder.Entity("TuneBridge.Domain.Models.ApplicationUser", b =>
                 {
                     b.Property<string>("Id")
@@ -153,6 +199,12 @@ namespace TuneBridge.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ApiKeyHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("AppleMusicTokenExpiration")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppleMusicUserToken")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ConcurrencyStamp")

@@ -32,18 +32,9 @@ namespace TuneBridge.Domain.Implementations.Utilities {
                 .FirstOrDefault( r => !string.IsNullOrWhiteSpace( r.ExternalId ) );
 
             if (firstResultWithId != null) {
-                // Determine media type prefix
-                string prefix = firstResultWithId.IsAlbum == true ? "album" : "track";
-
-                // Sanitize the externalId to be URL-safe (alphanumeric and hyphens)
-                string sanitizedId = SanitizeForRkey( firstResultWithId.ExternalId );
-
-                if (!string.IsNullOrEmpty( sanitizedId )) {
-                    return $"{prefix}:{sanitizedId}";
-                }
-                // If externalId sanitizes to empty, log warning and fall back to metadata
+                string? rkey = GenerateRkey( firstResultWithId.ExternalId, firstResultWithId.IsAlbum ?? false );
+                if (rkey is not null) { return rkey; }
             }
-
             // Fallback: Generate rkey from metadata hash
             return GenerateMetadataBasedRkey( result );
         }

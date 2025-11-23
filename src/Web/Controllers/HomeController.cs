@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewEngines;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
@@ -11,25 +13,21 @@ namespace TuneBridge.Web.Controllers {
     /// <summary>
     /// Controller for the main web application pages.
     /// </summary>
-    public class HomeController : Controller {
-        private readonly ILogger<HomeController> _logger;
-        private readonly IMediaLinkService? _mediaLinkService;
-        private readonly IOpenGraphCardService? _cardService;
-        private readonly IMediaLinkCacheRepository? _cacheRepository;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="HomeController"/> class.
-        /// </summary>
-        /// <param name="logger">The logger for recording diagnostic information.</param>
-        /// <param name="mediaLinkService">Optional music lookup service.</param>
-        /// <param name="cardService">Optional OpenGraph card service.</param>
-        /// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
-        public HomeController( ILogger<HomeController> logger, IMediaLinkService? mediaLinkService = null, IOpenGraphCardService? cardService = null, IMediaLinkCacheRepository? cacheRepository = null ) {
-            _logger = logger;
-            _mediaLinkService = mediaLinkService;
-            _cardService = cardService;
-            _cacheRepository = cacheRepository;
-        }
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="HomeController"/> class.
+    /// </remarks>
+    /// <param name="logger">The logger for recording diagnostic information.</param>
+    /// <param name="viewEngine">View engine for rendering partial views to strings.</param>
+    /// <param name="mediaLinkService">Optional music lookup service.</param>
+    /// <param name="cardService">Optional OpenGraph card service.</param>
+    /// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
+    public class HomeController(
+        ILogger<HomeController> logger,
+        ICompositeViewEngine viewEngine,
+        IMediaLinkService? mediaLinkService = null,
+        IOpenGraphCardService? cardService = null,
+        IMediaLinkCacheRepository? cacheRepository = null
+    ) : Controller {
 
         /// <summary>
         /// Displays the home/index page.
@@ -44,7 +42,7 @@ namespace TuneBridge.Web.Controllers {
         /// <returns>Partial view with lookup results.</returns>
         [HttpPost]
         public async Task<IActionResult> LookupResults( string uri ) {
-            if (_mediaLinkService == null) {
+            if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
                     Message = "Music lookup service not available"
                 } );
@@ -58,7 +56,7 @@ namespace TuneBridge.Web.Controllers {
 
             // Perform lookup server-side and collect all results
             MusicLookupViewModel viewModel = new( );
-            await foreach (MediaLinkResult result in _mediaLinkService.GetInfoAsync( uri )) {
+            await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( uri )) {
                 if (result.Results.Count == 0) {
                     continue; // Skip empty results
                 }
@@ -84,8 +82,8 @@ namespace TuneBridge.Web.Controllers {
 
                 // Store result and get card URL (server-side only)
                 string? cardUrl = null;
-                if (_cardService?.IsEnabled == true) {
-                    cardUrl = _cardService.StoreResult( result );
+                if (cardService?.IsEnabled == true) {
+                    cardUrl = cardService.StoreResult( result );
                 }
 
                 // Get ATProto URI from cache if available
@@ -114,7 +112,7 @@ namespace TuneBridge.Web.Controllers {
         /// <returns>Partial view with lookup results.</returns>
         [HttpPost]
         public async Task<IActionResult> LookupResultsByIsrc( string isrc ) {
-            if (_mediaLinkService == null) {
+            if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
                     Message = "Music lookup service not available"
                 } );
@@ -126,7 +124,7 @@ namespace TuneBridge.Web.Controllers {
                 } );
             }
 
-            MediaLinkResult? result = await _mediaLinkService.GetInfoByISRCAsync( isrc );
+            MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( isrc );
             return await CreateViewModelFromResult( result, "No results found for ISRC" );
         }
 
@@ -137,7 +135,7 @@ namespace TuneBridge.Web.Controllers {
         /// <returns>Partial view with lookup results.</returns>
         [HttpPost]
         public async Task<IActionResult> LookupResultsByUpc( string upc ) {
-            if (_mediaLinkService == null) {
+            if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
                     Message = "Music lookup service not available"
                 } );
@@ -149,7 +147,7 @@ namespace TuneBridge.Web.Controllers {
                 } );
             }
 
-            MediaLinkResult? result = await _mediaLinkService.GetInfoByUPCAsync( upc );
+            MediaLinkResult? result = await mediaLinkService.GetInfoByUPCAsync( upc );
             return await CreateViewModelFromResult( result, "No results found for UPC" );
         }
 
@@ -161,7 +159,7 @@ namespace TuneBridge.Web.Controllers {
         /// <returns>Partial view with lookup results.</returns>
         [HttpPost]
         public async Task<IActionResult> LookupResultsByTitle( string title, string artist ) {
-            if (_mediaLinkService == null) {
+            if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
                     Message = "Music lookup service not available"
                 } );
@@ -173,7 +171,7 @@ namespace TuneBridge.Web.Controllers {
                 } );
             }
 
-            MediaLinkResult? result = await _mediaLinkService.GetInfoAsync( title, artist );
+            MediaLinkResult? result = await mediaLinkService.GetInfoAsync( title, artist );
             return await CreateViewModelFromResult( result, "No results found for title/artist" );
         }
 
@@ -183,7 +181,10 @@ namespace TuneBridge.Web.Controllers {
         /// <param name="result">The lookup result.</param>
         /// <param name="noResultsMessage">Message to display when no results found.</param>
         /// <returns>Partial view with the created view model.</returns>
-        private async Task<IActionResult> CreateViewModelFromResult( MediaLinkResult? result, string noResultsMessage ) {
+        private async Task<IActionResult> CreateViewModelFromResult(
+            MediaLinkResult? result,
+            string noResultsMessage
+        ) {
             MusicLookupViewModel viewModel = new( );
 
             if (result == null || result.Results.Count == 0) {
@@ -213,8 +214,8 @@ namespace TuneBridge.Web.Controllers {
 
             // Store result and get card URL
             string? cardUrl = null;
-            if (_cardService?.IsEnabled == true) {
-                cardUrl = _cardService.StoreResult( result );
+            if (cardService?.IsEnabled == true) {
+                cardUrl = cardService.StoreResult( result );
             }
 
             // Get ATProto URI from cache if available
@@ -239,13 +240,13 @@ namespace TuneBridge.Web.Controllers {
         /// <returns>The ATProto URI if found in cache, otherwise null.</returns>
         private async Task<string?> GetATProtoUriFromCache( MediaLinkResult result ) {
             try {
-                return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, _cacheRepository );
+                return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, cacheRepository );
             } catch (InvalidOperationException ex) {
-                _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
+                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
             } catch (ArgumentException ex) {
-                _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
+                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
             } catch (Exception ex) {
-                _logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
+                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
             }
 
             return null;
@@ -282,7 +283,7 @@ namespace TuneBridge.Web.Controllers {
         /// <returns>JSON response with array of card URLs and results.</returns>
         [HttpPost( "/lookup/web" )]
         public async Task<IActionResult> WebLookup( [FromBody] WebLookupRequest req ) {
-            if (_mediaLinkService == null) {
+            if (mediaLinkService == null) {
                 return BadRequest( new { error = "Music lookup service not available" } );
             }
 
@@ -292,15 +293,15 @@ namespace TuneBridge.Web.Controllers {
 
             // Perform lookup server-side and collect all results
             List<WebLookupResultItem> items = [];
-            await foreach (MediaLinkResult result in _mediaLinkService.GetInfoAsync( req.Uri )) {
+            await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( req.Uri )) {
                 if (result.Results.Count == 0) {
                     continue; // Skip empty results
                 }
 
                 // Store result and get card URL (server-side only)
                 string? cardUrl = null;
-                if (_cardService?.IsEnabled == true) {
-                    cardUrl = _cardService.StoreResult( result );
+                if (cardService?.IsEnabled == true) {
+                    cardUrl = cardService.StoreResult( result );
                 }
 
                 items.Add( new WebLookupResultItem( cardUrl, result ) );
@@ -325,6 +326,141 @@ namespace TuneBridge.Web.Controllers {
         /// <param name="CardUrl">URL to the stored OpenGraph card, if available.</param>
         /// <param name="FallbackData">The raw result data for fallback display.</param>
         public record WebLookupResultItem( string? CardUrl, MediaLinkResult FallbackData );
+
+        /// <summary>
+        /// Streams music lookup results progressively as they're retrieved.
+        /// Returns chunked HTML that can be appended to the DOM.
+        /// </summary>
+        /// <param name="uri">Music URL(s) to look up.</param>
+        /// <returns>Streamed partial views as chunks.</returns>
+        /// <response code="200">Results streamed successfully.</response>
+        /// <response code="400">Invalid or missing URI.</response>
+        /// <response code="503">Music lookup service not available.</response>
+        [HttpPost]
+        [Route( "/Home/LookupResultsStream" )]
+        public async Task LookupResultsStream( string uri ) {
+            if (mediaLinkService == null) {
+                Response.StatusCode = 503;
+                await Response.WriteAsync( "<div class=\"alert alert-danger\">Music lookup service not available</div>" );
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace( uri )) {
+                Response.StatusCode = 400;
+                await Response.WriteAsync( "<div class=\"alert alert-danger\">URI is required</div>" );
+                return;
+            }
+
+            Response.ContentType = "text/html; charset=utf-8";
+            Response.Headers.Append( "Cache-Control", "no-cache" );
+            Response.Headers.Append( "X-Accel-Buffering", "no" ); // Disable nginx buffering
+
+            int processedCount = 0;
+            int errorCount = 0;
+
+            try {
+                await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( uri )) {
+                    try {
+                        if (result.Results.Count == 0) {
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Find primary result
+                        MusicLookupResultDto? primaryResult = null;
+                        SupportedProviders primaryProvider = default;
+                        foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results) {
+                            if (dto.IsPrimary) {
+                                primaryResult = dto;
+                                primaryProvider = provider;
+                                break;
+                            }
+                            if (primaryResult == null) {
+                                primaryResult = dto;
+                                primaryProvider = provider;
+                            }
+                        }
+
+                        if (primaryResult == null) {
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Store result and get card URL
+                        string? cardUrl = null;
+                        if (cardService?.IsEnabled == true) {
+                            cardUrl = cardService.StoreResult( result );
+                        }
+
+                        // Get ATProto URI from cache if available
+                        string? atProtoUri = await GetATProtoUriFromCache( result );
+
+                        // Create single-item model
+                        MusicLookupViewModel.MusicLookupResultItem item = new( ) {
+                            CardUrl = cardUrl,
+                            ATProtoUri = atProtoUri,
+                            Result = result,
+                            PrimaryProvider = primaryProvider,
+                            PrimaryResult = primaryResult
+                        };
+
+                        // Render partial view to string and stream it
+                        string html = await RenderViewToStringAsync( "_LookupResultCard", item );
+                        await Response.WriteAsync( html );
+                        await Response.Body.FlushAsync( );
+
+                        processedCount++;
+
+                    } catch (Exception ex) {
+                        logger.LogError( ex, "Error processing individual result for URI: {Uri}", uri.SanitizeForLogging( ) );
+                        errorCount++;
+                    }
+                }
+
+                // Send completion status as a hidden data element
+                if (processedCount == 0 && errorCount > 0) {
+                    await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found</div>" );
+                } else if (processedCount == 0) {
+                    await Response.WriteAsync( "<div class=\"alert alert-info\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"0\">No results found</div>" );
+                } else if (errorCount > 0) {
+                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" );
+                } else {
+                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" );
+                }
+
+            } catch (Exception ex) {
+                logger.LogError( ex, "Error during lookup stream for URI: {Uri}", uri.SanitizeForLogging( ) );
+                await Response.WriteAsync( $"<div class=\"alert alert-danger\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount + 1}\">An error occurred during lookup: {ex.Message}</div>" );
+            }
+        }
+
+        /// <summary>
+        /// Helper method to render a view to a string for streaming.
+        /// </summary>
+        /// <param name="viewName">Name of the view to render.</param>
+        /// <param name="model">Model to pass to the view.</param>
+        /// <returns>Rendered HTML string.</returns>
+        private async Task<string> RenderViewToStringAsync( string viewName, object model ) {
+            ViewData.Model = model;
+            using StringWriter sw = new( );
+            ViewEngineResult viewResult = viewEngine.FindView( ControllerContext, viewName, false );
+
+            if (!viewResult.Success) {
+                throw new InvalidOperationException( $"View '{viewName}' not found" );
+            }
+
+            Microsoft.AspNetCore.Mvc.Rendering.ViewContext viewContext = new(
+                ControllerContext,
+                viewResult.View,
+                ViewData,
+                TempData,
+                sw,
+                new HtmlHelperOptions( )
+            );
+
+            await viewResult.View.RenderAsync( viewContext );
+            return sw.ToString( );
+        }
 
         /// <summary>
         /// Displays the error page.

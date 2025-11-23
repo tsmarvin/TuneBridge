@@ -27,4 +27,14 @@ public class ApplicationUser : IdentityUser {
     /// Start of the current rate limit window.
     /// </summary>
     public DateTime? RateLimitWindowStart { get; set; }
+
+    /// <summary>
+    /// Apple Music user token for accessing the user's library and playlists.
+    /// </summary>
+    public string? AppleMusicUserToken { get; set; }
+
+    /// <summary>
+    /// Expiration time of the Apple Music user token.
+    /// </summary>
+    public DateTime? AppleMusicTokenExpiration { get; set; }
 }

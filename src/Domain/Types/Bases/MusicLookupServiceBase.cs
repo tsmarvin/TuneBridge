@@ -20,14 +20,19 @@ namespace TuneBridge.Domain.Types.Bases {
 
         /// <inheritdoc/>
         public abstract SupportedProviders Provider { get; }
+
         /// <inheritdoc/>
         public abstract Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc );
+
         /// <inheritdoc/>
         public abstract Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc );
+
         /// <inheritdoc/>
         public abstract Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist );
+
         /// <inheritdoc/>
         public abstract Task<MusicLookupResultDto?> GetInfoAsync( string uri );
+
         /// <inheritdoc/>
         public async Task<MusicLookupResultDto?> GetInfoAsync( MusicLookupResultDto lookup )
             => string.IsNullOrWhiteSpace( lookup.ExternalId ) || lookup.IsAlbum == null
@@ -36,6 +41,9 @@ namespace TuneBridge.Domain.Types.Bases {
                             ? await GetInfoByUPCAsync( lookup.ExternalId )
                             : await GetInfoByISRCAsync( lookup.ExternalId ))
                         ?? await GetInfoAsync( lookup.Title, lookup.Artist ); // Fallback to title/artist search if lookup by id fails
+
+        /// <inheritdoc/>
+        public abstract Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum );
 
         #endregion IMusicLookupService Implementation
 

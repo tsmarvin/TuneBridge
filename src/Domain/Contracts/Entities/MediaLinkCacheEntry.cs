@@ -37,5 +37,10 @@ namespace TuneBridge.Domain.Contracts.Entities {
         /// Navigation property for related lookup entries (input links, service links, external IDs, metadata).
         /// </summary>
         public List<MediaLookupEntry> LookupEntries { get; set; } = [];
+
+        /// <summary>
+        /// Navigation property for provider-specific identifiers (Apple Music ID, Spotify ID, Tidal ID).
+        /// </summary>
+        public List<MediaProviderEntry> ProviderEntries { get; set; } = [];
     }
 }

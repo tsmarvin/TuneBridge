@@ -22,6 +22,11 @@ namespace TuneBridge.Domain.Contracts.DTOs {
         /// </summary>
         public List<string>? Messages { get; set; }
 
+        /// <summary>
+        /// The UTC timestamp of when this lookup was performed.
+        /// </summary>
+        public DateTime LookedUpAt { get; init; }
+
         /// <inheritdoc/>
         public override bool Equals( object? obj ) {
             if (

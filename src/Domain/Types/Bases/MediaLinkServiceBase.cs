@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using TuneBridge.Domain.Contracts.DTOs;
 using TuneBridge.Domain.Implementations.Extensions;
+using TuneBridge.Domain.Implementations.Utilities;
 using TuneBridge.Domain.Interfaces;
 using TuneBridge.Domain.Types.Enums;
 
@@ -40,6 +41,8 @@ namespace TuneBridge.Domain.Types.Bases {
         public abstract Task<MediaLinkResult?> GetInfoByISRCAsync( string isrc );
         /// <inheritdoc/>
         public abstract Task<MediaLinkResult?> GetInfoByUPCAsync( string upc );
+        /// <inheritdoc/>
+        public abstract Task<MediaLinkResult?> GetInfoByProviderIdAsync( string providerId, SupportedProviders provider, bool isAlbum );
 
         #region Base Class Defaults
 
@@ -70,13 +73,13 @@ namespace TuneBridge.Domain.Types.Bases {
                             if (lookup is not null) { linkResults.Add( lookup, (provider, link) ); }
                         } catch (Exception e) {
                             Logger.LogError( e, "Failed while getting initial media link lookup data by URL for {provider}.", provider );
-                            Logger.LogTrace( "link: {link}", SanitizeForLogging( link ) );
+                            Logger.LogTrace( "link: {link}", link.SanitizeForLogging( ) );
                         }
                     }
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by URL." );
-                Logger.LogTrace( "Content: {content}", SanitizeForLogging( content ) );
+                Logger.LogTrace( "Content: {content}", content.SanitizeForLogging( ) );
             }
             return linkResults;
         }
@@ -97,12 +100,12 @@ namespace TuneBridge.Domain.Types.Bases {
                         if (lookup is not null) { return (lookup, provider); }
                     } catch (Exception ex) {
                         Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title for {provider}.", provider );
-                        Logger.LogTrace( "title: '{title}', artist: '{artist}'", SanitizeForLogging( title ), SanitizeForLogging( artist ) );
+                        Logger.LogTrace( "title: '{title}', artist: '{artist}'", title.SanitizeForLogging( ), artist.SanitizeForLogging( ) );
                     }
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
-                Logger.LogTrace( "title: '{title}', artist: '{artist}'", SanitizeForLogging( title ), SanitizeForLogging( artist ) );
+                Logger.LogTrace( "title: '{title}', artist: '{artist}'", title.SanitizeForLogging( ), artist.SanitizeForLogging( ) );
             }
             return null;
         }
@@ -126,12 +129,45 @@ namespace TuneBridge.Domain.Types.Bases {
                         if (lookup is not null) { return (lookup, provider); }
                     } catch (Exception ex) {
                         Logger.LogError( ex, "Failed while getting initial media link lookup data by externalId for {provider}.", provider );
-                        Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", SanitizeForLogging( externalId ), isAlbum );
+                        Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", externalId.SanitizeForLogging( ), isAlbum );
                     }
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
-                Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", SanitizeForLogging( externalId ), isAlbum );
+                Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", externalId.SanitizeForLogging( ), isAlbum );
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Performs the initial provider ID lookup for a specific service.
+        /// </summary>
+        /// <param name="providerId">The provider-specific identifier.</param>
+        /// <param name="provider">The provider to query.</param>
+        /// <param name="isAlbum">Indicates whether to search for album entries (true) or track entries (false).</param>
+        /// <returns>The <see cref="MusicLookupResultDto"/> for the <paramref name="provider"/>.</returns>
+        protected async Task<MusicLookupResultDto?> GetMusicLookupResultsByProviderId(
+            string providerId,
+            SupportedProviders provider,
+            bool isAlbum
+        ) {
+            try {
+                if (string.IsNullOrWhiteSpace( providerId )) { return null; }
+
+                if (!EnabledProviders.TryGetValue( provider, out IMusicLookupService? svc )) {
+                    Logger.LogWarning( "Provider {provider} is not enabled or configured", provider );
+                    return null;
+                }
+                MusicLookupResultDto? lookup = await svc.GetInfoByIDAsync( providerId, isAlbum );
+                if (lookup is not null) {
+                    lookup.IsPrimary = true;
+                    return lookup;
+                }
+            } catch (Exception ex) {
+                Logger.LogError( ex, "Failed while getting initial media link lookup data by providerId." );
+                Logger.LogTrace( "providerId: '{providerId}', provider: {provider}, isAlbum: {isAlbum}",
+                    providerId.SanitizeForLogging( ), provider, isAlbum );
             }
 
             return null;
@@ -227,7 +263,11 @@ namespace TuneBridge.Domain.Types.Bases {
                     Logger.LogError( ex,
                         "Error during secondary lookup via {additionalProvider} for artist '{artist}', title " +
                         "'{title}' externalId '{externalId}' isAlbum={isAlbum} originalProvider(s)={provider}",
-                        provider, firstValue.Artist, firstValue.Title, firstValue.ExternalId, firstValue.IsAlbum,
+                        provider,
+                        firstValue.Artist,
+                        firstValue.Title,
+                        firstValue.ExternalId,
+                        firstValue.IsAlbum,
                         string.Join( ", ", completedList.Select( l => l.ToString( ) ) )
                     );
                     Logger.LogTrace( JsonSerializer.Serialize( input, SerializerOptions ) );
@@ -236,22 +276,8 @@ namespace TuneBridge.Domain.Types.Bases {
             return input;
         }
 
-        [GeneratedRegex( @"[Hh][Tt]{2}[Pp][Ss]:\/\/(?<Link>\w[\w\/\=\?\.\:\-%&]*)" )]
+        [GeneratedRegex( @"(?<Url>[Hh][Tt]{2}[Pp][Ss]:\/\/(?<Link>\w[\w\/\=\?\.\:\-%&]*))" )]
         private protected static partial Regex ValidHttpsLink( );
-
-        /// <summary>
-        /// Sanitizes user input for safe logging by removing or replacing characters that could be used for log injection attacks.
-        /// </summary>
-        /// <param name="input">The user-provided string to sanitize</param>
-        /// <returns>A sanitized string safe for logging</returns>
-        private static string SanitizeForLogging( string? input ) {
-            if (string.IsNullOrWhiteSpace( input )) { return string.Empty; }
-            // Remove all ASCII control characters (0x00-0x1F, 0x7F) to prevent log injection and forging
-            return LogSanitizer( ).Replace( input, string.Empty );
-        }
-
-        [GeneratedRegex( @"[\x00-\x1F\x7F]" )]
-        private static partial Regex LogSanitizer( );
 
         #endregion Base Class Private Implementations
 

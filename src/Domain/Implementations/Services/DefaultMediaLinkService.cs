@@ -59,5 +59,16 @@ namespace TuneBridge.Domain.Implementations.Services {
         public override async Task<MediaLinkResult?> GetInfoByUPCAsync( string upc )
             => await CombineLookupInfoAsync( await GetMusicLookupResults( upc, true ) );
 
+        /// <inheritdoc/>
+        public override async Task<MediaLinkResult?> GetInfoByProviderIdAsync(
+            string providerId,
+            SupportedProviders provider,
+            bool isAlbum
+        ) {
+            MusicLookupResultDto? providerResult = await GetMusicLookupResultsByProviderId( providerId, provider, isAlbum );
+            return providerResult is null
+                ? null
+                : await CombineLookupInfoAsync( (providerResult, provider) );
+        }
     }
 }

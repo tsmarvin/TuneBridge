@@ -138,6 +138,22 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
+        /// <inheritdoc/>
+        public override async Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum ) {
+            SpotifyEntity kind = isAlbum ? SpotifyEntity.Album : SpotifyEntity.Track;
+            string requestUri = isAlbum
+                ? SpotifyLinkParser.GetAlbumIdURI( providerId )
+                : SpotifyLinkParser.GetTrackIdURI( providerId );
+
+            string requestKey = isAlbum ? "albumId " : "trackId ";
+            return ParseSpotifyResponse(
+                await NewMusicApiRequest( requestUri, requestKey ),
+                requestKey,
+                kind,
+                true
+            );
+        }
+
         private protected override async Task<HttpClient> CreateAuthenticatedClientAsync( ) {
             HttpClient client = factory.CreateClient("spotify-api");
             client.DefaultRequestHeaders.Authorization = await handler.NewBearerAuthenticationHeader( );
@@ -347,38 +363,6 @@ namespace TuneBridge.Domain.Implementations.Services {
                 Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
-        }
-
-        // Fallback for unauthenticated environments using Spotify oEmbed
-        private static async Task<MusicLookupResultDto?> TryGetInfoFromOEmbedAsync( string uri, SpotifyEntity kind ) {
-            try {
-                string fullUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : $"https://{uri}";
-                string oembedUrl = $"https://open.spotify.com/oembed?url={Uri.EscapeDataString(fullUrl)}";
-
-                using HttpClient client = new();
-                using HttpResponseMessage resp = await client.GetAsync(oembedUrl);
-                if (!resp.IsSuccessStatusCode) { return null; }
-
-                using JsonDocument json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-                JsonElement root = json.RootElement;
-                string title = root.TryGetProperty("title", out JsonElement t) ? (t.GetString() ?? string.Empty) : string.Empty;
-                string artist = root.TryGetProperty("author_name", out JsonElement a) ? (a.GetString() ?? string.Empty) : string.Empty;
-                string art = root.TryGetProperty("thumbnail_url", out JsonElement th) ? (th.GetString() ?? string.Empty) : string.Empty;
-
-                return string.IsNullOrWhiteSpace( title ) && string.IsNullOrWhiteSpace( artist )
-                    ? null
-                    : new MusicLookupResultDto {
-                        Artist = artist,
-                        Title = title,
-                        ExternalId = string.Empty,
-                        URL = fullUrl,
-                        ArtUrl = art,
-                        IsAlbum = kind == SpotifyEntity.Album ? true : kind == SpotifyEntity.Track ? false : null,
-                        IsPrimary = true
-                    };
-            } catch {
-                return null;
-            }
         }
 
     }

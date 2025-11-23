@@ -1,0 +1,119 @@
+@model TuneBridge.Web.Models.PlaylistViewModel
+@using TuneBridge.Domain.Types.Enums
+@using TuneBridge.Domain.Implementations.Extensions
+@using Microsoft.AspNetCore.Html 
+@{
+    ViewData["Title"] = Model.Title;
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h2 class="card-title mb-1">@Model.Title</h2>
+                @if (!string.IsNullOrWhiteSpace(Model.Description)) {
+                    <p class="text-muted mb-2">@Model.Description</p>
+                }
+                <p class="text-muted mb-0">@Model.Items.Count @(Model.Items.Count == 1 ? "item" : "items")</p>
+            </div>
+
+            <div class="share-dropdown">
+                <button class="share-button" type="button" aria-expanded="false" aria-haspopup="true" title="Share">
+                    <img src="/public/Share_arrow.png" alt="Share" class="share-arrow-icon" />
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <button class="dropdown-item copy-link-btn" type="button" data-url="/playlist/@Model.PlaylistId">
+                            <span class="dropdown-icon">📋</span> Copy Link
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item copy-embed-btn" type="button" data-url="/playlist/@Model.PlaylistId" data-title="@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Title))" data-items="@Model.Items.Count">
+                            <span class="dropdown-icon">🖼️</span> Copy Embed
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <hr class="my-3" />
+
+        @if (Model.Items.Count == 0) {
+            <div class="alert alert-info" role="alert">
+                <p class="mb-0">This playlist is empty or the tracks could not be loaded.</p>
+            </div>
+        } else {
+            <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+                @foreach (var item in Model.Items) {
+                    var borderColor = item.Result.Results.Keys.FirstOrDefault().GetProviderHexColor( );
+                    <div class="col">
+                        <div class="embed-card h-100" style="border-left-color: @borderColor;">
+                            <div class="embed-header-top">
+                                <div class="embed-title-row">
+                                    <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer" class="embed-title">
+                                        @item.Title
+                                    </a>
+                                    <div class="share-dropdown">
+                                        <button class="share-button" type="button" aria-expanded="false" aria-haspopup="true" title="Share">
+                                            <img src="/public/Share_arrow.png" alt="Share" class="share-arrow-icon" />
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li>
+                                                <button class="dropdown-item copy-link-btn" type="button" data-url="@item.CardUrl">
+                                                    <span class="dropdown-icon">📋</span> Copy Link
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button class="dropdown-item copy-embed-btn" type="button" data-url="@item.CardUrl" data-title="@Html.Raw(System.Text.Json.JsonSerializer.Serialize(item.Title))">
+                                                    <span class="dropdown-icon">🖼️</span> Copy Embed
+                                                </button>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="embed-header">
+                                @if (!string.IsNullOrWhiteSpace(item.ArtUrl)) {
+                                    <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer">
+                                        <img src="@item.ArtUrl" alt="@item.Title artwork" class="embed-image" />
+                                    </a>
+                                }
+                                <div class="embed-content">
+                                    <div class="embed-info">
+                                        Artist: @item.Artist
+                                        @{
+                                            var primaryResult = item.Result.Results.Values.FirstOrDefault();
+                                            if (primaryResult != null && !string.IsNullOrWhiteSpace(primaryResult.ExternalId)) {
+                                                var idType = item.IsAlbum ? "UPC" : "ISRC";
+                                                <text><br /></text>@idType<text>: </text>@primaryResult.ExternalId
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="embed-providers">
+                                @foreach (var provider in item.Result.Results.OrderBy(kv => kv.Key)) {
+                                    <a href="@provider.Value.URL" target="_blank" rel="noopener noreferrer" class="provider-button">
+                                        @provider.Key.GetProviderLogo()
+                                        <span class="visually-hidden">@provider.Key.GetDescription()</span>
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Initialize share buttons when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeShareButtons);
+        } else {
+            initializeShareButtons();
+        }
+    </script>
+}

@@ -87,6 +87,12 @@ namespace TuneBridge.Domain.Implementations.Services {
             return null;
         }
 
+        /// <inheritdoc/>
+        public override async Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum )
+            => isAlbum
+                ? await NewAlbumIdLookup( providerId, true )
+                : await NewTrackIdLookup( providerId, true );
+
         private async Task<MusicLookupResultDto?> ParseArtistAlbums( string artistId, string artistName, string title ) {
             string lookupKey = $"albums for artist {artistName} {artistId} ";
 

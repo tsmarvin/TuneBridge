@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Html;
 using NetCord;
 using NetCord.Rest;
 using TuneBridge.Domain.Contracts.DTOs;
@@ -25,6 +26,76 @@ namespace TuneBridge.Domain.Implementations.Extensions {
                     yield return match.Groups[groupName].Value;
                 }
             }
+        }
+
+        /// <summary>
+        /// Gets the hex color code associated with a supported provider.
+        /// </summary>
+        /// <param name="provider">The provider to get the color for.</param>
+        /// <param name="darkmode">Whether to get the dark mode color.</param>
+        /// <returns>The hex color code for the provider.</returns>
+        public static string GetProviderHexColor( this SupportedProviders provider, bool darkmode = false )
+            => provider switch {
+                SupportedProviders.AppleMusic => "#D60017",
+                SupportedProviders.Spotify => "#1ED760",
+                SupportedProviders.Tidal => darkmode ? "#FFFFFF" : "#000000",
+                _ => "#6366F1"
+            };
+
+        private static Color GetPrimaryProviderColor( SupportedProviders provider )
+            => provider switch {
+                SupportedProviders.AppleMusic => new( 214, 0, 23 ), // #D60017
+                SupportedProviders.Spotify => new( 30, 215, 96 ),   // #1ED760
+                SupportedProviders.Tidal => new( 255, 255, 255 ),   // #FFFFFF
+                _ => new( 99, 102, 241 ),                           // #6366F1 (purple)
+            };
+
+        public static IHtmlContent GetProviderLogo( this SupportedProviders provider ) {
+            // Dark backgrounds need LIGHT logos, light backgrounds need DARK logos
+            string darkThemeLogo = provider switch {
+                SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_wht_072720.svg",
+                SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_RGB.svg",
+                SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-white-cmyk.png",
+                _ => "🎧"
+            };
+
+            string lightThemeLogo = provider switch {
+                SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_blk_072720.svg",
+                SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_CMYK.svg",
+                SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-black-cmyk.png",
+                _ => "🎧"
+            };
+            string alt = provider.GetDescription() + " logo";
+
+            // Return both images with classes for CSS-based theme switching
+            return new HtmlString(
+                $@"<img src=""{lightThemeLogo}"" alt=""{alt}"" class=""provider-logo provider-logo-light"" />" +
+                $@"<img src=""{darkThemeLogo}"" alt=""{alt}"" class=""provider-logo provider-logo-dark"" />"
+            );
+        }
+
+        public static IHtmlContent GetProviderIcon( this SupportedProviders provider ) {
+            // Dark backgrounds need LIGHT logos, light backgrounds need DARK logos
+            string darkThemeIcon = provider switch {
+                SupportedProviders.AppleMusic => "/public/providerIcons/Apple_Music_Icon_RGB_sm_073120.svg",
+                SupportedProviders.Spotify => "/public/providerIcons/Spotify_Primary_Logo_Green_RGB.svg",
+                SupportedProviders.Tidal => "/public/providerIcons/tidal-icon-white-cmyk.png",
+                _ => "🎧"
+            };
+
+            string lightThemeIcon = provider switch {
+                SupportedProviders.AppleMusic => "/public/providerIcons/Apple_Music_Icon_RGB_sm_073120.svg",
+                SupportedProviders.Spotify => "/public/providerIcons/Spotify_Primary_Logo_Green_CMYK.svg",
+                SupportedProviders.Tidal => "/public/providerIcons/tidal-icon-black-cmyk.png",
+                _ => "🎧"
+            };
+            string alt = provider.GetDescription() + " icon";
+
+            // Return both images with classes for CSS-based theme switching
+            return new HtmlString(
+                $@"<img src=""{lightThemeIcon}"" alt=""{alt}"" class=""provider-icon provider-icon-light"" />" +
+                $@"<img src=""{darkThemeIcon}"" alt=""{alt}"" class=""provider-icon provider-icon-dark"" />"
+            );
         }
 
         #region ToDiscordMessageProperties
@@ -176,14 +247,6 @@ namespace TuneBridge.Domain.Implementations.Extensions {
             //If we have no description attribute, just return the ToString of the enum
             return string.Empty;
         }
-
-        private static Color GetPrimaryProviderColor( SupportedProviders provider )
-            => provider switch {
-                SupportedProviders.AppleMusic => new( 214, 0, 23 ),   // #D60017
-                SupportedProviders.Spotify => new( 30, 215, 96 ),     // #1ED760
-                SupportedProviders.Tidal => new( 255, 255, 255 ),     // #FFFFFF
-                _ => new( 99, 102, 241 ),                             // #6366F1 (purple)
-            };
 
         private const string _albumExternalMediaPrefix = "UPC: ";
         private const string _songExternalMediaPrefix = "ISRC: ";

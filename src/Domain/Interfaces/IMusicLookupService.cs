@@ -49,5 +49,12 @@ namespace TuneBridge.Domain.Interfaces {
         /// <returns>Enhanced music lookup result with metadata, or null if not found.</returns>
         Task<MusicLookupResultDto?> GetInfoAsync( MusicLookupResultDto lookup );
 
+        /// <summary>
+        /// Looks up track or album information by provider-specific ID.
+        /// </summary>
+        /// <param name="providerId">The provider-specific identifier (e.g., Apple Music catalog ID, Spotify track/album ID).</param>
+        /// <param name="isAlbum">True to look up an album, false to look up a track.</param>
+        /// <returns>Music lookup result with metadata, or null if not found.</returns>
+        Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum );
     }
 }

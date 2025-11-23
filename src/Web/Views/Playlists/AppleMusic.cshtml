@@ -1,0 +1,62 @@
+@{
+    ViewData["Title"] = "Apple Music Integration";
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="card-title mb-0">Apple Music Integration</h2>
+            <a href="/playlists" class="btn btn-outline-secondary">
+                Back to Playlists
+            </a>
+        </div>
+
+        <!-- This content comes from AppleMusicController's Index view -->
+        <div id="appleMusicContent">
+            <!-- Content will be loaded from /applemusic via iframe or loaded dynamically -->
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Load the Apple Music page content
+        (async function() {
+            try {
+                const response = await fetch('/applemusic', {
+                    credentials: 'same-origin'
+                });
+
+                if (response.ok) {
+                    const html = await response.text();
+
+                    // Parse the HTML to extract just the content (not the layout)
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+
+                    // Get the main content area
+                    const content = doc.querySelector('.content, main, body');
+                    if (content) {
+                        document.getElementById('appleMusicContent').innerHTML = content.innerHTML;
+
+                        // Re-execute any scripts in the loaded content
+                        const scripts = content.querySelectorAll('script');
+                        scripts.forEach(oldScript => {
+                            const newScript = document.createElement('script');
+                            Array.from(oldScript.attributes).forEach(attr => {
+                                newScript.setAttribute(attr.name, attr.value);
+                            });
+                            newScript.textContent = oldScript.textContent;
+                            document.head.appendChild(newScript);
+                        });
+                    }
+                } else {
+                    document.getElementById('appleMusicContent').innerHTML = '<div class="alert alert-warning">Unable to load Apple Music integration. Please try refreshing the page.</div>';
+                }
+            } catch (error) {
+                console.error('Error loading Apple Music content:', error);
+                document.getElementById('appleMusicContent').innerHTML = '<div class="alert alert-danger">An error occurred while loading Apple Music integration.</div>';
+            }
+        })();
+    </script>
+}
