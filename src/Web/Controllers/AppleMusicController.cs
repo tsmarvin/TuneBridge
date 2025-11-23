@@ -303,66 +303,44 @@ public class AppleMusicController(
                 string content = await response.Content.ReadAsStringAsync( );
                 using JsonDocument doc = JsonDocument.Parse( content );
 
-                // Extract track IDs from current page
+                // Extract track IDs
                 if (doc.RootElement.TryGetProperty( "data", out JsonElement dataElement )) {
-                    trackIds.AddRange(
-                        dataElement.EnumerateArray( )
-                            .Where( track =>
-                                track.TryGetProperty( "attributes", out JsonElement attributesElement ) &&
-                                attributesElement.TryGetProperty( "playParams", out JsonElement playParamsElement ) &&
-                                playParamsElement.TryGetProperty( "catalogId", out JsonElement catalogIdElement ) &&
-                                !string.IsNullOrWhiteSpace( catalogIdElement.GetString( ) )
-                            )
-                            .Select( track =>
-                                track.GetProperty( "attributes" )
-                                    .GetProperty( "playParams" )
-                                    .GetProperty( "catalogId" )
-                                    .GetString( )!
-                            )
-                    );
-
-                    totalTracks = trackIds.Count;
-                }
-
-                // Check for next page
-                nextUrl = null;
-                if (doc.RootElement.TryGetProperty( "next", out JsonElement nextElement )) {
-                    string? nextPath = nextElement.GetString( );
-                    if (!string.IsNullOrWhiteSpace( nextPath )) {
-                        // Apple Music API returns a path like "/v1/me/library/playlists/.../tracks?offset=100"
-                        // We need to construct the full URL
-                        nextUrl = nextPath.StartsWith( "http" )
-                            ? nextPath
-                            : $"https://api.music.apple.com{nextPath}";
+                    foreach (JsonElement trackElement in dataElement.EnumerateArray( )) {
+                        if (trackElement.TryGetProperty( "id", out JsonElement idElement )) {
+                            string? idStr = idElement.GetString();
+                            if (!string.IsNullOrEmpty( idStr )) { trackIds.Add( idStr ); }
+                        }
                     }
                 }
+
+                // Check for pagination: look for a "next" link in the response
+                if (doc.RootElement.TryGetProperty( "next", out JsonElement nextElement )) {
+                    nextUrl = nextElement.GetString( );
+                } else {
+                    nextUrl = null; // No more pages
+                }
+
+                totalTracks += dataElement.GetArrayLength( );
+                // Apple Music API limit: 100 tracks per request, cap processing at 1000 tracks
+                if (totalTracks >= 1000) {
+                    logger.LogWarning( "Playlist {PlaylistId} exceeds 1000 tracks, processing limited to first 1000 tracks", request.PlaylistId );
+                    break;
+                }
             }
 
-            logger.LogInformation( "Retrieved {TotalTracks} tracks from playlist for user {UserId}", totalTracks, user.Id );
-
-            // Check if playlist has more than 100 tracks
-            if (totalTracks > 100) {
-                return Ok( new {
-                    success = true,
-                    tooLarge = true,
-                    trackCount = totalTracks,
-                    trackIds,
-                    message = $"This playlist has {totalTracks} tracks. This process may take an extended period of time."
-                } );
+            // Now `trackIds` contains all track IDs from the playlist, process them as needed
+            List<MediaLinkResult> mediaLinks = [];
+            foreach (string trackId in trackIds) {
+                MediaLinkResult? mediaLink = await mediaLinkService.GetInfoByProviderIdAsync( trackId, SupportedProviders.AppleMusic, false );
+                if (mediaLink != null) {
+                    mediaLinks.Add( mediaLink );
+                }
             }
 
-            if (trackIds.Count == 0) {
-                return Ok( new {
-                    success = false,
-                    message = "No tracks found in playlist"
-                } );
-            }
-
-            // Return the track IDs for the frontend to process
             return Ok( new {
-                success = true,
+                message = "Playlist processed successfully",
                 trackCount = trackIds.Count,
-                trackIds
+                trackIds,
             } );
 
         } catch (Exception ex) {
@@ -372,14 +350,14 @@ public class AppleMusicController(
     }
 
     /// <summary>
-    /// Streams playlist lookup results progressively as they're retrieved.
-    /// Returns chunked HTML that can be appended to the DOM.
+    /// Streams the results of a playlist processing as HTML, rendering each result with OpenGraph data.
+    /// Designed for use with large playlists where results are streamed to the client as they are processed.
     /// </summary>
-    /// <param name="songIds">Array of Apple Music song IDs to lookup.</param>
-    /// <returns>Streamed partial views as chunks.</returns>
+    /// <param name="songIds">Array of Apple Music song IDs for the playlist.</param>
     /// <response code="200">Results streamed successfully.</response>
-    /// <response code="401">User not authenticated.</response>
-    /// <response code="503">Apple Music service not available.</response>
+    /// <response code="400">Invalid request.</response>
+    /// <response code="401">User not authenticated or token expired.</response>
+    /// <response code="500">Failed to process request.</response>
     [HttpPost]
     [Route( "applemusic/playlist-results-stream" )]
     public async Task PlaylistResultsStream( [FromBody] string[] songIds ) {
@@ -389,117 +367,44 @@ public class AppleMusicController(
             await Response.WriteAsync( "<div class=\"alert alert-danger\">Authentication required</div>" );
             return;
         }
-
         if (jwtHandler == null) {
             Response.StatusCode = 503;
             await Response.WriteAsync( "<div class=\"alert alert-danger\">Apple Music service is not configured</div>" );
             return;
         }
-
         Response.ContentType = "text/html; charset=utf-8";
         Response.Headers.Append( "Cache-Control", "no-cache" );
-        Response.Headers.Append( "X-Accel-Buffering", "no" ); // Disable nginx buffering
-
-        int processedCount = 0;
-        int errorCount = 0;
-
+        Response.Headers.Append( "X-Accel-Buffering", "no" );
+        int processedCount = 0; int errorCount = 0;
         foreach (string songId in songIds) {
             try {
                 MediaLinkResult? lookupResult = await mediaLinkService.GetInfoByProviderIdAsync( songId, SupportedProviders.AppleMusic, false );
-                if (lookupResult == null) {
-                    errorCount++;
-                    continue;
-                }
-
-                if (lookupResult.Results.Count == 0) {
-                    errorCount++;
-                    continue;
-                }
-
-                // Find primary result
-                MusicLookupResultDto? primaryResult = null;
-                SupportedProviders primaryProvider = SupportedProviders.AppleMusic;
+                if (lookupResult == null || lookupResult.Results.Count == 0) { errorCount++; continue; }
+                MusicLookupResultDto? primaryResult = null; SupportedProviders primaryProvider = SupportedProviders.AppleMusic;
                 foreach ((SupportedProviders provider, MusicLookupResultDto dto) in lookupResult.Results) {
-                    if (dto.IsPrimary) {
-                        primaryResult = dto;
-                        primaryProvider = provider;
-                        break;
-                    }
-                    if (primaryResult == null) {
-                        primaryResult = dto;
-                        primaryProvider = provider;
-                    }
+                    if (dto.IsPrimary) { primaryResult = dto; primaryProvider = provider; break; }
+                    if (primaryResult == null) { primaryResult = dto; primaryProvider = provider; }
                 }
-
-                if (primaryResult == null) {
-                    errorCount++;
-                    continue;
-                }
-
-                // Get card URL and ATProto URI
-                string? cardUrl = null;
-                if (cardService?.IsEnabled == true) {
-                    cardUrl = cardService.StoreResult( lookupResult );
-                }
-
+                if (primaryResult == null) { errorCount++; continue; }
+                string? cardUrl = null; if (cardService?.IsEnabled == true) { cardUrl = cardService.StoreResult( lookupResult ); }
                 string? atProtoUri = await GetATProtoUriFromCache( lookupResult );
-
-                // Create single-item model
-                MusicLookupViewModel.MusicLookupResultItem item = new( ) {
-                    CardUrl = cardUrl,
-                    ATProtoUri = atProtoUri,
-                    Result = lookupResult,
-                    PrimaryProvider = primaryProvider,
-                    PrimaryResult = primaryResult
-                };
-
-                // Render partial view to string and stream it
+                MusicLookupViewModel.MusicLookupResultItem item = new( ) { CardUrl = cardUrl, ATProtoUri = atProtoUri, Result = lookupResult, PrimaryProvider = primaryProvider, PrimaryResult = primaryResult };
                 string html = await RenderViewToStringAsync( "_LookupResultCard", item );
-                await Response.WriteAsync( html );
-                await Response.Body.FlushAsync( );
-
-                processedCount++;
-            } catch (Exception ex) {
-                logger.LogError( ex, "Error processing song {SongId}", songId.SanitizeForLogging( ) );
-                errorCount++;
-            }
+                await Response.WriteAsync( html ); await Response.Body.FlushAsync( ); processedCount++;
+            } catch (Exception ex) { logger.LogError( ex, "Error processing song {SongId}", songId.SanitizeForLogging( ) ); errorCount++; }
         }
-
-        // Send completion status as a hidden data element
-        if (processedCount == 0 && errorCount > 0) {
-            await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found for the tracks in this playlist</div>" );
-        } else if (errorCount > 0) {
-            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" );
-        } else {
-            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" );
-        }
+        if (processedCount == 0 && errorCount > 0) { await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found for the tracks in this playlist</div>" ); } else if (errorCount > 0) { await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" ); } else { await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" ); }
     }
 
-    /// <summary>
-    /// Helper method to render a view to a string for streaming.
-    /// </summary>
-    /// <param name="viewName">Name of the view to render.</param>
-    /// <param name="model">Model to pass to the view.</param>
-    /// <returns>Rendered HTML string.</returns>
+    /// <summary>Returns Apple Music integration partial view content without layout.</summary>
+    [HttpGet]
+    [Route( "applemusic/content" )]
+    public IActionResult ContentPartial( ) => PartialView( "_AppleMusicContent" );
+
     private async Task<string> RenderViewToStringAsync( string viewName, object model ) {
-        ViewData.Model = model;
-        using StringWriter sw = new( );
-        ViewEngineResult viewResult = viewEngine.FindView( ControllerContext, viewName, false );
-
-        if (!viewResult.Success) {
-            throw new InvalidOperationException( $"View '{viewName}' not found" );
-        }
-
-        Microsoft.AspNetCore.Mvc.Rendering.ViewContext viewContext = new(
-            ControllerContext,
-            viewResult.View,
-            ViewData,
-            TempData,
-            sw,
-            new HtmlHelperOptions( )
-        );
-
-        await viewResult.View.RenderAsync( viewContext );
-        return sw.ToString( );
+        ViewData.Model = model; using StringWriter sw = new( ); ViewEngineResult viewResult = viewEngine.FindView( ControllerContext, viewName, false );
+        if (!viewResult.Success) { throw new InvalidOperationException( $"View '{viewName}' not found" ); }
+        Microsoft.AspNetCore.Mvc.Rendering.ViewContext viewContext = new( ControllerContext, viewResult.View, ViewData, TempData, sw, new HtmlHelperOptions( ) );
+        await viewResult.View.RenderAsync( viewContext ); return sw.ToString( );
     }
 }
