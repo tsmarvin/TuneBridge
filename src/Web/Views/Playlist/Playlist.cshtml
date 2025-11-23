@@ -49,9 +49,8 @@
                 @foreach (var item in Model.Items) {
                     var primaryProvider = item.Result.Results.Keys.FirstOrDefault();
                     var providerClass = $"provider-{primaryProvider.ToString().ToLowerInvariant()}";
-                    var borderColor = primaryProvider.GetProviderHexColor();
                     <div class="col">
-                        <div class="embed-card h-100 @providerClass" data-border-color="@borderColor">
+                        <div class="embed-card h-100 @providerClass">
                             <div class="embed-header-top">
                                 <div class="embed-title-row">
                                     <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer" class="embed-title">

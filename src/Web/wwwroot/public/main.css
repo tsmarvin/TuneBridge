@@ -149,7 +149,7 @@ body:not([data-search])[data-layout=conceptual]>main>.content> :not(article) {
 }
 
 /* Fallback for unknown providers */
-.embed-card[data-border-color]:not(.provider-applemusic):not(.provider-spotify):not(.provider-tidal) {
+.embed-card:not(.provider-applemusic):not(.provider-spotify):not(.provider-tidal) {
   border-left-color: #6366F1;
 }
 
