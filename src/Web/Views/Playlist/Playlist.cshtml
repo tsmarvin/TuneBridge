@@ -1,5 +1,7 @@
 @model TuneBridge.Web.Models.PlaylistViewModel
 @using TuneBridge.Domain.Types.Enums
+@using TuneBridge.Domain.Implementations.Extensions
+@using Microsoft.AspNetCore.Html 
 @{
     ViewData["Title"] = Model.Title;
 }
@@ -26,7 +28,7 @@
                         </button>
                     </li>
                     <li>
-                        <button class="dropdown-item copy-embed-btn" type="button" data-url="/playlist/@Model.PlaylistId" data-title="@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Title))">
+                        <button class="dropdown-item copy-embed-btn" type="button" data-url="/playlist/@Model.PlaylistId" data-title="@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Title))" data-items="@Model.Items.Count">
                             <span class="dropdown-icon">🖼️</span> Copy Embed
                         </button>
                     </li>
@@ -43,7 +45,7 @@
         } else {
             <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
                 @foreach (var item in Model.Items) {
-                    var borderColor = GetProviderColor(item.Result.Results.Keys.FirstOrDefault());
+                    var borderColor = item.Result.Results.Keys.FirstOrDefault().GetProviderHexColor( );
                     <div class="col">
                         <div class="embed-card h-100" style="border-left-color: @borderColor;">
                             <div class="embed-header-top">
@@ -92,10 +94,8 @@
                             <div class="embed-providers">
                                 @foreach (var provider in item.Result.Results.OrderBy(kv => kv.Key)) {
                                     <a href="@provider.Value.URL" target="_blank" rel="noopener noreferrer" class="provider-button">
-                                        <span class="provider-icon provider-icon-@provider.Key.ToString().ToLowerInvariant()">
-                                            @GetProviderLogo(provider.Key)
-                                        </span>
-                                        <span class="visually-hidden">@GetProviderName(provider.Key)</span>
+                                        @provider.Key.GetProviderLogo()
+                                        <span class="visually-hidden">@provider.Key.GetDescription()</span>
                                     </a>
                                 }
                             </div>
@@ -116,48 +116,4 @@
             initializeShareButtons();
         }
     </script>
-}
-
-@functions {
-    Microsoft.AspNetCore.Html.IHtmlContent GetProviderLogo(SupportedProviders provider) {
-        var darkThemeLogo = provider switch {
-            SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_wht_072720.svg",
-            SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_RGB.svg",
-            SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-white-cmyk.png",
-            _ => ""
-        };
-
-        var lightThemeLogo = provider switch {
-            SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_blk_072720.svg",
-            SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_CMYK.svg",
-            SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-black-cmyk.png",
-            _ => ""
-        };
-
-        if (string.IsNullOrEmpty(lightThemeLogo)) {
-            return new Microsoft.AspNetCore.Html.HtmlString("??");
-        }
-
-        var altText = GetProviderName(provider) + " logo";
-
-        return new Microsoft.AspNetCore.Html.HtmlString($@"<img src=""{lightThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-light"" /><img src=""{darkThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-dark"" />");
-    }
-
-    string GetProviderName(SupportedProviders provider) {
-        return provider switch {
-            SupportedProviders.Spotify => "Spotify",
-            SupportedProviders.AppleMusic => "Apple Music",
-            SupportedProviders.Tidal => "Tidal",
-            _ => provider.ToString()
-        };
-    }
-
-    string GetProviderColor(SupportedProviders provider) {
-        return provider switch {
-            SupportedProviders.AppleMusic => "#D60017",
-            SupportedProviders.Spotify => "#1ED760",
-            SupportedProviders.Tidal => "#000000",
-            _ => "#6366F1"
-        };
-    }
 }

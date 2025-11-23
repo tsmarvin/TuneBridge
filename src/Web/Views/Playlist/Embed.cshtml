@@ -1,89 +1,143 @@
 @model TuneBridge.Web.Models.PlaylistViewModel
 @using TuneBridge.Domain.Implementations.Extensions
 @using TuneBridge.Domain.Types.Enums
-@using Microsoft.AspNetCore.Html
 @{
     Layout = null;
 }
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>@Model.Title</title>
+
+    <script>
+        (function () {
+            const root = document.documentElement;
+            root.removeAttribute('data-bs-theme'); // Remove any existing theme attr to avoid stale state
+            root.setAttribute('data-bs-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        })();
+    </script>
 
     <style>
         :root {
             font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.5;
+            line-height: 1.35;
+            font-size: 13px;
         }
 
+        html,
         body {
             margin: 0;
-            padding: 1rem;
+            padding: 0;
             background: transparent;
         }
 
-        .playlist-embed {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            max-width: 600px;
-            margin: 0 auto;
+        /* Screen-reader only */
+        .visually-hidden {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0 0 0 0) !important;
+            clip-path: inset(50%) !important;
+            border: 0 !important;
+            white-space: nowrap !important;
         }
 
+        .playlist-embed {
+            background: var(--bs-body-bg, #fff);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .10);
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            color: var(--bs-body-color, #111827);
+            overflow: hidden;
+        }
+
+        /* Header (56px) */
         .embed-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 1.5rem;
-            text-align: center;
-        }
-
-        .embed-header h2 {
-            margin: 0 0 0.25rem 0;
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-        .embed-header p {
-            margin: 0;
-            font-size: 0.875rem;
-            opacity: 0.9;
-        }
-
-        .embed-items {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .embed-item {
+            color: #fff;
+            height: 56px;
+            padding: 0 .95rem;
             display: flex;
-            gap: 0.75rem;
-            padding: 0.75rem;
-            border-bottom: 1px solid #e5e7eb;
-            transition: background-color 0.15s;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            box-sizing: border-box;
         }
 
-        .embed-item:last-child {
-            border-bottom: none;
+            .embed-header h2 {
+                margin: 0;
+                font-size: 16px;
+                font-weight: 600;
+                line-height: 1.15;
+            }
+
+            .embed-header p {
+                margin: .25rem 0 0 0;
+                font-size: 13px;
+                opacity: .95;
+                font-weight: 500;
+                line-height: 1;
+            }
+
+        /* Scrollable items */
+        .embed-items {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #d1d5db transparent;
         }
 
-        .embed-item:hover {
-            background: #f9fafb;
+        .embed-items-webkit-scrollbar {
+            width: 6px;
         }
+
+        .embed-items-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .embed-items::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 3px;
+        }
+
+        /* Row (74px) */
+        .embed-item {
+            display: grid;
+            grid-template-columns: 52px 1fr auto;
+            gap: .6rem .85rem;
+            align-items: center;
+            height: 74px;
+            padding: 0 .95rem;
+            box-sizing: border-box;
+            border-bottom: 1px solid var(--bs-border-color, #e5e7eb);
+        }
+
+            .embed-item:last-child {
+                border-bottom: none;
+            }
+
+            .embed-item:hover {
+                background: var(--bs-tertiary-bg, #f9fafb);
+            }
 
         .item-artwork-small {
-            width: 48px;
-            height: 48px;
+            width: 52px;
+            height: 52px;
             border-radius: 6px;
             object-fit: cover;
-            flex-shrink: 0;
+            display: block;
+            background: #e5e7eb;
         }
 
         .item-info-compact {
-            flex: 1;
             min-width: 0;
             display: flex;
             flex-direction: column;
@@ -92,87 +146,225 @@
 
         .item-title-compact {
             font-weight: 600;
-            font-size: 0.875rem;
-            margin: 0 0 0.125rem 0;
-            color: #111827;
+            margin: 0 0 .25rem 0;
+            color: var(--bs-emphasis-color, #111827);
+            line-height: 1.2;
             text-decoration: none;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            word-break: break-word;
+            letter-spacing: .15px;
         }
 
-        .item-title-compact:hover {
-            color: #667eea;
-        }
+            .item-title-compact:hover {
+                color: #667eea;
+            }
 
         .item-artist-compact {
-            color: #6b7280;
-            font-size: 0.75rem;
+            color: var(--bs-secondary-color, #374151);
             margin: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .embed-footer {
-            text-align: center;
-            padding: 1rem;
-            border-top: 1px solid #e5e7eb;
-        }
-
-        .view-full-link {
-            color: #667eea;
-            text-decoration: none;
-            font-size: 0.875rem;
+            line-height: 1.1;
+            word-break: break-word;
             font-weight: 500;
         }
 
-        .view-full-link:hover {
-            text-decoration: underline;
+        /* Providers */
+        .item-providers {
+            display: flex;
+            gap: .45rem;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .provider-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: .35rem .5rem;
+            background: var(--bs-secondary-bg, #f3f4f6);
+            border: 1px solid var(--bs-border-color, #e5e7eb);
+            border-radius: 8px;
+            height: 32px;
+            min-width: 36px;
+            text-decoration: none;
+            transition: background .15s, box-shadow .15s;
+        }
+
+            .provider-button:hover {
+                background: var(--bs-tertiary-bg, #e0e2e7);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, .08);
+            }
+
+        /* Icons */
+        .provider-icon-light,
+        .provider-icon-dark {
+            height: 18px;
+            width: auto;
+            display: block;
+            object-fit: contain;
+            margin: 0;
+        }
+
+        .provider-icon-dark {
+            display: none;
+        }
+
+        html[data-bs-theme="dark"] .provider-icon-light {
+            display: none;
+        }
+
+        html[data-bs-theme="dark"] .provider-icon-dark {
+            display: block;
+        }
+
+        @@media (prefers-color-scheme: dark) {
+
+            html[data-bs-theme="auto"] .provider-icon-light,
+            html:not([data-bs-theme]) .provider-icon-light {
+                display: none;
+            }
+
+            html[data-bs-theme="auto"] .provider-icon-dark,
+            html:not([data-bs-theme]) .provider-icon-dark {
+                display: block;
+            }
+        }
+
+        /* Footer (48px) - match header gradient */
+        .embed-footer {
+            height: 48px;
+            padding: 0 .95rem;
+            box-sizing: border-box;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border-top: none;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .view-full-link {
+            color: #fff;
+            font-weight: 500;
+            text-decoration: none;
+            opacity: .95;
+            letter-spacing: .15px;
+        }
+
+            .view-full-link:hover {
+                text-decoration: underline;
+                opacity: 1;
+            }
+
+        /* Dark mode footer tweak (slightly brighter link) */
+        html[data-bs-theme="dark"] .embed-footer {
+            background: linear-gradient(135deg, #5d6fe5 0%, #8052b5 100%);
+        }
+
+        /* Dark mode */
+        html[data-bs-theme="dark"] .playlist-embed {
+            background: #1f2329;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+        }
+
+        html[data-bs-theme="dark"] .embed-item {
+            border-bottom-color: #2f343b;
+        }
+
+            html[data-bs-theme="dark"] .embed-item:hover {
+                background: #262b31;
+            }
+
+        html[data-bs-theme="dark"] .item-title-compact {
+            color: #f1f5f9;
+        }
+
+        html[data-bs-theme="dark"] .item-artist-compact {
+            color: #cbd5e1;
+        }
+
+        html[data-bs-theme="dark"] .provider-button {
+            background: #2a3036;
+            border-color: #394047;
+            color: #e5e7eb;
+        }
+
+            html[data-bs-theme="dark"] .provider-button:hover {
+                background: #333941;
+            }
+
+        html[data-bs-theme="dark"] .embed-footer {
+            border-top-color: #2f343b;
+        }
+
+        html[data-bs-theme="dark"] .view-full-link:hover {
+            color: #b0c1ff;
+        }
+
+        /* Mobile */
+        @@media (max-width:430px) {
+            .embed-item {
+                grid-template-columns: 48px 1fr;
+            }
+
+            .item-providers {
+                justify-content: flex-start;
+                margin-top: .35rem;
+            }
+
+            .provider-button {
+                min-width: 32px;
+            }
         }
     </style>
 </head>
-
 <body>
     <div class="playlist-embed">
         <div class="embed-header">
             <h2>@Model.Title</h2>
-            @if (!string.IsNullOrWhiteSpace(Model.Description))
-            {
+            @if (!string.IsNullOrWhiteSpace(Model.Description)) {
                 <p>@Model.Description</p>
-            }
-            else
-            {
+            } else {
                 <p>@Model.Items.Count @(Model.Items.Count == 1 ? "item" : "items")</p>
             }
         </div>
-
         <div class="embed-items">
-            @foreach (var item in Model.Items)
-            {
+            @foreach (var item in Model.Items) {
                 <div class="embed-item">
-                    @if (!string.IsNullOrWhiteSpace(item.ArtUrl))
-                    {
+                    @if (!string.IsNullOrWhiteSpace(item.ArtUrl)) {
                         <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer">
                             <img src="@item.ArtUrl" alt="@item.Title artwork" class="item-artwork-small" />
                         </a>
                     }
                     <div class="item-info-compact">
-                        <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer" class="item-title-compact">
-                            @item.Title
-                        </a>
+                        <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer" class="item-title-compact">@item.Title</a>
                         <div class="item-artist-compact">@item.Artist</div>
+                    </div>
+                    <div class="item-providers">
+                        @if (item.Result?.Results != null) {
+                            foreach (var provider in item.Result.Results.Keys.OrderBy(k => k)) {
+                                var providerResult = item.Result.Results[provider];
+                                <a href="@providerResult.URL"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   class="provider-button provider-@provider.ToString().ToLowerInvariant()"
+                                   title="@provider.GetDescription()">
+                                    @provider.GetProviderIcon()
+                                    <span class="visually-hidden">@provider.GetDescription()</span>
+                                </a>
+                            }
+                        }
                     </div>
                 </div>
             }
         </div>
-
         <div class="embed-footer">
-            <a href="https://@Model.BaseUrl/playlist/@Model.PlaylistId" target="_blank" rel="noopener noreferrer" class="view-full-link">
-                View Full Playlist ?
-            </a>
+            <a href="https://@Model.BaseUrl/playlist/@Model.PlaylistId"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="view-full-link">View Full Playlist →</a>
         </div>
     </div>
 </body>
-
 </html>

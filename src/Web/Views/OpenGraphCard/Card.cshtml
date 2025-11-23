@@ -373,7 +373,7 @@
 
                         <a href="@providerUrl" class="provider-link" target="_blank" rel="noopener noreferrer">
                             <span class="provider-icon">
-                                @GetProviderLogo(provider.Key)
+                                @provider.Key.GetProviderLogo( )
                             </span>
                             <span class="visually-hidden">@providerName</span>
                         </a>
@@ -404,39 +404,3 @@
 </body>
 
 </html>
-
-@functions {
-    IHtmlContent GetProviderLogo(SupportedProviders provider)
-    {
-        // Card has white background, so use DARK logos (lightThemeLogo = dark colored logos for light backgrounds)
-        var lightThemeLogo = provider switch {
-            SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_blk_072720.svg",
-            SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_CMYK.svg",
-            SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-black-cmyk.png",
-            _ => "🎧"
-        };
-
-        var darkThemeLogo = provider switch {
-            SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_wht_072720.svg",
-            SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_RGB.svg",
-            SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-white-cmyk.png",
-            _ => "🎧"
-        };
-
-        var altText = GetProviderName(provider) + " logo";
-
-        // Only return the light theme logo (dark logo for white background)
-        // We keep both in the function for consistency but only show light theme
-        return new HtmlString($@"<img src=""{lightThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-light"" />
-<img src=""{darkThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-dark"" />");
-    }
-
-    string GetProviderName(SupportedProviders provider) {
-        return provider switch {
-            SupportedProviders.Spotify => "Spotify",
-            SupportedProviders.AppleMusic => "Apple Music",
-            SupportedProviders.Tidal => "Tidal",
-            _ => provider.ToString()
-        };
-    }
-}

@@ -346,6 +346,20 @@ body:not([data-search])[data-layout=conceptual]>main>.content> :not(article) {
   display: none;
 }
 
+/* Provider logo styling */
+.provider-icon {
+  display: block;
+  height: 1.25rem;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+/* Hide dark logos by default (light theme) */
+.provider-icon-dark {
+  display: none;
+}
+
 /* Show dark logos and hide light logos in dark theme */
 html[data-bs-theme="dark"] .provider-logo-light {
   display: none;
@@ -368,6 +382,21 @@ html[data-bs-theme="dark"] .provider-logo-dark {
     display: block;
   }
 }
+
+/* Refined provider icon styles */
+.provider-icon-light { display:block; height:1.25rem; width:auto; max-width:100%; object-fit:contain; }
+.provider-icon-dark { display:none; height:1.25rem; width:auto; max-width:100%; object-fit:contain; }
+html[data-bs-theme="dark"] .provider-icon-light { display:none; }
+html[data-bs-theme="dark"] .provider-icon-dark { display:block; }
+@media (prefers-color-scheme: dark) {
+  html[data-bs-theme="auto"] .provider-icon-light,
+  html:not([data-bs-theme]) .provider-icon-light { display:none; }
+  html[data-bs-theme="auto"] .provider-icon-dark,
+  html:not([data-bs-theme]) .provider-icon-dark { display:block; }
+}
+
+/* Prevent nested provider-icon class on img from stretching full width */
+img.provider-icon { width:auto; height:1.25rem; }
 
 /* Ensure picture elements don't add extra space */
 .provider-icon picture {

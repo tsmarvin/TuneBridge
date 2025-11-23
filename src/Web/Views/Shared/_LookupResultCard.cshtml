@@ -1,10 +1,11 @@
 @model TuneBridge.Web.Models.MusicLookupViewModel.MusicLookupResultItem
-@using TuneBridge.Domain.Types.Enums
 @using TuneBridge.Domain.Implementations.Utilities
+@using TuneBridge.Domain.Implementations.Extensions
+@using TuneBridge.Domain.Types.Enums
 @using Microsoft.AspNetCore.Html
 
 @{
-    var borderColor = GetProviderColor(Model.PrimaryProvider);
+    var borderColor = Model.PrimaryProvider.GetProviderHexColor( );
     // Generate rkey for this card
     var rkey = RecordKeyGenerator.GenerateRkey(Model.Result);
 }
@@ -72,55 +73,11 @@
             @foreach (var providerResult in Model.Result.Results) {
                 <a href="@providerResult.Value.URL" target="_blank" rel="noopener noreferrer" class="provider-button">
                     <span class="provider-icon provider-icon-@providerResult.Key.ToString().ToLowerInvariant()">
-                        @GetProviderLogo(providerResult.Key)
+                        @providerResult.Key.GetProviderLogo( )
                     </span>
-                    <span class="visually-hidden">@GetProviderName(providerResult.Key)</span>
+                    <span class="visually-hidden">@providerResult.Key.GetDescription()</span>
                 </a>
             }
         </div>
     </div>
 </div>
-
-@functions {
-    IHtmlContent GetProviderLogo(SupportedProviders provider) {
-        // Dark backgrounds need LIGHT logos, light backgrounds need DARK logos
-        var darkThemeLogo = provider switch {
-            SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_wht_072720.svg",
-            SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_RGB.svg",
-            SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-white-cmyk.png",
-            _ => "🎧"
-        };
-
-        var lightThemeLogo = provider switch
-        {
-            SupportedProviders.AppleMusic => "/public/providerIcons/US-UK_Apple_Music_Listen_on_Lockup_RGB_blk_072720.svg",
-            SupportedProviders.Spotify => "/public/providerIcons/Spotify_Full_Logo_Green_CMYK.svg",
-            SupportedProviders.Tidal => "/public/providerIcons/tidal-horizontal-black-cmyk.png",
-            _ => "🎧"
-        };
-
-        var altText = GetProviderName(provider) + " logo";
-
-        // Return both images with classes for CSS-based theme switching
-        return new HtmlString($@"<img src=""{lightThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-light"" />
-<img src=""{darkThemeLogo}"" alt=""{altText}"" class=""provider-logo provider-logo-dark"" />");
-    }
-
-    string GetProviderName(SupportedProviders provider) {
-        return provider switch {
-            SupportedProviders.Spotify => "Spotify",
-            SupportedProviders.AppleMusic => "Apple Music",
-            SupportedProviders.Tidal => "Tidal",
-            _ => provider.ToString()
-        };
-    }
-
-    string GetProviderColor(SupportedProviders provider) {
-        return provider switch {
-            SupportedProviders.AppleMusic => "#D60017",
-            SupportedProviders.Spotify => "#1ED760",
-            SupportedProviders.Tidal => "#000000",
-            _ => "#6366F1"
-        };
-    }
-}
