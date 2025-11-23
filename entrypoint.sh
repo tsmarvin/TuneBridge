@@ -36,6 +36,7 @@ DISCORD_TOKEN="$(read_secret "discord_token")"
 
 # Optional ATProto PDS configuration
 ATPROTO_IDENTIFIER="${ATPROTO_IDENTIFIER:-}"
+ATPROTO_USER_DID="${ATPROTO_USER_DID:-}"
 # Try to read ATProto password from Docker secret
 ATPROTO_PASSWORD="$(read_secret "atproto_password")"
 
@@ -85,6 +86,7 @@ cat > /app/appsettings.json <<EOF
     "ApiKeySalt": "$API_KEY_SALT",
     "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR,
     "ATProtoIdentifier": "$ATPROTO_IDENTIFIER",
+    "ATProtoUserDID": "$ATPROTO_USER_DID",
     "ATProtoPassword": "$ATPROTO_PASSWORD",
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
