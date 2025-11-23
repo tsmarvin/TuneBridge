@@ -160,7 +160,6 @@ async function processSelectedPlaylist() {
                     tempDiv.innerHTML = completeHTML;
                     const completionMarker = tempDiv.querySelector('[data-stream-complete="true"]');
                     if (completionMarker) {
-                        const processed = parseInt(completionMarker.getAttribute('data-processed') || '0');
                         const errors = parseInt(completionMarker.getAttribute('data-errors') || '0');
                         completionMarker.remove();
                         if (tempDiv.children.length > 0) {
