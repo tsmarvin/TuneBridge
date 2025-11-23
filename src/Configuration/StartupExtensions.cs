@@ -195,6 +195,7 @@ namespace TuneBridge.Configuration {
             _ = app.Use( async ( ctx, next ) => {
                 string path = ctx.Request.Path.Value ?? string.Empty;
                 bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
+                bool isAppleMusic = path.StartsWith( "/applemusic", StringComparison.OrdinalIgnoreCase );
 
                 // Generate a unique nonce for this request to allow inline scripts and styles
                 string nonce = Convert.ToBase64String( System.Security.Cryptography.RandomNumberGenerator.GetBytes( 16 ) );
@@ -202,7 +203,8 @@ namespace TuneBridge.Configuration {
 
                 // Build CSP policy
                 // Allow MusicKit JS CDN, Cloudflare analytics, nonce-based inline styles, and API calls to music providers
-                string frameAncestors = isEmbed ? "*" : "'self'"; // Allow any site to embed cards & playlists
+                // Allow framing for embed endpoints, Apple Music integration, and playlist pages
+                string frameAncestors = (isEmbed || isAppleMusic) ? "*" : "'self'";
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
