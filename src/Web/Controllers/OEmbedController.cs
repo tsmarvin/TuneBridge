@@ -43,6 +43,11 @@ public partial class OEmbedController( IOpenGraphCardService cardService ) : Con
     /// </summary>
     private const int CacheAgeSeconds = 518400; // 6 days * 24 hours * 60 minutes * 60 seconds
 
+    /// <summary>
+    /// Default thumbnail size in pixels (album artwork is typically square).
+    /// </summary>
+    private const int DefaultThumbnailSize = 640;
+
     [GeneratedRegex( @"/card/([a-zA-Z0-9]+)(?:/embed)?$" )]
     private static partial Regex CardIdPattern( );
 
@@ -168,8 +173,8 @@ public partial class OEmbedController( IOpenGraphCardService cardService ) : Con
             ProviderUrl = providerUrl,
             CacheAge = CacheAgeSeconds,
             ThumbnailUrl = image,
-            ThumbnailWidth = !string.IsNullOrWhiteSpace( image ) ? 640 : null,
-            ThumbnailHeight = !string.IsNullOrWhiteSpace( image ) ? 640 : null,
+            ThumbnailWidth = !string.IsNullOrWhiteSpace( image ) ? DefaultThumbnailSize : null,
+            ThumbnailHeight = !string.IsNullOrWhiteSpace( image ) ? DefaultThumbnailSize : null,
             Html = html,
             Width = width,
             Height = height
@@ -198,7 +203,7 @@ public partial class OEmbedController( IOpenGraphCardService cardService ) : Con
         string encodedCardUrl = System.Net.WebUtility.HtmlEncode( cardUrl );
 
         return $"""
-            <iframe src="{encodedEmbedUrl}" width="{width}" height="{height}" frameborder="0" scrolling="no" allowtransparency="true" title="{encodedTitle}" style="border:none;overflow:hidden;"></iframe>
+            <iframe src="{encodedEmbedUrl}" width="{width}" height="{height}" title="{encodedTitle}" loading="lazy" role="application" aria-label="{encodedTitle}" style="border:none;overflow:hidden;background:transparent;"></iframe>
             <p><a href="{encodedCardUrl}" target="_blank">{encodedTitle}</a> - via TuneBridge</p>
             """;
     }
