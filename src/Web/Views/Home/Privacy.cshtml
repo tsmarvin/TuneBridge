@@ -93,7 +93,43 @@
             </div>
         </div>
 
-        <h4>2.2 Music Link Search Data</h4>
+        <h4>2.2 Connected Music Service Accounts (OAuth)</h4>
+        <div class="card mb-3">
+            <div class="card-body">
+                <p><strong>When you connect your Apple Music account, the service stores:</strong></p>
+                <ul>
+                    <li>
+                        <strong>Apple Music User Token</strong> - An OAuth token that allows TuneBridge to access your
+                        Apple Music library on your behalf
+                    </li>
+                    <li>
+                        <strong>Token Expiration</strong> - The expiration timestamp of your Apple Music token
+                    </li>
+                </ul>
+                <p class="text-muted mt-3">
+                    <strong>What we access with your token:</strong>
+                </p>
+                <ul class="text-muted">
+                    <li>Your Apple Music library playlists (names and IDs only)</li>
+                    <li>Track information within playlists you choose to process</li>
+                </ul>
+                <hr>
+                <p><strong>What we do NOT access or store:</strong></p>
+                <ul>
+                    <li>❌ Your Apple Music subscription status or payment information</li>
+                    <li>❌ Your listening history or play counts</li>
+                    <li>❌ Your Apple ID credentials or personal profile</li>
+                    <li>❌ Playlists you do not explicitly choose to process</li>
+                </ul>
+                <p class="text-muted mt-3">
+                    <strong>Note:</strong> You can disconnect your Apple Music account at any time from your account
+                    settings, which will delete your stored token. Token data expires automatically when your Apple
+                    Music authorization expires.
+                </p>
+            </div>
+        </div>
+
+        <h4>2.3 Music Link Search Data</h4>
         <div class="card mb-3">
             <div class="card-body">
                 <p><strong>What is collected and cached:</strong></p>
@@ -121,7 +157,39 @@
             </div>
         </div>
 
-        <h4>2.3 Logging Data</h4>
+        <h4>2.4 TuneBridge Playlists</h4>
+        <div class="card mb-3">
+            <div class="card-body">
+                <p><strong>When you create a TuneBridge playlist, the service stores:</strong></p>
+                <ul>
+                    <li>
+                        <strong>Playlist ID</strong> - A unique identifier for the playlist
+                    </li>
+                    <li>
+                        <strong>User ID</strong> - Your TuneBridge account ID (if logged in)
+                    </li>
+                    <li>
+                        <strong>Playlist Title and Description</strong> - Optional metadata you provide
+                    </li>
+                    <li>
+                        <strong>Card IDs</strong> - References to the music cards (tracks/albums) included in the playlist
+                    </li>
+                    <li>
+                        <strong>Creation and Expiration Timestamps</strong> - When the playlist was created and when it expires
+                    </li>
+                </ul>
+                <p class="text-muted mt-3">
+                    <strong>Retention:</strong> Playlists created by anonymous users expire after 2 weeks. Playlists
+                    created by logged-in users do not expire automatically but can be deleted at any time.
+                </p>
+                <p class="text-muted">
+                    <strong>Note:</strong> TuneBridge playlists are separate from your music service playlists. They are
+                    collections of cross-platform music links that you create within TuneBridge.
+                </p>
+            </div>
+        </div>
+
+        <h4>2.5 Logging Data</h4>
         <div class="card mb-3">
             <div class="card-body">
                 <p><strong>Is Logged:</strong></p>
@@ -153,7 +221,10 @@
         <h3>3. Data We Do NOT Collect</h3>
         <ul class="list-group">
             <li class="list-group-item">❌ Your listening history from Spotify, Apple Music, or Tidal</li>
-            <li class="list-group-item">❌ Your playlist or library information</li>
+            <li class="list-group-item">
+                ❌ Your playlists from connected music services (unless you explicitly choose to process them)
+            </li>
+            <li class="list-group-item">❌ Your music service subscription status or payment information</li>
             <li class="list-group-item">❌ Your personal name, phone number, or demographic information</li>
             <li class="list-group-item">
                 ❌ Browser cookies or tracking pixels (beyond session authentication for user
@@ -196,6 +267,35 @@
                 </ul>
             </div>
         </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Connected Music Service Accounts</strong>
+            </div>
+            <div class="card-body">
+                <p>When you connect your Apple Music account:</p>
+                <ul>
+                    <li>Your Apple Music token is used solely to access your library playlists</li>
+                    <li>Playlist access is read-only and on-demand (only when you request to view or process a playlist)</li>
+                    <li>We do not continuously sync or monitor your library</li>
+                    <li>Track information is used only to convert links to other platforms</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>TuneBridge Playlists</strong>
+            </div>
+            <div class="card-body">
+                <p>Your TuneBridge playlist data is used to:</p>
+                <ul>
+                    <li>Store and display your curated collections of cross-platform music links</li>
+                    <li>Generate shareable playlist URLs for sharing with others</li>
+                    <li>Enable playlist management (create, view, delete) through your account</li>
+                </ul>
+            </div>
+        </div>
     </section>
 
     <!-- 5. Data Storage & Security -->
@@ -217,6 +317,21 @@
                         <td>Account info, API keys, rate limiting</td>
                         <td>Local SQLite database</td>
                         <td>Until account deletion</td>
+                    </tr>
+                    <tr>
+                        <td>Connected music service tokens (Apple Music)</td>
+                        <td>Local SQLite database</td>
+                        <td>Until token expiration or account disconnection</td>
+                    </tr>
+                    <tr>
+                        <td>TuneBridge playlists (logged-in users)</td>
+                        <td>Local SQLite database</td>
+                        <td>Until deleted by user or account deletion</td>
+                    </tr>
+                    <tr>
+                        <td>TuneBridge playlists (anonymous users)</td>
+                        <td>Local SQLite database</td>
+                        <td>2 weeks</td>
                     </tr>
                     <tr>
                         <td>Music link cache and search data</td>
@@ -302,7 +417,48 @@
                 <a href="https://tidal.com/privacy" target="_blank" rel="noopener noreferrer">Tidal Privacy Policy</a>
             </li>
         </ul>
-        <h4>6.2 AT Protocol</h4>
+
+        <h4>6.2 Music Service OAuth Authentication (Account Linking)</h4>
+        <p>
+            TuneBridge offers optional OAuth integration with music services, allowing you to connect your music streaming
+            accounts for enhanced features such as playlist access and conversion.
+        </p>
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Apple Music (via MusicKit JS)</strong>
+            </div>
+            <div class="card-body">
+                <p><strong>How it works:</strong></p>
+                <ul>
+                    <li>You initiate the connection by clicking "Connect Apple Music" in the TuneBridge interface</li>
+                    <li>Apple's MusicKit JS SDK handles the authentication flow directly with Apple</li>
+                    <li>Upon successful authentication, Apple provides TuneBridge with a user token</li>
+                    <li>This token grants TuneBridge read-only access to your Apple Music library playlists</li>
+                </ul>
+                <p><strong>Scope of access:</strong></p>
+                <ul>
+                    <li>✅ Read your library playlists (names and track IDs only)</li>
+                    <li>❌ Cannot modify or delete your playlists</li>
+                    <li>❌ Cannot access your listening history</li>
+                    <li>❌ Cannot access your Apple ID account information</li>
+                    <li>❌ Cannot make purchases on your behalf</li>
+                </ul>
+                <p><strong>Token handling:</strong></p>
+                <ul>
+                    <li>Tokens are stored encrypted in our database</li>
+                    <li>Tokens expire automatically based on Apple's expiration policy</li>
+                    <li>You can revoke access at any time from your TuneBridge account settings</li>
+                    <li>Revoking access immediately deletes the stored token</li>
+                </ul>
+            </div>
+        </div>
+        <p class="text-muted">
+            <strong>Note:</strong> TuneBridge currently only supports Apple Music account linking. Additional music
+            service OAuth integrations (such as Spotify) may be added in the future, and this privacy policy will
+            be updated accordingly.
+        </p>
+
+        <h4>6.3 AT Protocol</h4>
         <p>
             Media link search results are stored as public AT Protocol records on the TuneBridge Personal Data Store (PDS).
         </p>
@@ -312,7 +468,7 @@
             and not made public on the PDS.<br />
         </p>
 
-        <h4>6.3 Discord Bot</h4>
+        <h4>6.4 Discord Bot</h4>
         <p>If you add the TuneBridge bot to your Discord server, it will:</p>
         <ul>
             <li>Detect music links in messages</li>
@@ -339,7 +495,45 @@
             cannot be exported.
         </p>
 
-        <h4>7.2 Delete Your Account</h4>
+        <h4>7.2 Manage Connected Music Services</h4>
+        <p>
+            If you have connected a music service account (such as Apple Music), you have full control over that connection:
+        </p>
+        <ul>
+            <li>
+                <strong>View Connection Status:</strong> Check which music services are connected in your account settings
+            </li>
+            <li>
+                <strong>Disconnect Services:</strong> Remove the connection at any time, which immediately deletes the stored
+                access token
+            </li>
+            <li>
+                <strong>Refresh Authorization:</strong> Re-authenticate to obtain a fresh token when the current one expires
+            </li>
+        </ul>
+        <p class="text-muted">
+            <strong>Note:</strong> Disconnecting a music service only removes the token stored by TuneBridge. To fully revoke
+            TuneBridge's access, you may also need to remove the authorization from your music service account settings
+            (e.g., Apple ID account management).
+        </p>
+
+        <h4>7.3 Manage Your TuneBridge Playlists</h4>
+        <p>
+            You have full control over the playlists you create in TuneBridge:
+        </p>
+        <ul>
+            <li>
+                <strong>View Playlists:</strong> See all playlists associated with your account
+            </li>
+            <li>
+                <strong>Delete Playlists:</strong> Remove any playlist you have created at any time
+            </li>
+            <li>
+                <strong>Export Playlist Data:</strong> Download your playlist information as part of your account data export
+            </li>
+        </ul>
+
+        <h4>7.4 Delete Your Account</h4>
         <p>
             You can delete your account at any time. A delete button is available in your account settings on the user
             page.
@@ -349,6 +543,8 @@
             <li>✅ Delete your email address and hashed password</li>
             <li>✅ Delete your API key hash</li>
             <li>✅ Delete your rate limiting data</li>
+            <li>✅ Delete all connected music service tokens</li>
+            <li>✅ Delete all your TuneBridge playlists</li>
             <li>⚠️ Cache entries may persist for up to 7 days before automatic deletion</li>
         </ul>
     </section>
@@ -405,6 +601,21 @@
                         <td>Manual (via account deletion or regeneration)</td>
                     </tr>
                     <tr>
+                        <td>Connected music service tokens</td>
+                        <td>Until token expiration or disconnection</td>
+                        <td>Automatic (on expiration) or Manual (on disconnection)</td>
+                    </tr>
+                    <tr>
+                        <td>TuneBridge playlists (logged-in users)</td>
+                        <td>Until deletion by user or account deletion</td>
+                        <td>Manual (via playlist or account deletion)</td>
+                    </tr>
+                    <tr>
+                        <td>TuneBridge playlists (anonymous users)</td>
+                        <td>2 weeks</td>
+                        <td>Automatic</td>
+                    </tr>
+                    <tr>
                         <td>Rate limiting counters</td>
                         <td>1 hour (reset hourly)</td>
                         <td>Automatic</td>
@@ -416,7 +627,7 @@
                     </tr>
                     <tr>
                         <td>Server logs</td>
-                        <td>Typically less than 7 day but may be retained indefinitely</td>
+                        <td>Typically less than 7 days but may be retained indefinitely</td>
                         <td>None (retained for development/legal purposes)</td>
                     </tr>
                 </tbody>
