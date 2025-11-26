@@ -9,11 +9,32 @@
   padding: 0.5rem 1rem;
 }
 
-/* Ensure centered brand doesn't break on small screens */
+/* Mobile header layout - show brand centered on its own row */
 @media (max-width:768px) {
+  .navbar .container-xxl {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
   .navbar-brand.position-absolute {
     position: static !important;
     transform: none !important;
+    order: -1;
+    width: 100%;
+    text-align: center;
+    margin-bottom: 0.25rem;
+  }
+
+  /* Left nav links */
+  .navbar .container-xxl > .d-flex:first-of-type {
+    order: 0;
+  }
+
+  /* Right action buttons */
+  .navbar .container-xxl > .d-flex:last-of-type {
+    order: 1;
+    margin-left: 0;
   }
 }
 
@@ -24,17 +45,25 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
+  /* Fix iOS scroll behavior - prevent scroll bounce on body */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 html {
   overflow-y: auto;
   height: 100%;
+  /* Fix iOS scroll behavior */
+  overscroll-behavior: none;
 }
 
 main {
   flex: 1 0 auto;
   width: 100%;
   overflow: visible;
+  /* Fix iOS scroll behavior - allow touch scrolling */
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Ensure footer is always visible */
@@ -42,6 +71,12 @@ footer {
   flex-shrink: 0;
   width: 100%;
   margin-top: auto;
+}
+
+/* Fix iOS scroll behavior on cards to prevent scroll lock */
+.card {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Footer layout */
