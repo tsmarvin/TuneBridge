@@ -64,6 +64,14 @@
         <meta name="twitter:image" content="@image" />
     }
 
+    @* oEmbed discovery link *@
+    @if (!string.IsNullOrWhiteSpace(baseUrl))
+    {
+        var cardUrl = $"https://{baseUrl}{Context.Request.Path}";
+        var oEmbedUrl = $"https://{baseUrl}/oembed?url={Uri.EscapeDataString(cardUrl)}&format=json";
+        <link rel="alternate" type="application/json+oembed" href="@oEmbedUrl" title="@title oEmbed" />
+    }
+
     <style nonce="@cspNonce">
         :root {
             font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
