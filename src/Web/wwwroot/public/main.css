@@ -76,7 +76,6 @@ footer {
 /* Fix iOS scroll behavior on cards to prevent scroll lock */
 .card {
   touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* Footer layout */
