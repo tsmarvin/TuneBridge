@@ -15,7 +15,7 @@ BridgeBeats uses a custom ATProto lexicon to store music lookup results as struc
 
 **NSID (Namespaced Identifier):** `media.tunebridge.dev.lookup`
 
-**Authority Domain:** `dev.bridgebeats.link` (from NSID reverse-DNS: `media.tunebridge.dev` → `dev.bridgebeats.link`)
+**Note:** The lexicon NSID uses the original "tunebridge" name and cannot be changed without breaking ATProto compatibility for existing records. The authority domain for serving the lexicon schema is `dev.bridgebeats.link`.
 
 According to the ATProto specification, lexicon schemas must be:
 1. Published at a predictable HTTPS endpoint on the authority domain

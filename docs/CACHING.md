@@ -109,6 +109,8 @@ When a new lookup is performed with a link that resolves to an already-cached re
 
 MediaLinkResults are stored as custom AT Protocol records using the `media.tunebridge.lookup.result` lexicon.
 
+**Note:** The lexicon NSID uses the original "tunebridge" name and cannot be changed without breaking ATProto compatibility for existing records.
+
 ### Lexicon Definition
 
 The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup` and served at `https://<your-domain>/.well-known/atproto-lexicon/media.tunebridge.dev.lookup`:
