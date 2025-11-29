@@ -4,11 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using TuneBridge.Domain.Models;
+using BridgeBeats.Domain.Models;
 
 #nullable disable
 
-namespace TuneBridge.Migrations
+namespace BridgeBeats.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20251123063610_InitialCreate")]
@@ -148,7 +148,7 @@ namespace TuneBridge.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.PlaylistEntry", b =>
+            modelBuilder.Entity("BridgeBeats.Domain.Contracts.Entities.PlaylistEntry", b =>
                 {
                     b.Property<string>("PlaylistId")
                         .HasMaxLength(64)
@@ -193,7 +193,7 @@ namespace TuneBridge.Migrations
                     b.ToTable("Playlists");
                 });
 
-            modelBuilder.Entity("TuneBridge.Domain.Models.ApplicationUser", b =>
+            modelBuilder.Entity("BridgeBeats.Domain.Models.ApplicationUser", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
@@ -289,7 +289,7 @@ namespace TuneBridge.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
                 {
-                    b.HasOne("TuneBridge.Domain.Models.ApplicationUser", null)
+                    b.HasOne("BridgeBeats.Domain.Models.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -298,7 +298,7 @@ namespace TuneBridge.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
                 {
-                    b.HasOne("TuneBridge.Domain.Models.ApplicationUser", null)
+                    b.HasOne("BridgeBeats.Domain.Models.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -313,7 +313,7 @@ namespace TuneBridge.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("TuneBridge.Domain.Models.ApplicationUser", null)
+                    b.HasOne("BridgeBeats.Domain.Models.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -322,7 +322,7 @@ namespace TuneBridge.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
                 {
-                    b.HasOne("TuneBridge.Domain.Models.ApplicationUser", null)
+                    b.HasOne("BridgeBeats.Domain.Models.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)

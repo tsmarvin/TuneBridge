@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using TuneBridge.Domain.Contracts.Entities;
+using BridgeBeats.Domain.Contracts.Entities;
 
-namespace TuneBridge.Domain.Implementations.Database {
+namespace BridgeBeats.Domain.Implementations.Database {
 
     /// <summary>
     /// Database context for storing MediaLinkResult cache entries and lookup entries.

@@ -1,6 +1,6 @@
-# Quick Start Guide - TuneBridge with Docker Compose
+# Quick Start Guide - BridgeBeats with Docker Compose
 
-This guide will get you up and running with TuneBridge using Docker Compose in under 5 minutes.
+This guide will get you up and running with BridgeBeats using Docker Compose in under 5 minutes.
 
 ## Prerequisites
 
@@ -10,8 +10,8 @@ This guide will get you up and running with TuneBridge using Docker Compose in u
 ## Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/tsmarvin/TuneBridge.git
-cd TuneBridge
+git clone https://github.com/tsmarvin/BridgeBeats.git
+cd BridgeBeats
 ```
 
 ## Step 2: Set Up Secrets
@@ -80,7 +80,7 @@ TIDAL_CLIENT_ID=YOUR_CLIENT_ID
 DOMAIN=localhost
 ```
 
-## Step 5: Start TuneBridge
+## Step 5: Start BridgeBeats
 
 ```bash
 docker-compose up -d
@@ -88,10 +88,10 @@ docker-compose up -d
 
 This will:
 1. Build the Docker image (first time only)
-2. Start TuneBridge with Caddy reverse proxy
+2. Start BridgeBeats with Caddy reverse proxy
 3. Set up automatic HTTPS (with self-signed cert for localhost)
 
-## Step 6: Access TuneBridge
+## Step 6: Access BridgeBeats
 
 - **HTTPS (recommended)**: https://localhost
   - Accept the self-signed certificate warning in your browser
@@ -188,4 +188,4 @@ See the [Deployment Guide](docs/DEPLOYMENT.md) for detailed production deploymen
 
 - Documentation: [README.md](../README.md)
 - Deployment Guide: [docs/DEPLOYMENT.md](DEPLOYMENT.md)
-- Issues: https://github.com/tsmarvin/TuneBridge/issues
+- Issues: https://github.com/tsmarvin/BridgeBeats/issues

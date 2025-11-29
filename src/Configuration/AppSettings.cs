@@ -1,4 +1,4 @@
-namespace TuneBridge.Configuration {
+namespace BridgeBeats.Configuration {
     /// <summary>
     /// Represents application settings for external service integrations.<para/>
     ///
@@ -69,7 +69,7 @@ namespace TuneBridge.Configuration {
         /// <summary>
         /// The database connection string for the identity database (SQLite).
         /// </summary>
-        public string IdentityConnectionString { get; set; } = "Data Source=tunebridge.db";
+        public string IdentityConnectionString { get; set; } = "Data Source=bridgebeats.db";
 
         /// <summary>
         /// Salt value for hashing API keys.
@@ -104,10 +104,10 @@ namespace TuneBridge.Configuration {
         /// <summary>
         /// The database connection string for the link cache database (SQLite).
         /// </summary>
-        public string LinkCacheConnectionString { get; set; } = "Data Source=tunebridge.db";
+        public string LinkCacheConnectionString { get; set; } = "Data Source=bridgebeats.db";
 
         /// <summary>
-        /// The base URL for the application (e.g., https://dev.tunebridge.media). Used for generating OpenGraph card URLs.
+        /// The base URL for the application (e.g., https://dev.bridgebeats.link). Used for generating OpenGraph card URLs.
         /// </summary>
         public string BaseUrl { get; set; } = string.Empty;
 

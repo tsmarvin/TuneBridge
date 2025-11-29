@@ -1,11 +1,11 @@
 #!/bin/bash
-# Setup script for TuneBridge Docker deployment with secrets
+# Setup script for BridgeBeats Docker deployment with secrets
 # This script helps create the necessary directory structure and secret files
 
 set -e
 
 echo "=========================================="
-echo "TuneBridge Docker Setup Script"
+echo "BridgeBeats Docker Setup Script"
 echo "=========================================="
 echo ""
 
@@ -77,7 +77,7 @@ echo "2. IMPORTANT: Verify that api_key_salt.txt contains a random value"
 echo "   If it says 'REPLACE_WITH_RANDOM_SALT', generate a new salt:"
 echo "   openssl rand -base64 32 > $SECRETS_DIR/api_key_salt.txt"
 echo "3. Copy .env.example to .env and configure your environment variables"
-echo "4. Run 'docker-compose up -d' to start TuneBridge"
+echo "4. Run 'docker-compose up -d' to start BridgeBeats"
 echo ""
 echo "Important security notes:"
 echo "• The secrets directory is excluded from git via .gitignore"

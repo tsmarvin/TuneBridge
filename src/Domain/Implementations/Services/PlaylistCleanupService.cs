@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Interfaces;
+using BridgeBeats.Domain.Interfaces;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// Background service that periodically cleans up expired anonymous playlists.

@@ -1,9 +1,9 @@
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Services;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Services;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Tests.Unit;
+namespace BridgeBeats.Tests.Unit;
 
 [TestClass]
 public class OpenGraphCardServiceTests {
@@ -11,7 +11,7 @@ public class OpenGraphCardServiceTests {
     [TestMethod]
     public void BaseUrl_WhenSet_ReturnsBaseUrl( ) {
         // Arrange
-        string baseUrl = "tunebridge.media";
+        string baseUrl = "bridgebeats.link";
         IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
 
         // Act
@@ -24,7 +24,7 @@ public class OpenGraphCardServiceTests {
     [TestMethod]
     public void IsEnabled_WhenBaseUrlIsNotEmpty_ReturnsTrue( ) {
         // Arrange
-        string baseUrl = "tunebridge.media";
+        string baseUrl = "bridgebeats.link";
         IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
 
         // Act
@@ -50,7 +50,7 @@ public class OpenGraphCardServiceTests {
     [TestMethod]
     public void StoreResult_WhenCalled_ReturnsUrlWithBaseUrl( ) {
         // Arrange
-        string baseUrl = "tunebridge.media";
+        string baseUrl = "bridgebeats.link";
         IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
         MediaLinkResult result = new( ) {
             Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {

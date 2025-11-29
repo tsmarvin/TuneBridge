@@ -2,11 +2,11 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using TuneBridge.Domain.Contracts.Entities;
-using TuneBridge.Domain.Implementations.Auth;
-using TuneBridge.Domain.Models;
+using BridgeBeats.Domain.Contracts.Entities;
+using BridgeBeats.Domain.Implementations.Auth;
+using BridgeBeats.Domain.Models;
 
-namespace TuneBridge.Web.Controllers;
+namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
 /// Controller for user authentication and account management.
@@ -243,7 +243,7 @@ public class AccountController : Controller {
     [Authorize]
     [HttpPost]
     [Route( "account/download-data" )]
-    public async Task<IActionResult> DownloadPersonalData( [FromServices] TuneBridge.Domain.Interfaces.IPlaylistService? playlistService ) {
+    public async Task<IActionResult> DownloadPersonalData( [FromServices] BridgeBeats.Domain.Interfaces.IPlaylistService? playlistService ) {
         ApplicationUser? user = await _userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( );
@@ -289,7 +289,7 @@ public class AccountController : Controller {
         return File(
             System.Text.Encoding.UTF8.GetBytes( json ),
             "application/json",
-            $"tunebridge-personal-data-{DateTime.UtcNow:yyyy-MM-dd}.json"
+            $"bridgebeats-personal-data-{DateTime.UtcNow:yyyy-MM-dd}.json"
         );
     }
 

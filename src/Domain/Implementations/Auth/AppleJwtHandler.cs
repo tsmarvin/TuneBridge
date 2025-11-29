@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-namespace TuneBridge.Domain.Implementations.Auth {
+namespace BridgeBeats.Domain.Implementations.Auth {
 
     /// <summary>
     /// Generates and signs JSON Web Tokens (JWT) for authenticating with Apple's MusicKit API. Converts

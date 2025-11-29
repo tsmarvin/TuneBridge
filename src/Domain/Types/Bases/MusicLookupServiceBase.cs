@@ -1,11 +1,11 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Extensions;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Extensions;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Types.Bases {
+namespace BridgeBeats.Domain.Types.Bases {
     /// <summary>
     /// Base class for music lookup services that query a specific music provider's API.
     /// </summary>

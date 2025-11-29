@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using TuneBridge.Domain.Models;
+using BridgeBeats.Domain.Models;
 
-namespace TuneBridge.Domain.Implementations.Middleware;
+namespace BridgeBeats.Domain.Implementations.Middleware;
 
 /// <summary>
 /// Middleware that enforces rate limiting on protected endpoints.

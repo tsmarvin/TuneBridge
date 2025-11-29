@@ -26,7 +26,7 @@ jobs:
             platform: linux/arm64
 
     env:
-      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/tunebridge-test
+      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/bridgebeats-test
 
     steps:
       - name: Checkout
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     env:
-      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/tunebridge-test
+      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/bridgebeats-test
 
     steps:
       - name: Download digests

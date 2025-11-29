@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <Version>0.0.1</Version>
-    <StartupObject>TuneBridge.Program</StartupObject>
+    <StartupObject>BridgeBeats.Program</StartupObject>
     <Authors>Taylor Marvin</Authors>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -37,11 +37,11 @@
     <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.0.1" />
-    <InternalsVisibleTo Include="TuneBridge.Tests" />
+    <InternalsVisibleTo Include="BridgeBeats.Tests" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="TuneBridge.Tests/**/*.cs" />
+    <Compile Remove="BridgeBeats.Tests/**/*.cs" />
   </ItemGroup>
 
   <ItemGroup>

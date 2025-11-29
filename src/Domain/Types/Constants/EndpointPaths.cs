@@ -1,4 +1,4 @@
-namespace TuneBridge.Domain.Types.Constants;
+namespace BridgeBeats.Domain.Types.Constants;
 
 /// <summary>
 /// Defines application endpoint paths for consistency.

@@ -10,10 +10,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TuneBridge.Domain.Models;
-using TuneBridge.Domain.Types.Constants;
+using BridgeBeats.Domain.Models;
+using BridgeBeats.Domain.Types.Constants;
 
-namespace TuneBridge.Tests.Integration;
+namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
 /// Integration tests for Aspire Dashboard authorization.

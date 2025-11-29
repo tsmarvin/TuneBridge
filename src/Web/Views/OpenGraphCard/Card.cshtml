@@ -1,6 +1,6 @@
-@model TuneBridge.Domain.Contracts.DTOs.MediaLinkResult
-@using TuneBridge.Domain.Implementations.Extensions
-@using TuneBridge.Domain.Types.Enums
+@model BridgeBeats.Domain.Contracts.DTOs.MediaLinkResult
+@using BridgeBeats.Domain.Implementations.Extensions
+@using BridgeBeats.Domain.Types.Enums
 @using Microsoft.AspNetCore.Html
 @{
     var metadata = ViewBag.Metadata as Dictionary<string, string>;
@@ -55,7 +55,7 @@
     }
 
     @* Additional meta tags *@
-    <meta property="og:site_name" content="TuneBridge" />
+    <meta property="og:site_name" content="BridgeBeats" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="@title" />
     <meta name="twitter:description" content="@description" />
@@ -414,9 +414,9 @@
 
         <div class="footer">
             @if (!string.IsNullOrWhiteSpace(baseUrl)) {
-                <a href="https://@baseUrl" target="_blank" rel="noopener noreferrer" class="footer-link">Powered by TuneBridge</a>
+                <a href="https://@baseUrl" target="_blank" rel="noopener noreferrer" class="footer-link">Powered by BridgeBeats</a>
             } else {
-                <span>Powered by TuneBridge</span>
+                <span>Powered by BridgeBeats</span>
             }
         </div>
     </div>

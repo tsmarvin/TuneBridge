@@ -1,12 +1,12 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Extensions;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Extensions;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Types.Bases {
+namespace BridgeBeats.Domain.Types.Bases {
 
     /// <summary>
     /// Abstract base class providing shared infrastructure for media link aggregation services.

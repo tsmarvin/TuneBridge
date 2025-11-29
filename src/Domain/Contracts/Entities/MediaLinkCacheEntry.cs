@@ -1,4 +1,4 @@
-namespace TuneBridge.Domain.Contracts.Entities {
+namespace BridgeBeats.Domain.Contracts.Entities {
 
     /// <summary>
     /// Represents a cached MediaLinkResult entry stored in the SQLite database.

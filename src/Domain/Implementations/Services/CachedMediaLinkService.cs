@@ -1,12 +1,12 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Extensions;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Bases;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Extensions;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Bases;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// Decorator for <see cref="IMediaLinkService"/> that adds caching with ATProto PDS storage.

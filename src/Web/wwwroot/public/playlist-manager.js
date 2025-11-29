@@ -1,4 +1,4 @@
-// Playlist management for TuneBridge
+// Playlist management for BridgeBeats
 // Allows users to select multiple cards and create playlists
 
 (function() {
@@ -53,7 +53,7 @@
                     <textarea id="playlistDescriptionInput" class="form-control form-control-sm" placeholder="Description (optional)" maxlength="500" rows="2"></textarea>`;
         } else {
             toolbarHTML += ` readonly">
-                    <input type="text" id="playlistTitleInput" class="form-control form-control-sm" placeholder="TuneBridge" maxlength="100" readonly />
+                    <input type="text" id="playlistTitleInput" class="form-control form-control-sm" placeholder="BridgeBeats" maxlength="100" readonly />
                     <small class="text-muted">Sign in to customize title and description</small>`;
         }
         
@@ -297,7 +297,7 @@
             }
 
             // Get title and description from input fields
-            const title = titleInput?.value?.trim() || 'TuneBridge';
+            const title = titleInput?.value?.trim() || 'BridgeBeats';
             const description = descriptionInput?.value?.trim() || '';
 
             // Parse selected cards to extract cardIds and rkeys

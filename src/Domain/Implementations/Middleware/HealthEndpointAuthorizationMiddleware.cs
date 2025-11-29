@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Types.Constants;
+using BridgeBeats.Domain.Types.Constants;
 
-namespace TuneBridge.Domain.Implementations.Middleware;
+namespace BridgeBeats.Domain.Implementations.Middleware;
 
 /// <summary>
 /// Middleware to restrict access to the health endpoint to internal requests only (localhost and Docker network).

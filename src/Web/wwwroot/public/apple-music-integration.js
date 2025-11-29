@@ -307,7 +307,7 @@ window.addEventListener('musickitloaded', async () => {
     try {
         await MusicKit.configure({
             developerToken: await getDeveloperToken(),
-            app: { name: 'TuneBridge', build: '1.0.0' }
+            app: { name: 'BridgeBeats', build: '1.0.0' }
         });
         musicKitInstance = MusicKit.getInstance();
         await checkAuthStatus();

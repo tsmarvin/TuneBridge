@@ -11,13 +11,13 @@
         <p class="mb-3">
             <strong>🔐 Privacy-First Design:</strong>
 
-            TuneBridge is built with privacy-first principles in mind. Only the minimum data necessary to convert music
+            BridgeBeats is built with privacy-first principles in mind. Only the minimum data necessary to convert music
             links gets collected.<br />
             We don't track listening history or share personal data. Only the basic album or track info you submit gets
             used to query the music service APIs.
         </p>
         <p class="mb-0">
-            <strong>Infrastructure Note:</strong> TuneBridge is hosted on OVH Cloud and proxied through Cloudflare.
+            <strong>Infrastructure Note:</strong> BridgeBeats is hosted on OVH Cloud and proxied through Cloudflare.
             These third party services may collect
             limited technical data (IP addresses, request metadata) according to their own privacy policies.
         </p>
@@ -37,13 +37,13 @@
     <section class="mb-5">
         <h3>1. Overview</h3>
         <p>
-            TuneBridge is a cross-platform music link converter created and ran by <a href="https://github.com/tsmarvin">Taylor Marvin</a> that helps you share music across Apple Music,
+            BridgeBeats is a cross-platform music link converter created and ran by <a href="https://github.com/tsmarvin">Taylor Marvin</a> that helps you share music across Apple Music,
             Spotify, and Tidal.<br />
             This privacy policy explains what data gets collected by the service, how it is used, stored, and protected.
         </p>
         <p>
             I (Taylor Marvin) am committed to your privacy and maintain strict data minimization practices. The application code is
-            open source and can be viewed on <a href="https://github.com/tsmarvin/TuneBridge">GitHub</a>.
+            open source and can be viewed on <a href="https://github.com/tsmarvin/BridgeBeats">GitHub</a>.
         </p>
     </section>
 
@@ -130,7 +130,7 @@
                         <strong>HTTP request timestamps and response codes</strong> - For both website and API requests
                     </li>
                     <li>
-                        <strong>TuneBridge User ID</strong> - Anonymized identifier for rate limiting and request
+                        <strong>BridgeBeats User ID</strong> - Anonymized identifier for rate limiting and request
                         tracking (not email addresses)
                     </li>
                     <li><strong>Rate limit events</strong> - When rate limits are exceeded</li>
@@ -249,7 +249,7 @@
                 rest by deployers.
             </li>
             <li class="list-group-item">
-                <strong>HTTPS/TLS:</strong> All communication between your client and TuneBridge is encrypted using TLS.
+                <strong>HTTPS/TLS:</strong> All communication between your client and BridgeBeats is encrypted using TLS.
             </li>
             <li class="list-group-item">
                 <strong>Access Control:</strong> Database queries use parameterized queries to prevent SQL injection.
@@ -266,7 +266,7 @@
 
         <h4>6.1 Music Service APIs</h4>
         <p>
-            TuneBridge integrates with the official APIs of:
+            BridgeBeats integrates with the official APIs of:
         </p>
         <ul>
             <li><strong>Apple Music (MusicKit API)</strong> - To search for and retrieve music links</li>
@@ -274,16 +274,16 @@
             <li><strong>Tidal API</strong> - To search for and retrieve music links</li>
         </ul>
         <p>
-            When you use TuneBridge to convert a link:
+            When you use BridgeBeats to convert a link:
         </p>
         <ol>
-            <li>TuneBridge extracts metadata from the input URL (the album ID or track ID)</li>
-            <li>TuneBridge queries the music service APIs to find matches</li>
+            <li>BridgeBeats extracts metadata from the input URL (the album ID or track ID)</li>
+            <li>BridgeBeats queries the music service APIs to find matches</li>
             <li>
                 The music services receive only the search criteria (the album or track id, artist/title information, ISRC, or
                 UPC)
             </li>
-            <li>TuneBridge never sends your email address, password, or personal data to these services</li>
+            <li>BridgeBeats never sends your email address, password, or personal data to these services</li>
         </ol>
         <ul class="text-muted">
             <li>
@@ -304,7 +304,7 @@
         </ul>
         <h4>6.2 AT Protocol</h4>
         <p>
-            Media link search results are stored as public AT Protocol records on the TuneBridge Personal Data Store (PDS).
+            Media link search results are stored as public AT Protocol records on the BridgeBeats Personal Data Store (PDS).
         </p>
         <p>
             <strong>Important:</strong> To protect user privacy the music service URLs input by end users
@@ -313,7 +313,7 @@
         </p>
 
         <h4>6.3 Discord Bot</h4>
-        <p>If you add the TuneBridge bot to your Discord server, it will:</p>
+        <p>If you add the BridgeBeats bot to your Discord server, it will:</p>
         <ul>
             <li>Detect music links in messages</li>
             <li>Automatically convert and reply with links on other platforms</li>
@@ -323,7 +323,7 @@
             We may log partial message content (the extracted music service URL) and Discord user and server IDs for
             operational and debugging purposes.
             Discord user IDs may also be incidentally logged in association with requests that cause errors in the
-            tunebridge application.
+            bridgebeats application.
         </p>
     </section>
 
@@ -361,7 +361,7 @@
         <ul>
             <li>HTTP request timestamps and response codes (both website and API)</li>
             <li>
-                TuneBridge User ID (anonymized account identifier, not email address; may include Discord user IDs for
+                BridgeBeats User ID (anonymized account identifier, not email address; may include Discord user IDs for
                 Discord bot usage)
             </li>
             <li>Rate limit events (when limits are exceeded)</li>
@@ -432,10 +432,10 @@
         </p>
         <ul>
             <li>
-                <strong>For dev.tunebridge.media:</strong> <a href="https://github.com/tsmarvin/TuneBridge/issues"
+                <strong>For dev.bridgebeats.media:</strong> <a href="https://github.com/tsmarvin/BridgeBeats/issues"
                                                               target="_blank" rel="noopener noreferrer">Report issues on GitHub</a>
             </li>
-            <li><strong>For self-hosted instances:</strong> Contact your TuneBridge server administrator</li>
+            <li><strong>For self-hosted instances:</strong> Contact your BridgeBeats server administrator</li>
         </ul>
     </section>
 
@@ -443,7 +443,7 @@
 
     <div class="alert alert-light border">
         <p class="mb-0">
-            TuneBridge is committed to transparency about how we handle your data.
+            BridgeBeats is committed to transparency about how we handle your data.
             This privacy policy reflects our actual practices and will be updated as the service evolves.
         </p>
     </div>

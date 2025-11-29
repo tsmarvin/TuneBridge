@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
-using TuneBridge.Configuration;
+using BridgeBeats.Configuration;
 
-namespace TuneBridge.Tests.Unit;
+namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
 /// Tests to verify that IdentityConnectionString and LinkCacheConnectionString can use the same value format.
@@ -14,8 +14,8 @@ public class ConnectionStringCompatibilityTests {
         string sharedConnectionString = "Data Source=shared.db";
 
         Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:IdentityConnectionString"] = sharedConnectionString,
-            ["TuneBridge:LinkCacheConnectionString"] = sharedConnectionString,
+            ["BridgeBeats:IdentityConnectionString"] = sharedConnectionString,
+            ["BridgeBeats:LinkCacheConnectionString"] = sharedConnectionString,
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -24,7 +24,7 @@ public class ConnectionStringCompatibilityTests {
 
         // Act
         AppSettings settings = new();
-        configuration.GetRequiredSection( "TuneBridge" ).Bind( settings );
+        configuration.GetRequiredSection( "BridgeBeats" ).Bind( settings );
 
         // Assert
         Assert.AreEqual( sharedConnectionString, settings.IdentityConnectionString );
@@ -38,8 +38,8 @@ public class ConnectionStringCompatibilityTests {
         string sharedConnectionString = "Data Source=TestDb;Mode=Memory;Cache=Shared";
 
         Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:IdentityConnectionString"] = sharedConnectionString,
-            ["TuneBridge:LinkCacheConnectionString"] = sharedConnectionString,
+            ["BridgeBeats:IdentityConnectionString"] = sharedConnectionString,
+            ["BridgeBeats:LinkCacheConnectionString"] = sharedConnectionString,
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -48,7 +48,7 @@ public class ConnectionStringCompatibilityTests {
 
         // Act
         AppSettings settings = new();
-        configuration.GetRequiredSection( "TuneBridge" ).Bind( settings );
+        configuration.GetRequiredSection( "BridgeBeats" ).Bind( settings );
 
         // Assert
         Assert.AreEqual( sharedConnectionString, settings.IdentityConnectionString );
@@ -63,8 +63,8 @@ public class ConnectionStringCompatibilityTests {
         string cacheConnectionString = "Data Source=cache.db";
 
         Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:IdentityConnectionString"] = identityConnectionString,
-            ["TuneBridge:LinkCacheConnectionString"] = cacheConnectionString,
+            ["BridgeBeats:IdentityConnectionString"] = identityConnectionString,
+            ["BridgeBeats:LinkCacheConnectionString"] = cacheConnectionString,
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -73,7 +73,7 @@ public class ConnectionStringCompatibilityTests {
 
         // Act
         AppSettings settings = new();
-        configuration.GetRequiredSection( "TuneBridge" ).Bind( settings );
+        configuration.GetRequiredSection( "BridgeBeats" ).Bind( settings );
 
         // Assert
         Assert.AreEqual( identityConnectionString, settings.IdentityConnectionString );

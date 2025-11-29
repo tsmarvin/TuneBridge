@@ -1,10 +1,10 @@
 # MediaLinkResult Caching with ATProto PDS Storage
 
-This document describes the caching and storage system for MediaLinkResult DTOs in TuneBridge.
+This document describes the caching and storage system for MediaLinkResult DTOs in BridgeBeats.
 
 ## Overview
 
-TuneBridge implements a two-tier caching system for MediaLinkResult lookups:
+BridgeBeats implements a two-tier caching system for MediaLinkResult lookups:
 
 1. **SQLite Database**: Local cache for fast lookups and tracking input links
 2. **ATProto PDS**: Persistent storage of MediaLinkResults as ATProto posts
@@ -15,7 +15,7 @@ Add the following settings to your `appsettings.json`:
 
 ```json
 {
-  "TuneBridge": {
+  "BridgeBeats": {
     "ATProtoIdentifier": "your-handle.bsky.social",
     "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
@@ -29,7 +29,7 @@ Add the following settings to your `appsettings.json`:
 - **ATProtoIdentifier**: Your ATProto handle or DID
 - **ATProtoPassword**: Your ATProto password or app password (recommended: use app password)
 - **CacheDays**: Number of days to keep cache entries valid (default: 7)
-- **LinkCacheConnectionString**: SQLite connection string for the cache database (default: `Data Source=tunebridge.db`)
+- **LinkCacheConnectionString**: SQLite connection string for the cache database (default: `Data Source=bridgebeats.db`)
 
 > **Security Note**: Use a ATProto app password instead of your main account password. Generate an app password at: Settings → App Passwords in ATProto.
 

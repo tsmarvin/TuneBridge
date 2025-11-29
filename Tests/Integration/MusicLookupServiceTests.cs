@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Interfaces;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Interfaces;
 
-namespace TuneBridge.Tests.Integration;
+namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
 /// Integration tests for music lookup services (Apple Music and Spotify).
@@ -35,12 +35,12 @@ public class MusicLookupServiceTests {
          .ToDictionary(kv => kv.Key, kv => kv.Value);
 
         // Force Discord token to null to prevent Discord service registration in tests
-        overrides["TuneBridge:DiscordToken"] = null;
+        overrides["BridgeBeats:DiscordToken"] = null;
 
         // Use unique database connection strings to prevent race conditions between parallel tests
         string uniqueId = Guid.NewGuid( ).ToString( "N" );
-        overrides["TuneBridge:IdentityConnectionString"] = $"Data Source=IntegrationTest_Identity_{uniqueId};Mode=Memory;Cache=Shared";
-        overrides["TuneBridge:LinkCacheConnectionString"] = $"Data Source=IntegrationTest_LinkCache_{uniqueId};Mode=Memory;Cache=Shared";
+        overrides["BridgeBeats:IdentityConnectionString"] = $"Data Source=IntegrationTest_Identity_{uniqueId};Mode=Memory;Cache=Shared";
+        overrides["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=IntegrationTest_LinkCache_{uniqueId};Mode=Memory;Cache=Shared";
 
         s_factory = new CustomWebApplicationFactory( overrides );
         s_serviceProvider = s_factory.Services;

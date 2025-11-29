@@ -1,14 +1,14 @@
 using idunno.AtProto;
 using idunno.AtProto.Repo;
 using idunno.Bluesky;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Contracts.Records;
-using TuneBridge.Domain.Implementations.Extensions;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.Records;
+using BridgeBeats.Domain.Implementations.Extensions;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// Implementation of <see cref="IATProtoStorageService"/> that stores MediaLinkResult records on ATProto PDS
@@ -31,7 +31,7 @@ namespace TuneBridge.Domain.Implementations.Services {
     ) : IATProtoStorageService {
 
         /// <summary>
-        /// The NSID (Namespaced Identifier) for the TuneBridge MediaLinkResult lexicon.
+        /// The NSID (Namespaced Identifier) for the BridgeBeats MediaLinkResult lexicon.
         /// </summary>
         private static readonly Nsid s_mediaLinkResultCollection = new( "media.tunebridge.dev.lookup" );
 

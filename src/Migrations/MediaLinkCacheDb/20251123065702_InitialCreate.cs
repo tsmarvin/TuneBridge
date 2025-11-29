@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace TuneBridge.Migrations.MediaLinkCacheDb {
+namespace BridgeBeats.Migrations.MediaLinkCacheDb {
     /// <inheritdoc />
     public partial class InitialCreate : Migration {
         /// <inheritdoc />

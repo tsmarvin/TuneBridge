@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace TuneBridge.Migrations {
+namespace BridgeBeats.Migrations {
     /// <inheritdoc />
     public partial class InitialCreate : Migration {
         /// <inheritdoc />

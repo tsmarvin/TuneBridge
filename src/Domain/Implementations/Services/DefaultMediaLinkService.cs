@@ -1,10 +1,10 @@
 using System.Text.Json;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Bases;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Bases;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// Default implementation of <see cref="IMediaLinkService"/> that coordinates parallel lookups across

@@ -1,12 +1,12 @@
 using System.Text.RegularExpressions;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
-using TuneBridge.Configuration;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Extensions;
-using TuneBridge.Domain.Interfaces;
+using BridgeBeats.Configuration;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Extensions;
+using BridgeBeats.Domain.Interfaces;
 
-namespace TuneBridge.Domain.Implementations.DiscordGatewayHandlers {
+namespace BridgeBeats.Domain.Implementations.DiscordGatewayHandlers {
 
     /// <summary>
     /// Handles Discord message creation events to detect and respond to music links.

@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
-namespace TuneBridge.Tests.EndToEnd;
+namespace BridgeBeats.Tests.EndToEnd;
 
 /// <summary>
 /// End-to-end tests for the web-specific lookup functionality.
@@ -18,14 +18,14 @@ public class WebLookupTests {
     public static void ClassInitialize( TestContext context ) {
         // Create factory with unique database connection strings and no Discord token
         Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:SpotifyClientId"] = "test",
-            ["TuneBridge:SpotifyClientSecret"] = "test",
-            ["TuneBridge:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["TuneBridge:IdentityConnectionString"] = $"Data Source=WebLookup_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:ATProtoIdentifier"] = "",
-            ["TuneBridge:ATProtoPassword"] = "",
-            ["TuneBridge:LinkCacheConnectionString"] = $"Data Source=WebLookup_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            ["BridgeBeats:SpotifyClientId"] = "test",
+            ["BridgeBeats:SpotifyClientSecret"] = "test",
+            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
+            ["BridgeBeats:IdentityConnectionString"] = $"Data Source=WebLookup_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:ATProtoIdentifier"] = "",
+            ["BridgeBeats:ATProtoPassword"] = "",
+            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=WebLookup_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
         };
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );

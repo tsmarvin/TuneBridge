@@ -12,7 +12,7 @@ read_secret() {
 }
 
 # ---- Configure defaults ----
-BASEURL="${BASEURL:-"dev.tunebridge.media"}"
+BASEURL="${BASEURL:-"dev.bridgebeats.link"}"
 NODE_NUMBER="${NODE_NUMBER:-0}"
 DEFAULT_LOGLEVEL="${DEFAULT_LOGLEVEL:-Information}"
 HOSTING_DEFAULT_LOGLEVEL="${HOSTING_DEFAULT_LOGLEVEL:-Information}"
@@ -41,16 +41,16 @@ ATPROTO_USER_DID="${ATPROTO_USER_DID:-}"
 ATPROTO_PASSWORD="$(read_secret "atproto_password")"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
-LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
+LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}"
 
 # Authentication and rate limiting configuration
-IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}"
+IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}"
 # Try to read API key salt from Docker secret
 API_KEY_SALT="$(read_secret "api_key_salt")"
 RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
 # Logging configuration
-LOG_FILE_PATH="${LOG_FILE_PATH:-/app/data/logs/tunebridge-.log}"
+LOG_FILE_PATH="${LOG_FILE_PATH:-/app/data/logs/bridgebeats-.log}"
 OTLP_ENDPOINT="${OTLP_ENDPOINT:-http://aspire-dashboard:4317}"
 
 # escape backslashes (for path safety) ----
@@ -72,7 +72,7 @@ cat > /app/appsettings.json <<EOF
       }
     }
   },
-  "TuneBridge": {
+  "BridgeBeats": {
     "NodeNumber": $NODE_NUMBER,
     "AppleTeamId": "$APPLE_TEAM_ID",
     "AppleKeyId": "$APPLE_KEY_ID",
@@ -117,6 +117,6 @@ cat > /app/appsettings.json <<EOF
 }
 EOF
 
-# 3) Launch the TuneBridge application
-echo "Starting TuneBridge application..."
-exec "/app/TuneBridge"
+# 3) Launch the BridgeBeats application
+echo "Starting BridgeBeats application..."
+exec "/app/BridgeBeats"

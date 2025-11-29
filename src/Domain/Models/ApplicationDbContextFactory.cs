@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace TuneBridge.Domain.Models;
+namespace BridgeBeats.Domain.Models;
 
 /// <summary>
 /// Factory for creating ApplicationDbContext instances at design time (for migrations).
@@ -14,7 +14,7 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
     /// <returns>A configured ApplicationDbContext instance.</returns>
     public ApplicationDbContext CreateDbContext( string[] args ) {
         DbContextOptionsBuilder<ApplicationDbContext> optionsBuilder = new();
-        _ = optionsBuilder.UseSqlite( "Data Source=tunebridge.db" );
+        _ = optionsBuilder.UseSqlite( "Data Source=bridgebeats.db" );
 
         return new ApplicationDbContext( optionsBuilder.Options );
     }

@@ -1,6 +1,6 @@
 # ATProto Lexicon Resolution Setup Guide
 
-This guide explains how to set up and deploy ATProto lexicon resolution for TuneBridge's custom media lookup lexicon, ensuring full compliance with the [AT Protocol Lexicon Specification](https://atproto.com/specs/lexicon#lexicon-publication-and-resolution).
+This guide explains how to set up and deploy ATProto lexicon resolution for BridgeBeats's custom media lookup lexicon, ensuring full compliance with the [AT Protocol Lexicon Specification](https://atproto.com/specs/lexicon#lexicon-publication-and-resolution).
 
 ## Table of Contents
 
@@ -11,11 +11,11 @@ This guide explains how to set up and deploy ATProto lexicon resolution for Tune
 
 ## Overview
 
-TuneBridge uses a custom ATProto lexicon to store music lookup results as structured records on ATProto Personal Data Servers (PDS). The lexicon defines the schema for `media.tunebridge.dev.lookup` records.
+BridgeBeats uses a custom ATProto lexicon to store music lookup results as structured records on ATProto Personal Data Servers (PDS). The lexicon defines the schema for `media.tunebridge.dev.lookup` records.
 
 **NSID (Namespaced Identifier):** `media.tunebridge.dev.lookup`
 
-**Authority Domain:** `dev.tunebridge.media` (from NSID reverse-DNS: `media.tunebridge.dev` → `dev.tunebridge.media`)
+**Authority Domain:** `dev.bridgebeats.link` (from NSID reverse-DNS: `media.tunebridge.dev` → `dev.bridgebeats.link`)
 
 According to the ATProto specification, lexicon schemas must be:
 1. Published at a predictable HTTPS endpoint on the authority domain
@@ -32,7 +32,7 @@ src/Web/wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup
 
 And is served at:
 ```
-https://dev.tunebridge.media/.well-known/atproto-lexicon/media.tunebridge.dev.lookup
+https://dev.bridgebeats.link/.well-known/atproto-lexicon/media.tunebridge.dev.lookup
 ```
 
 ### Schema Structure
@@ -61,8 +61,8 @@ See the lexicon file for the complete JSON schema definition.
 Use [goat](https://github.com/bluesky-social/goat) to create the schema record.
 
 ```sh
-cp TuneBridge/src/Web/wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup ./media.tunebridge.dev.lookup.json
-goat account login -u "stage-atproto.pds.tunebridge.media" --app-password $(cat TuneBridge/secrets/atproto_password.txt)
+cp BridgeBeats/src/Web/wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup ./media.tunebridge.dev.lookup.json
+goat account login -u "stage-atproto.pds.bridgebeats.link" --app-password $(cat BridgeBeats/secrets/atproto_password.txt)
 goat record create --rkey media.tunebridge.dev.lookup ./media.tunebridge.dev.lookup.json
 ```
 The output from the record create command will look something like this:
@@ -79,7 +79,7 @@ To establish domain authority for the lexicon NSID, you should configure DNS TXT
 
 ### Required DNS TXT Records
 
-Add the following DNS TXT record to your domain (`dev.tunebridge.media`):
+Add the following DNS TXT record to your domain (`dev.bridgebeats.link`):
 
 **Record Type:** TXT  
 **Host/Name:** `_lexicon`  
@@ -89,5 +89,5 @@ Add the following DNS TXT record to your domain (`dev.tunebridge.media`):
 ### Example DNS Configuration
 
 ```
-_lexicon.dev.tunebridge.media.    3600    IN    TXT    "did=did:plc:your-did-identifier"
+_lexicon.dev.bridgebeats.link.    3600    IN    TXT    "did=did:plc:your-did-identifier"
 ```

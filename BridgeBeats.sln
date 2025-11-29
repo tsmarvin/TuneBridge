@@ -2,7 +2,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.0.11205.157 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TuneBridge", "src\TuneBridge.csproj", "{127C27A6-B3FD-14C2-BC7E-3176B16766B2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats", "src\BridgeBeats.csproj", "{127C27A6-B3FD-14C2-BC7E-3176B16766B2}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 	ProjectSection(SolutionItems) = preProject
@@ -36,7 +36,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		setup-secrets.sh = setup-secrets.sh
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TuneBridge.Tests", "Tests\TuneBridge.Tests.csproj", "{5C9180AA-5AD7-4B42-B7B9-7550011F2926}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Tests", "Tests\BridgeBeats.Tests.csproj", "{5C9180AA-5AD7-4B42-B7B9-7550011F2926}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{DA4FC95F-B638-4F11-8AD2-C83FE858DAD4}"
 	ProjectSection(SolutionItems) = preProject

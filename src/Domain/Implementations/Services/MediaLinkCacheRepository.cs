@@ -1,12 +1,12 @@
 using Microsoft.EntityFrameworkCore;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Contracts.Entities;
-using TuneBridge.Domain.Implementations.Database;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.Entities;
+using BridgeBeats.Domain.Implementations.Database;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// Implementation of <see cref="IMediaLinkCacheRepository"/> that uses SQLite to track ATProto PDS record locations

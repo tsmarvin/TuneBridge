@@ -1,4 +1,4 @@
-namespace TuneBridge.Domain.Contracts.DTOs {
+namespace BridgeBeats.Domain.Contracts.DTOs {
 
     /// <summary>
     /// Represents music metadata returned from a provider-specific API query. This DTO encapsulates

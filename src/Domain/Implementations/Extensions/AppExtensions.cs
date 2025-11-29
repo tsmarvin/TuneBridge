@@ -4,10 +4,10 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Html;
 using NetCord;
 using NetCord.Rest;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.Extensions {
+namespace BridgeBeats.Domain.Implementations.Extensions {
 
     /// <summary>
     /// Extension methods for application-specific functionality.

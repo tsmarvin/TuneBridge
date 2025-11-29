@@ -1,9 +1,9 @@
 using FluentAssertions;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Tests.Unit {
+namespace BridgeBeats.Tests.Unit {
 
     [TestClass]
     public class RecordKeyGeneratorTests {

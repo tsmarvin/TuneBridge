@@ -1,9 +1,9 @@
 using Serilog;
-using TuneBridge.Configuration;
+using BridgeBeats.Configuration;
 
-namespace TuneBridge {
+namespace BridgeBeats {
     /// <summary>
-    /// Main entry point for the TuneBridge web application.
+    /// Main entry point for the BridgeBeats web application.
     /// </summary>
     public class Program {
         /// <summary>
@@ -13,15 +13,15 @@ namespace TuneBridge {
         /// <param name="args">Command-line arguments for configuration overrides.</param>
         public static async Task Main( string[] args ) {
             WebApplicationBuilder builder = WebApplication.CreateBuilder( new WebApplicationOptions( ) {
-                ApplicationName = "TuneBridge",
+                ApplicationName = "BridgeBeats",
                 Args = args,
                 WebRootPath = "Web/wwwroot"
             } );
 
-            // Configure TuneBridge services (this loads configuration and sets up logging)
-            _ = builder.ConfigureTuneBridgeServices( args );
+            // Configure BridgeBeats services (this loads configuration and sets up logging)
+            _ = builder.ConfigureBridgeBeatsServices( args );
 
-            WebApplication app = await builder.ConfigureTuneBridgeAsync( );
+            WebApplication app = await builder.ConfigureBridgeBeatsAsync( );
 
             try {
                 app.Run( );

@@ -3,11 +3,11 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using TuneBridge.Domain.Implementations.Database;
+using BridgeBeats.Domain.Implementations.Database;
 
 #nullable disable
 
-namespace TuneBridge.Migrations.MediaLinkCacheDb
+namespace BridgeBeats.Migrations.MediaLinkCacheDb
 {
     [DbContext(typeof(MediaLinkCacheDbContext))]
     partial class MediaLinkCacheDbContextModelSnapshot : ModelSnapshot
@@ -17,7 +17,7 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
 
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaLinkCacheEntry", b =>
+            modelBuilder.Entity("BridgeBeats.Domain.Contracts.Entities.MediaLinkCacheEntry", b =>
                 {
                     b.Property<string>("Rkey")
                         .HasMaxLength(200)
@@ -51,7 +51,7 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb
                     b.ToTable("CacheEntries");
                 });
 
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaLookupEntry", b =>
+            modelBuilder.Entity("BridgeBeats.Domain.Contracts.Entities.MediaLookupEntry", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -86,7 +86,7 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb
                     b.ToTable("LookupEntries");
                 });
 
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaProviderEntry", b =>
+            modelBuilder.Entity("BridgeBeats.Domain.Contracts.Entities.MediaProviderEntry", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -120,9 +120,9 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb
                     b.ToTable("ProviderEntries");
                 });
 
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaLookupEntry", b =>
+            modelBuilder.Entity("BridgeBeats.Domain.Contracts.Entities.MediaLookupEntry", b =>
                 {
-                    b.HasOne("TuneBridge.Domain.Contracts.Entities.MediaLinkCacheEntry", "MediaLinkCacheEntry")
+                    b.HasOne("BridgeBeats.Domain.Contracts.Entities.MediaLinkCacheEntry", "MediaLinkCacheEntry")
                         .WithMany("LookupEntries")
                         .HasForeignKey("MediaLinkCacheEntryRkey")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -131,9 +131,9 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb
                     b.Navigation("MediaLinkCacheEntry");
                 });
 
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaProviderEntry", b =>
+            modelBuilder.Entity("BridgeBeats.Domain.Contracts.Entities.MediaProviderEntry", b =>
                 {
-                    b.HasOne("TuneBridge.Domain.Contracts.Entities.MediaLinkCacheEntry", "MediaLinkCacheEntry")
+                    b.HasOne("BridgeBeats.Domain.Contracts.Entities.MediaLinkCacheEntry", "MediaLinkCacheEntry")
                         .WithMany("ProviderEntries")
                         .HasForeignKey("MediaLinkCacheEntryRkey")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -142,7 +142,7 @@ namespace TuneBridge.Migrations.MediaLinkCacheDb
                     b.Navigation("MediaLinkCacheEntry");
                 });
 
-            modelBuilder.Entity("TuneBridge.Domain.Contracts.Entities.MediaLinkCacheEntry", b =>
+            modelBuilder.Entity("BridgeBeats.Domain.Contracts.Entities.MediaLinkCacheEntry", b =>
                 {
                     b.Navigation("LookupEntries");
 

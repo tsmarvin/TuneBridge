@@ -2,7 +2,7 @@ using System.Net;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 
-namespace TuneBridge.Tests.Integration;
+namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
 /// Integration tests for health endpoint authorization middleware.

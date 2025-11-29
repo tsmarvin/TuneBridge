@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace TuneBridge.Domain.Implementations.Auth {
+namespace BridgeBeats.Domain.Implementations.Auth {
 
     /// <summary>
     /// Encapsulates Tidal API credentials (Client ID and Client Secret) and automatically encodes them

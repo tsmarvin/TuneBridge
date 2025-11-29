@@ -1,21 +1,21 @@
 using System.Text.Json;
-using TuneBridge.Configuration;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Auth;
-using TuneBridge.Domain.Implementations.LinkParsers;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Bases;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Configuration;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Auth;
+using BridgeBeats.Domain.Implementations.LinkParsers;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Bases;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// An <see cref="IMusicLookupService"/> implementation for <see cref="SupportedProviders.AppleMusic"/>
     /// </summary>
-    /// <param name="jwtHandler">The <see cref="AppleJwtHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
-    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
-    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
-    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.ConfigureTuneBridgeServices{TBuilder}"/></param>
+    /// <param name="jwtHandler">The <see cref="AppleJwtHandler"/> used to authenticate the API calls performed by the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureBridgeBeatsServices{TBuilder}"/></param>
+    /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service. Added via dependency injection in <see cref="StartupExtensions.ConfigureBridgeBeatsServices{TBuilder}"/></param>
+    /// <param name="logger">The logger used to record errors. Added via dependency injection in <see cref="StartupExtensions.ConfigureBridgeBeatsServices{TBuilder}"/></param>
+    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging. Added via dependency injection in <see cref="StartupExtensions.ConfigureBridgeBeatsServices{TBuilder}"/></param>
     public partial class AppleMusicLookupService(
         AppleJwtHandler jwtHandler,
         IHttpClientFactory factory,

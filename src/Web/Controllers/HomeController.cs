@@ -2,14 +2,14 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewEngines;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Constants;
-using TuneBridge.Domain.Types.Enums;
-using TuneBridge.Web.Models;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Constants;
+using BridgeBeats.Domain.Types.Enums;
+using BridgeBeats.Web.Models;
 
-namespace TuneBridge.Web.Controllers {
+namespace BridgeBeats.Web.Controllers {
     /// <summary>
     /// Controller for the main web application pages.
     /// </summary>
