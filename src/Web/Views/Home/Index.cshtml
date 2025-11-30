@@ -504,17 +504,85 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
             let buffer = '';
             let cardCount = 0;
 
+            // Helper function to find the end of a balanced div element
+            // Returns the index after the closing </div> of a complete element, or -1 if not found
+            function findBalancedDivEnd(html, startIndex = 0) {
+              let depth = 0;
+              let i = startIndex;
+              const openTag = /<div[\s>]/gi;
+              const closeTag = /<\/div>/gi;
+              
+              // Find all opening and closing div tags and track their positions
+              const tags = [];
+              let match;
+              
+              openTag.lastIndex = i;
+              while ((match = openTag.exec(html)) !== null) {
+                tags.push({ pos: match.index, type: 'open' });
+              }
+              
+              closeTag.lastIndex = i;
+              while ((match = closeTag.exec(html)) !== null) {
+                tags.push({ pos: match.index, type: 'close', endPos: match.index + 6 });
+              }
+              
+              // Sort by position
+              tags.sort((a, b) => a.pos - b.pos);
+              
+              // Walk through tags to find balanced end
+              for (const tag of tags) {
+                if (tag.type === 'open') {
+                  depth++;
+                } else {
+                  depth--;
+                  if (depth === 0) {
+                    return tag.endPos;
+                  }
+                }
+              }
+              
+              return -1; // No balanced end found
+            }
+
+            // Function to extract all complete top-level elements from buffer
+            function extractCompleteElements(buf) {
+              let completeHtml = '';
+              let remaining = buf;
+              let searchStart = 0;
+              
+              while (true) {
+                // Look for the start of a div element
+                const divStart = remaining.indexOf('<div', searchStart);
+                if (divStart === -1) break;
+                
+                // Find the balanced end
+                const divEnd = findBalancedDivEnd(remaining, divStart);
+                if (divEnd === -1) {
+                  // Not balanced yet, keep the partial content in buffer
+                  break;
+                }
+                
+                // We found a complete element
+                completeHtml += remaining.substring(0, divEnd);
+                remaining = remaining.substring(divEnd);
+                searchStart = 0; // Reset for next iteration
+              }
+              
+              return { completeHtml, remaining };
+            }
+
             while (true) {
               const { done, value } = await reader.read();
               
               if (value) {
                 buffer += decoder.decode(value, { stream: !done });
                 
-                // Process complete HTML elements from buffer
-                let lastClosingDiv = buffer.lastIndexOf('</div>');
-                if (lastClosingDiv !== -1) {
-                  const completeHTML = buffer.substring(0, lastClosingDiv + 6);
-                  buffer = buffer.substring(lastClosingDiv + 6);
+                // Process complete HTML elements from buffer using balanced div detection
+                const { completeHtml, remaining } = extractCompleteElements(buffer);
+                
+                if (completeHtml) {
+                  buffer = remaining;
+                  const completeHTML = completeHtml;
                   
                   // Check for completion marker
                   const tempDiv = document.createElement('div');
