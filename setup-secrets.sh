@@ -66,6 +66,10 @@ create_secret_file "$SECRETS_DIR/api_key_salt.txt" \
     "API key salt (random string for security)" \
     "$(openssl rand -base64 32 2>/dev/null || echo 'REPLACE_WITH_RANDOM_SALT_DO_NOT_USE_THIS_DEFAULT')"
 
+create_secret_file "$SECRETS_DIR/cloudflare_api_token.txt" \
+    "Cloudflare API token for DNS challenges (Zone:DNS:Edit permission)" \
+    "your_cloudflare_api_token_here"
+
 echo ""
 echo "=========================================="
 echo "Setup Complete!"

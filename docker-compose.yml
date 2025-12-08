@@ -108,7 +108,7 @@ services:
       - LOG_ENABLED=true
 
   bridgebeats-caddy:
-    image: caddy:latest
+    image: ${DOCKERHUB_USERNAME}/caddy-cloudflare:latest
     restart: unless-stopped
     ports:
       - "80:80"
@@ -126,6 +126,8 @@ services:
       - caddy-data:/data/caddy
       - caddy-config:/config/caddy
       - caddy-logs:/var/log/caddy
+      # Secret mounts (read-only)
+      - ./secrets/cloudflare_api_token.txt:/run/secrets/cloudflare_api_token:ro
 
 volumes:
   bridgebeats-data:

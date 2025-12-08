@@ -195,22 +195,25 @@ namespace BridgeBeats.Configuration {
             _ = app.Use( async ( ctx, next ) => {
                 string path = ctx.Request.Path.Value ?? string.Empty;
                 bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
+                bool isAppleMusic = path.StartsWith( "/applemusic", StringComparison.OrdinalIgnoreCase );
 
                 // Generate a unique nonce for this request to allow inline scripts and styles
                 string nonce = Convert.ToBase64String( System.Security.Cryptography.RandomNumberGenerator.GetBytes( 16 ) );
                 ctx.Items["CSPNonce"] = nonce;
 
                 // Build CSP policy
-                // Allow MusicKit JS CDN, nonce-based inline styles, and API calls to music providers
-                string frameAncestors = isEmbed ? "*" : "'self'"; // Allow any site to embed cards & playlists
+                // Allow MusicKit JS CDN, Cloudflare analytics, nonce-based inline styles, and API calls to music providers
+                // Allow framing for embed endpoints, Apple Music integration, and playlist pages
+                // Note: frame-ancestors uses https: scheme with 'self' to support HTTPS framing including same-origin
+                string frameAncestors = (isEmbed || isAppleMusic) ? "https: 'self'" : "'self'";
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
-                    $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com",
+                    $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com https://static.cloudflareinsights.com",
                     $"style-src 'self' 'nonce-{nonce}'",
                     "img-src 'self' data: https:",
                     "font-src 'self' data:",
-                    "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com",
+                    "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com https://cloudflareinsights.com",
                     "media-src 'self' https:",
                     "frame-ancestors " + frameAncestors,
                     "object-src 'none'",
