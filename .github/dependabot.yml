@@ -5,7 +5,15 @@
 
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "nuget"
+    directory: "/" # Location of .NET project files
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "docker"
+    directory: "/" # Location of Dockerfile
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/" # Location of GitHub Actions workflows
     schedule:
       interval: "weekly"
