@@ -102,7 +102,7 @@ We'll keep you informed throughout the process and credit you in the security ad
    - Monitor GitHub Security Advisories for dependency vulnerabilities
 
 2. **Code Scanning**
-   - CodeQL runs automatically on push to main/develop branches
+   - CodeQL scanning is enabled via GitHub Advanced Security
    - Address CodeQL findings before merging pull requests
    - OpenSSF Scorecard provides supply chain security insights
 
@@ -146,8 +146,8 @@ BridgeBeats includes several built-in security features:
 - Failed authentication attempts logged for auditing
 
 ### Supply Chain Security
-- **Dependabot** - Automated dependency updates
-- **CodeQL** - Automated code security scanning
+- **Dependabot** - Automated dependency updates (weekly scans)
+- **CodeQL** - Automated code security scanning via GitHub Advanced Security
 - **OpenSSF Scorecard** - Supply chain security assessment
 - Pinned GitHub Actions with SHA hashes
 - Multi-stage Docker builds with minimal attack surface
