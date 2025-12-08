@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using AspNetCore.Authentication.ApiKey;
 using BridgeBeats.Domain.Implementations.Auth;
@@ -198,7 +199,7 @@ namespace BridgeBeats.Configuration {
                 bool isAppleMusic = path.StartsWith( "/applemusic", StringComparison.OrdinalIgnoreCase );
 
                 // Generate a unique nonce for this request to allow inline scripts and styles
-                string nonce = Convert.ToBase64String( System.Security.Cryptography.RandomNumberGenerator.GetBytes( 16 ) );
+                string nonce = Convert.ToBase64String( RandomNumberGenerator.GetBytes( 16 ) );
                 ctx.Items["CSPNonce"] = nonce;
 
                 // Build CSP policy
