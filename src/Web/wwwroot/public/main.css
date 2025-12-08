@@ -622,7 +622,7 @@ html[data-bs-theme="dark"] .protected-mode-overlay {
 }
 
 .card-selection-checkbox input[type="checkbox"]:checked::after {
-  content: '?';
+  content: '✓';
   position: absolute;
   top: 50%;
   left: 50%;
