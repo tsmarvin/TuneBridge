@@ -1,5 +1,13 @@
 using System.Text.Json;
 using AspNetCore.Authentication.ApiKey;
+using BridgeBeats.Domain.Implementations.Auth;
+using BridgeBeats.Domain.Implementations.Database;
+using BridgeBeats.Domain.Implementations.Middleware;
+using BridgeBeats.Domain.Implementations.Services;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Models;
+using BridgeBeats.Domain.Types.Constants;
+using BridgeBeats.Domain.Types.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
@@ -12,14 +20,6 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
 using Polly;
 using Serilog;
-using BridgeBeats.Domain.Implementations.Auth;
-using BridgeBeats.Domain.Implementations.Database;
-using BridgeBeats.Domain.Implementations.Middleware;
-using BridgeBeats.Domain.Implementations.Services;
-using BridgeBeats.Domain.Interfaces;
-using BridgeBeats.Domain.Models;
-using BridgeBeats.Domain.Types.Constants;
-using BridgeBeats.Domain.Types.Enums;
 
 namespace BridgeBeats.Configuration {
 

@@ -1,9 +1,4 @@
 using System.Text.Json;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ViewEngines;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using BridgeBeats.Domain.Contracts.DTOs;
 using BridgeBeats.Domain.Implementations.Auth;
 using BridgeBeats.Domain.Implementations.Utilities;
@@ -11,6 +6,11 @@ using BridgeBeats.Domain.Interfaces;
 using BridgeBeats.Domain.Models;
 using BridgeBeats.Domain.Types.Enums;
 using BridgeBeats.Web.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewEngines;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace BridgeBeats.Web.Controllers;
 

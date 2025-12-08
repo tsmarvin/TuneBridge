@@ -7,11 +7,14 @@
         <div class="container-xxl">
             <div class="d-flex align-items-center gap-3">
                 <a href="https://github.com/tsmarvin/BridgeBeats" target="_blank" class="nav-link">GitHub</a>
-                <a href="https://docs.bridgebeats.media/" target="_blank" class="nav-link">Docs</a>
+                <a href="https://docs.bridgebeats.link/" target="_blank" class="nav-link">Docs</a>
                 <a href="/playlists" class="nav-link nav-link-hidden" id="playlistsLink">Playlists</a>
             </div>
-            <a class="navbar-brand position-absolute start-50 translate-middle-x" href="/">
-                BridgeBeats
+            <a class="navbar-brand p-0 position-absolute start-50 translate-middle-x d-inline-flex align-items-center"
+                href="/" id="brandLink" data-logo-light="/public/Icons/BridgeBeats_BlackBridgeText.svg"
+                data-logo-dark="/public/Icons/BridgeBeats_WhiteBridgeText.svg"
+                data-logo-auth="/public/Icons/BridgeBeats_FullColor.svg">
+                <img id="brandLogo" alt="BridgeBeats" src="/public/Icons/BridgeBeats_BlackBridgeText.svg" />
             </a>
             <div class="d-flex align-items-center gap-2 ms-auto">
                 <button id="themeToggle" class="btn btn-sm btn-outline-secondary" type="button" title="Change theme">
@@ -49,25 +52,43 @@
         const playlistsLink = document.getElementById('playlistsLink');
         if (!userArea) return;
         async function refresh() {
-            try {
-                const res = await fetch('/account/status', { credentials: 'same-origin' });
-                const data = await res.json();
-                if (data.isAuthenticated) {
-                    userArea.innerHTML = '<a href="/account/user" class="btn btn-sm btn-outline-secondary me-2">User</a><button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
-                    document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-                        try { await fetch('/account/logout', { method: 'POST', credentials: 'same-origin' }); } catch { }
-                        location.reload();
-                    });
-                    // Show Playlists link for authenticated users (Apple Music is a sub-page)
-                    if (playlistsLink) {
-                        playlistsLink.classList.remove('nav-link-hidden');
-                    }
-                } else {
-                    userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
+            const res = await fetch('/account/status', { credentials: 'same-origin' });
+            const data = await res.json();
+            const wasAuthenticated = window.isAuthenticated === true;
+            window.isAuthenticated = !!data.isAuthenticated;
+            if (window.isAuthenticated) {
+                userArea.innerHTML = '<a href="/account/user" class="btn btn-sm btn-outline-secondary me-2">User</a><button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
+                document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+                    try { await fetch('/account/logout', { method: 'POST', credentials: 'same-origin' }); } catch { }
+                    location.reload();
+                });
+                // Show Playlists link for authenticated users (Apple Music is a sub-page)
+                if (playlistsLink) {
+                    playlistsLink.classList.remove('nav-link-hidden');
                 }
-            } catch {
+            } else {
                 userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
             }
+            const brandLogo = document.getElementById('brandLogo');
+            const brandLink = document.getElementById('brandLink');
+            if (!brandLogo || !brandLink) return;
+            const logoAuth = brandLink.getAttribute('data-logo-auth');
+            const logoLight = brandLink.getAttribute('data-logo-light');
+            const logoDark = brandLink.getAttribute('data-logo-dark');
+            const t = localStorage.getItem('theme') || 'auto';
+            const val = t === 'auto'
+                ? (window.matchMedia('(prefers-color-scheme: dark)').matches
+                    ? 'dark'
+                    : 'light'
+                )
+                : t;
+
+            if (window.isAuthenticated)
+                brandLogo.src = logoAuth
+            else if (val === 'dark' && logoDark)
+                brandLogo.src = logoDark;
+            else if (logoLight)
+                brandLogo.src = logoLight;
         }
         refresh();
     })();

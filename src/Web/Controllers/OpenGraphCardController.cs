@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
 using BridgeBeats.Domain.Contracts.DTOs;
 using BridgeBeats.Domain.Implementations.Extensions;
 using BridgeBeats.Domain.Implementations.Utilities;
 using BridgeBeats.Domain.Interfaces;
 using BridgeBeats.Domain.Types.Enums;
+using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;
 

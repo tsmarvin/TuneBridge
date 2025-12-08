@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
 using BridgeBeats.Domain.Contracts.Entities;
 using BridgeBeats.Domain.Interfaces;
 using BridgeBeats.Domain.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace BridgeBeats.Domain.Implementations.Services {
 

@@ -1,7 +1,7 @@
-using FluentAssertions;
 using BridgeBeats.Domain.Contracts.DTOs;
 using BridgeBeats.Domain.Implementations.Utilities;
 using BridgeBeats.Domain.Types.Enums;
+using FluentAssertions;
 
 namespace BridgeBeats.Tests.Unit {
 

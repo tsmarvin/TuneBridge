@@ -12,7 +12,7 @@ read_secret() {
 }
 
 # ---- Configure defaults ----
-BASEURL="${BASEURL:-"dev.bridgebeats.link"}"
+BASEURL="${BASEURL:-"bridgebeats.link"}"
 NODE_NUMBER="${NODE_NUMBER:-0}"
 DEFAULT_LOGLEVEL="${DEFAULT_LOGLEVEL:-Information}"
 HOSTING_DEFAULT_LOGLEVEL="${HOSTING_DEFAULT_LOGLEVEL:-Information}"

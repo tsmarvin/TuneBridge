@@ -1,8 +1,8 @@
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Interfaces;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Interfaces;
 
 namespace BridgeBeats.Tests.Integration;
 

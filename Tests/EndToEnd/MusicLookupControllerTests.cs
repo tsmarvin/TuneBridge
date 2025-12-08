@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc.Testing;
 using BridgeBeats.Domain.Contracts.DTOs;
 using BridgeBeats.Web.Controllers;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace BridgeBeats.Tests.EndToEnd;
 

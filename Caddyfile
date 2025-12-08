@@ -1,4 +1,4 @@
-# Caddyfile for TuneBridge
+# Caddyfile for BridgeBeats
 {
     # Global options
     admin off
@@ -8,7 +8,7 @@
 }
 
 # Default site configuration
-{$DOMAIN} {
+{$DOMAIN}, www.{$DOMAIN}, {$SHORT_DOMAIN}, www.{$SHORT_DOMAIN} {
     # Enable logging
     log {
         output file /var/log/caddy/access.log
@@ -47,7 +47,7 @@
     # Route /dashboard requests to the Aspire Dashboard container after checking authorization
     handle /dashboard* {
         # Forward auth check - verify user has AspireDashboardAccess role
-        forward_auth tunebridge:10000 {
+        forward_auth bridgebeats:10000 {
             uri /api/dashboard/authorize
             copy_headers Authorization Cookie
         }
@@ -69,8 +69,8 @@
         }
     }
 
-    # Reverse proxy to TuneBridge application
-    reverse_proxy tunebridge:10000 {
+    # Reverse proxy to BridgeBeats application
+    reverse_proxy bridgebeats:10000 {
         # Health check endpoint
         health_uri /health
         health_interval 10s

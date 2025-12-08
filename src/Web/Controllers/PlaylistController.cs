@@ -1,10 +1,10 @@
 using System.Security.Claims;
-using Microsoft.AspNetCore.Mvc;
 using BridgeBeats.Domain.Contracts.DTOs;
 using BridgeBeats.Domain.Contracts.Entities;
 using BridgeBeats.Domain.Implementations.Utilities;
 using BridgeBeats.Domain.Interfaces;
 using BridgeBeats.Web.Models;
+using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;
 

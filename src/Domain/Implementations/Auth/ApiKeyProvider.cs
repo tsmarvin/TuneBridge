@@ -1,7 +1,7 @@
 using AspNetCore.Authentication.ApiKey;
+using BridgeBeats.Domain.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using BridgeBeats.Domain.Models;
 
 namespace BridgeBeats.Domain.Implementations.Auth;
 

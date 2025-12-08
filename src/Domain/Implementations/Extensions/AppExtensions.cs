@@ -1,11 +1,11 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Types.Enums;
 using Microsoft.AspNetCore.Html;
 using NetCord;
 using NetCord.Rest;
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Types.Enums;
 
 namespace BridgeBeats.Domain.Implementations.Extensions {
 

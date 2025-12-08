@@ -71,7 +71,7 @@ If you want to limit where BridgeBeats operates in your server:
 1. **Check if the bot is online**: Look at the server member list - you should see the BridgeBeats bot with a green online indicator
 2. **Verify permissions**: Make sure the bot is in the channel and has **Send Messages** and **Embed Links** permissions
 3. **Validate the link**: Ensure you're sharing a valid link from Spotify, Apple Music, or Tidal (not a screenshot or description)
-4. **Try Directly On the BridgeBeats Website**: Validate the link on [BridgeBeats](https://dev.bridgebeats.link) to see if it can find matches
+4. **Try Directly On the BridgeBeats Website**: Validate the link on [BridgeBeats](https://bridgebeats.link) to see if it can find matches
 
 ### Bot Can't Find a Match
 

@@ -11,11 +11,11 @@ This guide explains how to set up and deploy ATProto lexicon resolution for Brid
 
 ## Overview
 
-BridgeBeats uses a custom ATProto lexicon to store music lookup results as structured records on ATProto Personal Data Servers (PDS). The lexicon defines the schema for `media.tunebridge.dev.lookup` records.
+BridgeBeats uses a custom ATProto lexicon to store music lookup results as structured records on ATProto Personal Data Servers (PDS). The lexicon defines the schema for `link.bridgebeats.lookup` records.
 
-**NSID (Namespaced Identifier):** `media.tunebridge.dev.lookup`
+**NSID (Namespaced Identifier):** `link.bridgebeats.lookup`
 
-**Note:** The lexicon NSID uses the original "tunebridge" name and cannot be changed without breaking ATProto compatibility for existing records. The authority domain for serving the lexicon schema is `dev.bridgebeats.link`.
+**Note:** The lexicon NSID uses the original "bridgebeats" name and cannot be changed without breaking ATProto compatibility for existing records. The authority domain for serving the lexicon schema is `bridgebeats.link`.
 
 According to the ATProto specification, lexicon schemas must be:
 1. Published at a predictable HTTPS endpoint on the authority domain
@@ -27,12 +27,12 @@ According to the ATProto specification, lexicon schemas must be:
 
 The lexicon schema is located at:
 ```
-src/Web/wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup
+src/Web/wwwroot/.well-known/atproto-lexicon/link.bridgebeats.lookup
 ```
 
 And is served at:
 ```
-https://dev.bridgebeats.link/.well-known/atproto-lexicon/media.tunebridge.dev.lookup
+https://bridgebeats.link/.well-known/atproto-lexicon/link.bridgebeats.lookup
 ```
 
 ### Schema Structure
@@ -61,13 +61,13 @@ See the lexicon file for the complete JSON schema definition.
 Use [goat](https://github.com/bluesky-social/goat) to create the schema record.
 
 ```sh
-cp BridgeBeats/src/Web/wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup ./media.tunebridge.dev.lookup.json
+cp BridgeBeats/src/Web/wwwroot/.well-known/atproto-lexicon/link.bridgebeats.lookup ./link.bridgebeats.lookup.json
 goat account login -u "stage-atproto.pds.bridgebeats.link" --app-password $(cat BridgeBeats/secrets/atproto_password.txt)
-goat record create --rkey media.tunebridge.dev.lookup ./media.tunebridge.dev.lookup.json
+goat record create --rkey link.bridgebeats.lookup ./link.bridgebeats.lookup.json
 ```
 The output from the record create command will look something like this:
 ```
-at://did:plc:{did_value}/com.atproto.lexicon.schema/media.tunebridge.dev.lookup ...
+at://did:plc:{did_value}/com.atproto.lexicon.schema/link.bridgebeats.lookup ...
 ```
 
 Take the DID portion `did:plc:{did_value}` and create your DNS TXT Record.
@@ -79,15 +79,15 @@ To establish domain authority for the lexicon NSID, you should configure DNS TXT
 
 ### Required DNS TXT Records
 
-Add the following DNS TXT record to your domain (`dev.bridgebeats.link`):
+Add the following DNS TXT record to your domain (`bridgebeats.link`):
 
-**Record Type:** TXT  
-**Host/Name:** `_lexicon`  
-**Value:** `did=<your-did-here>`  
+**Record Type:** TXT
+**Host/Name:** `_lexicon`
+**Value:** `did=<your-did-here>`
 **TTL:** 3600 (1 hour) or your preferred value
 
 ### Example DNS Configuration
 
 ```
-_lexicon.dev.bridgebeats.link.    3600    IN    TXT    "did=did:plc:your-did-identifier"
+_lexicon.bridgebeats.link.    3600    IN    TXT    "did=did:plc:your-did-identifier"
 ```

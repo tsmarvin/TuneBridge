@@ -1,7 +1,7 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using BridgeBeats.Configuration;
 using BridgeBeats.Domain.Interfaces; // Added for IMediaLinkService
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BridgeBeats.Tests.Unit;
 

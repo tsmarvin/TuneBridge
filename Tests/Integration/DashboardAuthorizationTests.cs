@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using BridgeBeats.Domain.Models;
+using BridgeBeats.Domain.Types.Constants;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
@@ -10,8 +12,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using BridgeBeats.Domain.Models;
-using BridgeBeats.Domain.Types.Constants;
 
 namespace BridgeBeats.Tests.Integration;
 

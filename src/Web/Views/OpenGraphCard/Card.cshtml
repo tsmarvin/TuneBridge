@@ -46,10 +46,8 @@
     <title>@title</title>
 
     @* OpenGraph meta tags *@
-    @if (metadata != null)
-    {
-        foreach (var kvp in metadata)
-        {
+    @if (metadata != null) {
+        foreach (var kvp in metadata) {
             <meta property="@kvp.Key" content="@kvp.Value" />
         }
     }
@@ -59,8 +57,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="@title" />
     <meta name="twitter:description" content="@description" />
-    @if (!string.IsNullOrWhiteSpace(image))
-    {
+    @if (!string.IsNullOrWhiteSpace(image)) {
         <meta name="twitter:image" content="@image" />
     }
 
@@ -73,7 +70,7 @@
         body {
             margin: 0;
             padding: 2rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0ADEC3 0%, #1BBCD6 50%, #3095EC 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -90,7 +87,7 @@
         }
 
         .card-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #3095EC 0%, #1BBCD6 50%, #0ADEC3 100%);
             color: white;
             padding: 2rem;
             text-align: center;
@@ -413,11 +410,16 @@
         </div>
 
         <div class="footer">
-            @if (!string.IsNullOrWhiteSpace(baseUrl)) {
-                <a href="https://@baseUrl" target="_blank" rel="noopener noreferrer" class="footer-link">Powered by BridgeBeats</a>
-            } else {
-                <span>Powered by BridgeBeats</span>
-            }
+            <span>
+                Powered By<br/>
+                @if (!string.IsNullOrWhiteSpace(baseUrl)) {
+                    <a href="https://@baseUrl" target="_blank" rel="noopener noreferrer" class="footer-link">
+                        <img id="brandLogo" alt="BridgeBeats" height="50" width="125" src="/public/Icons/BridgeBeats_FullColor.svg" />
+                    </a>
+                } else {
+                    <img id="brandLogo" alt="BridgeBeats" height="50" width="125" src="/public/Icons/BridgeBeats_FullColor.svg" />
+                }
+            </span>
         </div>
     </div>
 

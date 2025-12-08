@@ -1,13 +1,13 @@
 using System.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ViewEngines;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using BridgeBeats.Domain.Contracts.DTOs;
 using BridgeBeats.Domain.Implementations.Utilities;
 using BridgeBeats.Domain.Interfaces;
 using BridgeBeats.Domain.Types.Constants;
 using BridgeBeats.Domain.Types.Enums;
 using BridgeBeats.Web.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewEngines;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace BridgeBeats.Web.Controllers {
     /// <summary>

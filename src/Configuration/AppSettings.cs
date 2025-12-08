@@ -107,7 +107,7 @@ namespace BridgeBeats.Configuration {
         public string LinkCacheConnectionString { get; set; } = "Data Source=bridgebeats.db";
 
         /// <summary>
-        /// The base URL for the application (e.g., https://dev.bridgebeats.link). Used for generating OpenGraph card URLs.
+        /// The base URL for the application (e.g., https://bridgebeats.link). Used for generating OpenGraph card URLs.
         /// </summary>
         public string BaseUrl { get; set; } = string.Empty;
 

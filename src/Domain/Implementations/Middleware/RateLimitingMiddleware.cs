@@ -1,7 +1,7 @@
+using BridgeBeats.Domain.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using BridgeBeats.Domain.Models;
 
 namespace BridgeBeats.Domain.Implementations.Middleware;
 

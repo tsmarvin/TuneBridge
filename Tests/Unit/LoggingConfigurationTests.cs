@@ -1,7 +1,7 @@
+using BridgeBeats.Domain.Types.Constants;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 using Serilog.Core;
-using BridgeBeats.Domain.Types.Constants;
 
 namespace BridgeBeats.Tests.Unit;
 

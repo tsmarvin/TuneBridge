@@ -1,10 +1,10 @@
 using System.Text.Json;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
 using BridgeBeats.Domain.Contracts.Entities;
 using BridgeBeats.Domain.Implementations.Auth;
 using BridgeBeats.Domain.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;
 

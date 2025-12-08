@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using BridgeBeats.Domain.Contracts.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace BridgeBeats.Domain.Implementations.Database {
 

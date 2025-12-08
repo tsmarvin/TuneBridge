@@ -1,6 +1,6 @@
+using BridgeBeats.Domain.Contracts.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using BridgeBeats.Domain.Contracts.Entities;
 
 namespace BridgeBeats.Domain.Models;
 

@@ -62,7 +62,7 @@ Sensitive values go in the `secrets/` directory (created by `setup-secrets.sh`).
 Pull the latest image from Docker Hub:
 
 ```bash
-docker pull tsmarvin/bridgebeats-test:latest
+docker pull tsmarvin/bridgebeats:latest
 ```
 
 Run the container:
@@ -71,7 +71,7 @@ Run the container:
 docker run -p 10000:10000 \
   -e SPOTIFY_CLIENT_ID="your_client_id" \
   -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  $DOCKERHUB_USERNAME/bridgebeats-test:latest
+  $DOCKERHUB_USERNAME/bridgebeats:latest
 ```
 
 **Note**: Images are built for `linux/arm64` platform as configured in the GitHub workflow.
@@ -98,7 +98,7 @@ The entrypoint script automatically reads secrets from `/run/secrets/` and falls
 Update `BridgeBeats__BaseUrl` to your public domain:
 
 ```bash
--e BridgeBeats__BaseUrl=dev.bridgebeats.link
+-e BridgeBeats__BaseUrl=bridgebeats.link
 ```
 
 This ensures OpenGraph cards generate correct URLs.
@@ -117,7 +117,7 @@ Set appropriate log levels for production:
 Restrict allowed hosts for security:
 
 ```bash
--e ALLOWED_HOSTS=dev.bridgebeats.link
+-e ALLOWED_HOSTS=bridgebeats.link
 ```
 
 ## Monitoring
@@ -215,7 +215,7 @@ Check:
 
 ```bash
 # Pull latest image from Docker Hub
-docker pull tsmarvin/bridgebeats-test:latest
+docker pull tsmarvin/bridgebeats:latest
 
 # Stop and remove old container
 docker stop bridgebeats

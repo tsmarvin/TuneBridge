@@ -23,7 +23,7 @@ namespace BridgeBeats.Domain.Contracts.Entities {
         public string CardId { get; set; } = string.Empty;
 
         /// <summary>
-        /// The AT-URI of the record on ATProto PDS (e.g., at://did:plc:xxx/media.tunebridge.dev.lookup/yyy).
+        /// The AT-URI of the record on ATProto PDS (e.g., at://did:plc:xxx/link.bridgebeats.lookup/{track:album}:{external_id}).
         /// This is deterministically generated based on the rkey.
         /// </summary>
         public string RecordUri { get; set; } = string.Empty;

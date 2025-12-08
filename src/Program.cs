@@ -1,5 +1,5 @@
-using Serilog;
 using BridgeBeats.Configuration;
+using Serilog;
 
 namespace BridgeBeats {
     /// <summary>

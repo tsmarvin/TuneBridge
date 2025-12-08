@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Configuration;
 using BridgeBeats.Configuration;
+using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.Unit;
 

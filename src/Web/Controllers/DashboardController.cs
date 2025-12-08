@@ -1,8 +1,8 @@
+using BridgeBeats.Domain.Models;
+using BridgeBeats.Domain.Types.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using BridgeBeats.Domain.Models;
-using BridgeBeats.Domain.Types.Constants;
 
 namespace BridgeBeats.Web.Controllers;
 

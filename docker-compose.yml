@@ -1,12 +1,12 @@
 services:
   bridgebeats:
-    image: tsmarvin/bridgebeats-test:develop
+    image: tsmarvin/bridgebeats:develop
     container_name: bridgebeats
     restart: unless-stopped
     networks:
       - internal
     environment:
-      - BASEURL=${BASEURL:-dev.bridgebeats.link}
+      - BASEURL=${BASEURL:-bridgebeats.link}
       - NODE_NUMBER=${NODE_NUMBER:-100}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
@@ -48,7 +48,7 @@ services:
           memory: 256M
 
   # Aspire Dashboard for observability and telemetry
-  aspire-dashboard:
+  bridgebeats-aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:13.0
     container_name: aspire-dashboard
     restart: unless-stopped
@@ -81,7 +81,7 @@ services:
       retries: 3
       start_period: 20s
 
-  pds:
+  bridgebeats-pds:
     image: ghcr.io/atproto-social/pds:latest
     container_name: pds
     restart: unless-stopped
@@ -107,7 +107,7 @@ services:
       - PDS_CRAWLERS=https://bsky.network
       - LOG_ENABLED=true
 
-  caddy:
+  bridgebeats-caddy:
     image: caddy:latest
     restart: unless-stopped
     ports:
@@ -117,7 +117,8 @@ services:
       - public
       - internal
     environment:
-      - DOMAIN=${DOMAIN:-dev.bridgebeats.link}
+      - DOMAIN=${DOMAIN:-bridgebeats.link}
+      - SHORT_DOMAIN=${SHORT_DOMAIN:-bbeats.link}
       - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.bridgebeats.link}
       - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@bridgebeats.link}
     volumes:
