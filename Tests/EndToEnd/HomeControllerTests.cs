@@ -31,7 +31,6 @@ public class HomeControllerTests {
 
     [ClassCleanup]
     public static void ClassCleanup( ) {
-        s_client?.Dispose( );
         s_factory?.Dispose( );
     }
 
@@ -162,7 +161,7 @@ public class HomeControllerTests {
     public async Task LookupResultsByIsrc_WithValidIsrc_ReturnsHtmlView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
-            ["isrc"] = "USVI20000001"
+            ["isrc"] = "QMY951610010"
         } );
 
         // Act
@@ -204,8 +203,8 @@ public class HomeControllerTests {
     public async Task LookupResultsByTitle_WithValidTitleAndArtist_ReturnsHtmlView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
-            ["title"] = "Test Song",
-            ["artist"] = "Test Artist"
+            ["title"] = "The Best Part",
+            ["artist"] = "Bien"
         } );
 
         // Act

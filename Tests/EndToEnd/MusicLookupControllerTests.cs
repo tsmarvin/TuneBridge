@@ -75,7 +75,6 @@ public class MusicLookupControllerTests {
 
     [ClassCleanup]
     public static void ClassCleanup( ) {
-        s_client?.Dispose( );
         s_factory?.Dispose( );
     }
 

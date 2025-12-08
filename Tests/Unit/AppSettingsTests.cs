@@ -18,12 +18,19 @@ public class AppSettingsTests {
             ["BridgeBeats:AppleKeyPath"] = "/path/to/key.p8",
             ["BridgeBeats:SpotifyClientId"] = "spotify_client_id",
             ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
+            ["BridgeBeats:TidalClientId"] = "tidal_client_id",
+            ["BridgeBeats:TidalClientSecret"] = "tidal_secret",
             ["BridgeBeats:DiscordToken"] = "discord_token_here",
-            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
+            ["BridgeBeats:IdentityConnectionString"] = "Data Source=bridgebeats.db",
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:RateLimitRequestsPerHour"] = "10",
             ["BridgeBeats:ATProtoIdentifier"] = string.Empty,
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
-            ["BridgeBeats:LinkCacheConnectionString"] ="Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["BridgeBeats:ATProtoUserDID"] = string.Empty,
+            ["BridgeBeats:CacheDays"] = "7",
+            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=bridgebeats.db",
+            ["BridgeBeats:BaseUrl"] = "localhost",
+            ["BridgeBeats:LogFilePath"] = "./logs/bridgebeats-.log",
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -41,7 +48,19 @@ public class AppSettingsTests {
         Assert.AreEqual( "/path/to/key.p8", settings.AppleKeyPath );
         Assert.AreEqual( "spotify_client_id", settings.SpotifyClientId );
         Assert.AreEqual( "spotify_secret", settings.SpotifyClientSecret );
+        Assert.AreEqual( "tidal_client_id", settings.TidalClientId );
+        Assert.AreEqual( "tidal_secret", settings.TidalClientSecret );
         Assert.AreEqual( "discord_token_here", settings.DiscordToken );
+        Assert.AreEqual( "Data Source=bridgebeats.db", settings.IdentityConnectionString );
+        Assert.AreEqual( "api_key_salt", settings.ApiKeySalt );
+        Assert.AreEqual( 10, settings.RateLimitRequestsPerHour );
+        Assert.AreEqual( string.Empty, settings.ATProtoIdentifier );
+        Assert.AreEqual( string.Empty, settings.ATProtoPassword );
+        Assert.AreEqual( string.Empty, settings.ATProtoUserDID );
+        Assert.AreEqual( 7, settings.CacheDays );
+        Assert.AreEqual( "Data Source=bridgebeats.db", settings.LinkCacheConnectionString );
+        Assert.AreEqual( "localhost", settings.BaseUrl );
+        Assert.AreEqual( "./logs/bridgebeats-.log", settings.LogFilePath );
     }
 
     [TestMethod]

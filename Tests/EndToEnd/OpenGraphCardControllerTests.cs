@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace BridgeBeats.Tests.EndToEnd;
@@ -33,7 +34,6 @@ public class WebLookupTests {
 
     [ClassCleanup]
     public static void ClassCleanup( ) {
-        s_client?.Dispose( );
         s_factory?.Dispose( );
     }
 
@@ -68,7 +68,7 @@ public class WebLookupTests {
         Assert.IsTrue( hasResults, "Should have results for valid Spotify URL" );
 
         // Check items array exists
-        System.Text.Json.JsonElement itemsElement;
+        JsonElement itemsElement;
         Assert.IsTrue( data?.TryGetProperty( "items", out itemsElement ), "Should have items array" );
     }
 
@@ -101,12 +101,10 @@ public class WebLookupTests {
         }
 
         Assert.IsTrue( hasResults, "Should have results for valid URLs" );
-        int itemCount = 0;
+
         // Check that we have multiple items
-        if (null != data?.GetProperty( "items" )) {
-            dynamic items = data.GetProperty( "items" );
-            itemCount = items?.GetArrayLength( ) ?? 0;
-        }
+        dynamic? items = data?.GetProperty( "items" );
+        int itemCount = items?.GetArrayLength( ) ?? 0;
         Assert.IsGreaterThan( 0, itemCount, "Should have at least one item" );
     }
 
