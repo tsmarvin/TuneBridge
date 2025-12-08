@@ -53,7 +53,7 @@
         }
 
         # Proxy to Aspire Dashboard container
-        reverse_proxy aspire-dashboard:18888 {
+        reverse_proxy bridgebeats-aspire-dashboard:18888 {
             # Pass real client IP
             header_up X-Real-IP {remote_host}
             header_up X-Forwarded-For {remote_host}
@@ -103,7 +103,7 @@
 *.{$PDS_HOSTNAME}, {$PDS_HOSTNAME} {
     # Use Cloudflare DNS challenge for wildcard certificate
     tls {
-        dns cloudflare {file /run/secrets/cloudflare_api_token}
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
-    reverse_proxy pds:3000
+    reverse_proxy bridgebeats-pds:3000
 }
