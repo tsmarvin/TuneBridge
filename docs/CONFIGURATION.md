@@ -131,7 +131,7 @@ For local development, you can use an `appsettings.json` file instead of environ
 
 ### Docker Configuration
 
-When using Docker, environment variables are passed via the `-e` flag or docker-compose:
+When using Docker, environment variables are passed via the `-e` flag or docker compose:
 
 ```bash
 docker run -p 10000:10000 \

@@ -122,7 +122,7 @@ services:
       - SHORT_DOMAIN=${SHORT_DOMAIN:-bbeats.link}
       - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.bridgebeats.link}
       - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@bridgebeats.link}
-      - CLOUDFLARE_API_TOKEN=$(CLOUDFLARE_API_TOKEN:-)
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - bridgebeats-caddy-data:/data/caddy
