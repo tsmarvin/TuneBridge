@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-BridgeBeats follows a rolling release model. We recommend always using the latest version for the best security and features.
+Security updates are provided for the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| latest  | :white_check_mark: |
-| < latest | :x:               |
+| 1.0.0+  | :white_check_mark: |
+| < 1.0.0 | :x:               |
 
 **Docker Images**: We publish security-patched images regularly. Always pull the `latest` tag or use specific version tags for reproducible deployments.
 
@@ -17,19 +17,9 @@ We take security seriously. If you discover a security vulnerability in BridgeBe
 
 ### How to Report
 
-**Please do NOT create a public GitHub issue for security vulnerabilities.**
+Please report security vulnerabilities by creating a [GitHub issue](https://github.com/tsmarvin/BridgeBeats/issues).
 
-Instead, report security issues through one of these channels:
-
-1. **GitHub Security Advisories** (Preferred)
-   - Navigate to the [Security tab](https://github.com/tsmarvin/BridgeBeats/security/advisories)
-   - Click "Report a vulnerability"
-   - Provide detailed information about the vulnerability
-
-2. **Email**
-   - Contact the maintainer directly (see repository profile)
-   - Include "BridgeBeats Security" in the subject line
-   - Encrypt sensitive information if possible
+If you prefer not to use GitHub issues, you can email: **admin@bridgebeats.link**
 
 ### What to Include
 
@@ -52,70 +42,6 @@ When reporting a vulnerability, please include:
   - Low: 30-90 days
 
 We'll keep you informed throughout the process and credit you in the security advisory (unless you prefer to remain anonymous).
-
-## Security Best Practices
-
-### For Deployment
-
-1. **Credentials Management**
-   - Never commit API keys, tokens, or passwords to source control
-   - Use environment variables or Docker secrets for all credentials
-   - Rotate API keys and secrets regularly (at least every 90 days)
-   - Use the provided `setup-secrets.sh` script for proper secret file permissions
-
-2. **API Key Security**
-   - Generate a strong, random API key salt using: `openssl rand -base64 32`
-   - Store the salt securely and never share it publicly
-   - API keys are hashed before storage using the salt
-
-3. **ATProto Integration**
-   - Use ATProto app passwords, not your main account password
-   - Generate dedicated app passwords at: Settings → App Passwords
-   - Limit app password permissions to minimum required scope
-
-4. **HTTPS in Production**
-   - Always deploy behind a reverse proxy with TLS/HTTPS enabled
-   - Use the included Caddy configuration for automatic HTTPS with Let's Encrypt
-   - Configure proper SSL/TLS certificates for production domains
-
-5. **Network Security**
-   - Configure `ALLOWED_HOSTS` to restrict allowed hostnames
-   - Use firewall rules to limit access to sensitive endpoints
-   - Consider rate limiting at the reverse proxy level for additional protection
-
-6. **Docker Security**
-   - Run containers as non-root users when possible
-   - Use Docker secrets for sensitive data in Docker Swarm
-   - Keep base images updated (multi-stage builds use latest .NET images)
-   - Limit container capabilities and resources
-
-7. **Database Security**
-   - Use strong passwords for database connections (if using external databases)
-   - Regularly back up SQLite databases (contains user data and API keys)
-   - Restrict file system permissions on database files (600 or 640)
-
-### For Development
-
-1. **Dependency Updates**
-   - Dependabot automatically checks for security updates weekly
-   - Review and merge Dependabot PRs promptly
-   - Monitor GitHub Security Advisories for dependency vulnerabilities
-
-2. **Code Scanning**
-   - CodeQL scanning is enabled via GitHub Advanced Security
-   - Address CodeQL findings before merging pull requests
-   - OpenSSF Scorecard provides supply chain security insights
-
-3. **Secure Coding**
-   - Enable nullable reference types (`<Nullable>enable</Nullable>`)
-   - Treat warnings as errors (`<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`)
-   - Follow principle of least privilege for service integrations
-   - Validate and sanitize all user inputs
-
-4. **Testing**
-   - Write security tests for authentication and authorization
-   - Test with various input types (including malicious inputs)
-   - Use the test suite to prevent security regressions
 
 ## Security Features
 
