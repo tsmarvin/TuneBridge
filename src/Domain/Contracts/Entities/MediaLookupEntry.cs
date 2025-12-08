@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Contracts.Entities {
+namespace BridgeBeats.Domain.Contracts.Entities {
 
     /// <summary>
     /// Represents a lookup value that can be used to find a MediaLinkCacheEntry.

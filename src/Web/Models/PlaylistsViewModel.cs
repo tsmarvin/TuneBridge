@@ -1,4 +1,4 @@
-namespace TuneBridge.Web.Models {
+namespace BridgeBeats.Web.Models {
 
     /// <summary>
     /// View model for the user's playlists management page.

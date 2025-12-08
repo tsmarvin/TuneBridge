@@ -1,8 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
-namespace TuneBridge.Tests.EndToEnd;
+namespace BridgeBeats.Tests.EndToEnd;
 
 /// <summary>
 /// End-to-end tests for the web-specific lookup functionality.
@@ -18,14 +19,14 @@ public class WebLookupTests {
     public static void ClassInitialize( TestContext context ) {
         // Create factory with unique database connection strings and no Discord token
         Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:SpotifyClientId"] = "test",
-            ["TuneBridge:SpotifyClientSecret"] = "test",
-            ["TuneBridge:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["TuneBridge:IdentityConnectionString"] = $"Data Source=WebLookup_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:ATProtoIdentifier"] = "",
-            ["TuneBridge:ATProtoPassword"] = "",
-            ["TuneBridge:LinkCacheConnectionString"] = $"Data Source=WebLookup_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            ["BridgeBeats:SpotifyClientId"] = "test",
+            ["BridgeBeats:SpotifyClientSecret"] = "test",
+            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
+            ["BridgeBeats:IdentityConnectionString"] = $"Data Source=WebLookup_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:ATProtoIdentifier"] = "",
+            ["BridgeBeats:ATProtoPassword"] = "",
+            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=WebLookup_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
         };
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
@@ -33,7 +34,6 @@ public class WebLookupTests {
 
     [ClassCleanup]
     public static void ClassCleanup( ) {
-        s_client?.Dispose( );
         s_factory?.Dispose( );
     }
 
@@ -68,7 +68,7 @@ public class WebLookupTests {
         Assert.IsTrue( hasResults, "Should have results for valid Spotify URL" );
 
         // Check items array exists
-        System.Text.Json.JsonElement itemsElement;
+        JsonElement itemsElement;
         Assert.IsTrue( data?.TryGetProperty( "items", out itemsElement ), "Should have items array" );
     }
 
@@ -101,12 +101,10 @@ public class WebLookupTests {
         }
 
         Assert.IsTrue( hasResults, "Should have results for valid URLs" );
-        int itemCount = 0;
+
         // Check that we have multiple items
-        if (null != data?.GetProperty( "items" )) {
-            dynamic items = data.GetProperty( "items" );
-            itemCount = items?.GetArrayLength( ) ?? 0;
-        }
+        dynamic? items = data?.GetProperty( "items" );
+        int itemCount = items?.GetArrayLength( ) ?? 0;
         Assert.IsGreaterThan( 0, itemCount, "Should have at least one item" );
     }
 

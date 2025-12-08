@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.DTOs;
 
-namespace TuneBridge.Web.Models {
+namespace BridgeBeats.Web.Models {
 
     /// <summary>
     /// View model for displaying a playlist.

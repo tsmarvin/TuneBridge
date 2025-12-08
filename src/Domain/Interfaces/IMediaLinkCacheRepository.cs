@@ -1,7 +1,7 @@
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Interfaces {
+namespace BridgeBeats.Domain.Interfaces {
 
     /// <summary>
     /// Service for caching MediaLinkResult lookups using SQLite and ATProto PDS.

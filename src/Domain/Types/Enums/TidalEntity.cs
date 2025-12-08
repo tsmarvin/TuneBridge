@@ -1,4 +1,4 @@
-namespace TuneBridge.Domain.Types.Enums {
+namespace BridgeBeats.Domain.Types.Enums {
     /// <summary>
     /// Categorizes the different types of content entities that can be extracted from Tidal URLs.
     /// Used by URL parsers and API clients to determine which Tidal API endpoints to call

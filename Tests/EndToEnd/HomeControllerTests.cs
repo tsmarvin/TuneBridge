@@ -1,7 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 
-namespace TuneBridge.Tests.EndToEnd;
+namespace BridgeBeats.Tests.EndToEnd;
 
 /// <summary>
 /// End-to-end tests for the HomeController web interface endpoints.
@@ -16,14 +16,14 @@ public class HomeControllerTests {
     public static void ClassInitialize( TestContext context ) {
         // Create factory with unique database connection strings and no Discord token
         Dictionary<string, string?> configData = new( ) {
-            ["TuneBridge:SpotifyClientId"] = "test",
-            ["TuneBridge:SpotifyClientSecret"] = "test",
-            ["TuneBridge:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["TuneBridge:IdentityConnectionString"] = $"Data Source=Home_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:ATProtoIdentifier"] = "",
-            ["TuneBridge:ATProtoPassword"] = "",
-            ["TuneBridge:LinkCacheConnectionString"] = $"Data Source=Home_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            ["BridgeBeats:SpotifyClientId"] = "test",
+            ["BridgeBeats:SpotifyClientSecret"] = "test",
+            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
+            ["BridgeBeats:IdentityConnectionString"] = $"Data Source=Home_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:ATProtoIdentifier"] = "",
+            ["BridgeBeats:ATProtoPassword"] = "",
+            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=Home_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
         };
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
@@ -31,7 +31,6 @@ public class HomeControllerTests {
 
     [ClassCleanup]
     public static void ClassCleanup( ) {
-        s_client?.Dispose( );
         s_factory?.Dispose( );
     }
 
@@ -54,7 +53,7 @@ public class HomeControllerTests {
         string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
-        Assert.IsTrue( content.Contains( "TuneBridge", StringComparison.OrdinalIgnoreCase ) );
+        Assert.IsTrue( content.Contains( "BridgeBeats", StringComparison.OrdinalIgnoreCase ) );
     }
 
     [TestMethod]
@@ -162,7 +161,7 @@ public class HomeControllerTests {
     public async Task LookupResultsByIsrc_WithValidIsrc_ReturnsHtmlView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
-            ["isrc"] = "USVI20000001"
+            ["isrc"] = "QMY951610010"
         } );
 
         // Act
@@ -204,8 +203,8 @@ public class HomeControllerTests {
     public async Task LookupResultsByTitle_WithValidTitleAndArtist_ReturnsHtmlView( ) {
         // Arrange
         FormUrlEncodedContent formData = new( new Dictionary<string, string> {
-            ["title"] = "Test Song",
-            ["artist"] = "Test Artist"
+            ["title"] = "The Best Part",
+            ["artist"] = "Bien"
         } );
 
         // Act

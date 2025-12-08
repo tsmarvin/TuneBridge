@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Interfaces;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Interfaces;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// In-memory implementation of the OpenGraph card service for storing MediaLinkResult objects.

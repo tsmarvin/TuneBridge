@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
-using TuneBridge.Domain.Implementations.Auth;
+using BridgeBeats.Domain.Implementations.Auth;
 
-namespace TuneBridge.Tests.Unit;
+namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
 /// Unit tests for AppleJwtHandler to verify JWT token generation.

@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.LinkParsers {
+namespace BridgeBeats.Domain.Implementations.LinkParsers {
 
     /// <summary>
     /// Utility class for parsing Tidal URLs and constructing Tidal API request URIs.

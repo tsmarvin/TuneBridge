@@ -1,18 +1,18 @@
-# TuneBridge
+# BridgeBeats
 
-[![Build and Deploy Documentation](https://github.com/tsmarvin/TuneBridge/actions/workflows/docs.yml/badge.svg)](https://github.com/tsmarvin/TuneBridge/actions/workflows/docs.yml)
-[![docker-publish](https://github.com/tsmarvin/TuneBridge/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/tsmarvin/TuneBridge/actions/workflows/docker-publish.yml)
-[![Tests](https://github.com/tsmarvin/TuneBridge/actions/workflows/tests.yml/badge.svg)](https://github.com/tsmarvin/TuneBridge/actions/workflows/tests.yml)
-[![CodeQL](https://github.com/tsmarvin/TuneBridge/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/tsmarvin/TuneBridge/actions/workflows/github-code-scanning/codeql)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/tsmarvin/TuneBridge/badge)](https://scorecard.dev/viewer/?uri=github.com/tsmarvin/TuneBridge)
+[![Build and Deploy Documentation](https://github.com/tsmarvin/BridgeBeats/actions/workflows/docs.yml/badge.svg)](https://github.com/tsmarvin/BridgeBeats/actions/workflows/docs.yml)
+[![docker-publish](https://github.com/tsmarvin/BridgeBeats/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/tsmarvin/BridgeBeats/actions/workflows/docker-publish.yml)
+[![Tests](https://github.com/tsmarvin/BridgeBeats/actions/workflows/tests.yml/badge.svg)](https://github.com/tsmarvin/BridgeBeats/actions/workflows/tests.yml)
+[![CodeQL](https://github.com/tsmarvin/BridgeBeats/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/tsmarvin/BridgeBeats/actions/workflows/github-code-scanning/codeql)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/tsmarvin/BridgeBeats/badge)](https://scorecard.dev/viewer/?uri=github.com/tsmarvin/BridgeBeats)
 
 **Music is universal. Your links should be too.**
 
-TuneBridge is a cross-platform music link converter that helps you share music effortlessly across streaming platforms. Share a link from Apple Music, Spotify, or Tidal, and TuneBridge finds the same track or album on all supported services—ensuring every listener can enjoy the music, regardless of their preferred platform.
+BridgeBeats is a cross-platform music link converter that helps you share music effortlessly across streaming platforms. Share a link from Apple Music, Spotify, or Tidal, and BridgeBeats finds the same track or album on all supported services—ensuring every listener can enjoy the music, regardless of their preferred platform.
 
 ## ✨ Share once. Play anywhere.
 
-Ever wanted to share your favorite song, only to realize your friend uses a different streaming service? TuneBridge solves this by automatically finding the same track or album on all major platforms—so everyone can listen, no matter where they stream.
+Ever wanted to share your favorite song, only to realize your friend uses a different streaming service? BridgeBeats solves this by automatically finding the same track or album on all major platforms—so everyone can listen, no matter where they stream.
 
 ## 🎵 Features
 
@@ -31,8 +31,8 @@ Ever wanted to share your favorite song, only to realize your friend uses a diff
 Get started in 5 minutes with automatic HTTPS:
 
 ```bash
-git clone https://github.com/tsmarvin/TuneBridge.git
-cd TuneBridge
+git clone https://github.com/tsmarvin/BridgeBeats.git
+cd BridgeBeats
 ./setup-secrets.sh
 nano apple_key.p8
 nano atproto_password.txt
@@ -43,7 +43,7 @@ nano tidal_client_secret.txt
 cp .env.example .env
 nano .env
 # Edit .env with your configuration
-docker-compose up -d
+docker compose up -d
 ```
 
 Visit `https://localhost` to start converting links.
@@ -56,7 +56,7 @@ Visit `https://localhost` to start converting links.
 docker run -p 10000:10000 \
   -e SPOTIFY_CLIENT_ID="your_client_id" \
   -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  ghcr.io/tsmarvin/tunebridge:latest
+  ghcr.io/tsmarvin/bridgebeats:latest
 ```
 
 Visit `http://localhost:10000` to start converting links.
@@ -72,15 +72,16 @@ Visit `http://localhost:10000` to start converting links.
 
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Set up API credentials and environment variables
-- **[API Reference](docs/API.md)** - Integrate TuneBridge into your applications
+- **[API Reference](docs/API.md)** - Integrate BridgeBeats into your applications
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
+- **[Caddy Cloudflare Guide](docs/CADDY_CLOUDFLARE.md)** - Configure Cloudflare DNS for wildcard certificates
 - **[Testing Guide](docs/TESTING.md)** - Run and write tests
 - **[Caching Guide](docs/CACHING.md)** - Configure ATProto PDS caching
 - **[ATProto Lexicon Setup](docs/ATPROTO_LEXICON.md)** - Configure lexicon resolution and DNS for ATProto compliance
 
 ## 🎯 How It Works
 
-TuneBridge connects to official APIs from music streaming services. When you provide a link:
+BridgeBeats connects to official APIs from music streaming services. When you provide a link:
 
 1. **Extract** - Identifies the track or album from the URL
 2. **Match** - Uses external IDs (ISRC/UPC) or metadata to find equivalents
@@ -90,13 +91,13 @@ The result? You share the music, not the platform.
 
 ## 🤖 Discord Bot
 
-Add TuneBridge to your Discord server to automatically convert music links in conversations:
+Add BridgeBeats to your Discord server to automatically convert music links in conversations:
 
 1. Get a Discord bot token (see [Configuration Guide](docs/CONFIGURATION.md#discord-bot-token))
 2. Set `DISCORD_TOKEN` environment variable
 3. Invite the bot to your server
 
-When someone shares a Spotify link, TuneBridge responds with a card showing Apple Music and Tidal alternatives—and vice versa.
+When someone shares a Spotify link, BridgeBeats responds with a card showing Apple Music and Tidal alternatives—and vice versa.
 
 ## 🛠️ Built With
 
@@ -115,7 +116,7 @@ When someone shares a Spotify link, TuneBridge responds with a card showing Appl
 
 ## 🌍 Deployment Options
 
-TuneBridge can be deployed anywhere:
+BridgeBeats can be deployed anywhere:
 
 - **Docker** - Simple containerized deployment
 - **Cloud Services** - Azure Container Apps, AWS ECS, Google Cloud Run

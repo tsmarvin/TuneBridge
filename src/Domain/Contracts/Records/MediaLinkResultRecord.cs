@@ -1,11 +1,11 @@
 using System.Text.Json.Serialization;
 using idunno.AtProto.Repo;
 
-namespace TuneBridge.Domain.Contracts.Records {
+namespace BridgeBeats.Domain.Contracts.Records {
 
     /// <summary>
-    /// AT Protocol record for TuneBridge MediaLinkResult.
-    /// Corresponds to the media.tunebridge.dev.lookup lexicon.
+    /// AT Protocol record for BridgeBeats MediaLinkResult.
+    /// Corresponds to the link.bridgebeats.lookup lexicon.
     /// Note: Input links are tracked only in SQLite for privacy - not stored on PDS.
     /// </summary>
     public sealed record MediaLinkResultRecord : AtProtoRecord {

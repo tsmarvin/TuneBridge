@@ -1,11 +1,11 @@
+using BridgeBeats.Domain.Contracts.Entities;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TuneBridge.Domain.Contracts.Entities;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Web.Models;
 
-namespace TuneBridge.Web.Controllers;
+namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
 /// Controller for managing user playlists.

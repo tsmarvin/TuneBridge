@@ -1,4 +1,4 @@
-// Playlist management for TuneBridge
+// Playlist management for BridgeBeats
 // Allows users to select multiple cards and create playlists
 
 (function() {
@@ -53,7 +53,7 @@
                     <textarea id="playlistDescriptionInput" class="form-control form-control-sm" placeholder="Description (optional)" maxlength="500" rows="2"></textarea>`;
         } else {
             toolbarHTML += ` readonly">
-                    <input type="text" id="playlistTitleInput" class="form-control form-control-sm" placeholder="TuneBridge" maxlength="100" readonly />
+                    <input type="text" id="playlistTitleInput" class="form-control form-control-sm" placeholder="BridgeBeats" maxlength="100" readonly />
                     <small class="text-muted">Sign in to customize title and description</small>`;
         }
         
@@ -297,7 +297,7 @@
             }
 
             // Get title and description from input fields
-            const title = titleInput?.value?.trim() || 'TuneBridge';
+            const title = titleInput?.value?.trim() || 'BridgeBeats';
             const description = descriptionInput?.value?.trim() || '';
 
             // Parse selected cards to extract cardIds and rkeys
@@ -407,153 +407,7 @@
 
     // Initialize on page load
     function init() {
-        // Add styles
-        if (!document.getElementById('playlistStyles')) {
-            const style = document.createElement('style');
-            style.id = 'playlistStyles';
-            style.textContent = `
-                .playlist-toolbar {
-                    position: sticky;
-                    top: 0;
-                    z-index: 1000;
-                    background: var(--bs-body-bg);
-                    border: 1px solid var(--bs-border-color);
-                    padding: 1rem;
-                    margin-bottom: 1rem;
-                    border-radius: 0.375rem;
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-                }
-
-                .playlist-toolbar-content {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    gap: 1rem;
-                    flex-wrap: wrap;
-                }
-
-                .playlist-selection-info {
-                    font-size: 1rem;
-                    font-weight: 600;
-                    color: var(--bs-body-color);
-                    min-width: 120px;
-                }
-
-                .playlist-inputs {
-                    flex: 1;
-                    min-width: 200px;
-                }
-
-                .playlist-inputs input,
-                .playlist-inputs textarea {
-                    width: 100%;
-                }
-
-                .playlist-actions {
-                    display: flex;
-                    gap: 0.5rem;
-                }
-
-                .card-selection-checkbox {
-                    position: absolute;
-                    top: 0.5rem;
-                    left: 0.5rem;
-                    z-index: 10;
-                }
-
-                .card-selection-checkbox input[type="checkbox"] {
-                    appearance: none;
-                    width: 24px;
-                    height: 24px;
-                    border: 2px solid var(--bs-primary);
-                    border-radius: 4px;
-                    background: var(--bs-body-bg);
-                    cursor: pointer;
-                    position: relative;
-                }
-
-                .card-selection-checkbox input[type="checkbox"]:checked {
-                    background: var(--bs-primary);
-                }
-
-                .card-selection-checkbox input[type="checkbox"]:checked::after {
-                    content: '✓';
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    color: white;
-                    font-size: 16px;
-                    font-weight: bold;
-                }
-
-                .card-selection-checkbox label {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 24px;
-                    height: 24px;
-                    cursor: pointer;
-                }
-
-                .playlist-selection-mode .embed-card {
-                    cursor: pointer;
-                    transition: transform 0.2s, box-shadow 0.2s;
-                    position: relative;
-                }
-
-                .playlist-selection-mode .embed-card:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.3);
-                }
-
-                .playlist-selection-mode .embed-card.selected {
-                    border: 2px solid var(--bs-primary);
-                    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), 0.2);
-                }
-
-                /* Adjust share button position when in selection mode */
-                .playlist-selection-mode .embed-header-top {
-                    padding-left: 40px;
-                }
-
-                #startPlaylistBtn {
-                    margin-top: 0.5rem;
-                }
-
-                @keyframes shake {
-                    0%, 100% { transform: translateX(0); }
-                    25% { transform: translateX(-5px); }
-                    75% { transform: translateX(5px); }
-                }
-
-                .shake-animation {
-                    animation: shake 0.3s ease-in-out;
-                }
-
-                @media (max-width: 768px) {
-                    .playlist-toolbar-content {
-                        flex-direction: column;
-                        align-items: stretch;
-                    }
-
-                    .playlist-inputs {
-                        order: 1;
-                        min-width: 100%;
-                    }
-
-                    .playlist-selection-info {
-                        order: 2;
-                    }
-
-                    .playlist-actions {
-                        order: 3;
-                        justify-content: space-between;
-                    }
-                }
-            `;
-            document.head.appendChild(style);
-        }
+        // Styles are now in main.css - no dynamic style injection needed
 
         // Add playlist button when results are loaded
         // Use MutationObserver to detect when results are added

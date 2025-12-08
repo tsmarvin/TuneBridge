@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Contracts.Entities {
+namespace BridgeBeats.Domain.Contracts.Entities {
 
     /// <summary>
     /// Represents a provider-specific identifier for a cached media item.

@@ -1,4 +1,4 @@
-namespace TuneBridge.Domain.Types.Enums {
+namespace BridgeBeats.Domain.Types.Enums {
     /// <summary>
     /// Categorizes the different types of content entities that can be extracted from Spotify URLs.
     /// Used by URL parsers and API clients to determine which Spotify Web API endpoints to call

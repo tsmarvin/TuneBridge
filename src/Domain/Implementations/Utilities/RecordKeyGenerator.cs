@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using TuneBridge.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.DTOs;
 
-namespace TuneBridge.Domain.Implementations.Utilities {
+namespace BridgeBeats.Domain.Implementations.Utilities {
 
     /// <summary>
     /// Provides deterministic generation of ATProto record keys (rkeys) and card IDs

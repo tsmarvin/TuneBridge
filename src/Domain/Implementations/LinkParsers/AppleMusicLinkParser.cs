@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
-using TuneBridge.Domain.Implementations.Extensions;
+using BridgeBeats.Domain.Implementations.Extensions;
 
-namespace TuneBridge.Domain.Implementations.LinkParsers {
+namespace BridgeBeats.Domain.Implementations.LinkParsers {
 
     /// <summary>
     /// Utility class for parsing Apple Music URLs and constructing Apple Music API request URIs.

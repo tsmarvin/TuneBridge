@@ -1,7 +1,7 @@
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.Extensions {
+namespace BridgeBeats.Domain.Implementations.Extensions {
 
     /// <summary>
     /// Extension methods for generating OpenGraph metadata from media link results.

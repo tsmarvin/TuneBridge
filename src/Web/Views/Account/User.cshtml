@@ -329,7 +329,7 @@
 
                 // Get the filename from Content-Disposition header
                 const contentDisposition = response.headers.get('content-disposition');
-                let filename = 'tunebridge-personal-data.json';
+                let filename = 'bridgebeats-personal-data.json';
                 if (contentDisposition && contentDisposition.includes('filename=')) {
                     filename = contentDisposition
                         .split('filename=')[1]

@@ -1,7 +1,7 @@
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Interfaces {
+namespace BridgeBeats.Domain.Interfaces {
     /// <summary>
     /// Aggregates music metadata from multiple streaming providers (Apple Music, Spotify) and returns
     /// unified results. This service handles cross-platform lookups, deduplication, and link extraction

@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 
-namespace TuneBridge.Domain.Models;
+namespace BridgeBeats.Domain.Models;
 
 /// <summary>
 /// Represents an application user with Identity functionality.

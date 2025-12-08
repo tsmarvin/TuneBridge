@@ -1,11 +1,11 @@
-@using TuneBridge.Domain.Types.Enums
-@using TuneBridge.Domain.Implementations.Extensions
+@using BridgeBeats.Domain.Types.Enums
+@using BridgeBeats.Domain.Implementations.Extensions
 @using Microsoft.AspNetCore.Html
 @{
     Layout = null;
-    var result = Model.Result as TuneBridge.Domain.Contracts.DTOs.MediaLinkResult;
+    var result = Model.Result as BridgeBeats.Domain.Contracts.DTOs.MediaLinkResult;
     var primaryProvider = (SupportedProviders)Model.PrimaryProvider;
-    var primaryResult = Model.PrimaryResult as TuneBridge.Domain.Contracts.DTOs.MusicLookupResultDto;
+    var primaryResult = Model.PrimaryResult as BridgeBeats.Domain.Contracts.DTOs.MusicLookupResultDto;
     var cardUrl = Model.CardUrl as string;
     var atProtoUri = Model.ATProtoUri as string;
     var providerClass = $"provider-{primaryProvider.ToString().ToLowerInvariant()}";
@@ -21,7 +21,7 @@
     <title>@(primaryResult?.Title ?? "Music Card")</title>
     <link rel="stylesheet" href="~/public/docfx.min.css">
     <link rel="stylesheet" href="~/public/main.css">
-    <link rel="stylesheet" href="~/public/TuneBridge.styles.css">
+    <link rel="stylesheet" href="~/public/BridgeBeats.styles.css">
 
     <script nonce="@cspNonce">
         (function () {
