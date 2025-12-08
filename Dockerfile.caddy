@@ -1,0 +1,22 @@
+# Dockerfile for Caddy with Cloudflare DNS plugin
+# This image is built with the Cloudflare DNS module for ACME DNS-01 challenges
+# Required for wildcard certificate support (*.domain.com)
+
+FROM caddy:2-builder AS builder
+
+# Build Caddy with Cloudflare DNS plugin
+RUN xcaddy build --with github.com/caddy-dns/cloudflare
+
+FROM caddy:2
+
+# Copy custom Caddy binary with Cloudflare plugin
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+
+# Verify the binary works
+RUN caddy version
+
+# Default ports
+EXPOSE 80 443
+
+# Default command
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

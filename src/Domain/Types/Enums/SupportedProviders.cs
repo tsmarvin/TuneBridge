@@ -1,7 +1,7 @@
 using System.ComponentModel;
-using TuneBridge.Domain.Interfaces;
+using BridgeBeats.Domain.Interfaces;
 
-namespace TuneBridge.Domain.Types.Enums {
+namespace BridgeBeats.Domain.Types.Enums {
     /// <summary>
     /// Identifies the supported music streaming platforms for cross-platform lookup and link translation.
     /// </summary>

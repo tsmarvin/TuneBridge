@@ -1,4 +1,4 @@
-namespace TuneBridge.Domain.Contracts.Entities {
+namespace BridgeBeats.Domain.Contracts.Entities {
 
     /// <summary>
     /// Represents a playlist of music cards (tracks or albums).

@@ -1,14 +1,14 @@
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.Records;
+using BridgeBeats.Domain.Implementations.Extensions;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Enums;
 using idunno.AtProto;
 using idunno.AtProto.Repo;
 using idunno.Bluesky;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Contracts.Records;
-using TuneBridge.Domain.Implementations.Extensions;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// Implementation of <see cref="IATProtoStorageService"/> that stores MediaLinkResult records on ATProto PDS
@@ -16,7 +16,7 @@ namespace TuneBridge.Domain.Implementations.Services {
     /// </summary>
     /// <remarks>
     /// This service uses the idunno.Bluesky library to interact with ATProto-compatible PDS instances.
-    /// MediaLinkResults are stored as custom media.tunebridge.dev.lookup lexicon records.
+    /// MediaLinkResults are stored as custom link.bridgebeats.lookup lexicon records.
     /// </remarks>
     /// <remarks>
     /// Initializes a new instance of the <see cref="ATProtoStorageService"/> class.
@@ -31,16 +31,15 @@ namespace TuneBridge.Domain.Implementations.Services {
     ) : IATProtoStorageService {
 
         /// <summary>
-        /// The NSID (Namespaced Identifier) for the TuneBridge MediaLinkResult lexicon.
+        /// The NSID (Namespaced Identifier) for the BridgeBeats MediaLinkResult lexicon.
         /// </summary>
-        private static readonly Nsid s_mediaLinkResultCollection = new( "media.tunebridge.dev.lookup" );
+        private static readonly Nsid s_mediaLinkResultCollection = new( "link.bridgebeats.lookup" );
 
         /// <summary>
         /// Static cached dictionary mapping provider strings to SupportedProviders enum values.
         /// Initialized once at startup for O(1) lookups.
         /// </summary>
-        private static readonly Lazy<Dictionary<string, SupportedProviders>> s_providerStringToEnum =
-                                                                                new(CreateProviderMappings);
+        private static readonly Lazy<Dictionary<string, SupportedProviders>> s_providerStringToEnum = new(CreateProviderMappings);
 
         private readonly BlueskyAgent _agent = new( );
         private readonly SemaphoreSlim _authLock = new( 1, 1 );

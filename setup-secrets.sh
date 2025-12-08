@@ -1,11 +1,11 @@
 #!/bin/bash
-# Setup script for TuneBridge Docker deployment with secrets
+# Setup script for BridgeBeats Docker deployment with secrets
 # This script helps create the necessary directory structure and secret files
 
 set -e
 
 echo "=========================================="
-echo "TuneBridge Docker Setup Script"
+echo "BridgeBeats Docker Setup Script"
 echo "=========================================="
 echo ""
 
@@ -66,6 +66,10 @@ create_secret_file "$SECRETS_DIR/api_key_salt.txt" \
     "API key salt (random string for security)" \
     "$(openssl rand -base64 32 2>/dev/null || echo 'REPLACE_WITH_RANDOM_SALT_DO_NOT_USE_THIS_DEFAULT')"
 
+create_secret_file "$SECRETS_DIR/cloudflare_api_token.txt" \
+    "Cloudflare API token for DNS challenges (Zone:DNS:Edit permission)" \
+    "your_cloudflare_api_token_here"
+
 echo ""
 echo "=========================================="
 echo "Setup Complete!"
@@ -77,7 +81,7 @@ echo "2. IMPORTANT: Verify that api_key_salt.txt contains a random value"
 echo "   If it says 'REPLACE_WITH_RANDOM_SALT', generate a new salt:"
 echo "   openssl rand -base64 32 > $SECRETS_DIR/api_key_salt.txt"
 echo "3. Copy .env.example to .env and configure your environment variables"
-echo "4. Run 'docker-compose up -d' to start TuneBridge"
+echo "4. Run 'docker-compose up -d' to start BridgeBeats"
 echo ""
 echo "Important security notes:"
 echo "• The secrets directory is excluded from git via .gitignore"

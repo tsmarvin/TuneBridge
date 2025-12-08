@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 
-namespace TuneBridge.Tests;
+namespace BridgeBeats.Tests;
 
 /// <summary>
 /// Custom web application factory for integration testing.
@@ -22,14 +22,14 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
         // Default test configuration (Spotify only) unless overrides are provided
         Dictionary<string, string?> configData = _configOverrides ?? new( ) {
-            ["TuneBridge:SpotifyClientId"] = "test",
-            ["TuneBridge:SpotifyClientSecret"] = "test",
-            ["TuneBridge:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["TuneBridge:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
-            ["TuneBridge:ApiKeySalt"] = "api_key_salt",
-            ["TuneBridge:ATProtoIdentifier"] = "",
-            ["TuneBridge:ATProtoPassword"] = "",
-            ["TuneBridge:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
+            ["BridgeBeats:SpotifyClientId"] = "test",
+            ["BridgeBeats:SpotifyClientSecret"] = "test",
+            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
+            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:ATProtoIdentifier"] = "",
+            ["BridgeBeats:ATProtoPassword"] = "",
+            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
         _ = builder.UseEnvironment( "Testing" );
 

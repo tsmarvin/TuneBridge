@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.DTOs;
 
-namespace TuneBridge.Domain.Interfaces {
+namespace BridgeBeats.Domain.Interfaces {
 
     /// <summary>
     /// Service for storing and retrieving MediaLinkResult records on ATProto PDS.

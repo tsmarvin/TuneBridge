@@ -26,11 +26,11 @@ jobs:
             platform: linux/arm64
 
     env:
-      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/tunebridge-test
+      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/bridgebeats
 
     steps:
       - name: Checkout
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8  # v6.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3.11.1
@@ -79,7 +79,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.5.0
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
           name: digests-${{ steps.platform.outputs.slug }}
           path: /tmp/digests/*
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     env:
-      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/tunebridge-test
+      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/bridgebeats
 
     steps:
       - name: Download digests

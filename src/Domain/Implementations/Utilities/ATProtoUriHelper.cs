@@ -1,7 +1,7 @@
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Interfaces;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Interfaces;
 
-namespace TuneBridge.Domain.Implementations.Utilities {
+namespace BridgeBeats.Domain.Implementations.Utilities {
 
     /// <summary>
     /// Helper class for retrieving ATProto URIs from cache.

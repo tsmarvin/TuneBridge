@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Domain.Contracts.DTOs {
+namespace BridgeBeats.Domain.Contracts.DTOs {
 
     /// <summary>
     /// Represents the result of parsing and looking up media links for supported providers.

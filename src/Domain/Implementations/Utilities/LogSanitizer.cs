@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace TuneBridge.Domain.Implementations.Utilities {
+namespace BridgeBeats.Domain.Implementations.Utilities {
     /// <summary>
     /// 
     /// </summary>

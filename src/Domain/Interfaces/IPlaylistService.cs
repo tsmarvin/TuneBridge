@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Contracts.Entities;
+using BridgeBeats.Domain.Contracts.Entities;
 
-namespace TuneBridge.Domain.Interfaces {
+namespace BridgeBeats.Domain.Interfaces {
 
     /// <summary>
     /// Service for managing playlists of music cards.
@@ -13,7 +13,7 @@ namespace TuneBridge.Domain.Interfaces {
         bool IsEnabled { get; }
 
         /// <summary>
-        /// The base URL for the application (e.g., https://tunebridge.media).
+        /// The base URL for the application (e.g., https://bridgebeats.link).
         /// </summary>
         string BaseUrl { get; }
 

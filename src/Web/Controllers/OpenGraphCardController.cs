@@ -1,11 +1,11 @@
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Implementations.Extensions;
+using BridgeBeats.Domain.Implementations.Utilities;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Types.Enums;
 using Microsoft.AspNetCore.Mvc;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Implementations.Extensions;
-using TuneBridge.Domain.Implementations.Utilities;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Types.Enums;
 
-namespace TuneBridge.Web.Controllers;
+namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
 /// Controller for serving OpenGraph embeddable cards for music links.

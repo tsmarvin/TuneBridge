@@ -1,8 +1,8 @@
+using BridgeBeats.Domain.Contracts.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using TuneBridge.Domain.Contracts.Entities;
 
-namespace TuneBridge.Domain.Models;
+namespace BridgeBeats.Domain.Models;
 
 /// <summary>
 /// Database context for ASP.NET Identity with custom ApplicationUser.

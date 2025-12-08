@@ -1,4 +1,4 @@
-namespace TuneBridge.Domain.Types.Enums {
+namespace BridgeBeats.Domain.Types.Enums {
 
     /// <summary>
     /// Defines the type of lookup entry stored in the database.

@@ -1,11 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using BridgeBeats.Domain.Contracts.Entities;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Models;
 using Microsoft.EntityFrameworkCore;
-using TuneBridge.Domain.Contracts.Entities;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Models;
 
-namespace TuneBridge.Domain.Implementations.Services {
+namespace BridgeBeats.Domain.Implementations.Services {
 
     /// <summary>
     /// Database-backed implementation of the playlist service.

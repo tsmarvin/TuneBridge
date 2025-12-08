@@ -1,6 +1,6 @@
 using System.Net.Http.Headers;
 
-namespace TuneBridge.Domain.Implementations.Auth {
+namespace BridgeBeats.Domain.Implementations.Auth {
 
     /// <summary>
     /// Manages OAuth 2.0 client credentials flow for Spotify Web API authentication. Handles automatic

@@ -1,14 +1,14 @@
 # Deployment Guide
 
-TuneBridge is designed for easy deployment across various platforms. This guide covers deployment options and best practices.
+BridgeBeats is designed for easy deployment across various platforms. This guide covers deployment options and best practices.
 
 ## Quick Start with Docker Compose
 
-The easiest way to deploy TuneBridge is with Docker Compose, which includes Caddy as a secure reverse proxy with automatic HTTPS.
+The easiest way to deploy BridgeBeats is with Docker Compose, which includes Caddy as a secure reverse proxy with automatic HTTPS.
 
 ```bash
-git clone https://github.com/tsmarvin/TuneBridge.git
-cd TuneBridge
+git clone https://github.com/tsmarvin/BridgeBeats.git
+cd BridgeBeats
 ./setup-secrets.sh
 # Edit secrets/ with your credentials
 cp .env.example .env
@@ -16,7 +16,7 @@ cp .env.example .env
 docker-compose up -d
 ```
 
-Visit `https://localhost` (or your configured domain) to access TuneBridge.
+Visit `https://localhost` (or your configured domain) to access BridgeBeats.
 
 For detailed Docker Compose deployment instructions, see the [Quick Start Guide](QUICKSTART.md).
 
@@ -34,7 +34,7 @@ Docker Compose deployment includes:
 #### Architecture
 
 The Docker Compose setup consists of:
-1. **TuneBridge Application** - .NET 9.0 web application (port 10000)
+1. **BridgeBeats Application** - .NET 9.0 web application (port 10000)
 2. **Caddy Reverse Proxy** - Automatic HTTPS with Let's Encrypt (ports 80/443)
 3. **Docker Secrets** - Secure credential management
 4. **Persistent Volumes** - Data and certificate storage
@@ -62,7 +62,7 @@ Sensitive values go in the `secrets/` directory (created by `setup-secrets.sh`).
 Pull the latest image from Docker Hub:
 
 ```bash
-docker pull tsmarvin/tunebridge-test:latest
+docker pull tsmarvin/bridgebeats:latest
 ```
 
 Run the container:
@@ -71,7 +71,7 @@ Run the container:
 docker run -p 10000:10000 \
   -e SPOTIFY_CLIENT_ID="your_client_id" \
   -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  $DOCKERHUB_USERNAME/tunebridge-test:latest
+  $DOCKERHUB_USERNAME/bridgebeats:latest
 ```
 
 **Note**: Images are built for `linux/arm64` platform as configured in the GitHub workflow.
@@ -86,7 +86,7 @@ echo "your_spotify_secret" | docker secret create spotify_client_secret -
 echo "your_api_salt" | docker secret create api_key_salt -
 
 # Deploy with Docker Swarm
-docker stack deploy -c docker-compose.yml tunebridge
+docker stack deploy -c docker-compose.yml bridgebeats
 ```
 
 The entrypoint script automatically reads secrets from `/run/secrets/` and falls back to environment variables if secrets are not available.
@@ -95,10 +95,10 @@ The entrypoint script automatically reads secrets from `/run/secrets/` and falls
 
 ### Production Settings
 
-Update `TuneBridge__BaseUrl` to your public domain:
+Update `BridgeBeats__BaseUrl` to your public domain:
 
 ```bash
--e TuneBridge__BaseUrl=dev.tunebridge.media
+-e BridgeBeats__BaseUrl=bridgebeats.link
 ```
 
 This ensures OpenGraph cards generate correct URLs.
@@ -117,25 +117,25 @@ Set appropriate log levels for production:
 Restrict allowed hosts for security:
 
 ```bash
--e ALLOWED_HOSTS=dev.tunebridge.media
+-e ALLOWED_HOSTS=bridgebeats.link
 ```
 
 ## Monitoring
 
 ### Application Logs
 
-TuneBridge logs to stdout/stderr by default. Configure log aggregation based on your platform:
+BridgeBeats logs to stdout/stderr by default. Configure log aggregation based on your platform:
 
 **Docker:**
 ```bash
-docker logs -f tunebridge
+docker logs -f bridgebeats
 ```
 
 ## Scaling
 
 ### Horizontal Scaling
 
-TuneBridge is stateless (except for the optional SQLite cache) and can be horizontally scaled by deploying multiple instances behind a load balancer.
+BridgeBeats is stateless (except for the optional SQLite cache) and can be horizontally scaled by deploying multiple instances behind a load balancer.
 
 ### Discord Bot Sharding
 
@@ -168,10 +168,10 @@ If using the local SQLite cache:
 
 ```bash
 # Backup
-docker cp tunebridge:/app/cache/medialinkscache.db ./backup/
+docker cp bridgebeats:/app/cache/medialinkscache.db ./backup/
 
 # Restore
-docker cp ./backup/medialinkscache.db tunebridge:/app/cache/
+docker cp ./backup/medialinkscache.db bridgebeats:/app/cache/
 ```
 
 ### Configuration
@@ -187,7 +187,7 @@ Keep a secure backup of:
 
 Check logs:
 ```bash
-docker logs tunebridge
+docker logs bridgebeats
 ```
 
 Common issues:
@@ -215,12 +215,12 @@ Check:
 
 ```bash
 # Pull latest image from Docker Hub
-docker pull tsmarvin/tunebridge-test:latest
+docker pull tsmarvin/bridgebeats:latest
 
 # Stop and remove old container
-docker stop tunebridge
-docker rm tunebridge
+docker stop bridgebeats
+docker rm bridgebeats
 
 # Start new container
-docker run -d --name tunebridge ...
+docker run -d --name bridgebeats ...
 ```

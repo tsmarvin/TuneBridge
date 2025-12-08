@@ -1,6 +1,6 @@
-using TuneBridge.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.DTOs;
 
-namespace TuneBridge.Domain.Interfaces {
+namespace BridgeBeats.Domain.Interfaces {
 
     /// <summary>
     /// Service for temporarily storing MediaLinkResult objects for OpenGraph card generation.
@@ -13,7 +13,7 @@ namespace TuneBridge.Domain.Interfaces {
         bool IsEnabled { get; }
 
         /// <summary>
-        /// The base URL for the application (e.g., https://tunebridge.media).
+        /// The base URL for the application (e.g., https://bridgebeats.link).
         /// </summary>
         string BaseUrl { get; }
 

@@ -1,7 +1,7 @@
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Types.Enums;
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Types.Enums;
 
-namespace TuneBridge.Web.Models {
+namespace BridgeBeats.Web.Models {
     /// <summary>
     /// View model for displaying music lookup results.
     /// </summary>

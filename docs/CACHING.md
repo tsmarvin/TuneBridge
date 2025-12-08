@@ -1,10 +1,10 @@
 # MediaLinkResult Caching with ATProto PDS Storage
 
-This document describes the caching and storage system for MediaLinkResult DTOs in TuneBridge.
+This document describes the caching and storage system for MediaLinkResult DTOs in BridgeBeats.
 
 ## Overview
 
-TuneBridge implements a two-tier caching system for MediaLinkResult lookups:
+BridgeBeats implements a two-tier caching system for MediaLinkResult lookups:
 
 1. **SQLite Database**: Local cache for fast lookups and tracking input links
 2. **ATProto PDS**: Persistent storage of MediaLinkResults as ATProto posts
@@ -15,7 +15,7 @@ Add the following settings to your `appsettings.json`:
 
 ```json
 {
-  "TuneBridge": {
+  "BridgeBeats": {
     "ATProtoIdentifier": "your-handle.bsky.social",
     "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
@@ -29,7 +29,7 @@ Add the following settings to your `appsettings.json`:
 - **ATProtoIdentifier**: Your ATProto handle or DID
 - **ATProtoPassword**: Your ATProto password or app password (recommended: use app password)
 - **CacheDays**: Number of days to keep cache entries valid (default: 7)
-- **LinkCacheConnectionString**: SQLite connection string for the cache database (default: `Data Source=tunebridge.db`)
+- **LinkCacheConnectionString**: SQLite connection string for the cache database (default: `Data Source=bridgebeats.db`)
 
 > **Security Note**: Use a ATProto app password instead of your main account password. Generate an app password at: Settings → App Passwords in ATProto.
 
@@ -44,7 +44,7 @@ Stores ATProto PDS record locations for efficient lookups.
 | Column | Type | Description |
 |--------|------|-------------|
 | Id | INTEGER | Primary key |
-| RecordUri | TEXT | AT-URI of the ATProto record (e.g., `at://did:plc:xxx/media.tunebridge.lookup.result/yyy`) |
+| RecordUri | TEXT | AT-URI of the ATProto record (e.g., `at://did:plc:xxx/link.bridgebeats.lookup/yyy`) |
 | CreatedAt | DATETIME | When this cache entry was created |
 | LastLookedUpAt | DATETIME | When this record was last looked up or refreshed on PDS (used for staleness check) |
 
@@ -107,16 +107,16 @@ When a new lookup is performed with a link that resolves to an already-cached re
 
 ## ATProto Storage Format
 
-MediaLinkResults are stored as custom AT Protocol records using the `media.tunebridge.lookup.result` lexicon.
+MediaLinkResults are stored as custom AT Protocol records using the `link.bridgebeats.lookup` lexicon.
 
 ### Lexicon Definition
 
-The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/media.tunebridge.dev.lookup` and served at `https://<your-domain>/.well-known/atproto-lexicon/media.tunebridge.dev.lookup`:
+The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/link.bridgebeats.lookup` and served at `https://<your-domain>/.well-known/atproto-lexicon/link.bridgebeats.lookup`:
 
 ```json
 {
   "lexicon": 1,
-  "id": "media.tunebridge.lookup.result",
+  "id": "link.bridgebeats.lookup",
   "defs": {
     "main": {
       "type": "record",
@@ -152,7 +152,7 @@ The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/media.tune
 ### Record Structure
 
 Records are stored using the AT Protocol's `com.atproto.repo.createRecord` endpoint with:
-- **Collection**: `media.tunebridge.lookup.result`
+- **Collection**: `link.bridgebeats.lookup`
 - **Record Key**: Auto-generated TID (timestamp identifier)
 - **Record Value**: MediaLinkResultRecord (custom C# record class)
 

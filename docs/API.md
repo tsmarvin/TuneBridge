@@ -1,6 +1,6 @@
 # API Reference
 
-TuneBridge provides a RESTful API for music link conversion and lookup. This guide covers authentication, endpoints, and rate limiting.
+BridgeBeats provides a RESTful API for music link conversion and lookup. This guide covers authentication, endpoints, and rate limiting.
 
 ## Authentication
 
@@ -298,7 +298,7 @@ Server-side error.
 
 ## OpenGraph Card Endpoints
 
-TuneBridge generates shareable OpenGraph cards for music links.
+BridgeBeats generates shareable OpenGraph cards for music links.
 
 ### View Card
 
@@ -333,7 +333,7 @@ This ensures proper rendering on platforms like Discord, Slack, Twitter, and Fac
 import requests
 
 API_KEY = "your_api_key_here"
-BASE_URL = "https://tunebridge.example.com"
+BASE_URL = "https://bridgebeats.example.com"
 
 # Lookup by URL
 response = requests.post(
@@ -354,7 +354,7 @@ if response.status_code == 200:
 const axios = require('axios');
 
 const API_KEY = 'your_api_key_here';
-const BASE_URL = 'https://tunebridge.example.com';
+const BASE_URL = 'https://bridgebeats.example.com';
 
 async function lookup(uri) {
   try {
@@ -377,7 +377,7 @@ async function lookup(uri) {
 ### cURL
 
 ```bash
-curl -X POST https://tunebridge.example.com/music/lookup/urlList \
+curl -X POST https://bridgebeats.example.com/music/lookup/urlList \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_api_key_here" \
   -d '{"uri": "https://open.spotify.com/track/..."}'
@@ -393,7 +393,7 @@ curl -X POST https://tunebridge.example.com/music/lookup/urlList \
 
 ## Swagger Documentation
 
-When running TuneBridge, interactive API documentation is available at:
+When running BridgeBeats, interactive API documentation is available at:
 
 ```
 http://localhost:10000/swagger

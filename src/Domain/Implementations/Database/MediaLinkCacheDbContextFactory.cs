@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace TuneBridge.Domain.Implementations.Database;
+namespace BridgeBeats.Domain.Implementations.Database;
 
 /// <summary>
 /// Factory for creating MediaLinkCacheDbContext instances at design time (for migrations).
@@ -14,7 +14,7 @@ public class MediaLinkCacheDbContextFactory : IDesignTimeDbContextFactory<MediaL
     /// <returns>A configured MediaLinkCacheDbContext instance.</returns>
     public MediaLinkCacheDbContext CreateDbContext( string[] args ) {
         DbContextOptionsBuilder<MediaLinkCacheDbContext> optionsBuilder = new( );
-        _ = optionsBuilder.UseSqlite( "Data Source=tunebridge.db" );
+        _ = optionsBuilder.UseSqlite( "Data Source=bridgebeats.db" );
 
         return new MediaLinkCacheDbContext( optionsBuilder.Options );
     }

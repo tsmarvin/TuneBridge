@@ -1,9 +1,9 @@
+using BridgeBeats.Domain.Types.Constants;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 using Serilog.Core;
-using TuneBridge.Domain.Types.Constants;
 
-namespace TuneBridge.Tests.Unit;
+namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
 /// Unit tests for logging configuration validation.
@@ -19,7 +19,7 @@ public class LoggingConfigurationTests {
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["TuneBridge:LogFilePath"] = logPath,
+                ["BridgeBeats:LogFilePath"] = logPath,
                 ["Logging:LogLevel:Default"] = "Information"
             };
 
@@ -63,7 +63,7 @@ public class LoggingConfigurationTests {
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["TuneBridge:LogFilePath"] = logPath,
+                ["BridgeBeats:LogFilePath"] = logPath,
                 ["Logging:LogLevel:Default"] = "Information"
             };
 
@@ -147,7 +147,7 @@ public class LoggingConfigurationTests {
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["TuneBridge:LogFilePath"] = logPath,
+                ["BridgeBeats:LogFilePath"] = logPath,
                 ["Logging:LogLevel:Default"] = "Information",
                 ["OpenTelemetry:OtlpEndpoint"] = "http://aspire-dashboard:4317"
             };
@@ -157,7 +157,7 @@ public class LoggingConfigurationTests {
                 .Build( );
 
             // Act & Assert
-            string? filePath = configuration["TuneBridge:LogFilePath"];
+            string? filePath = configuration["BridgeBeats:LogFilePath"];
             string? otlpEndpoint = configuration["OpenTelemetry:OtlpEndpoint"];
 
             Assert.IsFalse( string.IsNullOrWhiteSpace( filePath ), "Log File Path should be configured" );
@@ -268,8 +268,8 @@ public class LoggingConfigurationTests {
             // Simulate MVC action execution logs for health endpoint
             logger
                 .ForContext( "SourceContext", "Microsoft.AspNetCore.Mvc.Infrastructure.ControllerActionInvoker" )
-                .ForContext( "ActionName", "TuneBridge.Web.Controllers.HomeController.Health (TuneBridge)" )
-                .Information( "Executing controller action with signature Microsoft.AspNetCore.Mvc.IActionResult Health() on controller TuneBridge.Web.Controllers.HomeController (TuneBridge)." );
+                .ForContext( "ActionName", "BridgeBeats.Web.Controllers.HomeController.Health (BridgeBeats)" )
+                .Information( "Executing controller action with signature Microsoft.AspNetCore.Mvc.IActionResult Health() on controller BridgeBeats.Web.Controllers.HomeController (BridgeBeats)." );
 
             // Note: Some MVC infrastructure logs like "Executing OkObjectResult" may not have Health context
             // and thus may not be filterable without overly broad filtering. This is acceptable as long as
@@ -281,8 +281,8 @@ public class LoggingConfigurationTests {
             // Simulate MVC action execution logs for a different endpoint
             logger
                 .ForContext( "SourceContext", "Microsoft.AspNetCore.Mvc.Infrastructure.ControllerActionInvoker" )
-                .ForContext( "ActionName", "TuneBridge.Web.Controllers.HomeController.Index (TuneBridge)" )
-                .Information( "Executing controller action with signature Microsoft.AspNetCore.Mvc.IActionResult Index() on controller TuneBridge.Web.Controllers.HomeController (TuneBridge)." );
+                .ForContext( "ActionName", "BridgeBeats.Web.Controllers.HomeController.Index (BridgeBeats)" )
+                .Information( "Executing controller action with signature Microsoft.AspNetCore.Mvc.IActionResult Index() on controller BridgeBeats.Web.Controllers.HomeController (BridgeBeats)." );
 
             logger.Dispose( );
 

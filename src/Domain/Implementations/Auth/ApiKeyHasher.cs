@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace TuneBridge.Domain.Implementations.Auth;
+namespace BridgeBeats.Domain.Implementations.Auth;
 
 /// <summary>
 /// Provides API key hashing functionality using HMACSHA256.

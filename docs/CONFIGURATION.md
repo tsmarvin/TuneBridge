@@ -1,10 +1,10 @@
 # Configuration Guide
 
-This guide covers how to configure TuneBridge with API credentials and environment variables.
+This guide covers how to configure BridgeBeats with API credentials and environment variables.
 
 ## Environment Variables
 
-TuneBridge requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord integration is optional.
+BridgeBeats requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord integration is optional.
 
 ### Required Music Provider Credentials
 
@@ -42,13 +42,13 @@ At least one complete set of music provider credentials is required:
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
 | `OTLP_ENDPOINT` | OpenTelemetry OTLP endpoint for Aspire Dashboard | `http://aspire-dashboard:4317` |
-| `LOG_FILE_PATH` | File path for log files | `/app/data/logs/tunebridge-.log` |
+| `LOG_FILE_PATH` | File path for log files | `/app/data/logs/bridgebeats-.log` |
 | `CACHE_DAYS` | Number of days to cache ATProto PDS lookup results | `7` |
-| `TuneBridge__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=tunebridge.db` |
-| `TuneBridge__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=tunebridge.db` |
-| `TuneBridge__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
+| `BridgeBeats__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=bridgebeats.db` |
+| `BridgeBeats__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=bridgebeats.db` |
+| `BridgeBeats__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
 
-**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `TuneBridge__BaseUrl` maps to `TuneBridge:BaseUrl` in configuration).
+**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `BridgeBeats__BaseUrl` maps to `BridgeBeats:BaseUrl` in configuration).
 
 ## Obtaining API Credentials
 
@@ -84,7 +84,7 @@ If you want to store lookup results on a ATProto PDS for persistent caching:
 
 1. Create a ATProto account at [bsky.app](https://bsky.app) if you don't have one
 2. Go to Settings → App Passwords
-3. Create a new app password for TuneBridge
+3. Create a new app password for BridgeBeats
 4. Use your handle (e.g., `yourname.bsky.social`) as `ATPROTO_IDENTIFIER`
 5. Use the generated app password as `ATPROTO_PASSWORD`
 
@@ -98,7 +98,7 @@ For local development, you can use an `appsettings.json` file instead of environ
 
 ```json
 {
-  "TuneBridge": {
+  "BridgeBeats": {
     "NodeNumber": 0,
     "AppleTeamId": "your_team_id",
     "AppleKeyId": "your_key_id",
@@ -108,13 +108,13 @@ For local development, you can use an `appsettings.json` file instead of environ
     "TidalClientId": "your_tidal_client_id",
     "TidalClientSecret": "your_tidal_client_secret",
     "DiscordToken": "your_bot_token",
-    "IdentityConnectionString": "Data Source=tunebridge.db",
+    "IdentityConnectionString": "Data Source=bridgebeats.db",
     "ATProtoIdentifier": "your-handle.bsky.social",
     "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
-    "LinkCacheConnectionString": "Data Source=tunebridge.db",
+    "LinkCacheConnectionString": "Data Source=bridgebeats.db",
     "BaseUrl": "localhost",
-    "LogFilePath": "./logs/tunebridge-.log"
+    "LogFilePath": "./logs/bridgebeats-.log"
   },
   "Logging": {
     "LogLevel": {
@@ -141,7 +141,7 @@ docker run -p 10000:10000 \
   -e SPOTIFY_CLIENT_ID="your_client_id" \
   -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
   -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
-  tunebridge
+  bridgebeats
 ```
 
 **Important:** The `APPLE_KEY_PATH` environment variable must match the container mount path.
@@ -156,7 +156,7 @@ docker run -p 10000:10000 \
 
 ## Validation
 
-TuneBridge validates configuration at startup. If required credentials are missing or invalid, the application will log warnings and disable features that depend on those credentials.
+BridgeBeats validates configuration at startup. If required credentials are missing or invalid, the application will log warnings and disable features that depend on those credentials.
 
 Check the application logs on startup for any configuration warnings:
 
@@ -168,13 +168,13 @@ Check the application logs on startup for any configuration warnings:
 
 ## Logging Configuration
 
-TuneBridge supports two logging destinations that work simultaneously:
+BridgeBeats supports two logging destinations that work simultaneously:
 
 ### File Logging
 
 Logs are written to persistent files with automatic rotation and retention:
 
-- **Location**: `/app/data/logs/tunebridge-.log` (configurable via `LOG_FILE_PATH`)
+- **Location**: `/app/data/logs/bridgebeats-.log` (configurable via `LOG_FILE_PATH`)
 - **Rotation**: Daily rotation + size-based rotation (10MB per file)
 - **Retention**: Maximum 5 log files (oldest files are automatically deleted)
 - **Total Size**: Up to ~50MB total log storage
@@ -205,7 +205,7 @@ environment:
   - DEFAULT_LOGLEVEL=Debug
   - HOSTING_DEFAULT_LOGLEVEL=Information
   - OTLP_ENDPOINT=http://aspire-dashboard:4317
-  - LOG_FILE_PATH=/app/data/logs/tunebridge-.log
+  - LOG_FILE_PATH=/app/data/logs/bridgebeats-.log
 ```
 
 ### Accessing Logs
@@ -213,10 +213,10 @@ environment:
 **File Logs** (Docker):
 ```bash
 # View logs from the persistent volume
-docker exec -it tunebridge cat /app/data/logs/tunebridge-*.log
+docker exec -it bridgebeats cat /app/data/logs/bridgebeats-*.log
 
 # Tail logs in real-time
-docker exec -it tunebridge tail -f /app/data/logs/tunebridge-*.log
+docker exec -it bridgebeats tail -f /app/data/logs/bridgebeats-*.log
 ```
 
 **OpenTelemetry Logs** (Aspire Dashboard):
@@ -228,7 +228,7 @@ docker exec -it tunebridge tail -f /app/data/logs/tunebridge-*.log
 
 Log files are automatically managed:
 
-1. **Daily rotation**: New file created each day (e.g., `tunebridge-20250114.log`)
+1. **Daily rotation**: New file created each day (e.g., `bridgebeats-20250114.log`)
 2. **Size-based rotation**: When a file reaches 10MB, a new file is created
 3. **Retention**: Only the 5 most recent files are kept
 4. **Automatic cleanup**: Old files are deleted when retention limit is reached

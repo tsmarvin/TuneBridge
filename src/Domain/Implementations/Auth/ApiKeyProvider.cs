@@ -1,9 +1,9 @@
 using AspNetCore.Authentication.ApiKey;
+using BridgeBeats.Domain.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using TuneBridge.Domain.Models;
 
-namespace TuneBridge.Domain.Implementations.Auth;
+namespace BridgeBeats.Domain.Implementations.Auth;
 
 /// <summary>
 /// Provides API key authentication by validating keys against user records in the database.

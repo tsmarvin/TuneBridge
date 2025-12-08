@@ -1,5 +1,14 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using AspNetCore.Authentication.ApiKey;
+using BridgeBeats.Domain.Implementations.Auth;
+using BridgeBeats.Domain.Implementations.Database;
+using BridgeBeats.Domain.Implementations.Middleware;
+using BridgeBeats.Domain.Implementations.Services;
+using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Domain.Models;
+using BridgeBeats.Domain.Types.Constants;
+using BridgeBeats.Domain.Types.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
@@ -12,29 +21,21 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
 using Polly;
 using Serilog;
-using TuneBridge.Domain.Implementations.Auth;
-using TuneBridge.Domain.Implementations.Database;
-using TuneBridge.Domain.Implementations.Middleware;
-using TuneBridge.Domain.Implementations.Services;
-using TuneBridge.Domain.Interfaces;
-using TuneBridge.Domain.Models;
-using TuneBridge.Domain.Types.Constants;
-using TuneBridge.Domain.Types.Enums;
 
-namespace TuneBridge.Configuration {
+namespace BridgeBeats.Configuration {
 
     /// <summary>
-    /// Extension methods for configuring the TuneBridge services and HTTP client resilience (retry) policies.
+    /// Extension methods for configuring the BridgeBeats services and HTTP client resilience (retry) policies.
     /// </summary>
     internal static class StartupExtensions {
 
         /// <summary>
-        /// Registers TuneBridge services, authentication handlers, HTTP clients, and (optional) Discord services.
+        /// Registers BridgeBeats services, authentication handlers, HTTP clients, and (optional) Discord services.
         /// </summary>
         /// <param name="builder">The builder to configure.</param>
         /// <param name="args">The commandline arguments.</param>
         /// <returns>The configured builder.</returns>
-        public static WebApplicationBuilder ConfigureTuneBridgeServices(
+        public static WebApplicationBuilder ConfigureBridgeBeatsServices(
             this WebApplicationBuilder builder,
             string[] args
         ) {
@@ -50,7 +51,7 @@ namespace TuneBridge.Configuration {
             IServiceCollection services = builder.Services;
             IConfiguration config = builder.Configuration;
 
-            _ = builder.WebHost.ConfigureTuneBridgeServices(
+            _ = builder.WebHost.ConfigureBridgeBeatsServices(
                 services,
                 config
             );
@@ -58,23 +59,23 @@ namespace TuneBridge.Configuration {
             return builder;
         }
 
-        internal static TBuilder ConfigureTuneBridgeServices<TBuilder>(
+        internal static TBuilder ConfigureBridgeBeatsServices<TBuilder>(
             this TBuilder builder,
             IServiceCollection services,
             IConfiguration config
         ) where TBuilder : IWebHostBuilder {
-            _ = AddTuneBridgeServices( services, config );
+            _ = AddBridgeBeatsServices( services, config );
             return builder;
         }
 
         /// <summary>
-        /// Registers TuneBridge services, authentication handlers, HTTP clients, and (optional) Discord services directly on an IServiceCollection.
+        /// Registers BridgeBeats services, authentication handlers, HTTP clients, and (optional) Discord services directly on an IServiceCollection.
         /// This is useful for testing scenarios where you don't need a full IWebHostBuilder.
         /// </summary>
         /// <param name="services">The service collection to configure.</param>
         /// <param name="config">The configuration to use for settings.</param>
         /// <returns>The configured service collection.</returns>
-        internal static IServiceCollection AddTuneBridgeServices(
+        internal static IServiceCollection AddBridgeBeatsServices(
             this IServiceCollection services,
             IConfiguration config
         ) {
@@ -88,7 +89,7 @@ namespace TuneBridge.Configuration {
                 } );
 
             AppSettings settings = new( );
-            config.GetRequiredSection( "TuneBridge" ).Bind( settings );
+            config.GetRequiredSection( "BridgeBeats" ).Bind( settings );
 
             // Common singletons and caching
             _ = services.AddSingleton( new JsonSerializerOptions { WriteIndented = true } );
@@ -120,7 +121,7 @@ namespace TuneBridge.Configuration {
 
             // Validate at least one provider
             if (enabledProviders.Count == 0) {
-                throw new InvalidOperationException( "Required settings are missing. Cannot add TuneBridge services if no IMusicLookupService(s) are available." );
+                throw new InvalidOperationException( "Required settings are missing. Cannot add BridgeBeats services if no IMusicLookupService(s) are available." );
             }
 
             // MediaLink services (base + optional cache wrapper)
@@ -135,11 +136,11 @@ namespace TuneBridge.Configuration {
         }
 
         /// <summary>
-        /// Registers TuneBridge services, authentication handlers, HTTP clients, and (optional) Discord services.
+        /// Registers BridgeBeats services, authentication handlers, HTTP clients, and (optional) Discord services.
         /// </summary>
         /// <param name="builder">The builder to create a web application from.</param>
         /// <returns>The configured application.</returns>
-        public static async Task<WebApplication> ConfigureTuneBridgeAsync(
+        public static async Task<WebApplication> ConfigureBridgeBeatsAsync(
             this WebApplicationBuilder builder
         ) {
             WebApplication app = builder.Build();
@@ -147,7 +148,7 @@ namespace TuneBridge.Configuration {
             IConfiguration config = app.Configuration;
 
             AppSettings settings = new( );
-            config.GetRequiredSection( "TuneBridge" ).Bind( settings );
+            config.GetRequiredSection( "BridgeBeats" ).Bind( settings );
 
             // Initialize cache database if configured
             InitializeCacheDatabase( app.Services );
@@ -195,22 +196,25 @@ namespace TuneBridge.Configuration {
             _ = app.Use( async ( ctx, next ) => {
                 string path = ctx.Request.Path.Value ?? string.Empty;
                 bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
+                bool isAppleMusic = path.StartsWith( "/applemusic", StringComparison.OrdinalIgnoreCase );
 
                 // Generate a unique nonce for this request to allow inline scripts and styles
-                string nonce = Convert.ToBase64String( System.Security.Cryptography.RandomNumberGenerator.GetBytes( 16 ) );
+                string nonce = Convert.ToBase64String( RandomNumberGenerator.GetBytes( 16 ) );
                 ctx.Items["CSPNonce"] = nonce;
 
                 // Build CSP policy
-                // Allow MusicKit JS CDN, nonce-based inline styles, and API calls to music providers
-                string frameAncestors = isEmbed ? "*" : "'self'"; // Allow any site to embed cards & playlists
+                // Allow MusicKit JS CDN, Cloudflare analytics, nonce-based inline styles, and API calls to music providers
+                // Allow framing for embed endpoints, Apple Music integration, and playlist pages
+                // Note: frame-ancestors uses https: scheme with 'self' to support HTTPS framing including same-origin
+                string frameAncestors = (isEmbed || isAppleMusic) ? "https: 'self'" : "'self'";
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
-                    $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com",
+                    $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com https://static.cloudflareinsights.com",
                     $"style-src 'self' 'nonce-{nonce}'",
                     "img-src 'self' data: https:",
                     "font-src 'self' data:",
-                    "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com",
+                    "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com https://cloudflareinsights.com",
                     "media-src 'self' https:",
                     "frame-ancestors " + frameAncestors,
                     "object-src 'none'",
@@ -244,9 +248,9 @@ namespace TuneBridge.Configuration {
             // Enable Swagger middleware
             _ = app.UseSwagger( );
             _ = app.UseSwaggerUI( options => {
-                options.SwaggerEndpoint( "/swagger/v1/swagger.json", "TuneBridge API v1" );
+                options.SwaggerEndpoint( "/swagger/v1/swagger.json", "BridgeBeats API v1" );
                 options.RoutePrefix = "swagger";
-                options.DocumentTitle = "TuneBridge API Documentation";
+                options.DocumentTitle = "BridgeBeats API Documentation";
             } );
 
             _ = app.MapStaticAssets( );
@@ -287,10 +291,10 @@ namespace TuneBridge.Configuration {
 
                 using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
                 dbContext.Database.Migrate( );
-                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
-                logger.LogInformation( "TuneBridge: SQLite cache database initialized successfully" );
+                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Configuration.StartupExtensions" );
+                logger.LogInformation( "BridgeBeats: SQLite cache database initialized successfully" );
             } catch (Exception ex) {
-                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "TuneBridge.Configuration.StartupExtensions" );
+                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Configuration.StartupExtensions" );
                 logger.LogError( ex, "Failed to initialize SQLite cache database" );
             }
         }
@@ -402,7 +406,7 @@ namespace TuneBridge.Configuration {
                     : IdentityConstants.ApplicationScheme;
             } )
             .AddApiKeyInHeader<ApiKeyProvider>( options => {
-                options.Realm = "TuneBridge API";
+                options.Realm = "BridgeBeats API";
                 options.KeyName = "X-API-Key";
             } )
             .AddIdentityCookies( ); // Add cookie authentication for web UI
@@ -414,16 +418,16 @@ namespace TuneBridge.Configuration {
             _ = services.AddEndpointsApiExplorer( );
             _ = services.AddSwaggerGen( options => {
                 options.SwaggerDoc( "v1", new OpenApiInfo {
-                    Title = "TuneBridge API",
+                    Title = "BridgeBeats API",
                     Version = "v1",
                     Description = "Cross-platform music link converter and lookup service for Apple Music, Spotify, and Tidal. Convert music links between platforms, search by URL, ISRC, UPC, or title/artist.",
                     Contact = new OpenApiContact {
-                        Name = "TuneBridge",
-                        Url = new Uri( "https://github.com/tsmarvin/TuneBridge" )
+                        Name = "BridgeBeats",
+                        Url = new Uri( "https://github.com/tsmarvin/BridgeBeats" )
                     },
                     License = new OpenApiLicense {
                         Name = "MIT License",
-                        Url = new Uri( "https://github.com/tsmarvin/TuneBridge/blob/main/LICENSE" )
+                        Url = new Uri( "https://github.com/tsmarvin/BridgeBeats/blob/main/LICENSE" )
                     }
                 } );
                 options.AddSecurityDefinition( "ApiKey", new OpenApiSecurityScheme {
@@ -629,7 +633,7 @@ namespace TuneBridge.Configuration {
         /// </summary>
         /// <param name="builder">The web application builder to configure.</param>
         private static void ConfigureSerilog( WebApplicationBuilder builder ) {
-            string logPath = builder.Configuration["TuneBridge:LogFilePath"] ?? "./logs/tunebridge-.log";
+            string logPath = builder.Configuration["BridgeBeats:LogFilePath"] ?? "./logs/bridgebeats-.log";
 
             try {
                 string? logDir = Path.GetDirectoryName( logPath );
@@ -728,7 +732,7 @@ namespace TuneBridge.Configuration {
             _ = builder.Logging.AddOpenTelemetry( options => {
                 _ = options.SetResourceBuilder(
                     ResourceBuilder.CreateDefault( )
-                        .AddService( serviceName: "TuneBridge", serviceVersion: version )
+                        .AddService( serviceName: "BridgeBeats", serviceVersion: version )
                 );
 
                 _ = options.AddOtlpExporter( otlpOptions => {

@@ -1,9 +1,9 @@
+using BridgeBeats.Domain.Models;
+using BridgeBeats.Domain.Types.Constants;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using TuneBridge.Domain.Models;
-using TuneBridge.Domain.Types.Constants;
 
-namespace TuneBridge.Configuration;
+namespace BridgeBeats.Configuration;
 
 /// <summary>
 /// Extension methods for database initialization.

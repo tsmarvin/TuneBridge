@@ -1,8 +1,8 @@
 {
   "$type": "com.atproto.lexicon.schema",
   "lexicon": 1,
-  "id": "media.tunebridge.dev.lookup",
-  "description": "Unified TuneBridge lookup result aggregating links across music service providers.",
+  "id": "link.bridgebeats.lookup",
+  "description": "Unified BridgeBeats lookup result aggregating links across music service providers.",
   "defs": {
     "main": {
       "type": "record",

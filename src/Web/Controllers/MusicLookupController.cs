@@ -1,9 +1,9 @@
+using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TuneBridge.Domain.Contracts.DTOs;
-using TuneBridge.Domain.Interfaces;
 
-namespace TuneBridge.Web.Controllers;
+namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
 /// REST API endpoints for cross-platform music lookup and link translation. These endpoints enable

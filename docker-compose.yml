@@ -1,17 +1,17 @@
 services:
-  tunebridge:
-    image: tsmarvin/tunebridge-test:develop
-    container_name: tunebridge
+  bridgebeats:
+    image: tsmarvin/bridgebeats:develop
+    container_name: bridgebeats
     restart: unless-stopped
     networks:
       - internal
     environment:
-      - BASEURL=${BASEURL:-dev.tunebridge.media}
+      - BASEURL=${BASEURL:-bridgebeats.link}
       - NODE_NUMBER=${NODE_NUMBER:-100}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
       - OTLP_ENDPOINT=${OTLP_ENDPOINT:-http://aspire-dashboard:4317}
-      - LOG_FILE_PATH=${LOG_FILE_PATH:-/app/data/logs/tunebridge-.log}
+      - LOG_FILE_PATH=${LOG_FILE_PATH:-/app/data/logs/bridgebeats-.log}
       - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
       - APPLE_KEY_ID=${APPLE_KEY_ID:-}
       - APPLE_KEY_PATH=${APPLE_KEY_PATH:-}
@@ -20,11 +20,11 @@ services:
       - ATPROTO_IDENTIFIER=${ATPROTO_IDENTIFIER:-}
       - ATPROTO_USER_DID=${ATPROTO_USER_DID:-}
       - CACHE_DAYS=${CACHE_DAYS:-7}
-      - LINK_CACHE_CONNECTION_STRING=${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
-      - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/tunebridge.db}
+      - LINK_CACHE_CONNECTION_STRING=${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
+      - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
       - RATE_LIMIT_REQUESTS_PER_HOUR=${RATE_LIMIT_REQUESTS_PER_HOUR:-20}
     volumes:
-      - tunebridge-data:/app/data # Persistent data directory
+      - bridgebeats-data:/app/data # Persistent data directory
       # Secret mounts (read-only)
       - ./secrets/apple_key.p8:/run/secrets/apple_key:ro
       - ./secrets/spotify_client_secret.txt:/run/secrets/spotify_client_secret:ro
@@ -48,7 +48,7 @@ services:
           memory: 256M
 
   # Aspire Dashboard for observability and telemetry
-  aspire-dashboard:
+  bridgebeats-aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:13.0
     container_name: aspire-dashboard
     restart: unless-stopped
@@ -81,16 +81,16 @@ services:
       retries: 3
       start_period: 20s
 
-  pds:
+  bridgebeats-pds:
     image: ghcr.io/atproto-social/pds:latest
     container_name: pds
     restart: unless-stopped
     networks:
       - internal
     volumes:
-      - tunebridge-data:/pds
+      - bridgebeats-data:/pds
     environment:
-      - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.tunebridge.media}
+      - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.bridgebeats.link}
       - PDS_JWT_SECRET=${PDS_JWT_SECRET:-}
       - PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=${PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX:-}
       - PDS_ADMIN_PASSWORD=${PDS_ADMIN_PASSWORD:-}
@@ -107,8 +107,8 @@ services:
       - PDS_CRAWLERS=https://bsky.network
       - LOG_ENABLED=true
 
-  caddy:
-    image: caddy:latest
+  bridgebeats-caddy:
+    image: ${DOCKERHUB_USERNAME}/caddy-cloudflare:latest
     restart: unless-stopped
     ports:
       - "80:80"
@@ -117,17 +117,20 @@ services:
       - public
       - internal
     environment:
-      - DOMAIN=${DOMAIN:-dev.tunebridge.media}
-      - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.tunebridge.media}
-      - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@tunebridge.media}
+      - DOMAIN=${DOMAIN:-bridgebeats.link}
+      - SHORT_DOMAIN=${SHORT_DOMAIN:-bbeats.link}
+      - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.bridgebeats.link}
+      - CADDY_ADMIN_EMAIL=${CADDY_ADMIN_EMAIL:-admin@bridgebeats.link}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy-data:/data/caddy
       - caddy-config:/config/caddy
       - caddy-logs:/var/log/caddy
+      # Secret mounts (read-only)
+      - ./secrets/cloudflare_api_token.txt:/run/secrets/cloudflare_api_token:ro
 
 volumes:
-  tunebridge-data:
+  bridgebeats-data:
     driver: local
   caddy-data:
     driver: local

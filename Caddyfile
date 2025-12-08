@@ -1,4 +1,4 @@
-# Caddyfile for TuneBridge
+# Caddyfile for BridgeBeats
 {
     # Global options
     admin off
@@ -8,7 +8,7 @@
 }
 
 # Default site configuration
-{$DOMAIN} {
+{$DOMAIN}, www.{$DOMAIN}, {$SHORT_DOMAIN}, www.{$SHORT_DOMAIN} {
     # Enable logging
     log {
         output file /var/log/caddy/access.log
@@ -23,8 +23,8 @@
         # Prevent MIME type sniffing
         X-Content-Type-Options "nosniff"
 
-        # Clickjacking protection
-        X-Frame-Options "SAMEORIGIN"
+        # X-Frame-Options removed - frame-ancestors in CSP (set by app) provides better control
+        # See src/Configuration/StartupExtensions.cs for CSP configuration
 
         # XSS protection (legacy browsers)
         X-XSS-Protection "1; mode=block"
@@ -32,8 +32,8 @@
         # Referrer policy
         Referrer-Policy "strict-origin-when-cross-origin"
 
-        # Content Security Policy
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';"
+        # Content Security Policy is handled by the application middleware
+        # CSP headers are set in src/Configuration/StartupExtensions.cs with nonce support
 
         # Permissions policy - Deny access to sensitive browser features
         Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
@@ -47,7 +47,7 @@
     # Route /dashboard requests to the Aspire Dashboard container after checking authorization
     handle /dashboard* {
         # Forward auth check - verify user has AspireDashboardAccess role
-        forward_auth tunebridge:10000 {
+        forward_auth bridgebeats:10000 {
             uri /api/dashboard/authorize
             copy_headers Authorization Cookie
         }
@@ -69,8 +69,8 @@
         }
     }
 
-    # Reverse proxy to TuneBridge application
-    reverse_proxy tunebridge:10000 {
+    # Reverse proxy to BridgeBeats application
+    reverse_proxy bridgebeats:10000 {
         # Health check endpoint
         health_uri /health
         health_interval 10s
@@ -101,5 +101,9 @@
 
 
 *.{$PDS_HOSTNAME}, {$PDS_HOSTNAME} {
+    # Use Cloudflare DNS challenge for wildcard certificate
+    tls {
+        dns cloudflare {file /run/secrets/cloudflare_api_token}
+    }
     reverse_proxy pds:3000
 }
