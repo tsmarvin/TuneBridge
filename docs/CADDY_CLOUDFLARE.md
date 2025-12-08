@@ -111,12 +111,12 @@ nano .env  # Configure your domain and other settings
 
 3. Start the services:
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 4. Verify the certificate:
 ```bash
-docker-compose logs caddy | grep -i certificate
+docker compose logs caddy | grep -i certificate
 ```
 
 ### Manual Docker Build
@@ -184,12 +184,12 @@ networks:
 
 1. Verify Cloudflare API token is mounted:
    ```bash
-   docker-compose exec caddy cat /run/secrets/cloudflare_api_token
+   docker compose exec caddy cat /run/secrets/cloudflare_api_token
    ```
 
 2. Check Caddy logs:
    ```bash
-   docker-compose logs caddy
+   docker compose logs caddy
    ```
 
 3. Verify DNS propagation:

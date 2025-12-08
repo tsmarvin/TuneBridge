@@ -13,7 +13,7 @@ cd BridgeBeats
 # Edit secrets/ with your credentials
 cp .env.example .env
 # Edit .env with your configuration
-docker-compose up -d
+docker compose up -d
 ```
 
 Visit `https://localhost` (or your configured domain) to access BridgeBeats.

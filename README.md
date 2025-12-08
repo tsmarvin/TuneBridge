@@ -43,7 +43,7 @@ nano tidal_client_secret.txt
 cp .env.example .env
 nano .env
 # Edit .env with your configuration
-docker-compose up -d
+docker compose up -d
 ```
 
 Visit `https://localhost` to start converting links.
