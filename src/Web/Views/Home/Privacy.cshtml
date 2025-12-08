@@ -4,7 +4,7 @@
 
 <div class="container py-4">
     <h1 class="mb-4">Privacy Policy</h1>
-    <p class="text-muted mb-4"><strong>Last Updated:</strong> November 2025</p>
+    <p class="text-muted mb-4"><strong>Last Updated:</strong> December 2025</p>
 
     <!-- Combined Summary & Security Notice -->
     <div class="alert alert-info border" role="alert">
@@ -93,7 +93,52 @@
             </div>
         </div>
 
-        <h4>2.2 Music Link Search Data</h4>
+        <h4>2.2 User-Created Playlists</h4>
+        <div class="card mb-3">
+            <div class="card-body">
+                <p>
+                    <strong>When you create a playlist within BridgeBeats, the service stores:</strong>
+                </p>
+                <ul>
+                    <li>
+                        <strong>Playlist ID</strong> - A unique identifier for the playlist
+                    </li>
+                    <li>
+                        <strong>User ID</strong> - Your account identifier (if logged in) to associate the playlist
+                        with your account
+                    </li>
+                    <li>
+                        <strong>Playlist title and description</strong> - Optional metadata you provide when creating
+                        the playlist
+                    </li>
+                    <li>
+                        <strong>Card IDs</strong> - References to the music cards (up to 20) you've added to your
+                        playlist
+                    </li>
+                    <li>
+                        <strong>Creation and expiration timestamps</strong> - When the playlist was created and when
+                        it expires
+                    </li>
+                </ul>
+                <p class="text-muted mt-3">
+                    <strong>Retention:</strong>
+                </p>
+                <ul class="text-muted">
+                    <li>Playlists created by logged-in users are stored <strong>indefinitely</strong> (until you
+                        delete them)</li>
+                    <li>Anonymous playlists are automatically deleted after <strong>2 weeks</strong></li>
+                </ul>
+                <p class="text-muted">
+                    <strong>Storage:</strong> Playlist data is stored locally in a SQLite database.
+                </p>
+                <p class="text-muted">
+                    <strong>Important:</strong> These are playlists you create <em>within BridgeBeats</em>. We do
+                    <em>not</em> access your personal playlists from Spotify, Apple Music, or Tidal.
+                </p>
+            </div>
+        </div>
+
+        <h4>2.3 Music Link Search Data</h4>
         <div class="card mb-3">
             <div class="card-body">
                 <p><strong>What is collected and cached:</strong></p>
@@ -121,7 +166,7 @@
             </div>
         </div>
 
-        <h4>2.3 Logging Data</h4>
+        <h4>2.4 Logging Data</h4>
         <div class="card mb-3">
             <div class="card-body">
                 <p><strong>Is Logged:</strong></p>
@@ -153,7 +198,10 @@
         <h3>3. Data We Do NOT Collect</h3>
         <ul class="list-group">
             <li class="list-group-item">❌ Your listening history from Spotify, Apple Music, or Tidal</li>
-            <li class="list-group-item">❌ Your playlist or library information</li>
+            <li class="list-group-item">
+                ❌ Your playlist or library information <strong>from Spotify, Apple Music, or Tidal</strong>
+                (we only store playlists you create within BridgeBeats)
+            </li>
             <li class="list-group-item">❌ Your personal name, phone number, or demographic information</li>
             <li class="list-group-item">
                 ❌ Browser cookies or tracking pixels (beyond session authentication for user
@@ -161,6 +209,9 @@
             </li>
             <li class="list-group-item">❌ Detailed analytics about your music preferences</li>
             <li class="list-group-item">❌ Third-party marketing data</li>
+            <li class="list-group-item">
+                ❌ OAuth tokens or access to your Spotify, Apple Music, or Tidal accounts
+            </li>
         </ul>
     </section>
 
@@ -179,6 +230,21 @@
                     <li>Generate and manage your API key</li>
                     <li>Enforce fair usage limits and prevent API abuse</li>
                     <li>Provide personalized account settings</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Playlist Management</strong>
+            </div>
+            <div class="card-body">
+                <p>Your playlist data is used to:</p>
+                <ul>
+                    <li>Store and organize collections of music cards you create within BridgeBeats</li>
+                    <li>Associate playlists with your account (if logged in)</li>
+                    <li>Generate shareable playlist URLs and OpenGraph cards</li>
+                    <li>Export your data upon request for GDPR compliance</li>
                 </ul>
             </div>
         </div>
@@ -217,6 +283,11 @@
                         <td>Account info, API keys, rate limiting</td>
                         <td>Local SQLite database</td>
                         <td>Until account deletion</td>
+                    </tr>
+                    <tr>
+                        <td>User-created playlists</td>
+                        <td>Local SQLite database</td>
+                        <td>2 weeks (anonymous) or until deletion (logged-in users)</td>
                     </tr>
                     <tr>
                         <td>Music link cache and search data</td>
@@ -264,7 +335,20 @@
     <section class="mb-5">
         <h3>6. Third-Party Services</h3>
 
-        <h4>6.1 Music Service APIs</h4>
+        <h4>6.1 Music Service APIs and OAuth Integration</h4>
+        <div class="alert alert-info mb-3" role="alert">
+            <strong>Important OAuth Clarification:</strong> BridgeBeats uses <strong>service-level authentication</strong>
+            (OAuth 2.0 client credentials flow for Spotify and Tidal, JWT tokens for Apple Music) to access the
+            music provider APIs. This means:
+            <ul class="mb-0 mt-2">
+                <li>✅ The <em>application</em> authenticates to music services using developer credentials</li>
+                <li>✅ We perform public API searches on your behalf</li>
+                <li>❌ We do <strong>NOT</strong> request OAuth access tokens to your personal accounts</li>
+                <li>❌ We do <strong>NOT</strong> access your Spotify/Apple Music/Tidal libraries, playlists, or
+                    listening history</li>
+                <li>❌ You are <strong>NOT</strong> asked to "connect" or "authorize" your streaming accounts</li>
+            </ul>
+        </div>
         <p>
             BridgeBeats integrates with the official APIs of:
         </p>
@@ -339,7 +423,26 @@
             cannot be exported.
         </p>
 
-        <h4>7.2 Delete Your Account</h4>
+        <h4>7.2 Manage Your Playlists</h4>
+        <p>
+            You have full control over playlists you create within BridgeBeats:
+        </p>
+        <ul>
+            <li>✅ <strong>View all playlists</strong> - Access your playlists page to see all playlists you've created
+            </li>
+            <li>✅ <strong>Delete playlists</strong> - Remove any playlist you've created at any time</li>
+            <li>✅ <strong>Export playlist data</strong> - Playlist information is included in your account data export
+            </li>
+            <li>⚠️ <strong>Anonymous playlists</strong> - Playlists created without logging in expire after 2 weeks
+            </li>
+        </ul>
+        <p class="text-muted">
+            <strong>Note:</strong> BridgeBeats playlists only contain references to music cards (tracks/albums), not the
+            actual music content. Deleting a playlist from BridgeBeats does not affect your Spotify, Apple Music, or
+            Tidal accounts.
+        </p>
+
+        <h4>7.3 Delete Your Account</h4>
         <p>
             You can delete your account at any time. A delete button is available in your account settings on the user
             page.
@@ -349,6 +452,7 @@
             <li>✅ Delete your email address and hashed password</li>
             <li>✅ Delete your API key hash</li>
             <li>✅ Delete your rate limiting data</li>
+            <li>✅ Delete all playlists associated with your account</li>
             <li>⚠️ Cache entries may persist for up to 7 days before automatic deletion</li>
         </ul>
     </section>
@@ -407,6 +511,16 @@
                     <tr>
                         <td>Rate limiting counters</td>
                         <td>1 hour (reset hourly)</td>
+                        <td>Automatic</td>
+                    </tr>
+                    <tr>
+                        <td>User-created playlists (logged-in)</td>
+                        <td>Until manual deletion</td>
+                        <td>Manual (via playlist deletion or account deletion)</td>
+                    </tr>
+                    <tr>
+                        <td>User-created playlists (anonymous)</td>
+                        <td>2 weeks</td>
                         <td>Automatic</td>
                     </tr>
                     <tr>
