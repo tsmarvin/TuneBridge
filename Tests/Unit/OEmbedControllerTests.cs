@@ -317,8 +317,11 @@ public class OEmbedControllerTests {
         oembedResponse.Should( ).NotBeNull( );
         oembedResponse!.Html.Should( ).NotContain( "\"Song\"" ); // Should be escaped
         oembedResponse.Html.Should( ).NotContain( "<special>" ); // Should be escaped
-        // Check that HTML contains encoded entities
-        Assert.IsTrue( oembedResponse.Html.Contains( "&quot;" ) || oembedResponse.Html.Contains( "&#" ) );
+        // Verify that special characters are not present in their unescaped form
+        string html = oembedResponse.Html;
+        Assert.IsFalse( html.Contains( "<special>", StringComparison.Ordinal ), "HTML should not contain unescaped angle brackets" );
+        Assert.IsFalse( html.Contains( "\"Song\"", StringComparison.Ordinal ), "HTML should not contain unescaped quotes" );
+        Assert.IsFalse( html.Contains( "&", StringComparison.Ordinal ) && !html.Contains( "&quot;", StringComparison.Ordinal ) && !html.Contains( "&lt;", StringComparison.Ordinal ) && !html.Contains( "&gt;", StringComparison.Ordinal ) && !html.Contains( "&amp;", StringComparison.Ordinal ), "HTML should have proper entity encoding" );
     }
 
     [TestMethod]

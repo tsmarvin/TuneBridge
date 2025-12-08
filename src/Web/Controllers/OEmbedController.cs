@@ -18,6 +18,8 @@ public class OEmbedController( IOpenGraphCardService cardService, ILogger<OEmbed
 
     private const int DefaultEmbedWidth = 550;
     private const int DefaultEmbedHeight = 250;
+    private const int CardExpirationDays = 6;
+    private const int CardCacheAgeSeconds = CardExpirationDays * 24 * 60 * 60; // 6 days in seconds
 
     /// <summary>
     /// Returns oEmbed metadata for a given card URL.
@@ -66,8 +68,8 @@ public class OEmbedController( IOpenGraphCardService cardService, ILogger<OEmbed
         }
 
         // Get primary result for metadata
-        SupportedProviders primaryProvider = result.Results.Keys.FirstOrDefault( );
-        MusicLookupResultDto? primaryResult = result.Results.Values.FirstOrDefault( );
+        KeyValuePair<SupportedProviders, MusicLookupResultDto> primaryEntry = result.Results.First( );
+        MusicLookupResultDto primaryResult = primaryEntry.Value;
 
         if (primaryResult == null) {
             _logger?.LogWarning( "No results found in card data for ID: {CardId}", cardId );
@@ -100,7 +102,7 @@ public class OEmbedController( IOpenGraphCardService cardService, ILogger<OEmbed
             ThumbnailUrl = primaryResult.ArtUrl,
             ThumbnailWidth = 300,
             ThumbnailHeight = 300,
-            CacheAge = 518400 // 6 days in seconds (matches card expiration)
+            CacheAge = CardCacheAgeSeconds
         };
 
         return Ok( response );
