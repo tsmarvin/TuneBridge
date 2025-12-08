@@ -83,7 +83,7 @@ DOMAIN=localhost
 ## Step 5: Start BridgeBeats
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This will:
@@ -102,10 +102,10 @@ This will:
 
 ```bash
 # Check if services are running
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Test the health endpoint
 curl http://localhost:10000/health
@@ -141,7 +141,7 @@ If you configured Discord:
 
 1. Add `DISCORD_TOKEN` to your `.env` file
 2. Add the token to `secrets/discord_token.txt`
-3. Restart: `docker-compose restart`
+3. Restart: `docker compose restart`
 
 ## Common Issues
 
@@ -167,10 +167,10 @@ ports:
 
 ```bash
 # Stop services
-docker-compose down
+docker compose down
 
 # Stop and remove volumes (WARNING: deletes all data)
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Production Deployment
