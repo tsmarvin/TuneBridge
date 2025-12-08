@@ -247,4 +247,3 @@ To modify the Caddy image:
 - **Caddy Version**: 2.x (latest stable)
 - **Cloudflare Plugin**: Latest (via xcaddy)
 - **Base Image**: `caddy:2-builder`, `caddy:2`
--
