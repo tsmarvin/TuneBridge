@@ -97,7 +97,7 @@
         <div class="card mb-3">
             <div class="card-body">
                 <p>
-                    <strong>When you choose to connect your Spotify, Apple Music, or Tidal account, the service stores:</strong>
+                    <strong>When you choose to connect your Apple Music account, the service stores:</strong>
                 </p>
                 <ul>
                     <li>
@@ -123,6 +123,8 @@
                         or publish playlist data to your ATProto/Bluesky account (if connected)</li>
                     <li>You can disconnect your accounts at any time, which deletes all stored tokens and synced playlist data</li>
                     <li>We do <strong>NOT</strong> access your listening history, even when connected</li>
+                    <li><strong>Currently available:</strong> Apple Music playlist syncing. Spotify and Tidal user
+                        authentication for playlist syncing is planned for future releases.</li>
                 </ul>
                 <p class="text-muted">
                     <strong>Storage:</strong> OAuth tokens and connected account data are stored encrypted in the local
@@ -389,21 +391,22 @@
                 <li>
                     <strong>Service-level authentication</strong> (OAuth 2.0 client credentials flow for Spotify and
                     Tidal, JWT tokens for Apple Music) - The <em>application</em> authenticates to perform public API
-                    searches on your behalf for music link conversion
+                    searches on your behalf for music link conversion. This is always active and requires no user action.
                 </li>
                 <li>
-                    <strong>User-level authentication (Optional)</strong> - When you <em>choose</em> to connect your
-                    music service account:
+                    <strong>User-level authentication (Optional, currently Apple Music only)</strong> - When you <em>choose</em>
+                    to connect your Apple Music account:
                     <ul class="mt-2">
-                        <li>✅ You authorize BridgeBeats through each service's standard OAuth flow</li>
+                        <li>✅ You authorize BridgeBeats through Apple's standard OAuth flow</li>
                         <li>✅ We request access to view your playlists only (not listening history)</li>
                         <li>✅ Tokens are stored encrypted and used to sync playlists between services</li>
                         <li>✅ You can disconnect your account at any time to revoke access and delete stored data</li>
+                        <li>⏳ Spotify and Tidal user authentication for playlist syncing is planned for future releases</li>
                     </ul>
                 </li>
             </ul>
             <p class="mb-0 mt-2 text-muted">
-                <strong>Note:</strong> Connecting your music service accounts is entirely optional. You can use
+                <strong>Note:</strong> Connecting your Apple Music account is entirely optional. You can use
                 BridgeBeats for music link conversion without ever connecting an account.
             </p>
         </div>
@@ -483,7 +486,7 @@
 
         <h4>7.2 Manage Connected Music Service Accounts</h4>
         <p>
-            If you choose to connect your Spotify, Apple Music, or Tidal account, you have full control:
+            If you choose to connect your Apple Music account, you have full control:
         </p>
         <ul>
             <li>✅ <strong>View connected accounts</strong> - See which music services you've connected</li>
@@ -493,7 +496,8 @@
         </ul>
         <p class="text-muted">
             <strong>Note:</strong> Disconnecting a music service from BridgeBeats does not affect your actual account
-            with that service. Your playlists on Spotify, Apple Music, or Tidal remain unchanged.
+            with that service. Your playlists on Apple Music remain unchanged. Spotify and Tidal user account
+            connections are planned for future releases.
         </p>
 
         <h4>7.3 Manage Your Playlists</h4>
