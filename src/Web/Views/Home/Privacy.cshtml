@@ -93,7 +93,7 @@
             </div>
         </div>
 
-        <h4>2.2 Connected Music Service Accounts (Optional)</h4>
+        <h4>2.2 Connected Music Service Accounts (Optional - In Development)</h4>
         <div class="card mb-3">
             <div class="card-body">
                 <p>
@@ -101,7 +101,7 @@
                 </p>
                 <ul>
                     <li>
-                        <strong>OAuth Access Tokens</strong> - Encrypted tokens that allow BridgeBeats to read your
+                        <strong>OAuth Access Tokens</strong> - Tokens that allow BridgeBeats to read your
                         playlists (read-only access to playlist names, descriptions, and track listings)
                     </li>
                     <li>
@@ -109,7 +109,7 @@
                     </li>
                     <li>
                         <strong>Playlist Metadata</strong> - Names, descriptions, and track references for playlists
-                        you choose to sync
+                        you access through the service
                     </li>
                 </ul>
                 <p class="text-muted mt-3">
@@ -118,17 +118,17 @@
                 <ul class="text-muted">
                     <li>Connecting your account is <strong>optional</strong> - you can use BridgeBeats without connecting
                         any music service</li>
-                    <li>You explicitly authorize BridgeBeats to access your playlists through each service's OAuth flow</li>
-                    <li>Tokens are used to read your playlists and create equivalent playlists on other connected services,
-                        or publish playlist data to your ATProto/Bluesky account (if connected)</li>
-                    <li>You can disconnect your accounts at any time, which deletes all stored tokens and synced playlist data</li>
+                    <li>You explicitly authorize BridgeBeats to access your playlists through Apple's OAuth flow</li>
+                    <li>Tokens are stored in the database and used to access your playlists for syncing or publishing
+                        to your ATProto/Bluesky account (if connected)</li>
                     <li>We do <strong>NOT</strong> access your listening history, even when connected</li>
-                    <li><strong>Currently available:</strong> Apple Music playlist syncing. Spotify and Tidal user
-                        authentication for playlist syncing is planned for future releases.</li>
+                    <li><strong>Currently available:</strong> Apple Music playlist access. Full playlist syncing between
+                        services, account disconnection controls, and Spotify/Tidal user authentication are under active
+                        development.</li>
                 </ul>
                 <p class="text-muted">
-                    <strong>Storage:</strong> OAuth tokens and connected account data are stored encrypted in the local
-                    SQLite database.
+                    <strong>Storage:</strong> OAuth tokens are stored in the local SQLite database. Database-level
+                    encryption is available when configured by server administrators.
                 </p>
             </div>
         </div>
@@ -280,8 +280,7 @@
                 <p>Your playlist data is used to:</p>
                 <ul>
                     <li>Store and organize collections of music cards you create within BridgeBeats</li>
-                    <li>Sync playlists between connected music services (reading from one service and creating equivalent
-                        playlists on others)</li>
+                    <li>Access and display playlists from connected music services (currently Apple Music)</li>
                     <li>Publish playlist data to your ATProto/Bluesky account (if connected and authorized)</li>
                     <li>Contribute anonymized music link metadata to the public ATProto PDS cache (track/album IDs and
                         links, without playlist names or user associations)</li>
@@ -289,6 +288,10 @@
                     <li>Generate shareable playlist URLs and OpenGraph cards</li>
                     <li>Export your data upon request for GDPR compliance</li>
                 </ul>
+                <p class="text-muted">
+                    <strong>Note:</strong> Cross-service playlist syncing (creating equivalent playlists on multiple
+                    platforms) is under active development.
+                </p>
             </div>
         </div>
 
@@ -329,8 +332,8 @@
                     </tr>
                     <tr>
                         <td>Connected account OAuth tokens</td>
-                        <td>Local SQLite database (encrypted)</td>
-                        <td>Until account disconnection or account deletion</td>
+                        <td>Local SQLite database</td>
+                        <td>Until account deletion (disconnect feature in development)</td>
                     </tr>
                     <tr>
                         <td>User-created playlists and synced playlists</td>
@@ -399,9 +402,9 @@
                     <ul class="mt-2">
                         <li>✅ You authorize BridgeBeats through Apple's standard OAuth flow</li>
                         <li>✅ We request access to view your playlists only (not listening history)</li>
-                        <li>✅ Tokens are stored encrypted and used to sync playlists between services</li>
-                        <li>✅ You can disconnect your account at any time to revoke access and delete stored data</li>
-                        <li>⏳ Spotify and Tidal user authentication for playlist syncing is planned for future releases</li>
+                        <li>✅ Tokens are stored in the database and used to access your playlists</li>
+                        <li>⏳ Full disconnect functionality and cross-service playlist syncing are under active development</li>
+                        <li>⏳ Spotify and Tidal user authentication is planned for future releases</li>
                     </ul>
                 </li>
             </ul>
@@ -486,18 +489,17 @@
 
         <h4>7.2 Manage Connected Music Service Accounts</h4>
         <p>
-            If you choose to connect your Apple Music account, you have full control:
+            If you choose to connect your Apple Music account:
         </p>
         <ul>
-            <li>✅ <strong>View connected accounts</strong> - See which music services you've connected</li>
-            <li>✅ <strong>Disconnect accounts</strong> - Revoke access at any time, which immediately deletes all
-                stored OAuth tokens and synced playlist data</li>
-            <li>✅ <strong>Control sync preferences</strong> - Choose which playlists to sync between services</li>
+            <li>✅ <strong>Access playlists</strong> - View and work with your Apple Music playlists within BridgeBeats</li>
+            <li>⏳ <strong>Disconnect accounts</strong> - Account disconnection controls are under active development.
+                Contact support for manual token removal if needed.</li>
+            <li>⏳ <strong>Control sync preferences</strong> - Selective playlist syncing is under active development</li>
         </ul>
         <p class="text-muted">
-            <strong>Note:</strong> Disconnecting a music service from BridgeBeats does not affect your actual account
-            with that service. Your playlists on Apple Music remain unchanged. Spotify and Tidal user account
-            connections are planned for future releases.
+            <strong>Note:</strong> Full account management features including disconnect functionality are being actively
+            developed. Spotify and Tidal user account connections are planned for future releases.
         </p>
 
         <h4>7.3 Manage Your Playlists</h4>
@@ -588,8 +590,8 @@
                     </tr>
                     <tr>
                         <td>Connected account OAuth tokens</td>
-                        <td>Until account disconnection or account deletion</td>
-                        <td>Manual (via disconnection or account deletion)</td>
+                        <td>Until account deletion (disconnect feature in development)</td>
+                        <td>Manual (via account deletion or contacting support)</td>
                     </tr>
                     <tr>
                         <td>Rate limiting counters</td>
