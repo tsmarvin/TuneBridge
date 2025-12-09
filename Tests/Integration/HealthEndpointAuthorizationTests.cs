@@ -1,5 +1,7 @@
 using System.Net;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.Integration;
 
@@ -13,17 +15,24 @@ public class HealthEndpointAuthorizationTests {
 
     [ClassInitialize]
     public static void Setup( TestContext testContext ) {
-        Dictionary<string, string?> configData = new( ) {
-            ["BridgeBeats:SpotifyClientId"] = "test",
-            ["BridgeBeats:SpotifyClientSecret"] = "test",
-            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["BridgeBeats:IdentityConnectionString"] = $"Data Source=Health_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:ATProtoIdentifier"] = "",
-            ["BridgeBeats:ATProtoPassword"] = "",
-            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=Health_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-        };
-        _factory = new CustomWebApplicationFactory( configData );
+        _factory = new WebApplicationFactory<Program>( )
+            .WithWebHostBuilder( builder => {
+                _ = builder.UseEnvironment( "Testing" );
+                _ = builder.ConfigureAppConfiguration( ( context, config ) => {
+                    // Don't clear - just add our config with high priority
+                    Dictionary<string, string?> configData = new( ) {
+                        ["BridgeBeats:SpotifyClientId"] = "test",
+                        ["BridgeBeats:SpotifyClientSecret"] = "test",
+                        ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
+                        ["BridgeBeats:IdentityConnectionString"] = $"Data Source=Health_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+                        ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+                        ["BridgeBeats:ATProtoIdentifier"] = "",
+                        ["BridgeBeats:ATProtoPassword"] = "",
+                        ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=Health_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+                    };
+                    _ = config.AddInMemoryCollection( configData );
+                } );
+            } );
         _client = _factory.CreateClient( );
     }
 
