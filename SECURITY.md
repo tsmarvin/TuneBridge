@@ -55,7 +55,7 @@ BridgeBeats includes several built-in security features:
 
 ### Data Protection
 - API keys are hashed with salt before storage
-- Links with tracking parameters kept private (not stored on ATProto PDS)
+- Input links kept private (not stored on ATProto PDS, only in local cache)
 
 ### HTTP Security
 - HTTPS enforcement via reverse proxy (Caddy)
@@ -65,7 +65,7 @@ BridgeBeats includes several built-in security features:
 
 ### Monitoring & Observability
 - OpenTelemetry integration for security event logging
-- File-based logging with automatic rotation (up to ~50MB)
+- File-based logging with automatic rotation (up to ~50MB total across all retained log files)
 - Health check endpoints for monitoring
 - Failed authentication attempts logged for auditing
 
@@ -90,7 +90,7 @@ Missing or invalid credentials are logged at startup, helping identify configura
 ## Privacy Considerations
 
 - **Minimal Data Storage**: Only stores user accounts, API keys (hashed), and optional link cache
-- **No Tracking**: Links with tracking parameters are kept private and not shared on ATProto PDS
+- **No Tracking**: Input links are kept private and not shared on ATProto PDS
 - **Open Source**: Full transparency - you can audit the code yourself
 
 ## Security Updates
