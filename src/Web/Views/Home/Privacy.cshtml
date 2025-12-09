@@ -93,7 +93,45 @@
             </div>
         </div>
 
-        <h4>2.2 User-Created Playlists</h4>
+        <h4>2.2 Connected Music Service Accounts (Optional)</h4>
+        <div class="card mb-3">
+            <div class="card-body">
+                <p>
+                    <strong>When you choose to connect your Spotify, Apple Music, or Tidal account, the service stores:</strong>
+                </p>
+                <ul>
+                    <li>
+                        <strong>OAuth Access Tokens</strong> - Encrypted tokens that allow BridgeBeats to access your
+                        playlists on your behalf
+                    </li>
+                    <li>
+                        <strong>Token Expiration Timestamps</strong> - When your access tokens expire
+                    </li>
+                    <li>
+                        <strong>Playlist Metadata</strong> - Names, descriptions, and track references for playlists
+                        you choose to sync
+                    </li>
+                </ul>
+                <p class="text-muted mt-3">
+                    <strong>How this works:</strong>
+                </p>
+                <ul class="text-muted">
+                    <li>Connecting your account is <strong>optional</strong> - you can use BridgeBeats without connecting
+                        any music service</li>
+                    <li>You explicitly authorize BridgeBeats to access your playlists through each service's OAuth flow</li>
+                    <li>Tokens are used to sync playlists between services or publish playlist data to your ATProto/Bluesky
+                        account (if connected)</li>
+                    <li>You can disconnect your accounts at any time, which deletes all stored tokens and synced playlist data</li>
+                    <li>We do <strong>NOT</strong> access your listening history, even when connected</li>
+                </ul>
+                <p class="text-muted">
+                    <strong>Storage:</strong> OAuth tokens and connected account data are stored encrypted in the local
+                    SQLite database.
+                </p>
+            </div>
+        </div>
+
+        <h4>2.3 User-Created Playlists</h4>
         <div class="card mb-3">
             <div class="card-body">
                 <p>
@@ -132,13 +170,14 @@
                     <strong>Storage:</strong> Playlist data is stored locally in a SQLite database.
                 </p>
                 <p class="text-muted">
-                    <strong>Important:</strong> These are playlists you create <em>within BridgeBeats</em>. We do
-                    <em>not</em> access your personal playlists from Spotify, Apple Music, or Tidal.
+                    <strong>Important:</strong> BridgeBeats playlists include both playlists you create within the
+                    service and playlists you choose to sync from Spotify, Apple Music, or Tidal when you connect
+                    your accounts. You control which playlists are synced and can disconnect your accounts at any time.
                 </p>
             </div>
         </div>
 
-        <h4>2.3 Music Link Search Data</h4>
+        <h4>2.4 Music Link Search Data</h4>
         <div class="card mb-3">
             <div class="card-body">
                 <p><strong>What is collected and cached:</strong></p>
@@ -166,7 +205,7 @@
             </div>
         </div>
 
-        <h4>2.4 Logging Data</h4>
+        <h4>2.5 Logging Data</h4>
         <div class="card mb-3">
             <div class="card-body">
                 <p><strong>Is Logged:</strong></p>
@@ -199,8 +238,8 @@
         <ul class="list-group">
             <li class="list-group-item">❌ Your listening history from Spotify, Apple Music, or Tidal</li>
             <li class="list-group-item">
-                ❌ Your playlist or library information <strong>from Spotify, Apple Music, or Tidal</strong>
-                (we only store playlists you create within BridgeBeats)
+                ❌ Your library information (saved songs/albums) <strong>from Spotify, Apple Music, or Tidal</strong>
+                without your explicit consent (playlists you choose to sync are stored, see section 2.2)
             </li>
             <li class="list-group-item">❌ Your personal name, phone number, or demographic information</li>
             <li class="list-group-item">
@@ -209,9 +248,6 @@
             </li>
             <li class="list-group-item">❌ Detailed analytics about your music preferences</li>
             <li class="list-group-item">❌ Third-party marketing data</li>
-            <li class="list-group-item">
-                ❌ OAuth tokens or access to your Spotify, Apple Music, or Tidal accounts
-            </li>
         </ul>
     </section>
 
@@ -242,6 +278,9 @@
                 <p>Your playlist data is used to:</p>
                 <ul>
                     <li>Store and organize collections of music cards you create within BridgeBeats</li>
+                    <li>Sync playlists between connected music services (Spotify, Apple Music, Tidal)</li>
+                    <li>Publish playlist data to your ATProto/Bluesky account (if connected and authorized)</li>
+                    <li>Populate the public cache on the ATProto PDS in a non-attributable/non-identifiable way</li>
                     <li>Associate playlists with your account (if logged in)</li>
                     <li>Generate shareable playlist URLs and OpenGraph cards</li>
                     <li>Export your data upon request for GDPR compliance</li>
@@ -285,7 +324,12 @@
                         <td>Until account deletion</td>
                     </tr>
                     <tr>
-                        <td>User-created playlists</td>
+                        <td>Connected account OAuth tokens</td>
+                        <td>Local SQLite database (encrypted)</td>
+                        <td>Until account disconnection or account deletion</td>
+                    </tr>
+                    <tr>
+                        <td>User-created playlists and synced playlists</td>
                         <td>Local SQLite database</td>
                         <td>2 weeks (anonymous) or until deletion (logged-in users)</td>
                     </tr>
@@ -337,17 +381,29 @@
 
         <h4>6.1 Music Service APIs and OAuth Integration</h4>
         <div class="alert alert-info mb-3" role="alert">
-            <strong>Important OAuth Clarification:</strong> BridgeBeats uses <strong>service-level authentication</strong>
-            (OAuth 2.0 client credentials flow for Spotify and Tidal, JWT tokens for Apple Music) to access the
-            music provider APIs. This means:
+            <strong>Important OAuth Clarification:</strong> BridgeBeats uses two types of authentication with music
+            provider APIs:
             <ul class="mb-0 mt-2">
-                <li>✅ The <em>application</em> authenticates to music services using developer credentials</li>
-                <li>✅ We perform public API searches on your behalf</li>
-                <li>❌ We do <strong>NOT</strong> request OAuth access tokens to your personal accounts</li>
-                <li>❌ We do <strong>NOT</strong> access your Spotify/Apple Music/Tidal libraries, playlists, or
-                    listening history</li>
-                <li>❌ You are <strong>NOT</strong> asked to "connect" or "authorize" your streaming accounts</li>
+                <li>
+                    <strong>Service-level authentication</strong> (OAuth 2.0 client credentials flow for Spotify and
+                    Tidal, JWT tokens for Apple Music) - The <em>application</em> authenticates to perform public API
+                    searches on your behalf for music link conversion
+                </li>
+                <li>
+                    <strong>User-level authentication (Optional)</strong> - When you <em>choose</em> to connect your
+                    music service account:
+                    <ul class="mt-2">
+                        <li>✅ You authorize BridgeBeats through each service's standard OAuth flow</li>
+                        <li>✅ We request access to view your playlists only (not listening history)</li>
+                        <li>✅ Tokens are stored encrypted and used to sync playlists between services</li>
+                        <li>✅ You can disconnect your account at any time to revoke access and delete stored data</li>
+                    </ul>
+                </li>
             </ul>
+            <p class="mb-0 mt-2 text-muted">
+                <strong>Note:</strong> Connecting your music service accounts is entirely optional. You can use
+                BridgeBeats for music link conversion without ever connecting an account.
+            </p>
         </div>
         <p>
             BridgeBeats integrates with the official APIs of:
@@ -423,7 +479,22 @@
             cannot be exported.
         </p>
 
-        <h4>7.2 Manage Your Playlists</h4>
+        <h4>7.2 Manage Connected Music Service Accounts</h4>
+        <p>
+            If you choose to connect your Spotify, Apple Music, or Tidal account, you have full control:
+        </p>
+        <ul>
+            <li>✅ <strong>View connected accounts</strong> - See which music services you've connected</li>
+            <li>✅ <strong>Disconnect accounts</strong> - Revoke access at any time, which immediately deletes all
+                stored OAuth tokens and synced playlist data</li>
+            <li>✅ <strong>Control sync preferences</strong> - Choose which playlists to sync between services</li>
+        </ul>
+        <p class="text-muted">
+            <strong>Note:</strong> Disconnecting a music service from BridgeBeats does not affect your actual account
+            with that service. Your playlists on Spotify, Apple Music, or Tidal remain unchanged.
+        </p>
+
+        <h4>7.3 Manage Your Playlists</h4>
         <p>
             You have full control over playlists you create within BridgeBeats:
         </p>
@@ -442,7 +513,7 @@
             Tidal accounts.
         </p>
 
-        <h4>7.3 Delete Your Account</h4>
+        <h4>7.4 Delete Your Account</h4>
         <p>
             You can delete your account at any time. A delete button is available in your account settings on the user
             page.
@@ -452,7 +523,8 @@
             <li>✅ Delete your email address and hashed password</li>
             <li>✅ Delete your API key hash</li>
             <li>✅ Delete your rate limiting data</li>
-            <li>✅ Delete all playlists associated with your account</li>
+            <li>✅ Delete all connected music service OAuth tokens</li>
+            <li>✅ Delete all playlists associated with your account (both created and synced)</li>
             <li>⚠️ Cache entries may persist for up to 7 days before automatic deletion</li>
         </ul>
     </section>
@@ -509,12 +581,17 @@
                         <td>Manual (via account deletion or regeneration)</td>
                     </tr>
                     <tr>
+                        <td>Connected account OAuth tokens</td>
+                        <td>Until account disconnection or account deletion</td>
+                        <td>Manual (via disconnection or account deletion)</td>
+                    </tr>
+                    <tr>
                         <td>Rate limiting counters</td>
                         <td>1 hour (reset hourly)</td>
                         <td>Automatic</td>
                     </tr>
                     <tr>
-                        <td>User-created playlists (logged-in)</td>
+                        <td>User-created and synced playlists (logged-in)</td>
                         <td>Until manual deletion</td>
                         <td>Manual (via playlist deletion or account deletion)</td>
                     </tr>
