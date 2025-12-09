@@ -126,7 +126,8 @@
                     <li>We do <strong>NOT</strong> access your listening history, even when connected</li>
                 </ul>
                 <p class="text-muted">
-                    <strong>Storage:</strong> OAuth tokens are stored encrypted in the local SQLite database.
+                    <strong>Storage:</strong> OAuth tokens are stored in the local SQLite database, which is secured
+                    via filesystem permissions and can optionally be encrypted at rest.
                 </p>
             </div>
         </div>
@@ -328,7 +329,7 @@
                     </tr>
                     <tr>
                         <td>Connected account OAuth tokens</td>
-                        <td>Local SQLite database (encrypted)</td>
+                        <td>Local SQLite database (filesystem-secured)</td>
                         <td>Until account disconnection or account deletion</td>
                     </tr>
                     <tr>
@@ -398,7 +399,7 @@
                     <ul class="mt-2">
                         <li>✅ You authorize BridgeBeats through each service's standard OAuth flow</li>
                         <li>✅ We request access to view and manage your playlists (not listening history)</li>
-                        <li>✅ Tokens are stored encrypted in the database and used to sync playlists between services</li>
+                        <li>✅ Tokens are stored in the database (secured via filesystem permissions) and used to sync playlists between services</li>
                         <li>✅ You can disconnect your account at any time to revoke access and delete stored data</li>
                     </ul>
                 </li>
