@@ -56,8 +56,6 @@ BridgeBeats includes several built-in security features:
 ### Data Protection
 - API keys are hashed with salt before storage
 - Links with tracking parameters kept private (not stored on ATProto PDS)
-- Secure credential handling via environment variables
-- Docker secrets support for production deployments
 
 ### HTTP Security
 - HTTPS enforcement via reverse proxy (Caddy)
@@ -91,7 +89,6 @@ Missing or invalid credentials are logged at startup, helping identify configura
 
 ## Privacy Considerations
 
-- **No Telemetry**: BridgeBeats does not collect usage telemetry or analytics
 - **Minimal Data Storage**: Only stores user accounts, API keys (hashed), and optional link cache
 - **No Tracking**: Links with tracking parameters are kept private and not shared on ATProto PDS
 - **Open Source**: Full transparency - you can audit the code yourself
@@ -100,9 +97,8 @@ Missing or invalid credentials are logged at startup, helping identify configura
 
 Security updates are distributed through:
 
-1. **Docker Images** - Published to GitHub Container Registry (ghcr.io)
-2. **GitHub Releases** - Tagged releases with compiled binaries
-3. **Source Code** - Always available on the main branch
+1. **Docker Images** - Published to Docker Hub
+2. **Source Code** - Always available on the main branch
 
 Subscribe to repository notifications to receive security advisories and release announcements.
 
@@ -110,7 +106,7 @@ Subscribe to repository notifications to receive security advisories and release
 
 We follow responsible disclosure practices:
 
-- Security issues are fixed before public disclosure
+- Security issues are privately reported and fixed before public disclosure
 - Security advisories are published after fixes are available
 - CVE IDs are requested for significant vulnerabilities
 - Contributors are credited (unless they prefer anonymity)
