@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
@@ -12,6 +13,8 @@ namespace BridgeBeats.Tests;
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
     private readonly Dictionary<string, string?>? _configOverrides;
+    private SqliteConnection? _identityConnection;
+    private SqliteConnection? _linkCacheConnection;
 
     public CustomWebApplicationFactory( ) { }
 
@@ -25,20 +28,33 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
             ["BridgeBeats:SpotifyClientId"] = "test",
             ["BridgeBeats:SpotifyClientSecret"] = "test",
             ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
+            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
             ["BridgeBeats:ATProtoIdentifier"] = "",
             ["BridgeBeats:ATProtoPassword"] = "",
             ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
+
+        // Keep connections open for in-memory databases to prevent them from being destroyed
+        if (configData["BridgeBeats:IdentityConnectionString"]?.Contains( "Mode=Memory", StringComparison.OrdinalIgnoreCase ) == true) {
+            _identityConnection = new SqliteConnection( configData["BridgeBeats:IdentityConnectionString"] );
+            _identityConnection.Open( );
+        }
+        if (configData["BridgeBeats:LinkCacheConnectionString"]?.Contains( "Mode=Memory", StringComparison.OrdinalIgnoreCase ) == true) {
+            _linkCacheConnection = new SqliteConnection( configData["BridgeBeats:LinkCacheConnectionString"] );
+            _linkCacheConnection.Open( );
+        }
+
         _ = builder.UseEnvironment( "Testing" );
 
-        _ = builder.ConfigureAppConfiguration( ( context, config ) => {
-            // Clear all existing configuration sources to prevent appsettings.json from loading
-            config.Sources.Clear( );
-            // Add our test configuration as the only source
-            _ = config.AddInMemoryCollection( configData );
-        } );
+        _ = builder.UseSetting( "BridgeBeats:SpotifyClientId", configData["BridgeBeats:SpotifyClientId"] );
+        _ = builder.UseSetting( "BridgeBeats:SpotifyClientSecret", configData["BridgeBeats:SpotifyClientSecret"] );
+        _ = builder.UseSetting( "BridgeBeats:DiscordToken", configData["BridgeBeats:DiscordToken"] );
+        _ = builder.UseSetting( "BridgeBeats:IdentityConnectionString", configData["BridgeBeats:IdentityConnectionString"] );
+        _ = builder.UseSetting( "BridgeBeats:ApiKeySalt", configData["BridgeBeats:ApiKeySalt"] );
+        _ = builder.UseSetting( "BridgeBeats:ATProtoIdentifier", configData["BridgeBeats:ATProtoIdentifier"] );
+        _ = builder.UseSetting( "BridgeBeats:ATProtoPassword", configData["BridgeBeats:ATProtoPassword"] );
+        _ = builder.UseSetting( "BridgeBeats:LinkCacheConnectionString", configData["BridgeBeats:LinkCacheConnectionString"] );
 
         // Override HTTP client resilience settings for faster test execution
         _ = builder.ConfigureServices( services => {
@@ -54,5 +70,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 5 ); // Shorter per-attempt timeout
             } );
         } );
+    }
+
+    protected override void Dispose( bool disposing ) {
+        if (disposing) {
+            _identityConnection?.Close( );
+            _identityConnection?.Dispose( );
+            _linkCacheConnection?.Close( );
+            _linkCacheConnection?.Dispose( );
+        }
+        base.Dispose( disposing );
     }
 }

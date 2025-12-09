@@ -21,7 +21,6 @@ namespace BridgeBeats.Tests.Integration;
 public class DashboardAuthorizationTests : IDisposable {
     private WebApplicationFactory<Program>? _factory;
     private HttpClient? _client;
-    private ApplicationDbContext? _dbContext;
     private const string TestUserEmail = "dashboardtest@example.com";
     private const string TestUserPassword = "Test@Password123!";
 
@@ -41,9 +40,7 @@ public class DashboardAuthorizationTests : IDisposable {
         _factory = new DashboardTestFactory( configData );
         _client = _factory.CreateClient( );
 
-        // Get and store DbContext for cleanup
-        using IServiceScope scope = _factory.Services.CreateScope( );
-        _dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
+        // Note: We don't need to store DbContext for cleanup as the factory will handle database disposal
     }
 
     [TestCleanup]
@@ -53,13 +50,6 @@ public class DashboardAuthorizationTests : IDisposable {
 
     public void Dispose( ) {
         _client?.Dispose( );
-
-        // Clean up the in-memory database
-        if (_dbContext != null) {
-            _ = _dbContext.Database.EnsureDeleted( );
-            _dbContext.Dispose( );
-        }
-
         _factory?.Dispose( );
         GC.SuppressFinalize( this );
     }
@@ -86,10 +76,10 @@ public class DashboardAuthorizationTests : IDisposable {
     public async Task DashboardAuthorize_UserWithoutRole_Returns403( ) {
         // Arrange
         await CreateTestUserAsync( hasRole: false );
-        _client!.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue( "TestScheme" );
+        // Don't set Authorization header - let TestScheme handle authentication automatically
 
         // Act
-        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize" );
+        HttpResponseMessage response = await _client!.GetAsync( "/api/dashboard/authorize" );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.Forbidden, response.StatusCode );
@@ -102,7 +92,7 @@ public class DashboardAuthorizationTests : IDisposable {
     public async Task DashboardAuthorize_UserWithRole_Returns200( ) {
         // Arrange
         await CreateTestUserAsync( hasRole: true );
-        _client!.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue( "TestScheme" );
+        // Don't set Authorization header - let TestScheme handle authentication automatically
 
         // Act
         HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize" );
@@ -193,21 +183,13 @@ public class DashboardAuthorizationTests : IDisposable {
 
             // Add additional test-specific services
             _ = builder.ConfigureServices( services => {
-                // Replace the database with an in-memory database for testing
-                ServiceDescriptor? descriptor = services.SingleOrDefault(
-                    d => d.ServiceType == typeof( DbContextOptions<ApplicationDbContext> )
-                );
-
-                if (descriptor != null) {
-                    _ = services.Remove( descriptor );
-                }
-
-                _ = services.AddDbContext<ApplicationDbContext>( options => {
-                    _ = options.UseInMemoryDatabase( $"InMemoryDbForTesting_{Guid.NewGuid():N}" );
+                // Replace the MultiScheme ForwardDefaultSelector to use our TestScheme
+                _ = services.PostConfigure<Microsoft.AspNetCore.Authentication.PolicySchemeOptions>( "MultiScheme", options => {
+                    options.ForwardDefaultSelector = context => "TestScheme";
                 } );
 
-                // Add test authentication scheme with default scheme set
-                _ = services.AddAuthentication( options => { options.DefaultScheme = "TestScheme"; } )
+                // Add test authentication scheme
+                _ = services.AddAuthentication( )
                     .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>( "TestScheme", options => { } );
             } );
         }

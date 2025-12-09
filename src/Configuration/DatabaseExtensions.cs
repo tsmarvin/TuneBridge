@@ -20,8 +20,14 @@ public static class DatabaseExtensions {
         ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
         RoleManager<IdentityRole> roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>( );
 
-        // Apply pending migrations and create the database if it doesn't exist
-        await context.Database.MigrateAsync( );
+        // For in-memory databases (testing), use EnsureCreated. For production, use Migrate.
+        string? connectionString = context.Database.GetConnectionString( );
+        if (connectionString?.Contains( "Mode=Memory", StringComparison.OrdinalIgnoreCase ) == true) {
+            _ = await context.Database.EnsureCreatedAsync( );
+        } else {
+            // Apply pending migrations and create the database if it doesn't exist
+            await context.Database.MigrateAsync( );
+        }
 
         // Seed the AspireDashboardAccess role if it doesn't exist
         await SeedRolesAsync( roleManager );
