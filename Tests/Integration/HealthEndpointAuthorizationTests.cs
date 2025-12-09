@@ -1,5 +1,4 @@
 using System.Net;
-using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace BridgeBeats.Tests.Integration;
@@ -14,7 +13,17 @@ public class HealthEndpointAuthorizationTests {
 
     [ClassInitialize]
     public static void Setup( TestContext testContext ) {
-        _factory = new WebApplicationFactory<Program>( );
+        Dictionary<string, string?> configData = new( ) {
+            ["BridgeBeats:SpotifyClientId"] = "test",
+            ["BridgeBeats:SpotifyClientSecret"] = "test",
+            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
+            ["BridgeBeats:IdentityConnectionString"] = $"Data Source=Health_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:ATProtoIdentifier"] = "",
+            ["BridgeBeats:ATProtoPassword"] = "",
+            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=Health_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+        };
+        _factory = new CustomWebApplicationFactory( configData );
         _client = _factory.CreateClient( );
     }
 
@@ -23,37 +32,36 @@ public class HealthEndpointAuthorizationTests {
         _factory?.Dispose( );
     }
 
-    // TODO: Fix authorization connection in tests here and then reenable these tests.
-    ///// <summary>
-    ///// Tests that the health endpoint is accessible (the test environment appears as localhost).
-    ///// In production, this would be restricted to internal Docker network IPs.
-    ///// </summary>
-    //[TestMethod]
-    //public async Task HealthEndpoint_FromTestClient_ReturnsOk( ) {
-    //    // Arrange
-    //    // The test client appears as localhost/internal to the middleware
-    //
-    //    // Act
-    //    HttpResponseMessage response = await _client!.GetAsync( "/health" );
-    //
-    //    // Assert
-    //    _ = response.StatusCode.Should( ).Be( HttpStatusCode.OK );
-    //}
-    //
-    ///// <summary>
-    ///// Tests that the health endpoint returns JSON with expected structure.
-    ///// </summary>
-    //[TestMethod]
-    //public async Task HealthEndpoint_ReturnsValidJson( ) {
-    //    // Arrange & Act
-    //    HttpResponseMessage response = await _client!.GetAsync( "/health" );
-    //    string content = await response.Content.ReadAsStringAsync( );
-    //
-    //    // Assert
-    //    _ = response.StatusCode.Should( ).Be( HttpStatusCode.OK );
-    //    _ = content.Should( ).Contain( "healthy" );
-    //    _ = content.Should( ).Contain( "timestamp" );
-    //}
+    /// <summary>
+    /// Tests that the health endpoint is accessible (the test environment appears as localhost).
+    /// In production, this would be restricted to internal Docker network IPs.
+    /// </summary>
+    [TestMethod]
+    public async Task HealthEndpoint_FromTestClient_ReturnsOk( ) {
+        // Arrange
+        // The test client appears as localhost/internal to the middleware
+
+        // Act
+        HttpResponseMessage response = await _client!.GetAsync( "/health" );
+
+        // Assert
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
+    }
+
+    /// <summary>
+    /// Tests that the health endpoint returns JSON with expected structure.
+    /// </summary>
+    [TestMethod]
+    public async Task HealthEndpoint_ReturnsValidJson( ) {
+        // Arrange & Act
+        HttpResponseMessage response = await _client!.GetAsync( "/health" );
+        string content = await response.Content.ReadAsStringAsync( );
+
+        // Assert
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
+        Assert.IsTrue( content.Contains( "healthy", StringComparison.OrdinalIgnoreCase ) );
+        Assert.IsTrue( content.Contains( "timestamp", StringComparison.OrdinalIgnoreCase ) );
+    }
 
     /// <summary>
     /// Tests that non-health endpoints are not affected by the health endpoint middleware.
@@ -64,6 +72,6 @@ public class HealthEndpointAuthorizationTests {
         HttpResponseMessage response = await _client!.GetAsync( "/" );
 
         // Assert
-        _ = response.StatusCode.Should( ).Be( HttpStatusCode.OK );
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
     }
 }

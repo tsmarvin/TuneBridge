@@ -1,7 +1,6 @@
 using BridgeBeats.Domain.Contracts.DTOs;
 using BridgeBeats.Domain.Implementations.Utilities;
 using BridgeBeats.Domain.Types.Enums;
-using FluentAssertions;
 
 namespace BridgeBeats.Tests.Unit {
 
@@ -24,8 +23,8 @@ namespace BridgeBeats.Tests.Unit {
             string? rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
-            _ = rkey.Should( ).NotBeNull( );
-            _ = rkey.Should( ).Be( "track:USRC12345678" );
+            Assert.IsNotNull( rkey );
+            Assert.AreEqual( "track:USRC12345678", rkey );
         }
 
         [TestMethod]
@@ -44,8 +43,8 @@ namespace BridgeBeats.Tests.Unit {
             string? rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
-            _ = rkey.Should( ).NotBeNull( );
-            _ = rkey.Should( ).Be( "album:123456789012" );
+            Assert.IsNotNull( rkey );
+            Assert.AreEqual( "album:123456789012", rkey );
         }
 
         [TestMethod]
@@ -64,8 +63,8 @@ namespace BridgeBeats.Tests.Unit {
             string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
-            _ = rkey.Should( ).NotBeNull( );
-            _ = rkey.Should( ).StartWith( "metadata:" );
+            Assert.IsNotNull( rkey );
+            Assert.IsTrue( rkey.StartsWith( "metadata:", StringComparison.Ordinal ) );
         }
 
         [TestMethod]
@@ -84,8 +83,8 @@ namespace BridgeBeats.Tests.Unit {
             string? rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
-            _ = rkey.Should( ).NotBeNull( );
-            _ = rkey.Should( ).Be( "track:US-RC1-23-45678" );
+            Assert.IsNotNull( rkey );
+            Assert.AreEqual( "track:US-RC1-23-45678", rkey );
         }
 
         [TestMethod]
@@ -94,7 +93,7 @@ namespace BridgeBeats.Tests.Unit {
             string rkey = RecordKeyGenerator.GenerateRkey( "USRC12345678", false );
 
             // Assert
-            _ = rkey.Should( ).Be( "track:USRC12345678" );
+            Assert.AreEqual( "track:USRC12345678", rkey );
         }
 
         [TestMethod]
@@ -103,16 +102,13 @@ namespace BridgeBeats.Tests.Unit {
             string rkey = RecordKeyGenerator.GenerateRkey( "123456789012", true );
 
             // Assert
-            _ = rkey.Should( ).Be( "album:123456789012" );
+            Assert.AreEqual( "album:123456789012", rkey );
         }
 
         [TestMethod]
         public void GenerateRkey_DirectMethod_WithEmptyId_ThrowsException( ) {
-            // Act
-            Action act = ( ) => RecordKeyGenerator.GenerateRkey( "", false );
-
-            // Assert
-            _ = act.Should( ).Throw<ArgumentException>( );
+            // Act & Assert
+            _ = Assert.ThrowsExactly<ArgumentException>( ( ) => RecordKeyGenerator.GenerateRkey( "", false ) );
         }
 
         [TestMethod]
@@ -125,7 +121,7 @@ namespace BridgeBeats.Tests.Unit {
             string id2 = RecordKeyGenerator.GenerateCardId( rkey );
 
             // Assert
-            _ = id1.Should( ).Be( id2, "Card IDs should be deterministic" );
+            Assert.AreEqual( id1, id2, "Card IDs should be deterministic" );
         }
 
         [TestMethod]
@@ -135,7 +131,7 @@ namespace BridgeBeats.Tests.Unit {
             string id2 = RecordKeyGenerator.GenerateCardId( "track:USRC87654321" );
 
             // Assert
-            _ = id1.Should( ).NotBe( id2, "Different rkeys should generate different card IDs" );
+            Assert.AreNotEqual( id1, id2, "Different rkeys should generate different card IDs" );
         }
 
         [TestMethod]
@@ -147,27 +143,21 @@ namespace BridgeBeats.Tests.Unit {
             string cardId = RecordKeyGenerator.GenerateCardId( rkey );
 
             // Assert
-            Assert.IsLessThanOrEqualTo( 32, cardId.Length, "Card ID should not exceed 32 characters" );
-            _ = cardId.All( c => char.IsLetterOrDigit( c ) || c == '-' ).Should( ).BeTrue( "Card ID should be URL-safe" );
-            _ = cardId.All( c => !char.IsUpper( c ) ).Should( ).BeTrue( "Card ID should be lowercase" );
+            Assert.IsLessThanOrEqualTo( cardId.Length, 32, "Card ID should not exceed 32 characters" );
+            Assert.IsTrue( cardId.All( c => char.IsLetterOrDigit( c ) || c == '-' ), "Card ID should be URL-safe" );
+            Assert.IsTrue( cardId.All( c => !char.IsUpper( c ) ), "Card ID should be lowercase" );
         }
 
         [TestMethod]
         public void GenerateCardId_WithEmptyRkey_ThrowsException( ) {
-            // Act
-            Action act = ( ) => RecordKeyGenerator.GenerateCardId( "" );
-
-            // Assert
-            _ = act.Should( ).Throw<ArgumentException>( );
+            // Act & Assert
+            _ = Assert.ThrowsExactly<ArgumentException>( ( ) => RecordKeyGenerator.GenerateCardId( "" ) );
         }
 
         [TestMethod]
         public void GenerateCardId_WithInvalidMaxLength_ThrowsException( ) {
-            // Act
-            Action act = ( ) => RecordKeyGenerator.GenerateCardId( "track:test", -1 );
-
-            // Assert
-            _ = act.Should( ).Throw<ArgumentException>( );
+            // Act & Assert
+            _ = Assert.ThrowsExactly<ArgumentException>( ( ) => RecordKeyGenerator.GenerateCardId( "track:test", -1 ) );
         }
 
         [TestMethod]
@@ -196,7 +186,7 @@ namespace BridgeBeats.Tests.Unit {
             string rkey2 = RecordKeyGenerator.GenerateRkey( result2 );
 
             // Assert
-            _ = rkey1.Should( ).Be( rkey2, "Same metadata should generate same rkey" );
+            Assert.AreEqual( rkey1, rkey2, "Same metadata should generate same rkey" );
         }
 
         [TestMethod]
@@ -211,12 +201,9 @@ namespace BridgeBeats.Tests.Unit {
                 URL = "https://open.spotify.com/track/test"
             } );
 
-            // Act
-            Action act = ( ) => RecordKeyGenerator.GenerateRkey( result );
-
-            // Assert
-            _ = act.Should( ).Throw<ArgumentException>( )
-                .WithMessage( "*both Title and Artist are empty*" );
+            // Act & Assert
+            ArgumentException ex = Assert.ThrowsExactly<ArgumentException>( ( ) => RecordKeyGenerator.GenerateRkey( result ) );
+            Assert.IsTrue( ex.Message.Contains( "both Title and Artist are empty", StringComparison.OrdinalIgnoreCase ) );
         }
 
         [TestMethod]
@@ -245,7 +232,7 @@ namespace BridgeBeats.Tests.Unit {
             string rkey2 = RecordKeyGenerator.GenerateRkey( result2 );
 
             // Assert
-            _ = rkey1.Should( ).Be( rkey2, "Metadata normalization should make case and whitespace irrelevant" );
+            Assert.AreEqual( rkey1, rkey2, "Metadata normalization should make case and whitespace irrelevant" );
         }
 
         [TestMethod]
@@ -259,7 +246,7 @@ namespace BridgeBeats.Tests.Unit {
             // Assert
             // Base32 output should be padded to multiple of 8
             // Since we're using SHA256 (32 bytes), base32 encoding produces (32*8/5) = 51.2 chars, rounded up with padding
-            _ = cardId.Should( ).NotBeNullOrEmpty( );
+            Assert.IsFalse( string.IsNullOrEmpty( cardId ) );
         }
     }
 }
