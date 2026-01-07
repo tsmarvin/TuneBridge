@@ -86,7 +86,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: digests-${{ steps.platform.outputs.slug }}
           path: /tmp/digests/*
@@ -140,5 +140,4 @@ jobs:
             docker buildx imagetools inspect "$TAG"
           else
             echo "No tags generated, skipping inspection"
-
           fi
