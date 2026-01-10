@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BridgeBeats.Configuration;
 using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.Models.AppleMusic;
 using BridgeBeats.Domain.Implementations.Auth;
 using BridgeBeats.Domain.Implementations.LinkParsers;
 using BridgeBeats.Domain.Interfaces;
@@ -136,24 +137,12 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
             List<(string id, string artistName)> results = [];
             try {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                JsonElement root = jsonDoc.RootElement;
-                if (root.TryGetProperty( "results", out JsonElement resultProps ) &&
-                    resultProps.TryGetProperty( "artists", out JsonElement artistsProps ) &&
-                    artistsProps.TryGetProperty( "data", out JsonElement dataProps )
-                ) {
-                    if (dataProps.GetArrayLength( ) == 0) { return null; }
-
-                    foreach (JsonElement artist in dataProps.EnumerateArray( )) {
-                        results.Add(
-                            (artist
-                                .GetProperty( "id" )
-                                .GetString( )!,
-                            artist
-                                .GetProperty( "attributes" )
-                                .GetProperty( "name" )
-                                .GetString( )!)
-                        );
+                AppleMusicSearchResponse? response = JsonSerializer.Deserialize<AppleMusicSearchResponse>( body, SerializerOptions );
+                if (response?.Results?.Artists?.Data != null && response.Results.Artists.Data.Count > 0) {
+                    foreach (AppleMusicArtist artist in response.Results.Artists.Data) {
+                        if (artist.Attributes != null) {
+                            results.Add( (artist.Id, artist.Attributes.Name) );
+                        }
                     }
                     return results;
                 }
@@ -175,27 +164,27 @@ namespace BridgeBeats.Domain.Implementations.Services {
             if (body == null) { return null; }
 
             try {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                JsonElement root = jsonDoc.RootElement;
-                if (root.TryGetProperty( "data", out JsonElement dataProps )) {
-                    if (dataProps.GetArrayLength( ) == 0) { return null; }
-
-                    foreach (JsonElement data in dataProps.EnumerateArray( )) {
-                        JsonElement attributes = data.GetProperty("attributes");
-                        string name = (attributes.GetProperty("name").GetString() ?? string.Empty).Trim();
-
-                        if (
-                            isAlbum
-                            ? SanitizeAlbumTitle( name ).Equals( title, StringComparison.InvariantCultureIgnoreCase )
-                            : SanitizeSongTitle( name ).Equals( title, StringComparison.InvariantCultureIgnoreCase )
-                        ) {
-                            return ParseAppleMusicResponse(
-                                data,
-                                lookupKey,
-                                storefront,
-                                isAlbum,
-                                null
-                            );
+                AppleMusicDataResponse<object>? response = JsonSerializer.Deserialize<AppleMusicDataResponse<object>>( body, SerializerOptions );
+                if (response?.Data != null && response.Data.Count > 0) {
+                    foreach (object item in response.Data) {
+                        // Serialize back to JSON and then deserialize to the correct type
+                        string itemJson = JsonSerializer.Serialize( item, SerializerOptions );
+                        if (isAlbum) {
+                            AppleMusicAlbum? album = JsonSerializer.Deserialize<AppleMusicAlbum>( itemJson, SerializerOptions );
+                            if (album?.Attributes != null) {
+                                string name = album.Attributes.Name.Trim();
+                                if (SanitizeAlbumTitle( name ).Equals( title, StringComparison.InvariantCultureIgnoreCase )) {
+                                    return ParseAppleMusicAlbumResponse( album, lookupKey, storefront, null );
+                                }
+                            }
+                        } else {
+                            AppleMusicSong? song = JsonSerializer.Deserialize<AppleMusicSong>( itemJson, SerializerOptions );
+                            if (song?.Attributes != null) {
+                                string name = song.Attributes.Name.Trim();
+                                if (SanitizeSongTitle( name ).Equals( title, StringComparison.InvariantCultureIgnoreCase )) {
+                                    return ParseAppleMusicSongResponse( song, lookupKey, storefront, null );
+                                }
+                            }
                         }
                     }
                 }
@@ -215,8 +204,20 @@ namespace BridgeBeats.Domain.Implementations.Services {
         ) {
             if (body == null) { return null; }
             try {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                return ParseAppleMusicResponse( jsonDoc.RootElement, lookupKey, storeFront, isAlbum, isPrimary );
+                AppleMusicDataResponse<object>? response = JsonSerializer.Deserialize<AppleMusicDataResponse<object>>( body, SerializerOptions );
+                if (response?.Data == null || response.Data.Count == 0) {
+                    return null;
+                }
+
+                // Serialize the first item back to JSON and then deserialize to the correct type
+                string itemJson = JsonSerializer.Serialize( response.Data[0], SerializerOptions );
+                if (isAlbum == true) {
+                    AppleMusicAlbum? album = JsonSerializer.Deserialize<AppleMusicAlbum>( itemJson, SerializerOptions );
+                    return album != null ? ParseAppleMusicAlbumResponse( album, lookupKey, storeFront, isPrimary ) : null;
+                } else {
+                    AppleMusicSong? song = JsonSerializer.Deserialize<AppleMusicSong>( itemJson, SerializerOptions );
+                    return song != null ? ParseAppleMusicSongResponse( song, lookupKey, storeFront, isPrimary ) : null;
+                }
             } catch (Exception ex) {
                 Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from apple." );
                 Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
@@ -224,57 +225,68 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return null;
         }
 
-        private MusicLookupResult? ParseAppleMusicResponse(
-            JsonElement root,
+        private MusicLookupResult? ParseAppleMusicSongResponse(
+            AppleMusicSong song,
             LookupRequestType lookupKey,
             string storeFront,
-            bool? isAlbum,
             bool? isPrimary
         ) {
-            MusicLookupResult result = new() {
-                MarketRegion = storeFront,
-                IsAlbum = isAlbum,
-                IsPrimary = isPrimary ?? false
-            };
             try {
-                JsonElement attributes;
-                if (root.TryGetProperty( "data", out JsonElement dataProps )) {
-                    if (dataProps.GetArrayLength( ) == 0) {
-                        return null;
-                    }
-                    attributes = dataProps[0].GetProperty( "attributes" );
-                } else if (root.TryGetProperty( "attributes", out JsonElement attrProps )) {
-                    attributes = attrProps;
-                } else {
-                    return null;
-                }
+                if (song.Attributes == null) { return null; }
 
-                result.Artist = attributes.GetProperty( "artistName" ).GetString( ) ?? string.Empty;
-                result.Title = attributes.GetProperty( "name" ).GetString( ) ?? string.Empty;
-                result.ExternalId = GetExternalIdFromJson( attributes, isAlbum ?? false );
-                result.URL = attributes.GetProperty( "url" ).GetString( ) ?? string.Empty;
+                MusicLookupResult result = new() {
+                    MarketRegion = storeFront,
+                    IsAlbum = false,
+                    IsPrimary = isPrimary ?? false,
+                    Artist = song.Attributes.ArtistName,
+                    Title = song.Attributes.Name,
+                    ExternalId = song.Attributes.Isrc ?? string.Empty,
+                    URL = song.Attributes.Url
+                };
 
-                if (attributes.TryGetProperty( "artwork", out JsonElement artwork )
-                    && artwork.TryGetProperty( "url", out JsonElement urlProps )
-                ) {
-                    string artUrl = urlProps.GetString() ?? string.Empty;
-                    if (string.IsNullOrWhiteSpace( artUrl ) == false) {
-                        result.ArtUrl = artUrl
-                                        .Replace( "{w}", artwork
-                                                            .GetProperty( "width" )
-                                                            .GetInt32( )
-                                                            .ToString( )
-                                        ).Replace( "{h}", artwork
-                                                            .GetProperty( "height" )
-                                                            .GetInt32( ).ToString( )
-                                        );
-                    }
+                if (song.Attributes.Artwork != null && !string.IsNullOrWhiteSpace( song.Attributes.Artwork.Url )) {
+                    result.ArtUrl = song.Attributes.Artwork.Url
+                        .Replace( "{w}", song.Attributes.Artwork.Width.ToString( ) )
+                        .Replace( "{h}", song.Attributes.Artwork.Height.ToString( ) );
                 }
 
                 return result;
             } catch (Exception ex) {
                 Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from apple." );
-                Logger.LogTrace( JsonSerializer.Serialize( root, SerializerOptions ) );
+                Logger.LogTrace( JsonSerializer.Serialize( song, SerializerOptions ) );
+                return null;
+            }
+        }
+
+        private MusicLookupResult? ParseAppleMusicAlbumResponse(
+            AppleMusicAlbum album,
+            LookupRequestType lookupKey,
+            string storeFront,
+            bool? isPrimary
+        ) {
+            try {
+                if (album.Attributes == null) { return null; }
+
+                MusicLookupResult result = new() {
+                    MarketRegion = storeFront,
+                    IsAlbum = true,
+                    IsPrimary = isPrimary ?? false,
+                    Artist = album.Attributes.ArtistName,
+                    Title = album.Attributes.Name,
+                    ExternalId = album.Attributes.Upc ?? string.Empty,
+                    URL = album.Attributes.Url
+                };
+
+                if (album.Attributes.Artwork != null && !string.IsNullOrWhiteSpace( album.Attributes.Artwork.Url )) {
+                    result.ArtUrl = album.Attributes.Artwork.Url
+                        .Replace( "{w}", album.Attributes.Artwork.Width.ToString( ) )
+                        .Replace( "{h}", album.Attributes.Artwork.Height.ToString( ) );
+                }
+
+                return result;
+            } catch (Exception ex) {
+                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from apple." );
+                Logger.LogTrace( JsonSerializer.Serialize( album, SerializerOptions ) );
                 return null;
             }
         }
