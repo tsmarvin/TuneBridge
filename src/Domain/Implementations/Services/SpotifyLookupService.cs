@@ -295,7 +295,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
                         string? trackBody = await NewMusicApiRequest( SpotifyLinkParser.GetTrackIdURI( track.Id ), LookupRequestType.SongIdLookup );
                         
-                        // This shouuldn't happen, but if we cant fetch full track details, return simplified track data
+                        // This shouldn't happen, but if we cant fetch full track details, return simplified track data
                         if (trackBody == null) {
                             return new MusicLookupResult {
                                 Artist = track.Artists != null && track.Artists.Count > 0 ? track.Artists[0].Name : string.Empty,
