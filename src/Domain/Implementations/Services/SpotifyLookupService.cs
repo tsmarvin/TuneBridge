@@ -109,12 +109,11 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 : SpotifyLinkParser.GetTrackIdURI( providerId );
 
             LookupRequestType requestKey = isAlbum ? LookupRequestType.AlbumIdLookup : LookupRequestType.SongIdLookup;
-            return ParseSpotifyResponse(
-                await NewMusicApiRequest( requestUri, requestKey ),
-                requestKey,
-                kind,
-                true
-            );
+            string? body = await NewMusicApiRequest( requestUri, requestKey );
+            if (body == null) { return null; }
+
+            using JsonDocument jsonDoc = JsonDocument.Parse(body);
+            return ParseSpotifyResponse( jsonDoc.RootElement, requestKey, kind, true );
         }
 
         private protected override async Task<HttpClient> CreateAuthenticatedClientAsync( ) {
