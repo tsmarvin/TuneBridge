@@ -264,8 +264,7 @@ public class MusicLookupServiceTests {
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
 
         // Verify Apple Music result
-        Assert.IsTrue( firstResult.Results.ContainsKey( Domain.Types.Enums.SupportedProviders.AppleMusic ), "Should have Apple Music result" );
-        MusicLookupResult appleResult = firstResult.Results[Domain.Types.Enums.SupportedProviders.AppleMusic];
+        Assert.IsTrue( firstResult.Results.TryGetValue( Domain.Types.Enums.SupportedProviders.AppleMusic, out MusicLookupResult? appleResult ), "Should have Apple Music result" );
         Assert.IsNotNull( appleResult.Title );
         Assert.IsNotNull( appleResult.Artist );
         Assert.IsFalse( appleResult.IsAlbum ?? true, "Should be a track, not an album" );
