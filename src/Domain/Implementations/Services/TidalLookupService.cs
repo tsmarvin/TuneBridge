@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using BridgeBeats.Configuration;
 using BridgeBeats.Domain.Contracts.DTOs;
@@ -142,9 +143,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
         private async Task<MusicLookupResult?> NewAlbumIdLookup( string albumId, bool isPrimary ) {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetAlbumIdURI( DefaultStorefront, albumId ), LookupRequestType.AlbumLookup );
             if (body != null) {
-                TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
-                if (response?.Data != null && response.Included != null) {
-                    return await ParseTidalResponse( response.Data, response.Included, LookupRequestType.AlbumLookup, TidalEntity.Album, isPrimary );
+                (TidalResource? data, List<TidalResource>? included) = ExtractSingleResource( body );
+                if (data != null && included != null) {
+                    return await ParseTidalResponse( data, included, LookupRequestType.AlbumLookup, TidalEntity.Album, isPrimary );
                 }
             }
             return null;
@@ -153,9 +154,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
         private async Task<MusicLookupResult?> NewTrackIdLookup( string trackId, bool isPrimary ) {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetTrackIdURI( DefaultStorefront, trackId ), LookupRequestType.SongLookup );
             if (body != null) {
-                TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
-                if (response?.Data != null && response.Included != null) {
-                    return await ParseTidalResponse( response.Data, response.Included, LookupRequestType.SongLookup, TidalEntity.Track, isPrimary );
+                (TidalResource? data, List<TidalResource>? included) = ExtractSingleResource( body );
+                if (data != null && included != null) {
+                    return await ParseTidalResponse( data, included, LookupRequestType.SongLookup, TidalEntity.Track, isPrimary );
                 }
             }
             return null;
@@ -167,6 +168,45 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return client;
         }
 
+        /// <summary>
+        /// Extracts a single TidalResource from the response data, handling both single objects and arrays.
+        /// According to JSON:API specification, the 'data' field can be either a single resource or an array.
+        /// </summary>
+        /// <param name="body">The JSON response body.</param>
+        /// <returns>A tuple containing the extracted TidalResource and the included resources, or null if parsing fails.</returns>
+        private (TidalResource? data, List<TidalResource>? included) ExtractSingleResource( string body ) {
+            try {
+                using JsonDocument doc = JsonDocument.Parse(body);
+                JsonElement root = doc.RootElement;
+
+                // Try to get included first
+                List<TidalResource>? included = null;
+                if (root.TryGetProperty( "included", out JsonElement includedElement )) {
+                    included = JsonSerializer.Deserialize<List<TidalResource>>( includedElement.GetRawText( ), SerializerOptions );
+                }
+
+                // Try to get data
+                if (root.TryGetProperty( "data", out JsonElement dataElement )) {
+                    if (dataElement.ValueKind == JsonValueKind.Array) {
+                        // Data is an array, take the first element
+                        List<TidalResource>? dataArray = JsonSerializer.Deserialize<List<TidalResource>>( dataElement.GetRawText( ), SerializerOptions );
+                        if (dataArray != null && dataArray.Count > 0) {
+                            return (dataArray[0], included);
+                        }
+                    } else if (dataElement.ValueKind == JsonValueKind.Object) {
+                        // Data is a single object
+                        TidalResource? singleResource = JsonSerializer.Deserialize<TidalResource>( dataElement.GetRawText( ), SerializerOptions );
+                        return (singleResource, included);
+                    }
+                }
+            } catch {
+                // If parsing fails, return nulls
+            }
+
+            return (null, null);
+        }
+
+
         private async Task<MusicLookupResult?> ParseTidalResponse(
             string? body,
             LookupRequestType lookupKey,
@@ -175,9 +215,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
         ) {
             if (string.IsNullOrWhiteSpace( body )) { return null; }
             try {
-                TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
-                if (response?.Data != null && response.Included != null) {
-                    return await ParseTidalResponse( response.Data, response.Included, lookupKey, kind, isPrimary );
+                (TidalResource? data, List<TidalResource>? included) = ExtractSingleResource( body );
+                if (data != null && included != null) {
+                    return await ParseTidalResponse( data, included, lookupKey, kind, isPrimary );
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, $"An error occurred while parsing the {lookupKey} json response from tidal." );
@@ -213,7 +253,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     if (data.Attributes.ExternalLinks != null
                         && data.Attributes.ExternalLinks.Count > 0
                     ) {
-                        result.URL = data.Attributes.ExternalLinks[0].Href;
+                        result.URL = data.Attributes.ExternalLinks[0]?.Href ?? string.Empty;
                     }
                 }
 
@@ -221,7 +261,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from tidal." );
+                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey} json response from tidal." );
                 Logger.LogTrace( JsonSerializer.Serialize( data, SerializerOptions ) );
                 Logger.LogTrace( JsonSerializer.Serialize( included, SerializerOptions ) );
                 return null;
@@ -239,29 +279,33 @@ namespace BridgeBeats.Domain.Implementations.Services {
             TidalRelationships relationships,
             List<TidalResource> included
         ) {
-            string result = string.Empty;
-            if (relationships.Artists?.Data != null) {
-                List<string> artistIds = [];
-                foreach (TidalResourceIdentifier artistInfo in relationships.Artists.Data) {
-                    if (artistInfo.Type == "artists" && !string.IsNullOrWhiteSpace( artistInfo.Id )) {
-                        artistIds.Add( artistInfo.Id );
-                        result += $"|{artistInfo.Id}| & ";
-                    }
-                }
+            if (relationships.Artists?.Data == null) {
+                return string.Empty;
+            }
 
-                result = result.TrimEnd( ' ', '&' );
+            List<string> artistIds = [];
+            StringBuilder resultBuilder = new();
 
-                // Find the matching artist in the included output
-                foreach (TidalResource includedItem in included) {
-                    if (includedItem.Type == "artists"
-                        && includedItem.Attributes != null
-                        && !string.IsNullOrWhiteSpace( includedItem.Id )
-                        && !string.IsNullOrWhiteSpace( includedItem.Attributes.Name )
-                    ) {
-                        result = result.Replace( $"|{includedItem.Id}|", includedItem.Attributes.Name );
-                    }
+            foreach (TidalResourceIdentifier artistInfo in relationships.Artists.Data) {
+                if (artistInfo.Type == "artists" && !string.IsNullOrWhiteSpace( artistInfo.Id )) {
+                    artistIds.Add( artistInfo.Id );
+                    resultBuilder.Append( $"|{artistInfo.Id}| & " );
                 }
             }
+
+            string result = resultBuilder.ToString( ).TrimEnd( ' ', '&' );
+
+            // Find the matching artist in the included output
+            foreach (TidalResource includedItem in included) {
+                if (includedItem.Type == "artists"
+                    && includedItem.Attributes != null
+                    && !string.IsNullOrWhiteSpace( includedItem.Id )
+                    && !string.IsNullOrWhiteSpace( includedItem.Attributes.Name )
+                ) {
+                    result = result.Replace( $"|{includedItem.Id}|", includedItem.Attributes.Name );
+                }
+            }
+
             return result;
         }
 
@@ -288,7 +332,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                         && item.Attributes.Files != null
                         && item.Attributes.Files.Count > 0
                     ) {
-                        return item.Attributes.Files[0].Href;
+                        return item.Attributes.Files[0]?.Href ?? string.Empty;
                     }
                 }
             }
