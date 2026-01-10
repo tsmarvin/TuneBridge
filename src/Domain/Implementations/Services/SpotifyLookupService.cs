@@ -294,14 +294,37 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     if (SanitizeSongTitle( track.Name ).Equals( sanitizedSongTitle, StringComparison.InvariantCultureIgnoreCase )) {
 
                         string? trackBody = await NewMusicApiRequest( SpotifyLinkParser.GetTrackIdURI( track.Id ), LookupRequestType.SongIdLookup );
-                        SpotifyTrack? fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody! )!;
+                        
+                        // If we can't fetch full track details, return simplified track data
+                        if (trackBody == null) {
+                            return new MusicLookupResult {
+                                Artist = track.Artists != null && track.Artists.Count > 0 ? track.Artists[0].Name : string.Empty,
+                                Title = track.Name,
+                                ExternalId = string.Empty,
+                                URL = track.ExternalUrls != null ? track.ExternalUrls.Spotify : string.Empty,
+                                IsAlbum = false
+                            };
+                        }
+
+                        SpotifyTrack? fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody );
+                        
+                        // If deserialization fails, return simplified track data
+                        if (fullTrack == null) {
+                            return new MusicLookupResult {
+                                Artist = track.Artists != null && track.Artists.Count > 0 ? track.Artists[0].Name : string.Empty,
+                                Title = track.Name,
+                                ExternalId = string.Empty,
+                                URL = track.ExternalUrls != null ? track.ExternalUrls.Spotify : string.Empty,
+                                IsAlbum = false
+                            };
+                        }
 
                         return new MusicLookupResult {
                             Artist = fullTrack.Artists != null && fullTrack.Artists.Count > 0 ? fullTrack.Artists[0].Name : string.Empty,
                             Title = fullTrack.Name,
-                            ExternalId = fullTrack.ExternalIds?.Upc ?? string.Empty,
+                            ExternalId = fullTrack.ExternalIds?.Isrc ?? string.Empty,
                             URL = fullTrack.ExternalUrls != null ? fullTrack.ExternalUrls.Spotify : string.Empty,
-                            IsAlbum = true
+                            IsAlbum = false
                         };
                     }
                 }
