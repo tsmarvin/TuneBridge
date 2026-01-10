@@ -34,7 +34,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         #region IMusicLookupService Public
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc ) =>
+        public override async Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc ) =>
             ParseAppleMusicResponse(
                 await NewMusicApiRequest( AppleMusicLinkParser.GetSongsIsrcURI( DefaultStorefront, isrc ), IsrcLookupKey ),
                 IsrcLookupKey,
@@ -44,7 +44,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             );
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
+        public override async Task<MusicLookupResult?> GetInfoByUPCAsync( string upc )
             => ParseAppleMusicResponse(
                 await NewMusicApiRequest( AppleMusicLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), UpcLookupKey ),
                 UpcLookupKey,
@@ -54,7 +54,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             );
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
+        public override async Task<MusicLookupResult?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseAppleMusicArtistList(
                 await NewMusicApiRequest(
                     AppleMusicLinkParser.GetArtistSearchUri(DefaultStorefront, artist),
@@ -69,7 +69,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             string sanitizedSongTitle = SanitizeSongTitle(title);
             foreach ((string id, string artistName) in artistResults) {
                 string lookupKey = $"albums for artist {artistName} {id} ";
-                MusicLookupResultDto? result = ParseArtistElementLists(
+                MusicLookupResult? result = ParseArtistElementLists(
                     lookupKey,
                     await NewMusicApiRequest(AppleMusicLinkParser.GetArtistAlbumsURI(DefaultStorefront, id), lookupKey),
                     sanitizedAlbumTitle,
@@ -96,7 +96,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri )
+        public override async Task<MusicLookupResult?> GetInfoAsync( string uri )
             => AppleMusicLinkParser.TryParseUri( uri, out string requestUri, out string storefront, out bool isAlbum )
                 ? ParseAppleMusicResponse(
                     await NewMusicApiRequest( requestUri, UriLookupKey ),
@@ -108,7 +108,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 : null;
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum ) {
+        public override async Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum ) {
             string requestUri = isAlbum
                 ? AppleMusicLinkParser.GetAlbumIdUri( DefaultStorefront, providerId )
                 : AppleMusicLinkParser.GetSongIdUri( DefaultStorefront, providerId );
@@ -167,7 +167,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             }
         }
 
-        private MusicLookupResultDto? ParseArtistElementLists(
+        private MusicLookupResult? ParseArtistElementLists(
             string lookupKey,
             string? body,
             string title,
@@ -208,7 +208,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return null;
         }
 
-        private MusicLookupResultDto? ParseAppleMusicResponse(
+        private MusicLookupResult? ParseAppleMusicResponse(
             string? body,
             string lookupKey,
             string storeFront,
@@ -226,14 +226,14 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return null;
         }
 
-        private MusicLookupResultDto? ParseAppleMusicResponse(
+        private MusicLookupResult? ParseAppleMusicResponse(
             JsonElement root,
             string lookupKey,
             string storeFront,
             bool? isAlbum,
             bool? isPrimary
         ) {
-            MusicLookupResultDto result = new() {
+            MusicLookupResult result = new() {
                 MarketRegion = storeFront,
                 IsAlbum = isAlbum,
                 IsPrimary = isPrimary ?? false

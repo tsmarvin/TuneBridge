@@ -11,9 +11,9 @@ public class OpenGraphExtensionsTests {
     public void ToOpenGraphMetadata_WithTrackAndISRC_IncludesISRCInDescription( ) {
         // Arrange
         MediaLinkResult result = new( ) {
-            Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {
-                    SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                    SupportedProviders.AppleMusic, new MusicLookupResult {
                         Title = "Chiron",
                         Artist = "Shades, Alix Perez & Eprom",
                         ExternalId = "US25X1087647",
@@ -40,9 +40,9 @@ public class OpenGraphExtensionsTests {
     public void ToOpenGraphMetadata_WithAlbumAndUPC_IncludesUPCInDescription( ) {
         // Arrange
         MediaLinkResult result = new( ) {
-            Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {
-                    SupportedProviders.Spotify, new MusicLookupResultDto {
+                    SupportedProviders.Spotify, new MusicLookupResult {
                         Title = "Album Title",
                         Artist = "Test Artist",
                         ExternalId = "123456789012",
@@ -68,9 +68,9 @@ public class OpenGraphExtensionsTests {
     public void ToOpenGraphMetadata_WithAppleMusicPrimary_HasBlueThemeColor( ) {
         // Arrange
         MediaLinkResult result = new( ) {
-            Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {
-                    SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                    SupportedProviders.AppleMusic, new MusicLookupResult {
                         Title = "Test Track",
                         Artist = "Test Artist",
                         ExternalId = "TESTISRC123",
@@ -96,9 +96,9 @@ public class OpenGraphExtensionsTests {
     public void ToOpenGraphMetadata_WithSpotifyPrimary_HasGreenThemeColor( ) {
         // Arrange
         MediaLinkResult result = new( ) {
-            Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {
-                    SupportedProviders.Spotify, new MusicLookupResultDto {
+                    SupportedProviders.Spotify, new MusicLookupResult {
                         Title = "Test Track",
                         Artist = "Test Artist",
                         ExternalId = "TESTISRC123",
@@ -124,9 +124,9 @@ public class OpenGraphExtensionsTests {
     public void ToOpenGraphMetadata_WithoutExternalId_DoesNotIncludeISRCOrUPC( ) {
         // Arrange
         MediaLinkResult result = new( ) {
-            Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {
-                    SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                    SupportedProviders.AppleMusic, new MusicLookupResult {
                         Title = "Test Track",
                         Artist = "Test Artist",
                         ExternalId = string.Empty,
@@ -154,9 +154,9 @@ public class OpenGraphExtensionsTests {
     public void ToOpenGraphMetadata_DoesNotIncludeProviderLinksInDescription( ) {
         // Arrange
         MediaLinkResult result = new( ) {
-            Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {
-                    SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                    SupportedProviders.AppleMusic, new MusicLookupResult {
                         Title = "Test Track",
                         Artist = "Test Artist",
                         ExternalId = "TESTISRC123",
@@ -167,7 +167,7 @@ public class OpenGraphExtensionsTests {
                     }
                 },
                 {
-                    SupportedProviders.Spotify, new MusicLookupResultDto {
+                    SupportedProviders.Spotify, new MusicLookupResult {
                         Title = "Test Track",
                         Artist = "Test Artist",
                         ExternalId = "TESTISRC123",

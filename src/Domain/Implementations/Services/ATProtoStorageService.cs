@@ -153,7 +153,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         private static MediaLinkResultRecord ConvertToRecord( MediaLinkResult result ) {
             List<ProviderResultRecord> providerResults = [];
 
-            foreach ((SupportedProviders provider, MusicLookupResultDto lookupResult) in result.Results) {
+            foreach ((SupportedProviders provider, MusicLookupResult lookupResult) in result.Results) {
                 string providerName = provider switch {
                     SupportedProviders.AppleMusic => "appleMusic",
                     SupportedProviders.Spotify => "spotify",
@@ -194,7 +194,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     continue;
                 }
 
-                result.Results.Add( provider, new MusicLookupResultDto {
+                result.Results.Add( provider, new MusicLookupResult {
                     Artist = providerResult.Artist,
                     Title = providerResult.Title,
                     ExternalId = providerResult.ExternalId ?? string.Empty,

@@ -32,7 +32,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         public override SupportedProviders Provider => SupportedProviders.Tidal;
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc )
+        public override async Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc )
             => await ParseTidalResponse(
                 await NewMusicApiRequest( TidalLinkParser.GetTracksIsrcURI( DefaultStorefront, isrc ), IsrcLookupKey ),
                 IsrcLookupKey,
@@ -41,7 +41,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             );
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
+        public override async Task<MusicLookupResult?> GetInfoByUPCAsync( string upc )
             => await ParseTidalResponse(
                 await NewMusicApiRequest( TidalLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), UpcLookupKey ),
                 UpcLookupKey,
@@ -50,14 +50,14 @@ namespace BridgeBeats.Domain.Implementations.Services {
             );
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
+        public override async Task<MusicLookupResult?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseTidalArtistList(
                 await NewMusicApiRequest(
                     TidalLinkParser.GetArtistSearchUri(DefaultStorefront, artist),
                     ArtistLookupKey
                 )
             );
-            MusicLookupResultDto? result = null;
+            MusicLookupResult? result = null;
 
             // Bail out early if we have no results
             if (artistResults == null || artistResults.Count == 0) { return result; }
@@ -76,7 +76,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
+        public override async Task<MusicLookupResult?> GetInfoAsync( string uri ) {
             if (TidalLinkParser.TryParseUri( uri, out TidalEntity kind, out string id )) {
                 if (kind == TidalEntity.Album) {
                     return await NewAlbumIdLookup( id, true );
@@ -88,12 +88,12 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum )
+        public override async Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum )
             => isAlbum
                 ? await NewAlbumIdLookup( providerId, true )
                 : await NewTrackIdLookup( providerId, true );
 
-        private async Task<MusicLookupResultDto?> ParseArtistAlbums( string artistId, string artistName, string title ) {
+        private async Task<MusicLookupResult?> ParseArtistAlbums( string artistId, string artistName, string title ) {
             string lookupKey = $"albums for artist {artistName} {artistId} ";
 
             string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistAlbumsUri( DefaultStorefront, artistId ), lookupKey );
@@ -101,13 +101,13 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
             using JsonDocument jsonDoc = JsonDocument.Parse(body);
             if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                MusicLookupResultDto? albumResult = await ParseIncludedElementList( includedOutput, title, true );
+                MusicLookupResult? albumResult = await ParseIncludedElementList( includedOutput, title, true );
                 if (albumResult != null) { return albumResult; }
             }
             return null;
         }
 
-        private async Task<MusicLookupResultDto?> ParseArtistTracks( string artistId, string artistName, string title ) {
+        private async Task<MusicLookupResult?> ParseArtistTracks( string artistId, string artistName, string title ) {
             string lookupKey = $"tracks for artist {artistName} {artistId} ";
 
             string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistTracksUri( DefaultStorefront, artistId ), lookupKey );
@@ -115,13 +115,13 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
             using JsonDocument jsonDoc = JsonDocument.Parse(body);
             if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                MusicLookupResultDto? trackResult = await ParseIncludedElementList( includedOutput, title, false );
+                MusicLookupResult? trackResult = await ParseIncludedElementList( includedOutput, title, false );
                 if (trackResult != null) { return trackResult; }
             }
             return null;
         }
 
-        private async Task<MusicLookupResultDto?> ParseIncludedElementList( JsonElement includedOutput, string title, bool isAlbum ) {
+        private async Task<MusicLookupResult?> ParseIncludedElementList( JsonElement includedOutput, string title, bool isAlbum ) {
             foreach (JsonElement item in includedOutput.EnumerateArray( )) {
                 if (item.TryGetProperty( "type", out JsonElement itemType )
                     && item.TryGetProperty( "id", out JsonElement itemIdProp )
@@ -144,7 +144,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return null;
         }
 
-        private async Task<MusicLookupResultDto?> NewAlbumIdLookup( string albumId, bool isPrimary ) {
+        private async Task<MusicLookupResult?> NewAlbumIdLookup( string albumId, bool isPrimary ) {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetAlbumIdURI( DefaultStorefront, albumId ), AlbumLookupKey );
             if (body != null) {
                 using JsonDocument jsonDoc = JsonDocument.Parse(body);
@@ -155,7 +155,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return null;
         }
 
-        private async Task<MusicLookupResultDto?> NewTrackIdLookup( string trackId, bool isPrimary ) {
+        private async Task<MusicLookupResult?> NewTrackIdLookup( string trackId, bool isPrimary ) {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetTrackIdURI( DefaultStorefront, trackId ), SongLookupKey );
             if (body != null) {
                 using JsonDocument jsonDoc = JsonDocument.Parse(body);
@@ -172,7 +172,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return client;
         }
 
-        private async Task<MusicLookupResultDto?> ParseTidalResponse(
+        private async Task<MusicLookupResult?> ParseTidalResponse(
             string? body,
             string lookupKey,
             TidalEntity kind,
@@ -218,7 +218,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return result1 && result2;
         }
 
-        private async Task<MusicLookupResultDto?> ParseTidalResponse(
+        private async Task<MusicLookupResult?> ParseTidalResponse(
             JsonElement dataOutput,
             JsonElement includedOutput,
             string lookupKey,
@@ -226,7 +226,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             bool? isPrimary
         ) {
             bool isAlbum = kind == TidalEntity.Album;
-            MusicLookupResultDto result = new() {
+            MusicLookupResult result = new() {
                 IsAlbum = isAlbum,
                 IsPrimary = isPrimary ?? false,
                 MarketRegion = DefaultStorefront
@@ -316,7 +316,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                         && itemType.GetString( ) == "albums"
                         && item.TryGetProperty( "id", out JsonElement albumIdProp )
                     ) {
-                        MusicLookupResultDto? album = await NewAlbumIdLookup( albumIdProp.GetString( )!, false );
+                        MusicLookupResult? album = await NewAlbumIdLookup( albumIdProp.GetString( )!, false );
                         if (string.IsNullOrWhiteSpace( album?.ArtUrl ) == false) {
                             return album.ArtUrl;
                         }

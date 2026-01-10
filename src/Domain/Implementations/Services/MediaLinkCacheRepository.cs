@@ -205,7 +205,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             allUrls.AddRange( serviceUrls );
             await AddLookupEntriesOfTypeAsync( dbContext, rkey, allUrls, LookupEntryType.Url, isAlbum );
 
-            foreach (MusicLookupResultDto value in result.Results.Values) {
+            foreach (MusicLookupResult value in result.Results.Values) {
                 // Add external ID if available
                 await AddLookupEntriesOfTypeAsync( dbContext, rkey, [value.ExternalId], LookupEntryType.ExternalId, isAlbum );
                 if (!(string.IsNullOrWhiteSpace( value.Title ) && string.IsNullOrWhiteSpace( value.Artist ))) {
@@ -293,7 +293,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             List<(SupportedProviders provider, string providerId)> providerIds = [];
 
             // Extract provider IDs from each result
-            foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results) {
+            foreach ((SupportedProviders provider, MusicLookupResult dto) in result.Results) {
                 string? providerId = ExtractProviderIdFromUrl( provider, dto.URL );
                 if (!string.IsNullOrWhiteSpace( providerId )) {
                     providerIds.Add( (provider, providerId) );

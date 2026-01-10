@@ -27,7 +27,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         public override SupportedProviders Provider => SupportedProviders.Spotify;
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc )
+        public override async Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc )
             => ParseSpotifyResponse(
                 await NewMusicApiRequest( SpotifyLinkParser.GetTracksIsrcURI( isrc ), IsrcLookupKey ),
                 IsrcLookupKey,
@@ -36,7 +36,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             );
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc )
+        public override async Task<MusicLookupResult?> GetInfoByUPCAsync( string upc )
             => ParseSpotifyResponse(
                 await NewMusicApiRequest( SpotifyLinkParser.GetAlbumUpcURI( upc ), UpcLookupKey ),
                 UpcLookupKey,
@@ -45,7 +45,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             );
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist ) {
+        public override async Task<MusicLookupResult?> GetInfoAsync( string title, string artist ) {
             List<(string id, string artistName)>? artistResults = ParseSpotifyArtistList(
                 await NewMusicApiRequest(
                     SpotifyLinkParser.GetArtistSearchUri(artist),
@@ -61,7 +61,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 string lookupKey = $"albums for artist {artistName} {id} ";
 
                 List<(string id, string albumName)> artistAlbumIds = [];
-                foreach ((string albumId, MusicLookupResultDto album) in ParseArtistAlbumLists(
+                foreach ((string albumId, MusicLookupResult album) in ParseArtistAlbumLists(
                     await NewMusicApiRequest( SpotifyLinkParser.GetArtistAlbumsURI( id ), lookupKey ),
                     lookupKey
                 )) {
@@ -91,7 +91,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 foreach ((string albumId, string albumName) in artistAlbumIds) {
                     string trackLookup = $"tracks for artist {artistName} album {albumName} id#{albumId} ";
 
-                    MusicLookupResultDto? result = await ParseAlbumTrackListsAsync(
+                MusicLookupResult? result = await ParseAlbumTrackListsAsync(
                         await NewMusicApiRequest(SpotifyLinkParser.GetAlbumTracksURI(albumId), trackLookup),
                         sanitizedSongTitle,
                         trackLookup
@@ -104,7 +104,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoAsync( string uri ) {
+        public override async Task<MusicLookupResult?> GetInfoAsync( string uri ) {
             (bool result, SpotifyEntity kind, string id) = await SpotifyLinkParser.TryParseUriAsync( uri );
             if (result) {
                 if (kind == SpotifyEntity.PreRelease) {
@@ -139,7 +139,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum ) {
+        public override async Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum ) {
             SpotifyEntity kind = isAlbum ? SpotifyEntity.Album : SpotifyEntity.Track;
             string requestUri = isAlbum
                 ? SpotifyLinkParser.GetAlbumIdURI( providerId )
@@ -160,7 +160,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return client;
         }
 
-        private MusicLookupResultDto? ParseSpotifyResponse(
+        private MusicLookupResult? ParseSpotifyResponse(
             string? body,
             string lookupKey,
             SpotifyEntity kind,
@@ -179,6 +179,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return null;
         }
 
+        /// <summary>
+        /// Parses out the first track or album JsonElement from the Spotify API response.
+        /// </summary>
         private static bool CanParseJsonElement( JsonElement root, out JsonElement output ) {
             output = root;
 
@@ -217,14 +220,14 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return result;
         }
 
-        private MusicLookupResultDto? ParseSpotifyResponse(
+        private MusicLookupResult? ParseSpotifyResponse(
             JsonElement element,
             string lookupKey,
             SpotifyEntity kind,
             bool? isPrimary
         ) {
             bool isAlbum = kind == SpotifyEntity.Album;
-            MusicLookupResultDto result = new() {
+            MusicLookupResult result = new() {
                 IsAlbum = isAlbum,
                 IsPrimary = isPrimary ?? false
             };
@@ -303,7 +306,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             }
         }
 
-        private IEnumerable<(string id, MusicLookupResultDto album)> ParseArtistAlbumLists(
+        private IEnumerable<(string id, MusicLookupResult album)> ParseArtistAlbumLists(
         string? body,
         string lookupKey
         ) {
@@ -320,7 +323,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             }
         }
 
-        private async Task<MusicLookupResultDto?> ParseAlbumTrackListsAsync(
+        private async Task<MusicLookupResult?> ParseAlbumTrackListsAsync(
         string? body,
         string sanitizedSongTitle,
         string lookupKey

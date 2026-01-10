@@ -10,7 +10,7 @@ namespace BridgeBeats.Domain.Contracts.DTOs {
     /// MarketRegion, and IsAlbum values. The IsPrimary flag is excluded from equality checks as it's
     /// an internal processing hint rather than identifying information.
     /// </remarks>
-    public sealed class MusicLookupResultDto {
+    public sealed class MusicLookupResult {
 
         /// <summary>
         /// The primary artist name as returned by the music provider's API. For tracks, this is typically
@@ -86,9 +86,9 @@ namespace BridgeBeats.Domain.Contracts.DTOs {
         public override bool Equals( object? obj ) {
             if (
                 obj is not null &&
-                obj.GetType( ) == typeof( MusicLookupResultDto )
+                obj.GetType( ) == typeof( MusicLookupResult )
             ) {
-                MusicLookupResultDto objCast = (MusicLookupResultDto)obj;
+                MusicLookupResult objCast = (MusicLookupResult)obj;
                 return
                     objCast.ExternalId == ExternalId &&
                     objCast.Artist == Artist &&

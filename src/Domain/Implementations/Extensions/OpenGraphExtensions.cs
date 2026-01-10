@@ -25,7 +25,7 @@ namespace BridgeBeats.Domain.Implementations.Extensions {
             SupportedProviders? primaryProvider = null;
 
             // Extract information from results, prioritizing the primary result
-            foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results.OrderBy( kv => kv.Key )) {
+            foreach ((SupportedProviders provider, MusicLookupResult dto) in result.Results.OrderBy( kv => kv.Key )) {
 
                 if (string.IsNullOrWhiteSpace( image ) && !string.IsNullOrWhiteSpace( dto.ArtUrl )) {
                     image = dto.ArtUrl;

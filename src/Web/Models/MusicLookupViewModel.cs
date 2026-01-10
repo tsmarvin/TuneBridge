@@ -43,7 +43,7 @@ namespace BridgeBeats.Web.Models {
             /// <summary>
             /// Primary result data (for display).
             /// </summary>
-            public MusicLookupResultDto PrimaryResult { get; set; } = null!;
+            public MusicLookupResult PrimaryResult { get; set; } = null!;
         }
     }
 }

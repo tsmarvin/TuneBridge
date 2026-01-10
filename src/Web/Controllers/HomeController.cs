@@ -62,9 +62,9 @@ namespace BridgeBeats.Web.Controllers {
                 }
 
                 // Find primary result
-                MusicLookupResultDto? primaryResult = null;
+                MusicLookupResult? primaryResult = null;
                 SupportedProviders primaryProvider = default;
-                foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results) {
+                foreach ((SupportedProviders provider, MusicLookupResult dto) in result.Results) {
                     if (dto.IsPrimary) {
                         primaryResult = dto;
                         primaryProvider = provider;
@@ -193,9 +193,9 @@ namespace BridgeBeats.Web.Controllers {
             }
 
             // Find primary result
-            MusicLookupResultDto? primaryResult = null;
+            MusicLookupResult? primaryResult = null;
             SupportedProviders primaryProvider = default;
-            foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results) {
+            foreach ((SupportedProviders provider, MusicLookupResult dto) in result.Results) {
                 if (dto.IsPrimary) {
                     primaryResult = dto;
                     primaryProvider = provider;
@@ -367,9 +367,9 @@ namespace BridgeBeats.Web.Controllers {
                         }
 
                         // Find primary result
-                        MusicLookupResultDto? primaryResult = null;
+                        MusicLookupResult? primaryResult = null;
                         SupportedProviders primaryProvider = default;
-                        foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results) {
+                        foreach ((SupportedProviders provider, MusicLookupResult dto) in result.Results) {
                             if (dto.IsPrimary) {
                                 primaryResult = dto;
                                 primaryProvider = provider;

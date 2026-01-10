@@ -22,19 +22,19 @@ namespace BridgeBeats.Domain.Types.Bases {
         public abstract SupportedProviders Provider { get; }
 
         /// <inheritdoc/>
-        public abstract Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc );
+        public abstract Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc );
 
         /// <inheritdoc/>
-        public abstract Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc );
+        public abstract Task<MusicLookupResult?> GetInfoByUPCAsync( string upc );
 
         /// <inheritdoc/>
-        public abstract Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist );
+        public abstract Task<MusicLookupResult?> GetInfoAsync( string title, string artist );
 
         /// <inheritdoc/>
-        public abstract Task<MusicLookupResultDto?> GetInfoAsync( string uri );
+        public abstract Task<MusicLookupResult?> GetInfoAsync( string uri );
 
         /// <inheritdoc/>
-        public async Task<MusicLookupResultDto?> GetInfoAsync( MusicLookupResultDto lookup )
+        public async Task<MusicLookupResult?> GetInfoAsync( MusicLookupResult lookup )
             => string.IsNullOrWhiteSpace( lookup.ExternalId ) || lookup.IsAlbum == null
                         ? await GetInfoAsync( lookup.Title, lookup.Artist )
                         : ((bool)lookup.IsAlbum
@@ -43,7 +43,7 @@ namespace BridgeBeats.Domain.Types.Bases {
                         ?? await GetInfoAsync( lookup.Title, lookup.Artist ); // Fallback to title/artist search if lookup by id fails
 
         /// <inheritdoc/>
-        public abstract Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum );
+        public abstract Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum );
 
         #endregion IMusicLookupService Implementation
 
@@ -116,7 +116,7 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// <param name="album">The album to validate.</param>
         /// <param name="title">The expected title.</param>
         /// <returns>True if the titles match after sanitization.</returns>
-        protected static bool ValidateAlbumTitle( MusicLookupResultDto? album, string title )
+        protected static bool ValidateAlbumTitle( MusicLookupResult? album, string title )
             => album != null &&
                 SanitizeAlbumTitle( title )
                 .Equals( SanitizeAlbumTitle( album.Title ), StringComparison.InvariantCultureIgnoreCase );
@@ -138,7 +138,7 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// <param name="song">The song to validate.</param>
         /// <param name="title">The expected title.</param>
         /// <returns>True if the titles match after sanitization.</returns>
-        protected static bool ValidateSongTitle( MusicLookupResultDto? song, string title )
+        protected static bool ValidateSongTitle( MusicLookupResult? song, string title )
             => song != null &&
                 SanitizeSongTitle( title )
                 .Equals( SanitizeSongTitle( song.Title ), StringComparison.InvariantCultureIgnoreCase );
@@ -149,7 +149,7 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// <param name="song">The song to validate.</param>
         /// <param name="sanitizedTitle">The pre-sanitized expected title.</param>
         /// <returns>True if the titles match.</returns>
-        protected static bool ValidateSanitizedSongTitle( MusicLookupResultDto? song, string sanitizedTitle )
+        protected static bool ValidateSanitizedSongTitle( MusicLookupResult? song, string sanitizedTitle )
             => song != null &&
                 sanitizedTitle
                 .Equals( SanitizeSongTitle( song.Title ), StringComparison.InvariantCultureIgnoreCase );

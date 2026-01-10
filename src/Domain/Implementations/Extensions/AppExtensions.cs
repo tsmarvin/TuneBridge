@@ -118,7 +118,7 @@ namespace BridgeBeats.Domain.Implementations.Extensions {
 
             int count = result.Results.Count;
             bool hasPrimary = false;
-            foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results.OrderBy( kv => kv.Key )) {
+            foreach ((SupportedProviders provider, MusicLookupResult dto) in result.Results.OrderBy( kv => kv.Key )) {
                 fieldProps.Add( new EmbedFieldProperties( ) {
                     Value = $"[{provider.GetDescription( )}]({dto.URL})",
                     Inline = true
@@ -175,7 +175,7 @@ namespace BridgeBeats.Domain.Implementations.Extensions {
 
             int count = result.Results.Count;
             bool hasPrimary = false;
-            foreach ((SupportedProviders provider, MusicLookupResultDto dto) in result.Results.OrderBy( kv => kv.Key )) {
+            foreach ((SupportedProviders provider, MusicLookupResult dto) in result.Results.OrderBy( kv => kv.Key )) {
                 fieldProps.Add( new EmbedFieldProperties( ) {
                     Value = $"[{provider.GetDescription( )}]({dto.URL})",
                     Inline = true

@@ -76,7 +76,7 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaL
 
         // Get the primary provider and result for display
         SupportedProviders primaryProvider = result.Results.Keys.FirstOrDefault( );
-        MusicLookupResultDto? primaryResult = result.Results.Values.FirstOrDefault( );
+        MusicLookupResult? primaryResult = result.Results.Values.FirstOrDefault( );
 
         if (primaryResult == null) {
             return NotFound( "No results found" );

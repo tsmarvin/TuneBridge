@@ -36,7 +36,7 @@ namespace BridgeBeats.Domain.Implementations.Utilities {
             }
 
             // Strategy 2: Try to find by external ID (ISRC or UPC)
-            MusicLookupResultDto? firstResultWithId = result.Results.Values
+            MusicLookupResult? firstResultWithId = result.Results.Values
                 .FirstOrDefault( r => !string.IsNullOrWhiteSpace( r.ExternalId ) );
 
             if (firstResultWithId != null) {
@@ -54,7 +54,7 @@ namespace BridgeBeats.Domain.Implementations.Utilities {
             }
 
             // Strategy 3: Try to find by metadata (title and artist)
-            MusicLookupResultDto? firstResult = result.Results.Values.FirstOrDefault( );
+            MusicLookupResult? firstResult = result.Results.Values.FirstOrDefault( );
             if (firstResult != null &&
                 !string.IsNullOrWhiteSpace( firstResult.Title ) &&
                 !string.IsNullOrWhiteSpace( firstResult.Artist )) {
