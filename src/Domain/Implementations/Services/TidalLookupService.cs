@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BridgeBeats.Configuration;
 using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.Models.Tidal;
 using BridgeBeats.Domain.Implementations.Auth;
 using BridgeBeats.Domain.Implementations.LinkParsers;
 using BridgeBeats.Domain.Interfaces;
@@ -99,9 +100,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistAlbumsUri( DefaultStorefront, artistId ), LookupRequestType.ArtistAlbumLookup );
             if (body == null) { return null; }
 
-            using JsonDocument jsonDoc = JsonDocument.Parse(body);
-            if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                MusicLookupResult? albumResult = await ParseIncludedElementList( includedOutput, title, true );
+            TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
+            if (response?.Included != null) {
+                MusicLookupResult? albumResult = await ParseIncludedElementList( response.Included, title, true );
                 if (albumResult != null) { return albumResult; }
             }
             return null;
@@ -111,32 +112,28 @@ namespace BridgeBeats.Domain.Implementations.Services {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistTracksUri( DefaultStorefront, artistId ), LookupRequestType.AlbumTrackLookup );
             if (body == null) { return null; }
 
-            using JsonDocument jsonDoc = JsonDocument.Parse(body);
-            if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                MusicLookupResult? trackResult = await ParseIncludedElementList( includedOutput, title, false );
+            TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
+            if (response?.Included != null) {
+                MusicLookupResult? trackResult = await ParseIncludedElementList( response.Included, title, false );
                 if (trackResult != null) { return trackResult; }
             }
             return null;
         }
 
-        private async Task<MusicLookupResult?> ParseIncludedElementList( JsonElement includedOutput, string title, bool isAlbum ) {
-            foreach (JsonElement item in includedOutput.EnumerateArray( )) {
-                if (item.TryGetProperty( "type", out JsonElement itemType )
-                    && item.TryGetProperty( "id", out JsonElement itemIdProp )
-                    && string.IsNullOrWhiteSpace( itemIdProp.GetString( ) ) == false
-                    && ((isAlbum && itemType.GetString( ) == "albums") || (!isAlbum && itemType.GetString( ) == "tracks"))
-                    && item.TryGetProperty( "attributes", out JsonElement itemAttributes )
-                    && itemAttributes.TryGetProperty( "title", out JsonElement itemTitleProp )
-                    && string.IsNullOrWhiteSpace( itemTitleProp.GetString( ) ) == false
+        private async Task<MusicLookupResult?> ParseIncludedElementList( List<TidalResource> included, string title, bool isAlbum ) {
+            foreach (TidalResource item in included) {
+                if (!string.IsNullOrWhiteSpace( item.Id )
+                    && ((isAlbum && item.Type == "albums") || (!isAlbum && item.Type == "tracks"))
+                    && item.Attributes != null
+                    && !string.IsNullOrWhiteSpace( item.Attributes.Title )
                     && (isAlbum
-                        ? SanitizeAlbumTitle( itemTitleProp.GetString( )! )
-                        : SanitizeSongTitle( itemTitleProp.GetString( )! )
+                        ? SanitizeAlbumTitle( item.Attributes.Title )
+                        : SanitizeSongTitle( item.Attributes.Title )
                        ).Equals( title, StringComparison.InvariantCultureIgnoreCase )
                 ) {
-                    string elementId = itemIdProp.GetString( )!;
                     return isAlbum
-                            ? await NewAlbumIdLookup( elementId, false )
-                            : await NewTrackIdLookup( elementId, false );
+                            ? await NewAlbumIdLookup( item.Id, false )
+                            : await NewTrackIdLookup( item.Id, false );
                 }
             }
             return null;
@@ -145,9 +142,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
         private async Task<MusicLookupResult?> NewAlbumIdLookup( string albumId, bool isPrimary ) {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetAlbumIdURI( DefaultStorefront, albumId ), LookupRequestType.AlbumLookup );
             if (body != null) {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                    return await ParseTidalResponse( dataOutput, includedOutput, LookupRequestType.AlbumLookup, TidalEntity.Album, isPrimary );
+                TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
+                if (response?.Data != null && response.Included != null) {
+                    return await ParseTidalResponse( response.Data, response.Included, LookupRequestType.AlbumLookup, TidalEntity.Album, isPrimary );
                 }
             }
             return null;
@@ -156,9 +153,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
         private async Task<MusicLookupResult?> NewTrackIdLookup( string trackId, bool isPrimary ) {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetTrackIdURI( DefaultStorefront, trackId ), LookupRequestType.SongLookup );
             if (body != null) {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                    return await ParseTidalResponse( dataOutput, includedOutput, LookupRequestType.SongLookup, TidalEntity.Track, isPrimary );
+                TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
+                if (response?.Data != null && response.Included != null) {
+                    return await ParseTidalResponse( response.Data, response.Included, LookupRequestType.SongLookup, TidalEntity.Track, isPrimary );
                 }
             }
             return null;
@@ -178,9 +175,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
         ) {
             if (string.IsNullOrWhiteSpace( body )) { return null; }
             try {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                    return await ParseTidalResponse( dataOutput, includedOutput, lookupKey, kind, isPrimary );
+                TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
+                if (response?.Data != null && response.Included != null) {
+                    return await ParseTidalResponse( response.Data, response.Included, lookupKey, kind, isPrimary );
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, $"An error occurred while parsing the {lookupKey} json response from tidal." );
@@ -189,36 +186,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return null;
         }
 
-        private static bool CanParseJsonElement( JsonElement root, out JsonElement dataOutput, out JsonElement includedOutput ) {
-            dataOutput = root;
-            includedOutput = root;
-            bool result1 = false;
-            bool result2 = false;
-
-            if (root.TryGetProperty( "data", out JsonElement dataProps )) {
-                if (dataProps.ValueKind == JsonValueKind.Array) {
-                    using JsonElement.ArrayEnumerator enumerator = dataProps.EnumerateArray();
-                    if (enumerator.MoveNext( )) {
-                        dataOutput = enumerator.Current;
-                        result1 = true;
-                    }
-                } else {
-                    dataOutput = dataProps;
-                    result1 = true;
-                }
-            }
-
-            if (root.TryGetProperty( "included", out JsonElement includedProps )) {
-                includedOutput = includedProps;
-                result2 = true;
-            }
-
-            return result1 && result2;
-        }
-
         private async Task<MusicLookupResult?> ParseTidalResponse(
-            JsonElement dataOutput,
-            JsonElement includedOutput,
+            TidalResource data,
+            List<TidalResource> included,
             LookupRequestType lookupKey,
             TidalEntity kind,
             bool? isPrimary
@@ -231,72 +201,64 @@ namespace BridgeBeats.Domain.Implementations.Services {
             };
 
             try {
-                if (dataOutput.TryGetProperty( "relationships", out JsonElement dataRelationships )) {
-                    result.Artist = GetArtistName( dataRelationships, includedOutput );
+                if (data.Relationships != null) {
+                    result.Artist = GetArtistName( data.Relationships, included );
                 }
 
-                if (dataOutput.TryGetProperty( "attributes", out JsonElement dataAttributes )) {
-                    result.Title = dataAttributes
-                                .GetProperty( "title" )
-                                .GetString( ) ?? string.Empty;
+                if (data.Attributes != null) {
+                    result.Title = data.Attributes.Title ?? data.Attributes.Name ?? string.Empty;
 
-                    result.ExternalId = GetExternalIdFromJson( dataAttributes, isAlbum );
+                    result.ExternalId = GetExternalIdFromAttributes( data.Attributes, isAlbum );
 
-                    if (dataAttributes.TryGetProperty( "externalLinks", out JsonElement extLinks )
-                        && extLinks.GetArrayLength( ) > 0
-                        && extLinks
-                            .EnumerateArray( )
-                            .First( )
-                            .TryGetProperty( "href", out JsonElement hrefInfo )
+                    if (data.Attributes.ExternalLinks != null
+                        && data.Attributes.ExternalLinks.Count > 0
                     ) {
-                        result.URL = hrefInfo.GetString( ) ?? string.Empty;
+                        result.URL = data.Attributes.ExternalLinks[0].Href;
                     }
                 }
 
-                result.ArtUrl = await GetAlbumArtUrl( includedOutput, isAlbum );
+                result.ArtUrl = await GetAlbumArtUrl( included, isAlbum );
 
                 return result;
             } catch (Exception ex) {
                 Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from tidal." );
-                Logger.LogTrace( JsonSerializer.Serialize( dataOutput, SerializerOptions ) );
-                Logger.LogTrace( JsonSerializer.Serialize( includedOutput, SerializerOptions ) );
+                Logger.LogTrace( JsonSerializer.Serialize( data, SerializerOptions ) );
+                Logger.LogTrace( JsonSerializer.Serialize( included, SerializerOptions ) );
                 return null;
             }
         }
 
 
+        private static string GetExternalIdFromAttributes( TidalAttributes attributes, bool isAlbum ) {
+            return isAlbum
+                ? (attributes.BarcodeId ?? string.Empty)
+                : (attributes.Isrc ?? string.Empty);
+        }
+
         private static string GetArtistName(
-            JsonElement dataRelationships,
-            JsonElement includedOutput
+            TidalRelationships relationships,
+            List<TidalResource> included
         ) {
             string result = string.Empty;
-            if (dataRelationships.TryGetProperty( "artists", out JsonElement artistsProps ) && artistsProps.TryGetProperty( "data", out JsonElement artistsArray )) {
+            if (relationships.Artists?.Data != null) {
                 List<string> artistIds = [];
-                foreach (JsonElement artistInfo in artistsArray.EnumerateArray( )) {
-                    if (artistInfo.TryGetProperty( "type", out JsonElement contributorType ) && contributorType.GetString( ) == "artists" && artistInfo.TryGetProperty( "id", out JsonElement contributorId )) {
-                        string artistId = contributorId.GetString( ) ?? string.Empty;
-                        if (string.IsNullOrWhiteSpace( artistId ) == false) {
-                            artistIds.Add( artistId );
-                            result += $"|{artistId}| & ";
-                        }
+                foreach (TidalResourceIdentifier artistInfo in relationships.Artists.Data) {
+                    if (artistInfo.Type == "artists" && !string.IsNullOrWhiteSpace( artistInfo.Id )) {
+                        artistIds.Add( artistInfo.Id );
+                        result += $"|{artistInfo.Id}| & ";
                     }
                 }
 
                 result = result.TrimEnd( ' ', '&' );
 
                 // Find the matching artist in the included output
-                foreach (JsonElement includedItem in includedOutput.EnumerateArray( )) {
-                    if (includedItem.TryGetProperty( "type", out JsonElement includedType )
-                        && includedType.GetString( ) == "artists"
-                        && includedItem.TryGetProperty( "id", out JsonElement includedId )
-                        && includedItem.TryGetProperty( "attributes", out JsonElement includedAttributes )
-                        && includedAttributes.TryGetProperty( "name", out JsonElement includedName )
+                foreach (TidalResource includedItem in included) {
+                    if (includedItem.Type == "artists"
+                        && includedItem.Attributes != null
+                        && !string.IsNullOrWhiteSpace( includedItem.Id )
+                        && !string.IsNullOrWhiteSpace( includedItem.Attributes.Name )
                     ) {
-                        string artistId = includedId.GetString( ) ?? string.Empty;
-                        string artistName = includedName.GetString( ) ?? string.Empty;
-                        if (string.IsNullOrWhiteSpace( artistId ) == false && string.IsNullOrWhiteSpace( artistName ) == false) {
-                            result = result.Replace( $"|{artistId}|", artistName );
-                        }
+                        result = result.Replace( $"|{includedItem.Id}|", includedItem.Attributes.Name );
                     }
                 }
             }
@@ -304,35 +266,29 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         private async Task<string> GetAlbumArtUrl(
-            JsonElement includedOutput,
+            List<TidalResource> included,
             bool isAlbum
         ) {
             if (isAlbum == false) {
                 // Lookup album from album details and then return album art
-                foreach (JsonElement item in includedOutput.EnumerateArray( )) {
-                    if (item.TryGetProperty( "type", out JsonElement itemType )
-                        && itemType.GetString( ) == "albums"
-                        && item.TryGetProperty( "id", out JsonElement albumIdProp )
-                    ) {
-                        MusicLookupResult? album = await NewAlbumIdLookup( albumIdProp.GetString( )!, false );
-                        if (string.IsNullOrWhiteSpace( album?.ArtUrl ) == false) {
+                foreach (TidalResource item in included) {
+                    if (item.Type == "albums" && !string.IsNullOrWhiteSpace( item.Id )) {
+                        MusicLookupResult? album = await NewAlbumIdLookup( item.Id, false );
+                        if (!string.IsNullOrWhiteSpace( album?.ArtUrl )) {
                             return album.ArtUrl;
                         }
                     }
                 }
             } else {
                 // Parse Album art directly from included output
-                foreach (JsonElement item in includedOutput.EnumerateArray( )) {
-                    if (item.TryGetProperty( "type", out JsonElement itemType )
-                        && itemType.GetString( ) == "artworks"
-                        && item.TryGetProperty( "attributes", out JsonElement itemAttributes )
-                        && itemAttributes.TryGetProperty( "mediaType", out JsonElement itemMediaTypeProp )
-                        && itemMediaTypeProp.GetString( ) == "IMAGE"
-                        && itemAttributes.TryGetProperty( "files", out JsonElement itemFilesProp )
-                        && itemFilesProp.GetArrayLength( ) > 0
-                        && itemFilesProp.EnumerateArray( ).First( ).TryGetProperty( "href", out JsonElement itemUrlProp )
+                foreach (TidalResource item in included) {
+                    if (item.Type == "artworks"
+                        && item.Attributes != null
+                        && item.Attributes.MediaType == "IMAGE"
+                        && item.Attributes.Files != null
+                        && item.Attributes.Files.Count > 0
                     ) {
-                        return itemUrlProp.GetString( ) ?? string.Empty;
+                        return item.Attributes.Files[0].Href;
                     }
                 }
             }
@@ -344,21 +300,15 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
             List<(string id, string artistName)> results = [];
             try {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                JsonElement root = jsonDoc.RootElement;
-                if (root.TryGetProperty( "included", out JsonElement includedDetails ) &&
-                    includedDetails.GetArrayLength( ) > 0
-                ) {
-                    foreach (JsonElement item in includedDetails.EnumerateArray( )) {
-                        if (item.GetProperty( "type" ).GetString( ) == "artists"
-                            && item.TryGetProperty( "attributes", out JsonElement artistAttributes )
-                            && artistAttributes.TryGetProperty( "name", out JsonElement artistNameProp )
-                            && item.TryGetProperty( "id", out JsonElement artistIdProp )
+                TidalResponse<TidalResource>? response = JsonSerializer.Deserialize<TidalResponse<TidalResource>>( body, SerializerOptions );
+                if (response?.Included != null && response.Included.Count > 0) {
+                    foreach (TidalResource item in response.Included) {
+                        if (item.Type == "artists"
+                            && item.Attributes != null
+                            && !string.IsNullOrWhiteSpace( item.Attributes.Name )
+                            && !string.IsNullOrWhiteSpace( item.Id )
                         ) {
-                            results.Add(
-                                (artistIdProp.GetString( )!,
-                                artistNameProp.GetString( )!)
-                            );
+                            results.Add( (item.Id, item.Attributes.Name) );
                         }
                     }
                     return results;
