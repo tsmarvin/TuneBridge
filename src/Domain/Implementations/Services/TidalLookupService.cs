@@ -34,8 +34,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
         /// <inheritdoc/>
         public override async Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc )
             => await ParseTidalResponse(
-                await NewMusicApiRequest( TidalLinkParser.GetTracksIsrcURI( DefaultStorefront, isrc ), IsrcLookupKey ),
-                IsrcLookupKey,
+                await NewMusicApiRequest( TidalLinkParser.GetTracksIsrcURI( DefaultStorefront, isrc ), LookupRequestType.IsrcLookup ),
+                LookupRequestType.IsrcLookup,
                 TidalEntity.Track,
                 null
             );
@@ -43,8 +43,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
         /// <inheritdoc/>
         public override async Task<MusicLookupResult?> GetInfoByUPCAsync( string upc )
             => await ParseTidalResponse(
-                await NewMusicApiRequest( TidalLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), UpcLookupKey ),
-                UpcLookupKey,
+                await NewMusicApiRequest( TidalLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), LookupRequestType.UpcLookup ),
+                LookupRequestType.UpcLookup,
                 TidalEntity.Album,
                 null
             );
@@ -54,7 +54,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             List<(string id, string artistName)>? artistResults = ParseTidalArtistList(
                 await NewMusicApiRequest(
                     TidalLinkParser.GetArtistSearchUri(DefaultStorefront, artist),
-                    ArtistLookupKey
+                    LookupRequestType.ArtistLookup
                 )
             );
             MusicLookupResult? result = null;
@@ -96,7 +96,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         private async Task<MusicLookupResult?> ParseArtistAlbums( string artistId, string artistName, string title ) {
             string lookupKey = $"albums for artist {artistName} {artistId} ";
 
-            string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistAlbumsUri( DefaultStorefront, artistId ), lookupKey );
+            string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistAlbumsUri( DefaultStorefront, artistId ), LookupRequestType.ArtistAlbumLookup );
             if (body == null) { return null; }
 
             using JsonDocument jsonDoc = JsonDocument.Parse(body);
@@ -108,9 +108,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         private async Task<MusicLookupResult?> ParseArtistTracks( string artistId, string artistName, string title ) {
-            string lookupKey = $"tracks for artist {artistName} {artistId} ";
-
-            string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistTracksUri( DefaultStorefront, artistId ), lookupKey );
+            string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistTracksUri( DefaultStorefront, artistId ), LookupRequestType.AlbumTrackLookup );
             if (body == null) { return null; }
 
             using JsonDocument jsonDoc = JsonDocument.Parse(body);
@@ -145,22 +143,22 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         private async Task<MusicLookupResult?> NewAlbumIdLookup( string albumId, bool isPrimary ) {
-            string? body = await NewMusicApiRequest( TidalLinkParser.GetAlbumIdURI( DefaultStorefront, albumId ), AlbumLookupKey );
+            string? body = await NewMusicApiRequest( TidalLinkParser.GetAlbumIdURI( DefaultStorefront, albumId ), LookupRequestType.AlbumLookup );
             if (body != null) {
                 using JsonDocument jsonDoc = JsonDocument.Parse(body);
                 if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                    return await ParseTidalResponse( dataOutput, includedOutput, AlbumLookupKey, TidalEntity.Album, isPrimary );
+                    return await ParseTidalResponse( dataOutput, includedOutput, LookupRequestType.AlbumLookup, TidalEntity.Album, isPrimary );
                 }
             }
             return null;
         }
 
         private async Task<MusicLookupResult?> NewTrackIdLookup( string trackId, bool isPrimary ) {
-            string? body = await NewMusicApiRequest( TidalLinkParser.GetTrackIdURI( DefaultStorefront, trackId ), SongLookupKey );
+            string? body = await NewMusicApiRequest( TidalLinkParser.GetTrackIdURI( DefaultStorefront, trackId ), LookupRequestType.SongLookup );
             if (body != null) {
                 using JsonDocument jsonDoc = JsonDocument.Parse(body);
                 if (CanParseJsonElement( jsonDoc.RootElement, out JsonElement dataOutput, out JsonElement includedOutput )) {
-                    return await ParseTidalResponse( dataOutput, includedOutput, SongLookupKey, TidalEntity.Track, isPrimary );
+                    return await ParseTidalResponse( dataOutput, includedOutput, LookupRequestType.SongLookup, TidalEntity.Track, isPrimary );
                 }
             }
             return null;
@@ -174,7 +172,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
         private async Task<MusicLookupResult?> ParseTidalResponse(
             string? body,
-            string lookupKey,
+            LookupRequestType lookupKey,
             TidalEntity kind,
             bool? isPrimary
         ) {
@@ -185,7 +183,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     return await ParseTidalResponse( dataOutput, includedOutput, lookupKey, kind, isPrimary );
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from tidal." );
+                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey} json response from tidal." );
                 Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
@@ -221,7 +219,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         private async Task<MusicLookupResult?> ParseTidalResponse(
             JsonElement dataOutput,
             JsonElement includedOutput,
-            string lookupKey,
+            LookupRequestType lookupKey,
             TidalEntity kind,
             bool? isPrimary
         ) {

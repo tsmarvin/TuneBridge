@@ -56,19 +56,6 @@ namespace BridgeBeats.Domain.Types.Bases {
 
         #region Base Class Defaults
 
-        /// <summary>Lookup key for ISRC-based song queries.</summary>
-        protected const string IsrcLookupKey = "isrc song ";
-        /// <summary>Lookup key for UPC-based album queries.</summary>
-        protected const string UpcLookupKey = "upc album ";
-        /// <summary>Lookup key for artist search queries.</summary>
-        protected const string ArtistLookupKey = "artist search ";
-        /// <summary>Lookup key for URI-based queries.</summary>
-        protected const string UriLookupKey = "by uri ";
-        /// <summary>Lookup key for album queries.</summary>
-        protected const string AlbumLookupKey = "album ";
-        /// <summary>Lookup key for song queries.</summary>
-        protected const string SongLookupKey = "song ";
-
         /// <summary>Logger for recording errors and diagnostic information.</summary>
         protected readonly ILogger<MusicLookupServiceBase> Logger = logger;
         /// <summary>JSON serialization options for logging API responses.</summary>
@@ -76,13 +63,19 @@ namespace BridgeBeats.Domain.Types.Bases {
 
         private protected async Task<string?> NewMusicApiRequest(
             string requestUri,
-            string lookupKey
+            LookupRequestType lookupKey
         ) {
             using HttpClient http = await CreateAuthenticatedClientAsync();
 
             HttpResponseMessage resp = await http.GetAsync(requestUri);
             if (!resp.IsSuccessStatusCode) {
-                Logger.LogError( "An error occurred while fetching {lookupKey}data from {provider}: HTTP {statusCode} {reasonPhrase}", lookupKey, Provider.ToString( ), (int)resp.StatusCode, resp.ReasonPhrase );
+                Logger.LogError(
+                    "An error occurred while fetching {lookupKey}data from {provider}: HTTP {statusCode} {reasonPhrase}",
+                    lookupKey,
+                    Provider.ToString( ),
+                    (int)resp.StatusCode,
+                    resp.ReasonPhrase
+                );
                 return null;
             }
             return await resp.Content.ReadAsStringAsync( );
@@ -124,13 +117,12 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// <summary>
         /// Validates if an album's title matches a pre-sanitized title.
         /// </summary>
-        /// <param name="album">The album to validate.</param>
+        /// <param name="albumTitle">The album title to validate.</param>
         /// <param name="sanitizedTitle">The pre-sanitized expected title.</param>
         /// <returns>True if the titles match.</returns>
-        protected static bool ValidateSanitizedAlbumTitle( MusicLookupResultDto? album, string sanitizedTitle )
-            => album != null &&
-                sanitizedTitle
-                .Equals( SanitizeAlbumTitle( album.Title ), StringComparison.InvariantCultureIgnoreCase );
+        protected static bool ValidateSanitizedAlbumTitle( string albumTitle, string sanitizedTitle )
+            => sanitizedTitle
+                .Equals( SanitizeAlbumTitle( albumTitle ), StringComparison.InvariantCultureIgnoreCase );
 
         /// <summary>
         /// Validates if a song's title matches the expected title after sanitization.

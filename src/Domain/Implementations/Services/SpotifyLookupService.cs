@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BridgeBeats.Configuration;
 using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Domain.Contracts.Models.Spotify;
 using BridgeBeats.Domain.Implementations.Auth;
 using BridgeBeats.Domain.Implementations.LinkParsers;
 using BridgeBeats.Domain.Interfaces;
@@ -29,8 +30,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
         /// <inheritdoc/>
         public override async Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc )
             => ParseSpotifyResponse(
-                await NewMusicApiRequest( SpotifyLinkParser.GetTracksIsrcURI( isrc ), IsrcLookupKey ),
-                IsrcLookupKey,
+                await NewMusicApiRequest( SpotifyLinkParser.GetTracksIsrcURI( isrc ), LookupRequestType.IsrcLookup ),
+                LookupRequestType.IsrcLookup,
                 SpotifyEntity.Track,
                 null
             );
@@ -38,64 +39,48 @@ namespace BridgeBeats.Domain.Implementations.Services {
         /// <inheritdoc/>
         public override async Task<MusicLookupResult?> GetInfoByUPCAsync( string upc )
             => ParseSpotifyResponse(
-                await NewMusicApiRequest( SpotifyLinkParser.GetAlbumUpcURI( upc ), UpcLookupKey ),
-                UpcLookupKey,
+                await NewMusicApiRequest( SpotifyLinkParser.GetAlbumUpcURI( upc ), LookupRequestType.UpcLookup ),
+                LookupRequestType.UpcLookup,
                 SpotifyEntity.Album,
                 null
             );
 
         /// <inheritdoc/>
         public override async Task<MusicLookupResult?> GetInfoAsync( string title, string artist ) {
-            List<(string id, string artistName)>? artistResults = ParseSpotifyArtistList(
-                await NewMusicApiRequest(
-                    SpotifyLinkParser.GetArtistSearchUri(artist),
-                    ArtistLookupKey
-                )
-            );
+            List<(string id, string artistName)>? artistResults = await ParseSpotifyArtistList( artist );
 
             // Bail out early if we have no results
             if (artistResults == null || artistResults.Count == 0) { return null; }
 
             string sanitizedAlbumTitle = SanitizeAlbumTitle( title );
             foreach ((string id, string artistName) in artistResults) {
-                string lookupKey = $"albums for artist {artistName} {id} ";
-
-                List<(string id, string albumName)> artistAlbumIds = [];
-                foreach ((string albumId, MusicLookupResult album) in ParseArtistAlbumLists(
-                    await NewMusicApiRequest( SpotifyLinkParser.GetArtistAlbumsURI( id ), lookupKey ),
-                    lookupKey
-                )) {
-                    if (ValidateSanitizedAlbumTitle( album, sanitizedAlbumTitle )) {
+                List<string> artistAlbumIds = [];
+                await foreach ((string albumId, MusicLookupResult album) in ParseArtistAlbumLists( id )) {
+                    if (ValidateSanitizedAlbumTitle( album.Title, sanitizedAlbumTitle )) {
                         // The Artist Album endpoint doesn't return the albums with external Id's (UPC's) included.
                         // So we'll perform another direct lookup to get the UPC.
-                        string? body = await NewMusicApiRequest( SpotifyLinkParser.GetAlbumIdURI( albumId ), lookupKey );
+                        string? body = await NewMusicApiRequest(
+                            SpotifyLinkParser.GetAlbumIdURI( albumId ),
+                            LookupRequestType.AlbumIdLookup
+                        );
 
                         // This really shouldnt happen, but if something goes wrong we can return what we've already matched.
                         if (string.IsNullOrWhiteSpace( body )) { return album; }
 
-                        using JsonDocument jsonDoc = JsonDocument.Parse( body );
-                        return ParseSpotifyResponse(
-                            jsonDoc.RootElement,
-                            lookupKey,
-                            SpotifyEntity.Album,
-                            null
-                        );
+                        SpotifyAlbum fullAlbum = JsonSerializer.Deserialize<SpotifyAlbum>( body, SerializerOptions )!;
+                        album.ExternalId = fullAlbum.ExternalIds?.Upc ?? string.Empty;
+
+                        return album;
                     } else {
-                        artistAlbumIds.Add( (albumId, album.Title) );
+                        artistAlbumIds.Add( albumId );
                     }
                 }
 
                 // If we couldnt match the artist + album combination, try searching for the
                 // individual tracks on those albums instead.
                 string sanitizedSongTitle = SanitizeSongTitle( title );
-                foreach ((string albumId, string albumName) in artistAlbumIds) {
-                    string trackLookup = $"tracks for artist {artistName} album {albumName} id#{albumId} ";
-
-                MusicLookupResult? result = await ParseAlbumTrackListsAsync(
-                        await NewMusicApiRequest(SpotifyLinkParser.GetAlbumTracksURI(albumId), trackLookup),
-                        sanitizedSongTitle,
-                        trackLookup
-                    );
+                foreach (string albumId in artistAlbumIds) {
+                    MusicLookupResult? result = await ParseAlbumTrackListsAsync( albumId, sanitizedSongTitle );
                     if (result != null) { return result; }
                 }
             }
@@ -107,32 +92,10 @@ namespace BridgeBeats.Domain.Implementations.Services {
         public override async Task<MusicLookupResult?> GetInfoAsync( string uri ) {
             (bool result, SpotifyEntity kind, string id) = await SpotifyLinkParser.TryParseUriAsync( uri );
             if (result) {
-                if (kind == SpotifyEntity.PreRelease) {
-                    return new( ) {
-                        Artist = string.Empty,
-                        Title = string.Empty,
-                        ExternalId = "prerelease",
-                        URL = string.Empty,
-                        IsAlbum = true
-                    };
-                } else if (kind == SpotifyEntity.Album) {
-                    string? body = await NewMusicApiRequest( $"albums/{id}", AlbumLookupKey );
-                    if (body != null) {
-                        using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                        return ParseSpotifyResponse(
-                            jsonDoc.RootElement,
-                            AlbumLookupKey,
-                            kind,
-                            true
-                        );
-                    }
+                if (kind == SpotifyEntity.Album) {
+                    return await GetInfoByIDAsync( id, true );
                 } else if (kind == SpotifyEntity.Track) {
-                    return ParseSpotifyResponse(
-                        await NewMusicApiRequest( $"tracks/{id}", SongLookupKey ),
-                        SongLookupKey,
-                        kind,
-                        true
-                    );
+                    return await GetInfoByIDAsync( id, false );
                 }
             }
             return null;
@@ -145,7 +108,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 ? SpotifyLinkParser.GetAlbumIdURI( providerId )
                 : SpotifyLinkParser.GetTrackIdURI( providerId );
 
-            string requestKey = isAlbum ? "albumId " : "trackId ";
+            LookupRequestType requestKey = isAlbum ? LookupRequestType.AlbumIdLookup : LookupRequestType.SongIdLookup;
             return ParseSpotifyResponse(
                 await NewMusicApiRequest( requestUri, requestKey ),
                 requestKey,
@@ -162,7 +125,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
         private MusicLookupResult? ParseSpotifyResponse(
             string? body,
-            string lookupKey,
+            LookupRequestType lookupKey,
             SpotifyEntity kind,
             bool? isPrimary
         ) {
@@ -206,23 +169,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
             return true;
         }
 
-        private static string GetArtistName( JsonElement element ) {
-            string result = string.Empty;
-            if (element.TryGetProperty( "artists", out JsonElement artistsProps )) {
-                if (artistsProps.GetArrayLength( ) > 0) {
-                    result = artistsProps
-                             .EnumerateArray( )
-                             .First( )
-                             .GetProperty( "name" )
-                             .GetString( ) ?? string.Empty;
-                }
-            }
-            return result;
-        }
-
         private MusicLookupResult? ParseSpotifyResponse(
             JsonElement element,
-            string lookupKey,
+            LookupRequestType lookupKey,
             SpotifyEntity kind,
             bool? isPrimary
         ) {
@@ -233,27 +182,36 @@ namespace BridgeBeats.Domain.Implementations.Services {
             };
 
             try {
-                result.Artist = GetArtistName( element );
-
-                result.Title = element
-                                 .GetProperty( "name" )
-                                 .GetString( ) ?? string.Empty;
-
-                result.ExternalId = GetExternalIdFromJson( element, isAlbum );
-
-                result.URL = element
-                             .GetProperty( "external_urls" )
-                             .GetProperty( "spotify" )
-                             .GetString( ) ?? string.Empty;
-
                 switch (kind) {
                     case SpotifyEntity.Album:
-                        result.ArtUrl = GetAlbumArtUrl( element );
+                        SpotifyAlbum albumData = JsonSerializer.Deserialize<SpotifyAlbum>(
+                            JsonSerializer.Serialize( element, SerializerOptions ),
+                            SerializerOptions
+                        )!;
+                        result.Artist = albumData.Artists != null && albumData.Artists.Count > 0
+                                        ? albumData.Artists[0].Name
+                                        : string.Empty;
+                        result.Title = albumData.Name;
+                        result.ExternalId = albumData.ExternalIds?.Upc ?? string.Empty;
+                        result.URL = albumData.ExternalUrls != null ? albumData.ExternalUrls.Spotify : string.Empty;
+                        result.ArtUrl = albumData.Images.Count > 0
+                                        ? albumData.Images[0].Url
+                                        : string.Empty;
                         break;
                     case SpotifyEntity.Track:
-                        if (element.TryGetProperty( "album", out JsonElement albumProps )) {
-                            result.ArtUrl = GetAlbumArtUrl( albumProps );
-                        }
+                        SpotifyTrack trackData = JsonSerializer.Deserialize<SpotifyTrack>(
+                            JsonSerializer.Serialize( element, SerializerOptions ),
+                            SerializerOptions
+                        )!;
+                        result.Artist = trackData.Artists != null && trackData.Artists.Count > 0
+                                        ? trackData.Artists[0].Name
+                                        : string.Empty;
+                        result.Title = trackData.Name;
+                        result.ExternalId = trackData.ExternalIds?.Isrc ?? string.Empty;
+                        result.URL = trackData.ExternalUrls != null ? trackData.ExternalUrls.Spotify : string.Empty;
+                        result.ArtUrl = trackData.Album?.Images != null && trackData.Album.Images.Count > 0
+                                        ? trackData.Album.Images[0].Url
+                                        : string.Empty;
                         break;
                 }
 
@@ -265,106 +223,95 @@ namespace BridgeBeats.Domain.Implementations.Services {
             }
         }
 
-        private static string GetAlbumArtUrl( JsonElement element ) {
-            if (element.TryGetProperty( "images", out JsonElement imagesProps )) {
-                if (imagesProps.GetArrayLength( ) > 0 && imagesProps
-                                                         .EnumerateArray( )
-                                                         .First( )
-                                                         .TryGetProperty( "url", out JsonElement urlProps )
-                ) {
-                    return urlProps.GetString( ) ?? string.Empty;
-                }
-            }
-            return string.Empty;
-        }
-
-        private List<(string id, string artistName)>? ParseSpotifyArtistList( string? body ) {
-            if (body == null) { return null; }
-
-            List<(string id, string artistName)> results = [];
+        private async Task<List<(string id, string artistName)>?> ParseSpotifyArtistList( string artist ) {
             try {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                JsonElement root = jsonDoc.RootElement;
-                if (root.TryGetProperty( "artists", out JsonElement artistsProps ) &&
-                artistsProps.TryGetProperty( "items", out JsonElement itemsProps )
-                ) {
-                    if (itemsProps.GetArrayLength( ) == 0) { return null; }
+                List<(string id, string artistName)> results = [];
+                string? body = await NewMusicApiRequest(
+                                        SpotifyLinkParser.GetArtistSearchUri( artist ),
+                                        LookupRequestType.ArtistLookup
+                                    );
+                if (body == null) { return null; }
 
-                    foreach (JsonElement artist in itemsProps.EnumerateArray( )) {
-                        results.Add(
-                        (artist.GetProperty( "id" ).GetString( )!,
-                        artist.GetProperty( "name" ).GetString( )!)
-                        );
+                SpotifySearchResponse? response = JsonSerializer.Deserialize<SpotifySearchResponse>( body );
+                do {
+                    if (null != response?.Artists) {
+                        foreach (SpotifyArtist sArtist in response.Artists.Items) {
+                            results.Add( (sArtist.Id, sArtist.Name) );
+                        }
+
+                        if (response.Artists.Next != null) {
+                            body = await NewMusicApiRequest( response.Artists.Next, LookupRequestType.ArtistLookup );
+                            if (body == null) { return results; }
+                            response = JsonSerializer.Deserialize<SpotifySearchResponse>( body );
+                        } else {
+                            return results;
+                        }
                     }
-                    return results;
-                }
-                return null;
+                } while (response?.Artists?.Next != null);
             } catch (Exception ex) {
                 Logger.LogError( ex, $"An error occurred while parsing the artist list json response from spotify." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
-                return null;
             }
+
+            return null;
         }
 
-        private IEnumerable<(string id, MusicLookupResult album)> ParseArtistAlbumLists(
-        string? body,
-        string lookupKey
-        ) {
+        private async IAsyncEnumerable<(string id, MusicLookupResult album)> ParseArtistAlbumLists( string id ) {
+
+            string? body = await NewMusicApiRequest( SpotifyLinkParser.GetArtistAlbumsURI( id ), LookupRequestType.ArtistAlbumLookup);
             if (body == null) { yield break; }
 
-            using JsonDocument jsonDoc = JsonDocument.Parse(body);
-            JsonElement root = jsonDoc.RootElement;
-            if (root.TryGetProperty( "items", out JsonElement itemProps )) {
-                if (itemProps.GetArrayLength( ) == 0) { yield break; }
+            do {
+                SpotifyPaging<SpotifyAlbumSimplified>? paging = JsonSerializer.Deserialize<SpotifyPaging<SpotifyAlbumSimplified>>( body );
+                if (paging == null || paging.Items.Count == 0) { yield break; }
 
-                foreach (JsonElement item in itemProps.EnumerateArray( )) {
-                    yield return (item.GetProperty( "id" ).GetString( )!, ParseSpotifyResponse( item, lookupKey, SpotifyEntity.Album, null )!);
+                foreach (SpotifyAlbumSimplified album in paging.Items) {
+                    yield return (album.Id, new MusicLookupResult {
+                        Artist = album.Artists != null && album.Artists.Count > 0 ? album.Artists[0].Name : string.Empty,
+                        Title = album.Name,
+                        ExternalId = string.Empty, // Will be filled in later if matched
+                        URL = album.ExternalUrls != null ? album.ExternalUrls.Spotify : string.Empty,
+                        IsAlbum = true
+                    });
                 }
-            }
+
+                body = string.IsNullOrWhiteSpace( paging.Next )
+                    ? null
+                    : await NewMusicApiRequest( paging.Next, LookupRequestType.ArtistAlbumLookup );
+            } while (body != null);
         }
 
         private async Task<MusicLookupResult?> ParseAlbumTrackListsAsync(
-        string? body,
-        string sanitizedSongTitle,
-        string lookupKey
+            string albumId,
+            string sanitizedSongTitle
         ) {
+            string? body = await NewMusicApiRequest(SpotifyLinkParser.GetAlbumTracksURI(albumId), LookupRequestType.AlbumTrackLookup);
             if (body == null) { return null; }
 
-            try {
-                using JsonDocument jsonDoc = JsonDocument.Parse(body);
-                JsonElement root = jsonDoc.RootElement;
-                if (root.TryGetProperty( "items", out JsonElement itemProps )) {
-                    if (itemProps.GetArrayLength( ) == 0) { return null; }
+            do {
+                SpotifyPaging<SpotifyTrackSimplified>? paging = JsonSerializer.Deserialize<SpotifyPaging<SpotifyTrackSimplified>>( body );
+                if (paging == null || paging.Items.Count == 0) { return null; }
 
-                    foreach (JsonElement item in itemProps.EnumerateArray( )) {
-                        string name = (item.GetProperty("name").GetString() ?? string.Empty).Trim();
+                foreach (SpotifyTrackSimplified track in paging.Items) {
+                    if (SanitizeSongTitle( track.Name ).Equals( sanitizedSongTitle, StringComparison.InvariantCultureIgnoreCase )) {
 
-                        if (SanitizeSongTitle( name ).Equals( sanitizedSongTitle, StringComparison.InvariantCultureIgnoreCase ) &&
-                        CanParseJsonElement( item, out JsonElement element )
-                        ) {
-                            string trackId = item.GetProperty("id").GetString()!;
+                        string? trackBody = await NewMusicApiRequest( SpotifyLinkParser.GetTrackIdURI( track.Id ), LookupRequestType.SongIdLookup );
+                        SpotifyTrack? fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody! )!;
 
-                            // The Album Track endpoint doesn't return the tracks with external Id's (ISRC's) included.
-                            // So we'll perform another direct lookup to get the ISRC.
-                            string? trackBody = await NewMusicApiRequest( SpotifyLinkParser.GetTrackIdURI( trackId ), lookupKey );
-
-                            // This really shouldnt happen, but if something goes wrong we can return what we've already matched.
-                            if (string.IsNullOrWhiteSpace( trackBody )) { return ParseSpotifyResponse( element, lookupKey, SpotifyEntity.Track, null ); }
-
-                            using JsonDocument trackJson = JsonDocument.Parse( trackBody );
-                            return ParseSpotifyResponse(
-                            trackJson.RootElement,
-                            lookupKey,
-                            SpotifyEntity.Track,
-                            null
-                            );
-                        }
+                        return new MusicLookupResult {
+                            Artist = fullTrack.Artists != null && fullTrack.Artists.Count > 0 ? fullTrack.Artists[0].Name : string.Empty,
+                            Title = fullTrack.Name,
+                            ExternalId = fullTrack.ExternalIds?.Upc ?? string.Empty,
+                            URL = fullTrack.ExternalUrls != null ? fullTrack.ExternalUrls.Spotify : string.Empty,
+                            IsAlbum = true
+                        };
                     }
                 }
-            } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from spotify." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
-            }
+
+                body = string.IsNullOrWhiteSpace( paging.Next )
+                    ? null
+                    : await NewMusicApiRequest( paging.Next, LookupRequestType.AlbumTrackLookup );
+            } while (body != null);
+
             return null;
         }
 
