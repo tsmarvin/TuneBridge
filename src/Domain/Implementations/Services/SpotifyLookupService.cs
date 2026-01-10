@@ -306,7 +306,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                             };
                         }
 
-                        SpotifyTrack? fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody );
+                        SpotifyTrack fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody )!;
                         return new MusicLookupResult {
                             Artist = fullTrack.Artists != null && fullTrack.Artists.Count > 0 ? fullTrack.Artists[0].Name : string.Empty,
                             Title = fullTrack.Name,
