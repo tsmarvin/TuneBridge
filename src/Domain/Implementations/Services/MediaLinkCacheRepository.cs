@@ -116,6 +116,17 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
+        public async Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByCardIdAsync( string cardId ) {
+            using MediaLinkCacheDbContext dbContext = dbContextFactory.CreateDbContext( );
+            MediaLinkCacheEntry? cacheEntry = await dbContext
+                                                        .CacheEntries
+                                                        .FirstOrDefaultAsync( ce => ce.CardId == cardId );
+            return cacheEntry is null
+                ? null
+                : await ValidatePDSRecordState( cacheEntry );
+        }
+
+        /// <inheritdoc/>
         public async Task<string> CacheResultAsync( MediaLinkResult result ) {
             try {
                 // Store on ATProto PDS first (this creates/updates with deterministic rkey)
@@ -132,7 +143,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         /// <param name="result">The result entry to add to the local cache</param>
         /// <param name="recordUri">The location on the PDS the record is saved to</param>
         /// <returns></returns>
-        public async Task<string> AddResultToLocalCacheAsync( MediaLinkResult result, string recordUri ) {
+        private async Task<string> AddResultToLocalCacheAsync( MediaLinkResult result, string recordUri ) {
             try {
                 await AddInputLinksAsync( recordUri, result );
                 return recordUri;
@@ -272,7 +283,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
         /// <summary>
         /// Helper method to add provider-specific entries for each provider in the result.
-        /// Extracts provider IDs from the service URLs and stores them for fast provider-based lookups.
+        /// Extracts the provider ID from the service URLs and stores them for fast provider-based lookups.
         /// </summary>
         private async Task AddProviderEntriesAsync(
             MediaLinkCacheDbContext dbContext,
