@@ -28,7 +28,7 @@ namespace BridgeBeats.Domain.Implementations.Utilities {
             }
 
             // Find the first result with a non-empty externalId
-            MusicLookupResultDto? firstResultWithId = result.Results.Values
+            MusicLookupResult? firstResultWithId = result.Results.Values
                 .FirstOrDefault( r => !string.IsNullOrWhiteSpace( r.ExternalId ) );
 
             if (firstResultWithId != null) {
@@ -44,7 +44,7 @@ namespace BridgeBeats.Domain.Implementations.Utilities {
         /// </summary>
         private static string GenerateMetadataBasedRkey( MediaLinkResult result ) {
             // Get first result to extract metadata
-            MusicLookupResultDto firstResult = result.Results.Values.First( );
+            MusicLookupResult firstResult = result.Results.Values.First( );
 
             // Validate that at least one of Title or Artist is non-empty
             if (string.IsNullOrWhiteSpace( firstResult.Title ) && string.IsNullOrWhiteSpace( firstResult.Artist )) {

@@ -137,7 +137,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             }
 
             // Find primary result for display
-            MusicLookupResultDto? primaryResult = result.Results.Values.FirstOrDefault( r => r.IsPrimary )
+            MusicLookupResult? primaryResult = result.Results.Values.FirstOrDefault( r => r.IsPrimary )
                                                    ?? result.Results.Values.FirstOrDefault( );
 
             if (primaryResult != null) {
@@ -222,7 +222,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
                 continue;
             }
 
-            MusicLookupResultDto? primaryResult = result.Results.Values.FirstOrDefault( r => r.IsPrimary )
+            MusicLookupResult? primaryResult = result.Results.Values.FirstOrDefault( r => r.IsPrimary )
                                                    ?? result.Results.Values.FirstOrDefault( );
 
             if (primaryResult != null) {

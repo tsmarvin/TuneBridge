@@ -75,7 +75,7 @@ public class MusicLookupServiceTests {
         }
 
         Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
-        MusicLookupResultDto firstResult = result.Results.First( ).Value;
+        MusicLookupResult firstResult = result.Results.First( ).Value;
         Assert.IsFalse( firstResult.IsAlbum ?? true );
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
@@ -100,7 +100,7 @@ public class MusicLookupServiceTests {
         }
 
         Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
-        MusicLookupResultDto firstResult = result.Results.First( ).Value;
+        MusicLookupResult firstResult = result.Results.First( ).Value;
         Assert.IsTrue( firstResult.IsAlbum ?? false );
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
@@ -125,7 +125,7 @@ public class MusicLookupServiceTests {
         }
 
         Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
-        MusicLookupResultDto firstResult = result.Results.First( ).Value;
+        MusicLookupResult firstResult = result.Results.First( ).Value;
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
         Assert.IsTrue( firstResult.Title?.Contains( "Bohemian", StringComparison.OrdinalIgnoreCase ), "Title should contain Bohemian" );
@@ -155,7 +155,7 @@ public class MusicLookupServiceTests {
         Assert.IsNotEmpty( results, "Results collection should not be empty" );
         MediaLinkResult firstResult = results[0];
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
-        MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
+        MusicLookupResult firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
     }
@@ -184,7 +184,7 @@ public class MusicLookupServiceTests {
         Assert.IsNotEmpty( results, "Results collection should not be empty" );
         MediaLinkResult firstResult = results[0];
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
-        MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
+        MusicLookupResult firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
     }
@@ -227,7 +227,7 @@ public class MusicLookupServiceTests {
         Assert.IsNotEmpty( results, "Results collection should not be empty" );
         MediaLinkResult firstResult = results[0];
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
-        MusicLookupResultDto firstLookup = firstResult.Results.First( ).Value;
+        MusicLookupResult firstLookup = firstResult.Results.First( ).Value;
         Assert.IsNotNull( firstLookup.Title );
         Assert.IsNotNull( firstLookup.Artist );
     }
@@ -264,8 +264,7 @@ public class MusicLookupServiceTests {
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
 
         // Verify Apple Music result
-        Assert.IsTrue( firstResult.Results.ContainsKey( Domain.Types.Enums.SupportedProviders.AppleMusic ), "Should have Apple Music result" );
-        MusicLookupResultDto appleResult = firstResult.Results[Domain.Types.Enums.SupportedProviders.AppleMusic];
+        Assert.IsTrue( firstResult.Results.TryGetValue( Domain.Types.Enums.SupportedProviders.AppleMusic, out MusicLookupResult? appleResult ), "Should have Apple Music result" );
         Assert.IsNotNull( appleResult.Title );
         Assert.IsNotNull( appleResult.Artist );
         Assert.IsFalse( appleResult.IsAlbum ?? true, "Should be a track, not an album" );
@@ -276,7 +275,7 @@ public class MusicLookupServiceTests {
 
         // Verify Spotify result is present (the main issue being tested)
         // Note: This may fail if Spotify rate limits are hit
-        if (!firstResult.Results.TryGetValue( Domain.Types.Enums.SupportedProviders.Spotify, out MusicLookupResultDto? spotifyResult )) {
+        if (!firstResult.Results.TryGetValue( Domain.Types.Enums.SupportedProviders.Spotify, out MusicLookupResult? spotifyResult )) {
             Assert.Inconclusive( "Spotify result not found - possibly due to rate limiting" );
             return;
         }

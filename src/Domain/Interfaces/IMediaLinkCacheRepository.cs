@@ -47,6 +47,13 @@ namespace BridgeBeats.Domain.Interfaces {
         Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByProviderIdAsync( string providerId, SupportedProviders provider, bool isAlbum );
 
         /// <summary>
+        /// Attempts to get a cached MediaLinkResult by its deterministic card ID.
+        /// </summary>
+        /// <param name="cardId">The card ID (hash-based, URL-safe identifier used in /card/{id} endpoints).</param>
+        /// <returns>A tuple containing the cached result, its ATProto record URI, and staleness indicator, or null if not found.</returns>
+        Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByCardIdAsync( string cardId );
+
+        /// <summary>
         /// Stores or updates (upserts) a MediaLinkResult in the cache and on ATProto PDS.
         /// </summary>
         /// <param name="result">The MediaLinkResult to cache.</param>

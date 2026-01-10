@@ -48,12 +48,10 @@ namespace BridgeBeats.Configuration {
                 ConfigureOpenTelemetry( builder );
             }
 
-            IServiceCollection services = builder.Services;
-            IConfiguration config = builder.Configuration;
-
             _ = builder.WebHost.ConfigureBridgeBeatsServices(
-                services,
-                config
+                builder.Services,
+                builder.Configuration,
+                builder.Environment.EnvironmentName
             );
 
             return builder;
@@ -62,9 +60,10 @@ namespace BridgeBeats.Configuration {
         internal static TBuilder ConfigureBridgeBeatsServices<TBuilder>(
             this TBuilder builder,
             IServiceCollection services,
-            IConfiguration config
+            IConfiguration config,
+            string environment
         ) where TBuilder : IWebHostBuilder {
-            _ = AddBridgeBeatsServices( services, config );
+            _ = AddBridgeBeatsServices( services, config, environment );
             return builder;
         }
 
@@ -74,10 +73,12 @@ namespace BridgeBeats.Configuration {
         /// </summary>
         /// <param name="services">The service collection to configure.</param>
         /// <param name="config">The configuration to use for settings.</param>
+        /// <param name="environment">The environment name.</param>
         /// <returns>The configured service collection.</returns>
         internal static IServiceCollection AddBridgeBeatsServices(
             this IServiceCollection services,
-            IConfiguration config
+            IConfiguration config,
+            string environment
         ) {
             // Add services to the container.
             _ = services
@@ -130,7 +131,7 @@ namespace BridgeBeats.Configuration {
 
             // Discord configuration
             _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
-            ConfigureDiscordIfEnabled( services, settings );
+            ConfigureDiscordIfEnabled( services, settings, environment );
 
             return services;
         }
@@ -586,8 +587,11 @@ namespace BridgeBeats.Configuration {
 
         private static void ConfigureDiscordIfEnabled(
             IServiceCollection services,
-            AppSettings settings
+            AppSettings settings,
+            string environment
         ) {
+            if (environment == "Testing") { return; }
+
             // Only register Discord services if token is provided and not empty/whitespace
             if (string.IsNullOrWhiteSpace( settings.DiscordToken )) { return; }
 

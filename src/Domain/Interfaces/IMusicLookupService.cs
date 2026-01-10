@@ -19,35 +19,35 @@ namespace BridgeBeats.Domain.Interfaces {
         /// <param name="title">The title of the track or album.</param>
         /// <param name="artist">The artist name.</param>
         /// <returns>Music lookup result with metadata, or null if not found.</returns>
-        Task<MusicLookupResultDto?> GetInfoAsync( string title, string artist );
+        Task<MusicLookupResult?> GetInfoAsync( string title, string artist );
 
         /// <summary>
         /// Looks up track information by ISRC (International Standard Recording Code).
         /// </summary>
         /// <param name="isrc">The ISRC code of the track.</param>
         /// <returns>Music lookup result with metadata, or null if not found.</returns>
-        Task<MusicLookupResultDto?> GetInfoByISRCAsync( string isrc );
+        Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc );
 
         /// <summary>
         /// Looks up album information by UPC (Universal Product Code).
         /// </summary>
         /// <param name="upc">The UPC code of the album.</param>
         /// <returns>Music lookup result with metadata, or null if not found.</returns>
-        Task<MusicLookupResultDto?> GetInfoByUPCAsync( string upc );
+        Task<MusicLookupResult?> GetInfoByUPCAsync( string upc );
 
         /// <summary>
         /// Looks up track or album information from a provider-specific URI.
         /// </summary>
         /// <param name="uri">The music provider's URI (e.g., Spotify or Apple Music link).</param>
         /// <returns>Music lookup result with metadata, or null if not found or URI is invalid.</returns>
-        Task<MusicLookupResultDto?> GetInfoAsync( string uri );
+        Task<MusicLookupResult?> GetInfoAsync( string uri );
 
         /// <summary>
         /// Looks up additional information for a partial music lookup result.
         /// </summary>
         /// <param name="lookup">The partial lookup result to enhance with additional data.</param>
         /// <returns>Enhanced music lookup result with metadata, or null if not found.</returns>
-        Task<MusicLookupResultDto?> GetInfoAsync( MusicLookupResultDto lookup );
+        Task<MusicLookupResult?> GetInfoAsync( MusicLookupResult lookup );
 
         /// <summary>
         /// Looks up track or album information by provider-specific ID.
@@ -55,6 +55,6 @@ namespace BridgeBeats.Domain.Interfaces {
         /// <param name="providerId">The provider-specific identifier (e.g., Apple Music catalog ID, Spotify track/album ID).</param>
         /// <param name="isAlbum">True to look up an album, false to look up a track.</param>
         /// <returns>Music lookup result with metadata, or null if not found.</returns>
-        Task<MusicLookupResultDto?> GetInfoByIDAsync( string providerId, bool isAlbum );
+        Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum );
     }
 }

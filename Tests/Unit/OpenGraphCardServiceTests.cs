@@ -53,9 +53,9 @@ public class OpenGraphCardServiceTests {
         string baseUrl = "bridgebeats.link";
         IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
         MediaLinkResult result = new( ) {
-            Results = new Dictionary<SupportedProviders, MusicLookupResultDto> {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {
-                    SupportedProviders.AppleMusic, new MusicLookupResultDto {
+                    SupportedProviders.AppleMusic, new MusicLookupResult {
                         Title = "Test Track",
                         Artist = "Test Artist",
                         URL = "https://music.apple.com/us/album/test/123",

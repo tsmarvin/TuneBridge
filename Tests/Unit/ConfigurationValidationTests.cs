@@ -35,7 +35,7 @@ public class ConfigurationValidationTests {
         FileNotFoundException ex = Assert.ThrowsExactly<FileNotFoundException>( () => {
             IServiceCollection services = new ServiceCollection( );
             IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
-            _ = services.AddBridgeBeatsServices( config );
+            _ = services.AddBridgeBeatsServices( config, "Testing" );
         } );
         Assert.Contains( ".p8", ex.Message );
     }
@@ -67,7 +67,7 @@ public class ConfigurationValidationTests {
             InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
                 IServiceCollection services = new ServiceCollection( );
                 IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
-                _ = services.AddBridgeBeatsServices( config );
+                _ = services.AddBridgeBeatsServices( config, "Testing" );
             } );
             Assert.Contains( "missing contents", ex.Message );
         } finally {
@@ -99,7 +99,7 @@ public class ConfigurationValidationTests {
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
             IServiceCollection services = new ServiceCollection( );
             IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
-            _ = services.AddBridgeBeatsServices( config );
+            _ = services.AddBridgeBeatsServices( config, "Testing" );
         } );
         Assert.Contains( "Required settings are missing", ex.Message );
     }
@@ -127,7 +127,7 @@ public class ConfigurationValidationTests {
         // Act
         IServiceCollection services = new ServiceCollection( );
         IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
-        _ = services.AddBridgeBeatsServices( config );
+        _ = services.AddBridgeBeatsServices( config, "Testing" );
         ServiceProvider sp = services.BuildServiceProvider( );
 
         // Assert
