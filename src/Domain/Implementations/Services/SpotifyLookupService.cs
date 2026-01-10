@@ -295,7 +295,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
                         string? trackBody = await NewMusicApiRequest( SpotifyLinkParser.GetTrackIdURI( track.Id ), LookupRequestType.SongIdLookup );
                         
-                        // If we can't fetch full track details, return simplified track data
+                        // This shouuldn't happen, but if we cant fetch full track details, return simplified track data
                         if (trackBody == null) {
                             return new MusicLookupResult {
                                 Artist = track.Artists != null && track.Artists.Count > 0 ? track.Artists[0].Name : string.Empty,
@@ -307,18 +307,6 @@ namespace BridgeBeats.Domain.Implementations.Services {
                         }
 
                         SpotifyTrack? fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody );
-                        
-                        // If deserialization fails, return simplified track data
-                        if (fullTrack == null) {
-                            return new MusicLookupResult {
-                                Artist = track.Artists != null && track.Artists.Count > 0 ? track.Artists[0].Name : string.Empty,
-                                Title = track.Name,
-                                ExternalId = string.Empty,
-                                URL = track.ExternalUrls != null ? track.ExternalUrls.Spotify : string.Empty,
-                                IsAlbum = false
-                            };
-                        }
-
                         return new MusicLookupResult {
                             Artist = fullTrack.Artists != null && fullTrack.Artists.Count > 0 ? fullTrack.Artists[0].Name : string.Empty,
                             Title = fullTrack.Name,
