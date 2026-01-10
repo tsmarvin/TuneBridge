@@ -164,13 +164,11 @@ namespace BridgeBeats.Domain.Implementations.Services {
             if (body == null) { return null; }
 
             try {
-                AppleMusicDataResponse<object>? response = JsonSerializer.Deserialize<AppleMusicDataResponse<object>>( body, SerializerOptions );
+                AppleMusicDataResponse<JsonElement>? response = JsonSerializer.Deserialize<AppleMusicDataResponse<JsonElement>>( body, SerializerOptions );
                 if (response?.Data != null && response.Data.Count > 0) {
-                    foreach (object item in response.Data) {
-                        // Serialize back to JSON and then deserialize to the correct type
-                        string itemJson = JsonSerializer.Serialize( item, SerializerOptions );
+                    foreach (JsonElement item in response.Data) {
                         if (isAlbum) {
-                            AppleMusicAlbum? album = JsonSerializer.Deserialize<AppleMusicAlbum>( itemJson, SerializerOptions );
+                            AppleMusicAlbum? album = item.Deserialize<AppleMusicAlbum>( SerializerOptions );
                             if (album?.Attributes != null) {
                                 string name = album.Attributes.Name.Trim();
                                 if (SanitizeAlbumTitle( name ).Equals( title, StringComparison.InvariantCultureIgnoreCase )) {
@@ -178,7 +176,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                                 }
                             }
                         } else {
-                            AppleMusicSong? song = JsonSerializer.Deserialize<AppleMusicSong>( itemJson, SerializerOptions );
+                            AppleMusicSong? song = item.Deserialize<AppleMusicSong>( SerializerOptions );
                             if (song?.Attributes != null) {
                                 string name = song.Attributes.Name.Trim();
                                 if (SanitizeSongTitle( name ).Equals( title, StringComparison.InvariantCultureIgnoreCase )) {
@@ -204,18 +202,17 @@ namespace BridgeBeats.Domain.Implementations.Services {
         ) {
             if (body == null) { return null; }
             try {
-                AppleMusicDataResponse<object>? response = JsonSerializer.Deserialize<AppleMusicDataResponse<object>>( body, SerializerOptions );
+                AppleMusicDataResponse<JsonElement>? response = JsonSerializer.Deserialize<AppleMusicDataResponse<JsonElement>>( body, SerializerOptions );
                 if (response?.Data == null || response.Data.Count == 0) {
                     return null;
                 }
 
-                // Serialize the first item back to JSON and then deserialize to the correct type
-                string itemJson = JsonSerializer.Serialize( response.Data[0], SerializerOptions );
+                JsonElement firstItem = response.Data[0];
                 if (isAlbum == true) {
-                    AppleMusicAlbum? album = JsonSerializer.Deserialize<AppleMusicAlbum>( itemJson, SerializerOptions );
+                    AppleMusicAlbum? album = firstItem.Deserialize<AppleMusicAlbum>( SerializerOptions );
                     return album != null ? ParseAppleMusicAlbumResponse( album, lookupKey, storeFront, isPrimary ) : null;
                 } else {
-                    AppleMusicSong? song = JsonSerializer.Deserialize<AppleMusicSong>( itemJson, SerializerOptions );
+                    AppleMusicSong? song = firstItem.Deserialize<AppleMusicSong>( SerializerOptions );
                     return song != null ? ParseAppleMusicSongResponse( song, lookupKey, storeFront, isPrimary ) : null;
                 }
             } catch (Exception ex) {
