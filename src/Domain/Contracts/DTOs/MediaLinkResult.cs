@@ -15,7 +15,7 @@ namespace BridgeBeats.Domain.Contracts.DTOs {
         /// <summary>
         /// The dictionary of results from supported providers with matching entries.
         /// </summary>
-        public Dictionary<SupportedProviders, MusicLookupResultDto> Results { get; set; } = [];
+        public Dictionary<SupportedProviders, MusicLookupResult> Results { get; set; } = [];
 
         /// <summary>
         /// Optional user-facing messages associated with this result (e.g., guidance for unsupported links).

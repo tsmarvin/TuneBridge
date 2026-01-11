@@ -5,7 +5,7 @@
     Layout = null;
     var result = Model.Result as BridgeBeats.Domain.Contracts.DTOs.MediaLinkResult;
     var primaryProvider = (SupportedProviders)Model.PrimaryProvider;
-    var primaryResult = Model.PrimaryResult as BridgeBeats.Domain.Contracts.DTOs.MusicLookupResultDto;
+    var primaryResult = Model.PrimaryResult as BridgeBeats.Domain.Contracts.DTOs.MusicLookupResult;
     var cardUrl = Model.CardUrl as string;
     var atProtoUri = Model.ATProtoUri as string;
     var providerClass = $"provider-{primaryProvider.ToString().ToLowerInvariant()}";

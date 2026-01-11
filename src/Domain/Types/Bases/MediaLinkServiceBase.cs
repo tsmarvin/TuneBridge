@@ -60,16 +60,16 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// Performs the initial link extraction and lookup for all services.
         /// </summary>
         /// <param name="content">The string content to parse for links.</param>
-        /// <returns>A dictionary with the <see cref="MusicLookupResultDto"/> as the key, and a tuple containing the provider and inputlink information as the value.</returns>
-        protected async Task<Dictionary<MusicLookupResultDto, (SupportedProviders provider, string inputLink)>> GetMusicLookupResults( string content ) {
-            Dictionary<MusicLookupResultDto, (SupportedProviders provider, string inputLink)> linkResults = [];
+        /// <returns>A dictionary with the <see cref="MusicLookupResult"/> as the key, and a tuple containing the provider and inputlink information as the value.</returns>
+        protected async Task<Dictionary<MusicLookupResult, (SupportedProviders provider, string inputLink)>> GetMusicLookupResults( string content ) {
+            Dictionary<MusicLookupResult, (SupportedProviders provider, string inputLink)> linkResults = [];
             try {
                 foreach (string link in ValidLink.GetGroupValues( content, "Link" )) {
                     if (string.IsNullOrWhiteSpace( link )) { continue; }
 
                     foreach ((SupportedProviders provider, IMusicLookupService svc) in EnabledProviders) {
                         try {
-                            MusicLookupResultDto? lookup = await svc.GetInfoAsync( link );
+                            MusicLookupResult? lookup = await svc.GetInfoAsync( link );
                             if (lookup is not null) { linkResults.Add( lookup, (provider, link) ); }
                         } catch (Exception e) {
                             Logger.LogError( e, "Failed while getting initial media link lookup data by URL for {provider}.", provider );
@@ -89,14 +89,14 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// </summary>
         /// <param name="title">The name of the track or album.</param>
         /// <param name="artist">The artist that created the track or album.</param>
-        /// <returns>A tuple containing the <see cref="MusicLookupResultDto"/> and <see cref="SupportedProviders"/>.</returns>
-        protected async Task<(MusicLookupResultDto result, SupportedProviders provider)?> GetMusicLookupResults( string title, string artist ) {
+        /// <returns>A tuple containing the <see cref="MusicLookupResult"/> and <see cref="SupportedProviders"/>.</returns>
+        protected async Task<(MusicLookupResult result, SupportedProviders provider)?> GetMusicLookupResults( string title, string artist ) {
             try {
                 if (string.IsNullOrWhiteSpace( title ) || string.IsNullOrWhiteSpace( artist )) { return null; }
 
                 foreach ((SupportedProviders provider, IMusicLookupService svc) in EnabledProviders) {
                     try {
-                        MusicLookupResultDto? lookup = await svc.GetInfoAsync( title, artist );
+                        MusicLookupResult? lookup = await svc.GetInfoAsync( title, artist );
                         if (lookup is not null) { return (lookup, provider); }
                     } catch (Exception ex) {
                         Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title for {provider}.", provider );
@@ -115,14 +115,14 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// </summary>
         /// <param name="externalId">The string content to parse for links.</param>
         /// <param name="isAlbum">Indicates whether to search for UPC entries (true) or ISRC entries (false).</param>
-        /// <returns>A tuple containing the <see cref="MusicLookupResultDto"/> and <see cref="SupportedProviders"/>.</returns>
-        protected async Task<(MusicLookupResultDto result, SupportedProviders provider)?> GetMusicLookupResults( string externalId, bool isAlbum ) {
+        /// <returns>A tuple containing the <see cref="MusicLookupResult"/> and <see cref="SupportedProviders"/>.</returns>
+        protected async Task<(MusicLookupResult result, SupportedProviders provider)?> GetMusicLookupResults( string externalId, bool isAlbum ) {
             try {
                 if (string.IsNullOrWhiteSpace( externalId )) { return null; }
 
                 foreach ((SupportedProviders provider, IMusicLookupService svc) in EnabledProviders) {
                     try {
-                        MusicLookupResultDto? lookup = isAlbum
+                        MusicLookupResult? lookup = isAlbum
                                                         ? await svc.GetInfoByUPCAsync( externalId )
                                                         : await svc.GetInfoByISRCAsync( externalId );
 
@@ -146,8 +146,8 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// <param name="providerId">The provider-specific identifier.</param>
         /// <param name="provider">The provider to query.</param>
         /// <param name="isAlbum">Indicates whether to search for album entries (true) or track entries (false).</param>
-        /// <returns>The <see cref="MusicLookupResultDto"/> for the <paramref name="provider"/>.</returns>
-        protected async Task<MusicLookupResultDto?> GetMusicLookupResultsByProviderId(
+        /// <returns>The <see cref="MusicLookupResult"/> for the <paramref name="provider"/>.</returns>
+        protected async Task<MusicLookupResult?> GetMusicLookupResultsByProviderId(
             string providerId,
             SupportedProviders provider,
             bool isAlbum
@@ -159,7 +159,7 @@ namespace BridgeBeats.Domain.Types.Bases {
                     Logger.LogWarning( "Provider {provider} is not enabled or configured", provider );
                     return null;
                 }
-                MusicLookupResultDto? lookup = await svc.GetInfoByIDAsync( providerId, isAlbum );
+                MusicLookupResult? lookup = await svc.GetInfoByIDAsync( providerId, isAlbum );
                 if (lookup is not null) {
                     lookup.IsPrimary = true;
                     return lookup;
@@ -179,7 +179,7 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// <param name="lookupResults">Optional tuple containing the DTO and provider information.</param>
         /// <returns>A MediaLinkResult with cross-platform data, or null if input is null.</returns>
         protected async Task<MediaLinkResult?> CombineLookupInfoAsync(
-            (MusicLookupResultDto dto, SupportedProviders provider)? lookupResults
+            (MusicLookupResult dto, SupportedProviders provider)? lookupResults
         ) {
             if (lookupResults is null) { return null; }
             MediaLinkResult result = new();
@@ -193,12 +193,12 @@ namespace BridgeBeats.Domain.Types.Bases {
         /// <param name="linkResults">Dictionary mapping DTOs to their provider and input link information.</param>
         /// <returns>Async enumerable of MediaLinkResults with cross-platform data.</returns>
         protected async IAsyncEnumerable<MediaLinkResult> CombineLookupInfoAsync(
-            Dictionary<MusicLookupResultDto, (SupportedProviders provider, string inputLink)> linkResults
+            Dictionary<MusicLookupResult, (SupportedProviders provider, string inputLink)> linkResults
         ) {
             List<MediaLinkResult> results = [];
-            Dictionary<SupportedProviders, IEnumerable<MusicLookupResultDto>> resultsByProvider = [];
+            Dictionary<SupportedProviders, IEnumerable<MusicLookupResult>> resultsByProvider = [];
             foreach ((SupportedProviders provider, IMusicLookupService svc) in EnabledProviders) {
-                IEnumerable<MusicLookupResultDto> providerResults = linkResults
+                IEnumerable<MusicLookupResult> providerResults = linkResults
                                                                         .Where( kv => kv.Value.provider == provider )
                                                                         .Select( lr => lr.Key );
 
@@ -207,7 +207,7 @@ namespace BridgeBeats.Domain.Types.Bases {
                 }
             }
 
-            foreach ((MusicLookupResultDto lookup, (SupportedProviders provider, string inputlink)) in linkResults) {
+            foreach ((MusicLookupResult lookup, (SupportedProviders provider, string inputlink)) in linkResults) {
                 // Deduplicate MusicLookupResultDto's from output results.
                 if (results.Any( r => r.Results.Any( rr => rr.Key == provider && rr.Value == lookup ) )) {
                     continue;
@@ -223,9 +223,9 @@ namespace BridgeBeats.Domain.Types.Bases {
                     result.Results.Add( provider, lookup );
                 }
 
-                foreach ((SupportedProviders alternateProvider, IEnumerable<MusicLookupResultDto> altProviderResults) in resultsByProvider) {
+                foreach ((SupportedProviders alternateProvider, IEnumerable<MusicLookupResult> altProviderResults) in resultsByProvider) {
                     if ((int)alternateProvider == (int)provider) { continue; }
-                    MusicLookupResultDto? altProviderMatch = altProviderResults
+                    MusicLookupResult? altProviderMatch = altProviderResults
                                                                 .FirstOrDefault( a => a.ExternalId == lookup.ExternalId )
                                                            ?? altProviderResults
                                                                 .FirstOrDefault( r =>
@@ -253,11 +253,11 @@ namespace BridgeBeats.Domain.Types.Bases {
             if (input.Results.Count == 0) { return input; }
 
             List<SupportedProviders> completedList = [.. input.Results.Select( p => p.Key )];
-            MusicLookupResultDto firstValue = input.Results.Values.First( );
+            MusicLookupResult firstValue = input.Results.Values.First( );
 
             foreach ((SupportedProviders provider, IMusicLookupService svc) in EnabledProviders.Where( e => completedList.Contains( e.Key ) == false )) {
                 try {
-                    MusicLookupResultDto? lookup = await svc.GetInfoAsync( firstValue );
+                    MusicLookupResult? lookup = await svc.GetInfoAsync( firstValue );
                     if (lookup is not null) { input.Results.Add( provider, lookup ); }
                 } catch (Exception ex) {
                     Logger.LogError( ex,

@@ -26,6 +26,16 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaL
     public async Task<IActionResult> Card( string id ) {
         MediaLinkResult? result = _cardService.GetResult( id );
 
+        // Fallback to persistent cache if not in memory
+        if (result == null && _cacheRepository != null) {
+            (MediaLinkResult result, string recordUri, bool isStale)? cached = await _cacheRepository.TryGetCachedResultByCardIdAsync( id );
+            if (cached.HasValue) {
+                result = cached.Value.result;
+                // Repopulate in-memory store for subsequent requests
+                _ = _cardService.StoreResult( result );
+            }
+        }
+
         if (result == null) {
             return NotFound( "Card not found or expired" );
         }
@@ -50,13 +60,23 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaL
     public async Task<IActionResult> Embed( string id ) {
         MediaLinkResult? result = _cardService.GetResult( id );
 
+        // Fallback to persistent cache if not in memory
+        if (result == null && _cacheRepository != null) {
+            (MediaLinkResult result, string recordUri, bool isStale)? cached = await _cacheRepository.TryGetCachedResultByCardIdAsync( id );
+            if (cached.HasValue) {
+                result = cached.Value.result;
+                // Repopulate in-memory store for subsequent requests
+                _ = _cardService.StoreResult( result );
+            }
+        }
+
         if (result == null) {
             return NotFound( "Card not found or expired" );
         }
 
         // Get the primary provider and result for display
         SupportedProviders primaryProvider = result.Results.Keys.FirstOrDefault( );
-        MusicLookupResultDto? primaryResult = result.Results.Values.FirstOrDefault( );
+        MusicLookupResult? primaryResult = result.Results.Values.FirstOrDefault( );
 
         if (primaryResult == null) {
             return NotFound( "No results found" );

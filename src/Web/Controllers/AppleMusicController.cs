@@ -394,9 +394,9 @@ public class AppleMusicController(
                     continue;
                 }
 
-                MusicLookupResultDto? primaryResult = null;
+                MusicLookupResult? primaryResult = null;
                 SupportedProviders primaryProvider = SupportedProviders.AppleMusic;
-                foreach ((SupportedProviders provider, MusicLookupResultDto dto) in lookupResult.Results) {
+                foreach ((SupportedProviders provider, MusicLookupResult dto) in lookupResult.Results) {
                     if (dto.IsPrimary) {
                         primaryResult = dto;
                         primaryProvider = provider;

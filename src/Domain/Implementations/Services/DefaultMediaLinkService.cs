@@ -65,7 +65,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             SupportedProviders provider,
             bool isAlbum
         ) {
-            MusicLookupResultDto? providerResult = await GetMusicLookupResultsByProviderId( providerId, provider, isAlbum );
+            MusicLookupResult? providerResult = await GetMusicLookupResultsByProviderId( providerId, provider, isAlbum );
             return providerResult is null
                 ? null
                 : await CombineLookupInfoAsync( (providerResult, provider) );

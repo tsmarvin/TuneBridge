@@ -11,7 +11,7 @@ namespace BridgeBeats.Tests.Unit {
         public void GenerateRkey_WithTrackISRC_ReturnsTrackRkey( ) {
             // Arrange
             MediaLinkResult result = new( );
-            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResult {
                 ExternalId = "USRC12345678",
                 IsAlbum = false,
                 Artist = "Test Artist",
@@ -31,7 +31,7 @@ namespace BridgeBeats.Tests.Unit {
         public void GenerateRkey_WithAlbumUPC_ReturnsAlbumRkey( ) {
             // Arrange
             MediaLinkResult result = new( );
-            result.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResultDto {
+            result.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResult {
                 ExternalId = "123456789012",
                 IsAlbum = true,
                 Artist = "Test Artist",
@@ -51,7 +51,7 @@ namespace BridgeBeats.Tests.Unit {
         public void GenerateRkey_WithNoExternalId_ReturnsMetadataBasedRkey( ) {
             // Arrange
             MediaLinkResult result = new( );
-            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResult {
                 ExternalId = "",
                 IsAlbum = false,
                 Artist = "Test Artist",
@@ -71,7 +71,7 @@ namespace BridgeBeats.Tests.Unit {
         public void GenerateRkey_WithExternalIdContainingSpecialChars_SanitizesRkey( ) {
             // Arrange
             MediaLinkResult result = new( );
-            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResult {
                 ExternalId = "US-RC1-23-45678!@#",
                 IsAlbum = false,
                 Artist = "Test Artist",
@@ -164,7 +164,7 @@ namespace BridgeBeats.Tests.Unit {
         public void GenerateRkey_WithSameMetadata_ReturnsSameRkey( ) {
             // Arrange
             MediaLinkResult result1 = new( );
-            result1.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+            result1.Results.Add( SupportedProviders.Spotify, new MusicLookupResult {
                 ExternalId = "",
                 IsAlbum = false,
                 Artist = "Test Artist",
@@ -173,7 +173,7 @@ namespace BridgeBeats.Tests.Unit {
             } );
 
             MediaLinkResult result2 = new( );
-            result2.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResultDto {
+            result2.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResult {
                 ExternalId = "",
                 IsAlbum = false,
                 Artist = "Test Artist",
@@ -193,7 +193,7 @@ namespace BridgeBeats.Tests.Unit {
         public void GenerateRkey_WithEmptyTitleAndArtist_ThrowsException( ) {
             // Arrange
             MediaLinkResult result = new( );
-            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResult {
                 ExternalId = "",
                 IsAlbum = false,
                 Artist = "",
@@ -210,7 +210,7 @@ namespace BridgeBeats.Tests.Unit {
         public void GenerateRkey_WithNormalizedMetadata_ReturnsSameRkey( ) {
             // Arrange - Different case and whitespace but same content
             MediaLinkResult result1 = new( );
-            result1.Results.Add( SupportedProviders.Spotify, new MusicLookupResultDto {
+            result1.Results.Add( SupportedProviders.Spotify, new MusicLookupResult {
                 ExternalId = "",
                 IsAlbum = false,
                 Artist = "Test Artist",
@@ -219,7 +219,7 @@ namespace BridgeBeats.Tests.Unit {
             } );
 
             MediaLinkResult result2 = new( );
-            result2.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResultDto {
+            result2.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResult {
                 ExternalId = "",
                 IsAlbum = false,
                 Artist = "  TEST ARTIST  ",

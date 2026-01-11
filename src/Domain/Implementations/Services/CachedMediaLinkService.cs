@@ -39,7 +39,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 return cachedResult.Value.result;
             }
 
-            (MusicLookupResultDto result, SupportedProviders provider)? lookupResult =
+            (MusicLookupResult result, SupportedProviders provider)? lookupResult =
                                                                             await GetMusicLookupResults( title, artist );
             if (lookupResult is null) { return null; }
 
@@ -59,7 +59,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 return cachedResult.Value.result;
             }
 
-            (MusicLookupResultDto result, SupportedProviders provider)? lookupResult =
+            (MusicLookupResult result, SupportedProviders provider)? lookupResult =
                                                                             await GetMusicLookupResults( isrc, false );
             if (lookupResult is null) { return null; }
 
@@ -79,7 +79,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 return cachedResult.Value.result;
             }
 
-            (MusicLookupResultDto result, SupportedProviders provider)? lookupResult =
+            (MusicLookupResult result, SupportedProviders provider)? lookupResult =
                                                                             await GetMusicLookupResults( upc, true );
             if (lookupResult is null) { return null; }
 
@@ -105,7 +105,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
             }
 
             // Perform fresh lookup using base class helper methods
-            MusicLookupResultDto? lookupResult = await GetMusicLookupResultsByProviderId( providerId, provider, isAlbum );
+            MusicLookupResult? lookupResult = await GetMusicLookupResultsByProviderId( providerId, provider, isAlbum );
             if (lookupResult is null) { return null; }
 
             MediaLinkResult result = (await CombineLookupInfoAsync( (lookupResult, provider) ))!;
@@ -130,11 +130,11 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     continue;
                 }
 
-                Dictionary<MusicLookupResultDto, (SupportedProviders provider, string inputLink)> lookupResult =
+                Dictionary<MusicLookupResult, (SupportedProviders provider, string inputLink)> lookupResult =
                                                                             await GetMusicLookupResults( link );
                 if (lookupResult.Count == 0) { continue; }
 
-                foreach ((MusicLookupResultDto dto, (SupportedProviders provider, _)) in lookupResult) {
+                foreach ((MusicLookupResult dto, (SupportedProviders provider, _)) in lookupResult) {
                     cachedResult = dto.IsAlbum ?? false
                             ? await _cacheRepository.TryGetCachedResultByUPCAsync( dto.ExternalId )
                             : await _cacheRepository.TryGetCachedResultByISRCAsync( dto.ExternalId );
