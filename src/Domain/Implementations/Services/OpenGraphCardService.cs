@@ -17,9 +17,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
         public string BaseUrl => baseUrl;
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
-        private readonly TimeSpan _expirationTime = TimeSpan.FromDays( 6 );
+        private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 1 );
         private int _operationCounter;
-        private const int CleanupInterval = 10000;
+        private const int CleanupInterval = 500;
 
         /// <inheritdoc/>
         public string StoreResult( MediaLinkResult result ) {
