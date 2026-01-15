@@ -42,6 +42,8 @@ ATPROTO_PASSWORD="$(read_secret "atproto_password")"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
 LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}"
+CARD_CACHE_EXPIRATION_HOURS="${CARD_CACHE_EXPIRATION_HOURS:-1}"
+CARD_CACHE_CLEANUP_INTERVAL="${CARD_CACHE_CLEANUP_INTERVAL:-500}"
 
 # Authentication and rate limiting configuration
 IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}"
@@ -91,7 +93,9 @@ cat > /app/appsettings.json <<EOF
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
     "BaseUrl": "$BASEURL",
-    "LogFilePath": "$(escape_bs "$LOG_FILE_PATH")"
+    "LogFilePath": "$(escape_bs "$LOG_FILE_PATH")",
+    "CardCacheExpirationHours": $CARD_CACHE_EXPIRATION_HOURS,
+    "CardCacheCleanupInterval": $CARD_CACHE_CLEANUP_INTERVAL
   },
   "Logging": {
     "LogLevel": {

@@ -135,4 +135,92 @@ public class ConfigurationValidationTests {
         IMediaLinkService? mediaService = sp.GetService<IMediaLinkService>();
         Assert.IsNotNull( mediaService, "IMediaLinkService should be registered with Spotify credentials" );
     }
+
+    [TestMethod]
+    public void AddBridgeBeatsServices_WithZeroCardCacheExpirationHours_ShouldThrowInvalidOperationException( ) {
+        // Arrange - valid Spotify credentials but invalid card cache expiration
+        Dictionary<string, string?> overrides = new( ) {
+            ["BridgeBeats:SpotifyClientId"] = "spotify_client_id",
+            ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
+            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory",
+            ["BridgeBeats:CardCacheExpirationHours"] = "0",
+            ["BridgeBeats:CardCacheCleanupInterval"] = "500",
+        };
+
+        // Act & Assert
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
+            IServiceCollection services = new ServiceCollection( );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+            _ = services.AddBridgeBeatsServices( config, "Testing" );
+        } );
+        Assert.Contains( "CardCacheExpirationHours must be greater than zero", ex.Message );
+    }
+
+    [TestMethod]
+    public void AddBridgeBeatsServices_WithNegativeCardCacheExpirationHours_ShouldThrowInvalidOperationException( ) {
+        // Arrange - valid Spotify credentials but invalid card cache expiration
+        Dictionary<string, string?> overrides = new( ) {
+            ["BridgeBeats:SpotifyClientId"] = "spotify_client_id",
+            ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
+            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory",
+            ["BridgeBeats:CardCacheExpirationHours"] = "-1",
+            ["BridgeBeats:CardCacheCleanupInterval"] = "500",
+        };
+
+        // Act & Assert
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
+            IServiceCollection services = new ServiceCollection( );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+            _ = services.AddBridgeBeatsServices( config, "Testing" );
+        } );
+        Assert.Contains( "CardCacheExpirationHours must be greater than zero", ex.Message );
+    }
+
+    [TestMethod]
+    public void AddBridgeBeatsServices_WithZeroCardCacheCleanupInterval_ShouldThrowInvalidOperationException( ) {
+        // Arrange - valid Spotify credentials but invalid cleanup interval
+        Dictionary<string, string?> overrides = new( ) {
+            ["BridgeBeats:SpotifyClientId"] = "spotify_client_id",
+            ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
+            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory",
+            ["BridgeBeats:CardCacheExpirationHours"] = "1",
+            ["BridgeBeats:CardCacheCleanupInterval"] = "0",
+        };
+
+        // Act & Assert
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
+            IServiceCollection services = new ServiceCollection( );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+            _ = services.AddBridgeBeatsServices( config, "Testing" );
+        } );
+        Assert.Contains( "CardCacheCleanupInterval must be greater than zero", ex.Message );
+    }
+
+    [TestMethod]
+    public void AddBridgeBeatsServices_WithNegativeCardCacheCleanupInterval_ShouldThrowInvalidOperationException( ) {
+        // Arrange - valid Spotify credentials but invalid cleanup interval
+        Dictionary<string, string?> overrides = new( ) {
+            ["BridgeBeats:SpotifyClientId"] = "spotify_client_id",
+            ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
+            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
+            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory",
+            ["BridgeBeats:CardCacheExpirationHours"] = "1",
+            ["BridgeBeats:CardCacheCleanupInterval"] = "-1",
+        };
+
+        // Act & Assert
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
+            IServiceCollection services = new ServiceCollection( );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+            _ = services.AddBridgeBeatsServices( config, "Testing" );
+        } );
+        Assert.Contains( "CardCacheCleanupInterval must be greater than zero", ex.Message );
+    }
 }

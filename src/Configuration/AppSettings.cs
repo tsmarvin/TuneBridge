@@ -116,5 +116,15 @@ namespace BridgeBeats.Configuration {
         /// </summary>
         public string LogFilePath { get; set; } = string.Empty;
 
+        /// <summary>
+        /// The number of hours to cache OpenGraph cards in memory before expiration. Default is 1 hour.
+        /// </summary>
+        public int CardCacheExpirationHours { get; set; } = 1;
+
+        /// <summary>
+        /// The number of operations between cleanup cycles for expired OpenGraph cards. Default is 500.
+        /// </summary>
+        public int CardCacheCleanupInterval { get; set; } = 500;
+
     }
 }
