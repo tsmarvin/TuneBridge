@@ -74,7 +74,17 @@ docker run -p 10000:10000 \
   $DOCKERHUB_USERNAME/bridgebeats:latest
 ```
 
-**Note**: Images are built for `linux/arm64` platform as configured in the GitHub workflow.
+**Note**: Images are built for `linux/amd64` and `linux/arm64` platforms.
+
+### SBOM and Provenance
+
+All Docker images include Software Bill of Materials (SBOM) and provenance attestations for supply chain security. These attestations allow you to:
+- Verify the image was built from official sources
+- Inspect all software components and dependencies
+- Check for known vulnerabilities
+- Trace back to the exact source code and build process
+
+See the [SBOM and Provenance Guide](SBOM_AND_PROVENANCE.md) for detailed instructions on accessing and verifying these attestations.
 
 ### Docker Secrets
 
