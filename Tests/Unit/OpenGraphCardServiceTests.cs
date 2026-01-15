@@ -72,4 +72,52 @@ public class OpenGraphCardServiceTests {
         // Assert
         Assert.StartsWith( $"https://{baseUrl}/card/", cardUrl, "Card URL should start with base URL" );
     }
+
+    [TestMethod]
+    public void Constructor_WithZeroExpirationHours_ThrowsArgumentOutOfRangeException( ) {
+        // Arrange
+        string baseUrl = "bridgebeats.link";
+
+        // Act & Assert
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            ( ) => new OpenGraphCardService( baseUrl, 0, 500 )
+        );
+        Assert.AreEqual( "expirationHours", exception.ParamName );
+    }
+
+    [TestMethod]
+    public void Constructor_WithNegativeExpirationHours_ThrowsArgumentOutOfRangeException( ) {
+        // Arrange
+        string baseUrl = "bridgebeats.link";
+
+        // Act & Assert
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            ( ) => new OpenGraphCardService( baseUrl, -1, 500 )
+        );
+        Assert.AreEqual( "expirationHours", exception.ParamName );
+    }
+
+    [TestMethod]
+    public void Constructor_WithZeroCleanupInterval_ThrowsArgumentOutOfRangeException( ) {
+        // Arrange
+        string baseUrl = "bridgebeats.link";
+
+        // Act & Assert
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            ( ) => new OpenGraphCardService( baseUrl, 1, 0 )
+        );
+        Assert.AreEqual( "cleanupInterval", exception.ParamName );
+    }
+
+    [TestMethod]
+    public void Constructor_WithNegativeCleanupInterval_ThrowsArgumentOutOfRangeException( ) {
+        // Arrange
+        string baseUrl = "bridgebeats.link";
+
+        // Act & Assert
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            ( ) => new OpenGraphCardService( baseUrl, 1, -1 )
+        );
+        Assert.AreEqual( "cleanupInterval", exception.ParamName );
+    }
 }

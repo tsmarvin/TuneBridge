@@ -17,9 +17,13 @@ namespace BridgeBeats.Domain.Implementations.Services {
         public string BaseUrl => baseUrl;
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
-        private readonly TimeSpan _expirationTime = TimeSpan.FromHours( expirationHours );
+        private readonly TimeSpan _expirationTime = expirationHours > 0
+            ? TimeSpan.FromHours( expirationHours )
+            : throw new ArgumentOutOfRangeException( nameof( expirationHours ), expirationHours, "Expiration hours must be greater than zero." );
         private int _operationCounter;
-        private readonly int _cleanupInterval = cleanupInterval;
+        private readonly int _cleanupInterval = cleanupInterval > 0
+            ? cleanupInterval
+            : throw new ArgumentOutOfRangeException( nameof( cleanupInterval ), cleanupInterval, "Cleanup interval must be greater than zero." );
 
         /// <inheritdoc/>
         public string StoreResult( MediaLinkResult result ) {

@@ -101,6 +101,14 @@ namespace BridgeBeats.Configuration {
             ConfigureApiKeyAuth( services, settings );
             ConfigureSwagger( services );
 
+            // Validate card cache settings
+            if (settings.CardCacheExpirationHours <= 0) {
+                throw new InvalidOperationException( $"CardCacheExpirationHours must be greater than zero. Current value: {settings.CardCacheExpirationHours}" );
+            }
+            if (settings.CardCacheCleanupInterval <= 0) {
+                throw new InvalidOperationException( $"CardCacheCleanupInterval must be greater than zero. Current value: {settings.CardCacheCleanupInterval}" );
+            }
+
             // Misc domain services
             _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>(
                 p => new OpenGraphCardService( 
