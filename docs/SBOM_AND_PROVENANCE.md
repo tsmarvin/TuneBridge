@@ -47,8 +47,8 @@ Install [cosign](https://github.com/sigstore/cosign) to verify attestations:
 brew install cosign
 
 # Install on Linux (using package manager - recommended)
-# For Debian/Ubuntu:
-# sudo apt-get install cosign
+# For Debian/Ubuntu (using apt):
+sudo apt-get install cosign
 # Or download binary (verify checksums from GitHub releases):
 curl -LO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
 chmod +x cosign-linux-amd64
