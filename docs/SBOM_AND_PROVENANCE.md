@@ -43,10 +43,13 @@ Install [cosign](https://github.com/sigstore/cosign) to verify attestations:
 
 ```bash
 # Install cosign
-# macOS
+# Install on macOS (via Homebrew)
 brew install cosign
 
-# Linux
+# Install on Linux (using package manager - recommended)
+# For Debian/Ubuntu:
+# sudo apt-get install cosign
+# Or download binary (verify checksums from GitHub releases):
 curl -LO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
 chmod +x cosign-linux-amd64
 sudo mv cosign-linux-amd64 /usr/local/bin/cosign
@@ -87,7 +90,7 @@ Provenance attestations allow you to verify:
 Example provenance verification:
 
 ```bash
-# Extract provenance details
+# Extract provenance details (requires jq - install with: apt-get install jq / brew install jq)
 docker buildx imagetools inspect tsmarvin/bridgebeats:latest \
   --format "{{ json .Provenance }}" | jq '.payload' | base64 -d | jq
 ```
