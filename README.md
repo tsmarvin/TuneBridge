@@ -74,6 +74,7 @@ Visit `http://localhost:10000` to start converting links.
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Set up API credentials and environment variables
 - **[API Reference](docs/API.md)** - Integrate BridgeBeats into your applications
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
+- **[SBOM and Provenance Guide](docs/SBOM_AND_PROVENANCE.md)** - Verify supply chain security and inspect dependencies
 - **[Caddy Cloudflare Guide](docs/CADDY_CLOUDFLARE.md)** - Configure Cloudflare DNS for wildcard certificates
 - **[Testing Guide](docs/TESTING.md)** - Run and write tests
 - **[Caching Guide](docs/CACHING.md)** - Configure ATProto PDS caching
