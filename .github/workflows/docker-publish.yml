@@ -1,9 +1,5 @@
 name: docker-publish
-permissions:
-  contents: read
-  id-token: write
-  packages: write
-  attestations: write
+permissions: read-all
 
 on:
   push:
@@ -19,6 +15,11 @@ concurrency:
 jobs:
   build-platform:
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -92,6 +93,9 @@ jobs:
   manifest:
     needs: build-platform
     runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      packages: write
 
     env:
       IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/bridgebeats
