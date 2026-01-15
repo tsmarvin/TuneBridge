@@ -12,7 +12,7 @@ public class OpenGraphCardServiceTests {
     public void BaseUrl_WhenSet_ReturnsBaseUrl( ) {
         // Arrange
         string baseUrl = "bridgebeats.link";
-        IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
+        IOpenGraphCardService service = new OpenGraphCardService( baseUrl, 1, 500 );
 
         // Act
         string result = service.BaseUrl;
@@ -25,7 +25,7 @@ public class OpenGraphCardServiceTests {
     public void IsEnabled_WhenBaseUrlIsNotEmpty_ReturnsTrue( ) {
         // Arrange
         string baseUrl = "bridgebeats.link";
-        IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
+        IOpenGraphCardService service = new OpenGraphCardService( baseUrl, 1, 500 );
 
         // Act
         bool result = service.IsEnabled;
@@ -38,7 +38,7 @@ public class OpenGraphCardServiceTests {
     public void IsEnabled_WhenBaseUrlIsEmpty_ReturnsFalse( ) {
         // Arrange
         string baseUrl = string.Empty;
-        IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
+        IOpenGraphCardService service = new OpenGraphCardService( baseUrl, 1, 500 );
 
         // Act
         bool result = service.IsEnabled;
@@ -51,7 +51,7 @@ public class OpenGraphCardServiceTests {
     public void StoreResult_WhenCalled_ReturnsUrlWithBaseUrl( ) {
         // Arrange
         string baseUrl = "bridgebeats.link";
-        IOpenGraphCardService service = new OpenGraphCardService( baseUrl );
+        IOpenGraphCardService service = new OpenGraphCardService( baseUrl, 1, 500 );
         MediaLinkResult result = new( ) {
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {
@@ -71,5 +71,53 @@ public class OpenGraphCardServiceTests {
 
         // Assert
         Assert.StartsWith( $"https://{baseUrl}/card/", cardUrl, "Card URL should start with base URL" );
+    }
+
+    [TestMethod]
+    public void Constructor_WithZeroExpirationHours_ThrowsArgumentOutOfRangeException( ) {
+        // Arrange
+        string baseUrl = "bridgebeats.link";
+
+        // Act & Assert
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            ( ) => new OpenGraphCardService( baseUrl, 0, 500 )
+        );
+        Assert.AreEqual( "expirationHours", exception.ParamName );
+    }
+
+    [TestMethod]
+    public void Constructor_WithNegativeExpirationHours_ThrowsArgumentOutOfRangeException( ) {
+        // Arrange
+        string baseUrl = "bridgebeats.link";
+
+        // Act & Assert
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            ( ) => new OpenGraphCardService( baseUrl, -1, 500 )
+        );
+        Assert.AreEqual( "expirationHours", exception.ParamName );
+    }
+
+    [TestMethod]
+    public void Constructor_WithZeroCleanupInterval_ThrowsArgumentOutOfRangeException( ) {
+        // Arrange
+        string baseUrl = "bridgebeats.link";
+
+        // Act & Assert
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            ( ) => new OpenGraphCardService( baseUrl, 1, 0 )
+        );
+        Assert.AreEqual( "cleanupInterval", exception.ParamName );
+    }
+
+    [TestMethod]
+    public void Constructor_WithNegativeCleanupInterval_ThrowsArgumentOutOfRangeException( ) {
+        // Arrange
+        string baseUrl = "bridgebeats.link";
+
+        // Act & Assert
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            ( ) => new OpenGraphCardService( baseUrl, 1, -1 )
+        );
+        Assert.AreEqual( "cleanupInterval", exception.ParamName );
     }
 }
