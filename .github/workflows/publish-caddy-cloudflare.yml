@@ -2,6 +2,9 @@ name: publish-caddy-cloudflare
 
 permissions:
   contents: read
+  id-token: write
+  packages: write
+  attestations: write
 
 on:
   push:
@@ -72,8 +75,8 @@ jobs:
           file: ./Dockerfile.caddy
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          provenance: false
-          sbom: false
+          provenance: mode=max
+          sbom: true
 
       - name: Export digest
         run: |
