@@ -8,7 +8,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
     /// <summary>
     /// In-memory implementation of the OpenGraph card service for storing MediaLinkResult objects.
     /// </summary>
-    public class OpenGraphCardService( string baseUrl ) : IOpenGraphCardService {
+    public class OpenGraphCardService( string baseUrl, int expirationHours, int cleanupInterval ) : IOpenGraphCardService {
 
         /// <inheritdoc/>
         public bool IsEnabled => string.IsNullOrWhiteSpace( baseUrl ) == false;
@@ -17,9 +17,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
         public string BaseUrl => baseUrl;
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
-        private readonly TimeSpan _expirationTime = TimeSpan.FromHours( 1 );
+        private readonly TimeSpan _expirationTime = TimeSpan.FromHours( expirationHours );
         private int _operationCounter;
-        private const int CleanupInterval = 500;
+        private readonly int _cleanupInterval = cleanupInterval;
 
         /// <inheritdoc/>
         public string StoreResult( MediaLinkResult result ) {
@@ -56,7 +56,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
         private void CleanExpiredEntries( ) {
             // Clean every Nth operation for predictable memory management
-            if (Interlocked.Increment( ref _operationCounter ) % CleanupInterval == 0) {
+            if (Interlocked.Increment( ref _operationCounter ) % _cleanupInterval == 0) {
                 DateTime now = DateTime.UtcNow;
                 List<string> expiredKeys = [.. _store
                     .Where( kv => kv.Value.Expiry <= now )

@@ -103,7 +103,11 @@ namespace BridgeBeats.Configuration {
 
             // Misc domain services
             _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>(
-                p => new OpenGraphCardService( settings.BaseUrl )
+                p => new OpenGraphCardService( 
+                    settings.BaseUrl, 
+                    settings.CardCacheExpirationHours, 
+                    settings.CardCacheCleanupInterval 
+                )
             );
 
             // Playlist service (singleton with DbContextFactory for thread-safe database access)
