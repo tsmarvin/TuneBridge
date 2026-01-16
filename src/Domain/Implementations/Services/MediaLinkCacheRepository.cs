@@ -405,7 +405,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         /// <param name="provider">The music provider.</param>
         /// <param name="url">The service URL.</param>
         /// <returns>The provider ID, or null if it cannot be extracted.</returns>
-        private static string? ExtractProviderIdFromUrl( SupportedProviders provider, string url ) {
+        private string? ExtractProviderIdFromUrl( SupportedProviders provider, string url ) {
             if (string.IsNullOrWhiteSpace( url )) {
                 return null;
             }
@@ -426,7 +426,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
                     _ => null
                 };
-            } catch {
+            } catch (Exception ex) {
+                logger.LogWarning( ex, "Failed to extract provider ID from URL for {Provider}.", provider );
                 return null;
             }
         }

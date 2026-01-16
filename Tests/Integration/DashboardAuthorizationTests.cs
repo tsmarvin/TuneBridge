@@ -1,10 +1,6 @@
-using System.Net;
-using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using BridgeBeats.Domain.Models;
-using BridgeBeats.Domain.Types.Constants;
-using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;

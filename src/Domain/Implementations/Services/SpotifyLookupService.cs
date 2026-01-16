@@ -67,8 +67,11 @@ namespace BridgeBeats.Domain.Implementations.Services {
                         // This really shouldnt happen, but if something goes wrong we can return what we've already matched.
                         if (string.IsNullOrWhiteSpace( body )) { return album; }
 
-                        SpotifyAlbum fullAlbum = JsonSerializer.Deserialize<SpotifyAlbum>( body, SerializerOptions )!;
-                        album.ExternalId = fullAlbum.ExternalIds?.Upc ?? string.Empty;
+                        SpotifyAlbum? fullAlbum = JsonSerializer.Deserialize<SpotifyAlbum>( body, SerializerOptions );
+                        if (fullAlbum == null) {
+                            Logger.LogError( "Failed to deserialize full album data from Spotify response for AlbumIdLookup." );
+                        }
+                        album.ExternalId = fullAlbum?.ExternalIds?.Upc ?? string.Empty;
 
                         return album;
                     } else {
@@ -135,8 +138,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     return ParseSpotifyResponse( element, lookupKey, kind, isPrimary );
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from spotify." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from spotify.", lookupKey );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
         }
@@ -183,10 +186,11 @@ namespace BridgeBeats.Domain.Implementations.Services {
             try {
                 switch (kind) {
                     case SpotifyEntity.Album:
-                        SpotifyAlbum albumData = JsonSerializer.Deserialize<SpotifyAlbum>(
-                            JsonSerializer.Serialize( element, SerializerOptions ),
-                            SerializerOptions
-                        )!;
+                        SpotifyAlbum? albumData = element.Deserialize<SpotifyAlbum>( SerializerOptions );
+                        if (albumData == null) {
+                            Logger.LogError( "Failed to deserialize album data from Spotify response for {LookupKey}.", lookupKey );
+                            return null;
+                        }
                         result.Artist = albumData.Artists != null && albumData.Artists.Count > 0
                                         ? albumData.Artists[0].Name
                                         : string.Empty;
@@ -198,10 +202,11 @@ namespace BridgeBeats.Domain.Implementations.Services {
                                         : string.Empty;
                         break;
                     case SpotifyEntity.Track:
-                        SpotifyTrack trackData = JsonSerializer.Deserialize<SpotifyTrack>(
-                            JsonSerializer.Serialize( element, SerializerOptions ),
-                            SerializerOptions
-                        )!;
+                        SpotifyTrack? trackData = element.Deserialize<SpotifyTrack>( SerializerOptions );
+                        if (trackData == null) {
+                            Logger.LogError( "Failed to deserialize track data from Spotify response for {LookupKey}.", lookupKey );
+                            return null;
+                        }
                         result.Artist = trackData.Artists != null && trackData.Artists.Count > 0
                                         ? trackData.Artists[0].Name
                                         : string.Empty;
@@ -216,8 +221,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from spotify." );
-                Logger.LogTrace( JsonSerializer.Serialize( element, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from spotify.", lookupKey );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( element, SerializerOptions ) );
                 return null;
             }
         }
@@ -248,7 +253,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     }
                 } while (response?.Artists?.Next != null);
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the artist list json response from spotify." );
+                Logger.LogError( ex, "An error occurred while parsing the artist list json response from spotify." );
             }
 
             return null;
@@ -269,6 +274,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                         Title = album.Name,
                         ExternalId = string.Empty, // Will be filled in later if matched
                         URL = album.ExternalUrls != null ? album.ExternalUrls.Spotify : string.Empty,
+                        ArtUrl = album.Images != null && album.Images.Count > 0 ? album.Images[0].Url : string.Empty,
                         IsAlbum = true
                     });
                 }
@@ -294,7 +300,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     if (SanitizeSongTitle( track.Name ).Equals( sanitizedSongTitle, StringComparison.InvariantCultureIgnoreCase )) {
 
                         string? trackBody = await NewMusicApiRequest( SpotifyLinkParser.GetTrackIdURI( track.Id ), LookupRequestType.SongIdLookup );
-                        
+
                         // This shouldn't happen, but if we cant fetch full track details, return simplified track data
                         if (trackBody == null) {
                             return new MusicLookupResult {
@@ -306,7 +312,11 @@ namespace BridgeBeats.Domain.Implementations.Services {
                             };
                         }
 
-                        SpotifyTrack fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody )!;
+                        SpotifyTrack? fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody );
+                        if (fullTrack == null) {
+                            Logger.LogError( "Failed to deserialize full track data from Spotify response for SongIdLookup." );
+                            return null;
+                        }
                         return new MusicLookupResult {
                             Artist = fullTrack.Artists != null && fullTrack.Artists.Count > 0 ? fullTrack.Artists[0].Name : string.Empty,
                             Title = fullTrack.Name,

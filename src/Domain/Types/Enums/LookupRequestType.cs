@@ -1,5 +1,3 @@
-using System.ComponentModel;
-
 namespace BridgeBeats.Domain.Types.Enums {
     /// <summary>
     /// The type of lookup request being made.

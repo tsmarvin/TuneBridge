@@ -148,8 +148,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 }
                 return null;
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the artist list json response from apple." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the artist list json response from apple." );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
                 return null;
             }
         }
@@ -187,8 +187,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from apple." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from apple.", lookupKey );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
         }
@@ -216,8 +216,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     return song != null ? ParseAppleMusicSongResponse( song, lookupKey, storeFront, isPrimary ) : null;
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from apple." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from apple.", lookupKey );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
         }
@@ -249,8 +249,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from apple." );
-                Logger.LogTrace( JsonSerializer.Serialize( song, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from apple.", lookupKey );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( song, SerializerOptions ) );
                 return null;
             }
         }
@@ -282,8 +282,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey}json response from apple." );
-                Logger.LogTrace( JsonSerializer.Serialize( album, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from apple.", lookupKey );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( album, SerializerOptions ) );
                 return null;
             }
         }

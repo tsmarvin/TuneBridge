@@ -96,8 +96,6 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 : await NewTrackIdLookup( providerId, true );
 
         private async Task<MusicLookupResult?> ParseArtistAlbums( string artistId, string artistName, string title ) {
-            string lookupKey = $"albums for artist {artistName} {artistId} ";
-
             string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistAlbumsUri( DefaultStorefront, artistId ), LookupRequestType.ArtistAlbumLookup );
             if (body == null) { return null; }
 
@@ -199,8 +197,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
                         return (singleResource, included);
                     }
                 }
-            } catch {
-                // If parsing fails, return nulls
+            } catch (Exception ex) {
+                Logger.LogError( ex, "An error occurred while extracting single resource from Tidal response." );
             }
 
             return (null, null);
@@ -220,8 +218,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
                     return await ParseTidalResponse( data, included, lookupKey, kind, isPrimary );
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey} json response from tidal." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from tidal.", lookupKey );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
             }
             return null;
         }
@@ -261,9 +259,9 @@ namespace BridgeBeats.Domain.Implementations.Services {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the {lookupKey} json response from tidal." );
-                Logger.LogTrace( JsonSerializer.Serialize( data, SerializerOptions ) );
-                Logger.LogTrace( JsonSerializer.Serialize( included, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from tidal.", lookupKey );
+                Logger.LogTrace( "Data: {Data}", JsonSerializer.Serialize( data, SerializerOptions ) );
+                Logger.LogTrace( "Included: {Included}", JsonSerializer.Serialize( included, SerializerOptions ) );
                 return null;
             }
         }
@@ -359,8 +357,8 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 }
                 return null;
             } catch (Exception ex) {
-                Logger.LogError( ex, $"An error occurred while parsing the artist list json response from tidal." );
-                Logger.LogTrace( JsonSerializer.Serialize( body, SerializerOptions ) );
+                Logger.LogError( ex, "An error occurred while parsing the artist list json response from tidal." );
+                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
                 return null;
             }
         }

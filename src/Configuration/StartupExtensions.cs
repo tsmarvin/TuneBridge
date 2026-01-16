@@ -111,10 +111,10 @@ namespace BridgeBeats.Configuration {
 
             // Misc domain services
             _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>(
-                p => new OpenGraphCardService( 
-                    settings.BaseUrl, 
-                    settings.CardCacheExpirationHours, 
-                    settings.CardCacheCleanupInterval 
+                p => new OpenGraphCardService(
+                    settings.BaseUrl,
+                    settings.CardCacheExpirationHours,
+                    settings.CardCacheCleanupInterval
                 )
             );
 
