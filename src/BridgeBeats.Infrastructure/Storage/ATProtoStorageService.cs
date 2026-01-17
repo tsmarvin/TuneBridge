@@ -44,7 +44,7 @@ public class ATProtoStorageService(
 
     private readonly BlueskyAgent _agent = new( );
     private readonly SemaphoreSlim _authLock = new( 1, 1 );
-    private bool _isAuthenticated;
+    private volatile bool _isAuthenticated;
 
 
     /// <inheritdoc/>

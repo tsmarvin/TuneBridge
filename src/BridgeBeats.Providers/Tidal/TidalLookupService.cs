@@ -309,7 +309,7 @@ namespace BridgeBeats.Providers.Tidal {
             List<TidalResource> included,
             bool isAlbum
         ) {
-            if (isAlbum == false) {
+            if (!isAlbum) {
                 // Lookup album from album details and then return album art
                 foreach (TidalResource item in included) {
                     if (item.Type == "albums" && !string.IsNullOrWhiteSpace( item.Id )) {
