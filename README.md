@@ -81,6 +81,22 @@ This starts the app with the Aspire Dashboard for monitoring, tracing, and struc
 dotnet run
 ```
 
+## 📁 Project Structure
+
+```
+BridgeBeats/
+├── src/
+│   ├── BridgeBeats.Web/          # ASP.NET Core web application
+│   ├── BridgeBeats.AppHost/      # .NET Aspire orchestration
+│   └── BridgeBeats.ServiceDefaults/  # Shared configuration
+├── Tests/                         # Test project
+│   ├── Unit/                      # Unit tests
+│   ├── Integration/               # Integration tests
+│   └── EndToEnd/                  # End-to-end tests
+├── docs/                          # Documentation
+└── .github/                       # GitHub templates and workflows
+```
+
 ## 📖 Documentation
 
 - **[Quick Start Guide](docs/QUICKSTART.md)** - Get up and running in 5 minutes

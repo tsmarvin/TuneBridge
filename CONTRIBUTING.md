@@ -83,22 +83,6 @@ Before you start contributing:
 3. **Set up your development environment** (see below)
 4. **Familiarize yourself with the codebase** by exploring the project structure
 
-### Project Structure
-
-```
-BridgeBeats/
-├── src/
-│   ├── BridgeBeats.Web/          # ASP.NET Core web application
-│   ├── BridgeBeats.AppHost/      # .NET Aspire orchestration
-│   └── BridgeBeats.ServiceDefaults/  # Shared configuration
-├── Tests/                         # Test project
-│   ├── Unit/                      # Unit tests
-│   ├── Integration/               # Integration tests
-│   └── EndToEnd/                  # End-to-end tests
-├── docs/                          # Documentation
-└── .github/                       # GitHub templates and workflows
-```
-
 ## Development Setup
 
 ### Prerequisites
@@ -106,7 +90,7 @@ BridgeBeats/
 - **.NET 10.0 SDK or later** - [Download](https://dotnet.microsoft.com/download/dotnet/10)
 - **Docker Desktop** (for containerized dependencies and testing)
 - **Git** for version control
-- **IDE** - Visual Studio 2022, VS Code, or Rider (recommended)
+- **IDE** - Visual Studio 2026, VS Code, or Rider (recommended)
 
 ### Initial Setup
 
@@ -123,28 +107,19 @@ BridgeBeats/
    ```
 
 4. **Configure API credentials** (optional for some contributions):
-   - Copy `.env.example` to `.env` and add your credentials
-   - Or use `dotnet user-secrets` for sensitive data
+   - Use `dotnet user-secrets` for sensitive data (recommended for development)
+   - Or copy `.env.example` to `.env` and add your credentials (for Docker deployments)
    - See [Configuration Guide](docs/CONFIGURATION.md) for details
 
 ### Running the Application
 
-#### Option A: Using .NET Aspire (Recommended for Development)
+Use .NET Aspire for local development:
 
 ```bash
 aspire run
 ```
 
 This starts the application with the Aspire Dashboard for monitoring, tracing, and structured logging. See the [Local Development Guide](docs/LOCAL_DEVELOPMENT.md) for more details.
-
-#### Option B: Direct .NET Run
-
-```bash
-cd src/BridgeBeats.Web
-dotnet run
-```
-
-Visit `http://localhost:10000` in your browser.
 
 ### Running Tests
 
@@ -238,7 +213,7 @@ We welcome pull requests for bug fixes, features, and documentation improvements
 - **Respond to review feedback** promptly and professionally
 - **Keep your branch updated** with the latest `main` branch
 - **Ensure CI passes** - all tests and checks must pass
-- **Don't commit secrets** - use environment variables for credentials
+- **Don't commit secrets** - use environment variables, dotnet secrets, or GitHub secrets
 
 ### After Submitting
 
@@ -261,9 +236,9 @@ BridgeBeats follows .NET coding conventions and includes specific style guidelin
 ### Code Style
 
 - **Indentation**: 4 spaces for C# files, 2 spaces for JSON/XML/Shell scripts
-- **Braces**: K&R/Egyptian style - opening braces on same line (Note: This differs from typical .NET Allman style and is configured in .editorconfig)
-- **Line endings**: LF (Unix-style) for all files
-- **Encoding**: UTF-8 for all files
+- **Braces**: OTBS (One True Brace Style) - opening braces on same line
+- **Line endings**: LF (Unix-style) for all text files
+- **Encoding**: UTF-8 for all text files
 - **Prefer explicit types** over `var` (except when type is apparent)
 - **Use language keywords** instead of framework type names (e.g., `string` not `String`)
 - **Prefer modern C# features**: pattern matching, null propagation, expression-bodied members
@@ -282,7 +257,7 @@ BridgeBeats follows .NET coding conventions and includes specific style guidelin
 - **Input validation**: Always validate and sanitize user input
 - **Authentication**: Use ASP.NET Core Identity patterns
 - **Secrets management**: Use environment variables, never hardcode credentials
-- **Dependencies**: Keep dependencies updated (Dependabot enabled)
+- **Dependencies**: Keep dependencies updated (Dependabot enabled). Note: You'll need the most up-to-date .NET version matching your lockfile as CI uses the latest version.
 - **Error handling**: Never expose sensitive information in error messages
 
 See [.editorconfig](.editorconfig) for complete style rules and the [Copilot Instructions](.github/copilot-instructions.md) for detailed architectural patterns.
