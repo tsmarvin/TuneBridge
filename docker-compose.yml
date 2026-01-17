@@ -5,8 +5,6 @@ services:
     restart: unless-stopped
     networks:
       - internal
-    ports:
-      - "18888:18888" # Aspire Dashboard (internal dashboard now runs within bridgebeats container)
     environment:
       - BASEURL=${BASEURL:-bridgebeats.link}
       - NODE_NUMBER=${NODE_NUMBER:-100}

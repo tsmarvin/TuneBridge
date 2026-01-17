@@ -7,21 +7,14 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:25d14b400b75fa4e89d5bd4487a92a604a4e409ab65becb91821e7dc4ac7f81f AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-
-# Copy NuGet.config to ensure proper package source resolution
-COPY NuGet.config ./
-
-# Copy source files
 COPY src/ .
-
-# Restore and build AppHost project (which references Web project)
-RUN dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --locked-mode
-RUN dotnet build "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet restore "BridgeBeats.Web/BridgeBeats.Web.csproj" --locked-mode
+RUN dotnet build "BridgeBeats.Web/BridgeBeats.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/publish
+RUN dotnet publish "BridgeBeats.Web/BridgeBeats.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish
 
 # Add startup script
 COPY ./entrypoint.sh /app/publish/entrypoint.sh
@@ -38,8 +31,7 @@ WORKDIR /app
 COPY --from=publish /app/publish .
 
 # Expose ports
-# 10000: BridgeBeats application
-# 18888: Aspire Dashboard
-EXPOSE 10000 18888
+# 10000: BridgeBeats application (internal)
+EXPOSE 10000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
