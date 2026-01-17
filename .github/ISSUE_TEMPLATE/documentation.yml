@@ -1,0 +1,116 @@
+name: 📚 Documentation Issue
+description: Report an issue with documentation or suggest documentation improvements
+title: "[Docs]: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve BridgeBeats documentation! Please describe the documentation issue or improvement below.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What type of documentation issue is this?
+      options:
+        - Missing documentation
+        - Incorrect/outdated information
+        - Unclear or confusing content
+        - Broken links or references
+        - Typo or formatting issue
+        - Example code not working
+        - Need more examples
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: documentation-area
+    attributes:
+      label: Documentation Area
+      description: Which documentation is affected?
+      options:
+        - README.md
+        - Quick Start Guide
+        - Local Development Guide
+        - Configuration Guide
+        - API Reference
+        - Deployment Guide
+        - Testing Guide
+        - Caching Guide
+        - ATProto Lexicon Setup
+        - Caddy Cloudflare Guide
+        - SBOM and Provenance Guide
+        - Code comments/inline documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Link or path to the affected documentation
+      placeholder: e.g., docs/CONFIGURATION.md, README.md line 45
+    validations:
+      required: false
+
+  - type: textarea
+    id: current-content
+    attributes:
+      label: Current Content
+      description: What is the current documentation content? (if applicable)
+      placeholder: Quote or describe the current content...
+    validations:
+      required: false
+
+  - type: textarea
+    id: issue-description
+    attributes:
+      label: Issue Description
+      description: Describe the issue with the documentation in detail.
+      placeholder: The documentation says... but it should...
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-improvement
+    attributes:
+      label: Suggested Improvement
+      description: How should the documentation be improved?
+      placeholder: |
+        The documentation should include...
+        - Step 1: ...
+        - Step 2: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or examples about the documentation issue here.
+      placeholder: Any additional information...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Would you be willing to contribute to fixing this documentation?
+      options:
+        - label: I would like to submit a PR to fix this documentation issue
+          required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm the following before submitting
+      options:
+        - label: I have searched for similar documentation issues and found none
+          required: true
+        - label: I have reviewed the current documentation
+          required: false

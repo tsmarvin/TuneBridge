@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discord Community
+    url: https://discord.gg/bridgebeats
+    about: Join our Discord server for questions and community support
+  - name: 📚 Documentation
+    url: https://github.com/tsmarvin/BridgeBeats/tree/main/docs
+    about: Browse the documentation for guides and API reference
+  - name: 🔒 Security Vulnerabilities
+    url: https://github.com/tsmarvin/BridgeBeats/security/advisories/new
+    about: Report security vulnerabilities privately
