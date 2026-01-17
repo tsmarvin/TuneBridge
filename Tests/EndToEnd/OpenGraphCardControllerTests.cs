@@ -19,7 +19,7 @@ public class WebLookupTests {
     public static async Task ClassInitialize( TestContext context ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
+            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
             .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables()
             .Build();
