@@ -1,4 +1,4 @@
-using BridgeBeats.Configuration;
+using BridgeBeats.Web.Configuration;
 using BridgeBeats.Contracts.Interfaces; // Added for IMediaLinkService
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
