@@ -43,7 +43,7 @@ If you experience or witness behavior that violates this Code of Conduct, please
 
 - Contacting the project maintainer directly via GitHub
 - Opening a confidential issue if the platform supports it
-- Emailing the maintainer (contact information available in the project repository)
+- Emailing the maintainer (see [SECURITY.md](SECURITY.md) for contact details)
 
 All reports will be handled with discretion and confidentiality. We are committed to addressing concerns promptly and fairly.
 
