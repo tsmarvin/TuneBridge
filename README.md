@@ -86,20 +86,20 @@ dotnet run
 ```
 BridgeBeats/
 ├── src/
-│   ├── BridgeBeats.Web/          # ASP.NET Core web application (MVC, controllers, views)
-│   ├── BridgeBeats.Services/     # Business logic and service layer
-│   ├── BridgeBeats.Providers/    # Music provider integrations (Apple Music, Spotify, Tidal)
-│   ├── BridgeBeats.Infrastructure/ # Data access, caching, identity, storage
-│   ├── BridgeBeats.Contracts/    # Shared DTOs, interfaces, enums, constants
-│   ├── BridgeBeats.AppHost/      # .NET Aspire orchestration
+│   ├── BridgeBeats.Web/             # ASP.NET Core web application (MVC, controllers, views)
+│   ├── BridgeBeats.Services/        # Business logic and service layer
+│   ├── BridgeBeats.Providers/       # Music provider integrations (Apple Music, Spotify, Tidal)
+│   ├── BridgeBeats.Infrastructure/  # Data access, caching, identity, storage
+│   ├── BridgeBeats.Contracts/       # Shared DTOs, interfaces, enums, constants
+│   ├── BridgeBeats.AppHost/         # .NET Aspire orchestration
 │   └── BridgeBeats.ServiceDefaults/ # Shared service configuration (telemetry, resilience)
-├── Tests/                         # Test project
-│   ├── Unit/                      # Unit tests
-│   ├── Integration/               # Integration tests (service interactions)
-│   └── EndToEnd/                  # End-to-end tests (full request/response flows)
-├── docs/                          # Documentation (guides, API reference)
-├── .github/                       # GitHub templates and workflows
-└── docker-compose.yml             # Production deployment configuration
+├── Tests/                           # Test project
+│   ├── Unit/                        # Unit tests
+│   ├── Integration/                 # Integration tests (service interactions)
+│   └── EndToEnd/                    # End-to-end tests (full request/response flows)
+├── docs/                            # Documentation (guides, API reference)
+├── .github/                         # GitHub templates and workflows
+└── docker-compose.yml               # Production deployment configuration
 ```
 
 ## 📖 Documentation
