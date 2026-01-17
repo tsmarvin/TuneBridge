@@ -15,8 +15,8 @@ namespace BridgeBeats.Providers.Common {
         /// <returns>An enumerable of all group values found.</returns>
         public static IEnumerable<string> GetGroupValues( this Regex regex, string input, string groupName ) {
             foreach (Match match in regex.Matches( input )) {
-                if (match.Groups.ContainsKey( groupName )) {
-                    yield return match.Groups[groupName].Value;
+                if (match.Groups.TryGetValue( groupName, out Group? group )) {
+                    yield return group.Value;
                 }
             }
         }

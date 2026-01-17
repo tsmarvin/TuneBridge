@@ -10,7 +10,7 @@ public sealed class MediaLinkResult {
     /// <summary>
     /// The list of input media links used for the initial lookup (if applicable).
     /// </summary>
-    internal List<string> _inputLinks = [];
+    internal readonly List<string> _inputLinks = [];
 
     /// <summary>
     /// The dictionary of results from supported providers with matching entries.
