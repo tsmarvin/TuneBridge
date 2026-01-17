@@ -24,7 +24,7 @@ public class MusicLookupServiceTests {
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext context ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
-                            .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
+                            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
                                             .AddUserSecrets<Web.Program>( optional: true )
                                             .AddEnvironmentVariables()
                                             .Build();

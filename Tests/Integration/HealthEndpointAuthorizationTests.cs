@@ -8,6 +8,7 @@ namespace BridgeBeats.Tests.Integration;
 /// Integration tests for health endpoint authorization middleware.
 /// </summary>
 [TestClass]
+[TestCategory( "Integration" )]
 public class HealthEndpointAuthorizationTests {
     private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
@@ -16,7 +17,7 @@ public class HealthEndpointAuthorizationTests {
     public static async Task Setup( TestContext testContext ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
+            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
             .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables()
             .Build();
