@@ -53,6 +53,9 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
+# Visual Studio Code Configuration
+.vscode/*
+
 # Visual Studio Configuration
 .vs/*
 
