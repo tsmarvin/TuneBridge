@@ -30,10 +30,11 @@ Security is a top priority for BridgeBeats.
 
 **Never open public issues for security vulnerabilities.** Instead:
 
-1. **Create a private security advisory** at [GitHub Security](https://github.com/tsmarvin/BridgeBeats/security/advisories/new)
-2. **Include**: Description, impact, reproduction steps, affected versions
+1. **Follow our [Security Policy](SECURITY.md)** for reporting instructions and contact information
+2. **Alternatively, create a private security advisory** at [GitHub Security](https://github.com/tsmarvin/BridgeBeats/security/advisories/new)
+3. **Include**: Description, impact, reproduction steps, affected versions
 
-See our complete [Security Policy](SECURITY.md) for details, response timelines, and contact information.
+See our complete [Security Policy](SECURITY.md) for details and response timelines.
 
 ### Security Best Practices for Contributors
 
