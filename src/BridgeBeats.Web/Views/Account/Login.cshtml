@@ -1,0 +1,96 @@
+@{
+    ViewData["Title"] = "Login";
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-title">Login</h2>
+        <div id="loginForm">
+            <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" id="email" class="form-control" required autocomplete="email" />
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" id="password" class="form-control" required autocomplete="current-password" />
+            </div>
+            <div id="error" class="alert alert-danger d-none"></div>
+            <button id="loginBtn" class="btn btn-primary">Login</button>
+            <div class="text-muted text-center mt-3">
+                Don't have an account? <a href="/account/register">Register</a>
+            </div>
+        </div>
+
+        <div id="successMessage" class="d-none">
+            <div class="alert alert-success">Login successful!</div>
+            <p><strong>Your New API Key (for API access):</strong></p>
+            <div class="bg-body-secondary p-3 rounded font-monospace" id="apiKey"></div>
+            <p class="alert alert-info mt-3">
+                <strong>Note:</strong> This API key can be used to authenticate API requests with the header:
+                <code>X-API-Key: [your-key]</code>
+                <br><br>
+                For web browsing, you're already logged in with cookies.
+            </p>
+            <button onclick="window.location.href='/'" class="btn btn-primary">Go to Music Lookup</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@cspNonce">
+        const email = document.getElementById('email');
+        const password = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const error = document.getElementById('error');
+        const loginForm = document.getElementById('loginForm');
+        const successMessage = document.getElementById('successMessage');
+        const apiKeyEl = document.getElementById('apiKey');
+
+        loginBtn.addEventListener('click', async () => {
+            error.classList.add('d-none');
+            error.textContent = '';
+
+            if (!email.value || !password.value) {
+                error.textContent = 'Please fill in all fields';
+                error.classList.remove('d-none');
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+
+            try {
+                const response = await fetch('/account/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ email: email.value, password: password.value })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    error.textContent = data.message || 'Login failed';
+                    error.classList.remove('d-none');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Login';
+                    return;
+                }
+
+                if (data.apiKey === '***EXISTING_KEY***') {
+                    window.location.href = '/';
+                } else {
+                    apiKeyEl.textContent = data.apiKey;
+                    loginForm.classList.add('d-none');
+                    successMessage.classList.remove('d-none');
+                }
+            } catch (err) {
+                error.textContent = 'Network error: ' + err.message;
+                error.classList.remove('d-none');
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+            }
+        });
+    </script>
+}

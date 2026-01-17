@@ -1152,27 +1152,6 @@
         "resolved": "0.8.7",
         "contentHash": "+4VpxvzEKaHpfTjsLRMhQHx6brqGBkIA+fjUM3wUW8ZoWpPFAeKrO2Nf4uZDeBjjzNDNxSRvLQH4b3S9Ku4JJQ=="
       },
-      "bridgebeats": {
-        "type": "Project",
-        "dependencies": {
-          "AspNetCore.Authentication.ApiKey": "[9.0.0, )",
-          "BridgeBeats.Contracts": "[1.0.0, )",
-          "BridgeBeats.Infrastructure": "[1.0.0, )",
-          "BridgeBeats.Providers": "[1.0.0, )",
-          "BridgeBeats.ServiceDefaults": "[1.0.0, )",
-          "BridgeBeats.Services": "[1.0.0, )",
-          "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.2, )",
-          "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.2, )",
-          "Microsoft.Extensions.Http.Resilience": "[10.2.0, )",
-          "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
-          "Microsoft.OpenApi": "[2.3.0, )",
-          "NetCord": "[1.0.0-alpha.455, )",
-          "NetCord.Hosting": "[1.0.0-alpha.455, )",
-          "Serilog.AspNetCore": "[10.0.0, )",
-          "Serilog.Sinks.File": "[7.0.0, )",
-          "Swashbuckle.AspNetCore": "[10.1.0, )"
-        }
-      },
       "bridgebeats.contracts": {
         "type": "Project",
         "dependencies": {
@@ -1220,6 +1199,27 @@
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.2, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.2, )",
           "NetCord": "[1.0.0-alpha.455, )"
+        }
+      },
+      "bridgebeats.web": {
+        "type": "Project",
+        "dependencies": {
+          "AspNetCore.Authentication.ApiKey": "[9.0.0, )",
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "BridgeBeats.Infrastructure": "[1.0.0, )",
+          "BridgeBeats.Providers": "[1.0.0, )",
+          "BridgeBeats.ServiceDefaults": "[1.0.0, )",
+          "BridgeBeats.Services": "[1.0.0, )",
+          "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.2, )",
+          "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.2, )",
+          "Microsoft.Extensions.Http.Resilience": "[10.2.0, )",
+          "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
+          "Microsoft.OpenApi": "[2.3.0, )",
+          "NetCord": "[1.0.0-alpha.455, )",
+          "NetCord.Hosting": "[1.0.0-alpha.455, )",
+          "Serilog.AspNetCore": "[10.0.0, )",
+          "Serilog.Sinks.File": "[7.0.0, )",
+          "Swashbuckle.AspNetCore": "[10.1.0, )"
         }
       }
     }

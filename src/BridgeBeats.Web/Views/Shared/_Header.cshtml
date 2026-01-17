@@ -1,0 +1,95 @@
+@{
+    // Get CSP nonce from HttpContext
+    var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
+}
+<header class="bg-body border-bottom">
+    <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl">
+            <div class="d-flex align-items-center gap-3">
+                <a href="https://github.com/tsmarvin/BridgeBeats" target="_blank" class="nav-link">GitHub</a>
+                <a href="https://docs.bridgebeats.link/" target="_blank" class="nav-link">Docs</a>
+                <a href="/playlists" class="nav-link nav-link-hidden" id="playlistsLink">Playlists</a>
+            </div>
+            <a class="navbar-brand p-0 position-absolute start-50 translate-middle-x d-inline-flex align-items-center"
+                href="/" id="brandLink" data-logo-light="/public/Icons/BridgeBeats_BlackBridgeText.svg"
+                data-logo-dark="/public/Icons/BridgeBeats_WhiteBridgeText.svg"
+                data-logo-auth="/public/Icons/BridgeBeats_FullColor.svg">
+                <img id="brandLogo" alt="BridgeBeats" src="/public/Icons/BridgeBeats_BlackBridgeText.svg" />
+            </a>
+            <div class="d-flex align-items-center gap-2 ms-auto">
+                <button id="themeToggle" class="btn btn-sm btn-outline-secondary" type="button" title="Change theme">
+                    Theme
+                </button>
+                <div id="userArea"></div>
+            </div>
+        </div>
+    </nav>
+</header>
+
+<script nonce="@cspNonce">
+    (function () {
+        const btn = document.getElementById('themeToggle');
+        if (!btn) return;
+        const order = ['auto', 'light', 'dark'];
+        function get() { return localStorage.getItem('theme') || 'auto'; }
+        function set(t) { localStorage.setItem('theme', t); apply(t); }
+        function apply(t) {
+            const val = t === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : t;
+            document.documentElement.setAttribute('data-bs-theme', val);
+            btn.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+        }
+        btn.addEventListener('click', () => {
+            const cur = get();
+            const next = order[(order.indexOf(cur) + 1) % order.length];
+            set(next);
+        });
+        apply(get());
+    })();
+
+    // Populate auth area (Login/Register or Logout) on every page
+    (function () {
+        const userArea = document.getElementById('userArea');
+        const playlistsLink = document.getElementById('playlistsLink');
+        if (!userArea) return;
+        async function refresh() {
+            const res = await fetch('/account/status', { credentials: 'same-origin' });
+            const data = await res.json();
+            const wasAuthenticated = window.isAuthenticated === true;
+            window.isAuthenticated = !!data.isAuthenticated;
+            if (window.isAuthenticated) {
+                userArea.innerHTML = '<a href="/account/user" class="btn btn-sm btn-outline-secondary me-2">User</a><button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
+                document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+                    try { await fetch('/account/logout', { method: 'POST', credentials: 'same-origin' }); } catch { }
+                    location.reload();
+                });
+                // Show Playlists link for authenticated users (Apple Music is a sub-page)
+                if (playlistsLink) {
+                    playlistsLink.classList.remove('nav-link-hidden');
+                }
+            } else {
+                userArea.innerHTML = '<a href="/account/login" class="btn btn-sm btn-outline-primary me-2">Login</a> <a href="/account/register" class="btn btn-sm btn-primary">Register</a>';
+            }
+            const brandLogo = document.getElementById('brandLogo');
+            const brandLink = document.getElementById('brandLink');
+            if (!brandLogo || !brandLink) return;
+            const logoAuth = brandLink.getAttribute('data-logo-auth');
+            const logoLight = brandLink.getAttribute('data-logo-light');
+            const logoDark = brandLink.getAttribute('data-logo-dark');
+            const t = localStorage.getItem('theme') || 'auto';
+            const val = t === 'auto'
+                ? (window.matchMedia('(prefers-color-scheme: dark)').matches
+                    ? 'dark'
+                    : 'light'
+                )
+                : t;
+
+            if (window.isAuthenticated)
+                brandLogo.src = logoAuth
+            else if (val === 'dark' && logoDark)
+                brandLogo.src = logoDark;
+            else if (logoLight)
+                brandLogo.src = logoLight;
+        }
+        refresh();
+    })();
+</script>

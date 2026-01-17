@@ -57,8 +57,8 @@ jobs:
               -e 's/"{Default_LogLevel}"/"Information"/g' \
               -e 's/"{Hosting_LogLevel}"/"Information"/g' \
               -e 's/"{Allowed_Hosts}"/"*"/g' \
-              src/appsettings.transform.json > Tests/bin/Release/net10.0/src/appsettings.json
-          cp -f Tests/bin/Release/net10.0/src/appsettings.json src/appsettings.json
+              src/BridgeBeats.Web/appsettings.transform.json > Tests/bin/Release/net10.0/src/appsettings.json
+          cp -f Tests/bin/Release/net10.0/src/appsettings.json src/BridgeBeats.Web/appsettings.json
 
       - name: Run Unit Tests
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
