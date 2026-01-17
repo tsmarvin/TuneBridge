@@ -261,7 +261,7 @@ BridgeBeats follows .NET coding conventions and includes specific style guidelin
 ### Code Style
 
 - **Indentation**: 4 spaces for C# files, 2 spaces for JSON/XML/Shell scripts
-- **Braces**: Egyptian style - opening braces on same line (K&R style)
+- **Braces**: K&R/Egyptian style - opening braces on same line (Note: This differs from typical .NET Allman style and is configured in .editorconfig)
 - **Line endings**: LF (Unix-style) for all files
 - **Encoding**: UTF-8 for all files
 - **Prefer explicit types** over `var` (except when type is apparent)
