@@ -1,7 +1,7 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 
-namespace BridgeBeats.Domain.Implementations.Extensions {
+namespace BridgeBeats.Services.LinkResolver {
 
     /// <summary>
     /// Extension methods for generating OpenGraph metadata from media link results.

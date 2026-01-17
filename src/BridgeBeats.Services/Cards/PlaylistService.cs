@@ -4,8 +4,9 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Infrastructure.Identity;
 using BridgeBeats.Infrastructure.Playlists;
+using Microsoft.EntityFrameworkCore;
 
-namespace BridgeBeats.Domain.Implementations.Services {
+namespace BridgeBeats.Services.Cards {
 
     /// <summary>
     /// Database-backed implementation of the playlist service.

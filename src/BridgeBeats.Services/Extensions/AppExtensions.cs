@@ -4,8 +4,10 @@ using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using Microsoft.AspNetCore.Html;
+using NetCord;
+using NetCord.Rest;
 
-namespace BridgeBeats.Domain.Implementations.Extensions {
+namespace BridgeBeats.Services.Extensions {
 
     /// <summary>
     /// Extension methods for application-specific functionality.

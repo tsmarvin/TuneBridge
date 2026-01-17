@@ -2,10 +2,10 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Domain.Implementations.Extensions;
-using BridgeBeats.Domain.Types.Bases;
+using BridgeBeats.Services.Extensions;
+using Microsoft.Extensions.Logging;
 
-namespace BridgeBeats.Domain.Implementations.Services {
+namespace BridgeBeats.Services.LinkResolver {
 
     /// <summary>
     /// Decorator for <see cref="IMediaLinkService"/> that adds caching with ATProto PDS storage.

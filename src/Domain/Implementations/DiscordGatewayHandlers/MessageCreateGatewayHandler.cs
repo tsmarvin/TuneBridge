@@ -2,7 +2,10 @@ using System.Text.RegularExpressions;
 using BridgeBeats.Configuration;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Domain.Implementations.Extensions;
+using BridgeBeats.Services.Extensions;
+using NetCord;
+using NetCord.Gateway;
+using NetCord.Hosting.Gateway;
 
 namespace BridgeBeats.Domain.Implementations.DiscordGatewayHandlers {
 

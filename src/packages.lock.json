@@ -733,6 +733,15 @@
           "OpenTelemetry.Instrumentation.Http": "[1.14.0, )",
           "OpenTelemetry.Instrumentation.Runtime": "[1.14.0, )"
         }
+      },
+      "bridgebeats.services": {
+        "type": "Project",
+        "dependencies": {
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "BridgeBeats.Infrastructure": "[1.0.0, )",
+          "BridgeBeats.Providers": "[1.0.0, )",
+          "NetCord": "[1.0.0-alpha.455, )"
+        }
       }
     },
     "net10.0/linux-arm64": {

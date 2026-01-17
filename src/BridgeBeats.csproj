@@ -41,6 +41,7 @@
     <ProjectReference Include="BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj" />
     <ProjectReference Include="BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
     <ProjectReference Include="BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj" />
+    <ProjectReference Include="BridgeBeats.Services\BridgeBeats.Services.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -51,6 +52,7 @@
     <Compile Remove="BridgeBeats.Contracts/**/*.cs" />
     <Compile Remove="BridgeBeats.Infrastructure/**/*.cs" />
     <Compile Remove="BridgeBeats.Providers/**/*.cs" />
+    <Compile Remove="BridgeBeats.Services/**/*.cs" />
     <Compile Remove="Migrations\**" />
   </ItemGroup>
 
