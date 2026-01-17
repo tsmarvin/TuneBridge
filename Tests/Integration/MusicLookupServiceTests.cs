@@ -33,6 +33,7 @@ public class MusicLookupServiceTests {
         Dictionary<string, string?> overrides = configuration
          .AsEnumerable()
          .Where(kv => kv.Value is not null) // filter nulls from section placeholders
+         .Where(kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ))
          .ToDictionary(kv => kv.Key, kv => kv.Value);
 
         // Force Discord token to null to prevent Discord service registration in tests

@@ -28,6 +28,7 @@ public class WebLookupTests {
         Dictionary<string, string?> configData = configuration
             .AsEnumerable()
             .Where( kv => kv.Value is not null )
+            .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
