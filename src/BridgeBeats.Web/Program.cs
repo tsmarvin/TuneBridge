@@ -1,7 +1,7 @@
-using BridgeBeats.Configuration;
+using BridgeBeats.Web.Configuration;
 using Serilog;
 
-namespace BridgeBeats {
+namespace BridgeBeats.Web {
     /// <summary>
     /// Main entry point for the BridgeBeats web application.
     /// </summary>
@@ -12,13 +12,13 @@ namespace BridgeBeats {
         /// </summary>
         /// <param name="args">Command-line arguments for configuration overrides.</param>
         public static async Task Main( string[] args ) {
-            WebApplicationBuilder builder = WebApplication.CreateBuilder( new WebApplicationOptions( ) {
+            WebApplicationBuilder builder = WebApplication.CreateBuilder( new WebApplicationOptions {
                 ApplicationName = "BridgeBeats",
                 Args = args,
-                WebRootPath = "Web/wwwroot"
+                WebRootPath = "wwwroot"
             } );
 
-            // Configure BridgeBeats services (this loads configuration and sets up logging)
+            // Configure BridgeBeats services
             _ = builder.ConfigureBridgeBeatsServices( args );
 
             WebApplication app = await builder.ConfigureBridgeBeatsAsync( );

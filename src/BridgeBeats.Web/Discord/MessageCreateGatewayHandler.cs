@@ -1,13 +1,13 @@
 using System.Text.RegularExpressions;
-using BridgeBeats.Configuration;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Services.Extensions;
+using BridgeBeats.Web.Discord;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 
-namespace BridgeBeats.Domain.Implementations.DiscordGatewayHandlers {
+namespace BridgeBeats.Web.Discord {
 
     /// <summary>
     /// Handles Discord message creation events to detect and respond to music links.

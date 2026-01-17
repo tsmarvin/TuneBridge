@@ -1,4 +1,4 @@
-namespace BridgeBeats.Domain.Implementations.Middleware;
+namespace BridgeBeats.Web.Middleware;
 
 /// <summary>
 /// Middleware to restrict access to Swagger UI to authenticated users only.

@@ -1,6 +1,6 @@
 using BridgeBeats.Contracts.Constants;
 
-namespace BridgeBeats.Domain.Implementations.Middleware;
+namespace BridgeBeats.Web.Middleware;
 
 /// <summary>
 /// Middleware to restrict access to the liveness endpoint to internal requests only (localhost and Docker network).

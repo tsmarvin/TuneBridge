@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
-namespace BridgeBeats.Domain.Implementations.Middleware;
+namespace BridgeBeats.Web.Middleware;
 
 /// <summary>
 /// Middleware that enforces rate limiting on protected endpoints.

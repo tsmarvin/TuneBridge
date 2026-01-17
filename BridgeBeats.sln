@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.0.11205.157
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats", "src\BridgeBeats.csproj", "{127C27A6-B3FD-14C2-BC7E-3176B16766B2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Web", "src\BridgeBeats.Web\BridgeBeats.Web.csproj", "{127C27A6-B3FD-14C2-BC7E-3176B16766B2}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.ServiceDefaults", "src\BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj", "{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}"
 EndProject
@@ -177,6 +177,7 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{127C27A6-B3FD-14C2-BC7E-3176B16766B2} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}

@@ -25,7 +25,7 @@ IResourceBuilder<ParameterResource> atProtoUserDID = builder.AddParameter( "ATPr
 // Security Parameters
 IResourceBuilder<ParameterResource> apiKeySalt = builder.AddParameter( "ApiKeySalt", secret: true );
 
-_ = builder.AddProject<Projects.BridgeBeats>( "bridgebeats" )
+_ = builder.AddProject<Projects.BridgeBeats_Web>( "bridgebeats" )
     // Spotify
     .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
     .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )

@@ -1,4 +1,4 @@
-namespace BridgeBeats.Configuration {
+namespace BridgeBeats.Web.Configuration {
     /// <summary>
     /// Represents application settings for external service integrations.<para/>
     ///

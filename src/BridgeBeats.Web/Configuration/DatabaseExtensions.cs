@@ -3,7 +3,7 @@ using BridgeBeats.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
-namespace BridgeBeats.Configuration;
+namespace BridgeBeats.Web.Configuration;
 
 /// <summary>
 /// Extension methods for database initialization.

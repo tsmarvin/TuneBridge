@@ -4,25 +4,23 @@ using AspNetCore.Authentication.ApiKey;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Domain.Implementations.Middleware;
 using BridgeBeats.Infrastructure.Cache;
 using BridgeBeats.Infrastructure.Identity;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.Providers;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Services;
+using BridgeBeats.Web.Discord;
+using BridgeBeats.Web.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi;
-using NetCord;
-using NetCord.Gateway;
-using NetCord.Hosting.Gateway;
 using Serilog;
 using Serilog.Events;
 
-namespace BridgeBeats.Configuration {
+namespace BridgeBeats.Web.Configuration {
 
     /// <summary>
     /// Extension methods for configuring the BridgeBeats services and HTTP client resilience (retry) policies.
@@ -87,8 +85,8 @@ namespace BridgeBeats.Configuration {
                 .AddControllersWithViews( )
                 .AddRazorOptions( o => {
                     o.ViewLocationFormats.Clear( );
-                    o.ViewLocationFormats.Add( "/Web/Views/{1}/{0}.cshtml" );
-                    o.ViewLocationFormats.Add( "/Web/Views/Shared/{0}.cshtml" );
+                    o.ViewLocationFormats.Add( "/Views/{1}/{0}.cshtml" );
+                    o.ViewLocationFormats.Add( "/Views/Shared/{0}.cshtml" );
                 } );
 
             AppSettings settings = new( );
@@ -127,8 +125,7 @@ namespace BridgeBeats.Configuration {
             _ = services.AddSingleton( enabledProviders );
 
             // Discord configuration
-            _ = services.AddTransient( s => new DiscordNodeConfig( s.GetRequiredService<IMediaLinkService>( ), settings.NodeNumber ) );
-            ConfigureDiscordIfEnabled( services, settings, environment );
+            _ = services.AddDiscordServices( config, environment );
 
             return services;
         }
@@ -295,10 +292,10 @@ namespace BridgeBeats.Configuration {
 
                 using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
                 dbContext.Database.Migrate( );
-                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Configuration.StartupExtensions" );
+                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Web.Configuration.StartupExtensions" );
                 logger.LogInformation( "BridgeBeats: SQLite cache database initialized successfully" );
             } catch (Exception ex) {
-                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Configuration.StartupExtensions" );
+                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Web.Configuration.StartupExtensions" );
                 logger.LogError( ex, "Failed to initialize SQLite cache database" );
             }
         }
@@ -438,23 +435,6 @@ namespace BridgeBeats.Configuration {
                 settings.TidalClientId,
                 settings.TidalClientSecret
             );
-        }
-
-        private static void ConfigureDiscordIfEnabled(
-            IServiceCollection services,
-            AppSettings settings,
-            string environment
-        ) {
-            if (environment == "Testing") { return; }
-
-            // Only register Discord services if token is provided and not empty/whitespace
-            if (string.IsNullOrWhiteSpace( settings.DiscordToken )) { return; }
-
-            _ = services.AddDiscordShardedGateway( options => {
-                options.Token = settings.DiscordToken;
-                options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
-            } );
-            _ = services.AddShardedGatewayHandlers( typeof( Program ).Assembly );
         }
 
         /// <summary>

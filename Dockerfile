@@ -8,13 +8,13 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:25d14b400b75fa4e89d5bd4487a92a604a
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY src/ .
-RUN dotnet restore "BridgeBeats.csproj" --locked-mode
-RUN dotnet build "BridgeBeats.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet restore "BridgeBeats.Web/BridgeBeats.Web.csproj" --locked-mode
+RUN dotnet build "BridgeBeats.Web/BridgeBeats.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "BridgeBeats.csproj" -c $BUILD_CONFIGURATION -o /app/publish
+RUN dotnet publish "BridgeBeats.Web/BridgeBeats.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish
 
 # Add startup script
 COPY ./entrypoint.sh /app/publish/entrypoint.sh
