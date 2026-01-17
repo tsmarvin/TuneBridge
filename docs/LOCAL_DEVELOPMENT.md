@@ -48,7 +48,7 @@ The AppHost passes all provider credentials to the application via environment v
 
 1. **User Secrets** (recommended for development):
    ```bash
-   dotnet user-secrets set "Spotify:ClientId" "your-client-id" --project src/BridgeBeats.csproj
+   dotnet user-secrets set "BridgeBeats:SpotifyClientId" "your-client-id" --project src/BridgeBeats.Web/BridgeBeats.Web.csproj
    ```
 
 2. **Environment Variables**: Set in your shell or IDE launch configuration
