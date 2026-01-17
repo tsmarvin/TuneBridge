@@ -43,8 +43,8 @@ jobs:
           fi
 
           # Create appsettings.json for tests (with empty DiscordToken to disable Discord bot in tests)
-          # Tests look for src/appsettings.json relative to test output dir, so create src/ subdir there
-          mkdir -p Tests/bin/Release/net10.0/src
+          # Tests look for src/BridgeBeats.Web/appsettings.json relative to test output dir, so create src/BridgeBeats.Web/ subdir there
+          mkdir -p Tests/bin/Release/net10.0/src/BridgeBeats.Web
           sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
               -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
               -e 's/"{AppleKeyId}"/"${{ secrets.APPLEKEYID }}"/g' \
@@ -57,8 +57,8 @@ jobs:
               -e 's/"{Default_LogLevel}"/"Information"/g' \
               -e 's/"{Hosting_LogLevel}"/"Information"/g' \
               -e 's/"{Allowed_Hosts}"/"*"/g' \
-              src/BridgeBeats.Web/appsettings.transform.json > Tests/bin/Release/net10.0/src/appsettings.json
-          cp -f Tests/bin/Release/net10.0/src/appsettings.json src/BridgeBeats.Web/appsettings.json
+              src/BridgeBeats.Web/appsettings.transform.json > Tests/bin/Release/net10.0/src/BridgeBeats.Web/appsettings.json
+          cp -f Tests/bin/Release/net10.0/src/BridgeBeats.Web/appsettings.json src/BridgeBeats.Web/appsettings.json
 
       - name: Run Unit Tests
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
