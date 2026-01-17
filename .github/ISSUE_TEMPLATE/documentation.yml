@@ -37,7 +37,6 @@ body:
         - Configuration Guide
         - API Reference
         - Deployment Guide
-        - Testing Guide
         - Caching Guide
         - ATProto Lexicon Setup
         - Caddy Cloudflare Guide
