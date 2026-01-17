@@ -376,7 +376,7 @@ namespace BridgeBeats.Configuration {
         private static void ConfigureSwagger( IServiceCollection services ) {
             _ = services.AddEndpointsApiExplorer( );
             _ = services.AddSwaggerGen( options => {
-                options.SwaggerDoc( "v1", new OpenApiContact {OpenApiInfo {
+                options.SwaggerDoc( "v1", new OpenApiInfo {
                     Title = "BridgeBeats API",
                     Version = "v1",
                     Description = "Cross-platform music link converter and lookup service for Apple Music, Spotify, and Tidal. Convert music links between platforms, search by URL, ISRC, UPC, or title/artist.",
