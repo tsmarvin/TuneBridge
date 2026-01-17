@@ -5,12 +5,13 @@ services:
     restart: unless-stopped
     networks:
       - internal
+    ports:
+      - "18888:18888" # Aspire Dashboard (internal dashboard now runs within bridgebeats container)
     environment:
       - BASEURL=${BASEURL:-bridgebeats.link}
       - NODE_NUMBER=${NODE_NUMBER:-100}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
-      - OTLP_ENDPOINT=${OTLP_ENDPOINT:-http://aspire-dashboard:4317}
       - LOG_FILE_PATH=${LOG_FILE_PATH:-/app/data/logs/bridgebeats-.log}
       - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
       - APPLE_KEY_ID=${APPLE_KEY_ID:-}
@@ -20,6 +21,8 @@ services:
       - ATPROTO_IDENTIFIER=${ATPROTO_IDENTIFIER:-}
       - ATPROTO_USER_DID=${ATPROTO_USER_DID:-}
       - CACHE_DAYS=${CACHE_DAYS:-7}
+      - CARD_CACHE_EXPIRATION_HOURS=${CARD_CACHE_EXPIRATION_HOURS:-1}
+      - CARD_CACHE_CLEANUP_INTERVAL=${CARD_CACHE_CLEANUP_INTERVAL:-500}
       - LINK_CACHE_CONNECTION_STRING=${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
       - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
       - RATE_LIMIT_REQUESTS_PER_HOUR=${RATE_LIMIT_REQUESTS_PER_HOUR:-20}
@@ -46,40 +49,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-
-  # Aspire Dashboard for observability and telemetry
-  bridgebeats-aspire-dashboard:
-    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.0
-    container_name: bridgebeats-aspire-dashboard
-    restart: unless-stopped
-    expose:
-      - "18888"
-      - "4317"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:18888
-      # Frontend authentication is handled by Caddy forward_auth
-      - DASHBOARD__FRONTEND__AUTHMODE=Unsecured
-      - DASHBOARD__OTLP__ENDPOINTURL=http://+:4317
-      # OTLP endpoint is unsecured for internal network telemetry collection
-      # All containers on the internal network can send telemetry without authentication
-      - DASHBOARD__OTLP__AUTHMODE=Unsecured
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:18888/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
 
   bridgebeats-pds:
     image: ghcr.io/bluesky-social/pds:latest

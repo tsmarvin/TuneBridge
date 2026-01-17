@@ -53,74 +53,45 @@ RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
 # Logging configuration
 LOG_FILE_PATH="${LOG_FILE_PATH:-/app/data/logs/bridgebeats-.log}"
-OTLP_ENDPOINT="${OTLP_ENDPOINT:-http://aspire-dashboard:4317}"
-
-# escape backslashes (for path safety) ----
-escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 
 # 0) Create logs directory if it doesn't exist
 mkdir -p /app/data/logs
 
-# 1) Remove existing appsettings.json if present
-[ -f /app/appsettings.json ] && rm -f /app/appsettings.json
+# ---- Export Aspire Parameters as environment variables ----
+# Aspire AppHost reads parameters from environment variables prefixed with "Parameters__"
+export Parameters__SpotifyClientId="$SPOTIFY_CLIENT_ID"
+export Parameters__SpotifyClientSecret="$SPOTIFY_CLIENT_SECRET"
+export Parameters__AppleTeamId="$APPLE_TEAM_ID"
+export Parameters__AppleKeyId="$APPLE_KEY_ID"
+export Parameters__AppleKeyPath="$APPLE_KEY_PATH"
+export Parameters__TidalClientId="$TIDAL_CLIENT_ID"
+export Parameters__TidalClientSecret="$TIDAL_CLIENT_SECRET"
+export Parameters__DiscordToken="$DISCORD_TOKEN"
+export Parameters__ATProtoIdentifier="$ATPROTO_IDENTIFIER"
+export Parameters__ATProtoPassword="$ATPROTO_PASSWORD"
+export Parameters__ATProtoUserDID="$ATPROTO_USER_DID"
+export Parameters__ApiKeySalt="$API_KEY_SALT"
+export Parameters__NodeNumber="$NODE_NUMBER"
+export Parameters__BaseUrl="$BASEURL"
+export Parameters__RateLimitRequestsPerHour="$RATE_LIMIT_REQUESTS_PER_HOUR"
+export Parameters__CacheDays="$CACHE_DAYS"
+export Parameters__LinkCacheConnectionString="$LINK_CACHE_CONNECTION_STRING"
+export Parameters__IdentityConnectionString="$IDENTITY_CONNECTION_STRING"
+export Parameters__LogFilePath="$LOG_FILE_PATH"
+export Parameters__CardCacheExpirationHours="$CARD_CACHE_EXPIRATION_HOURS"
+export Parameters__CardCacheCleanupInterval="$CARD_CACHE_CLEANUP_INTERVAL"
 
-# 2) Create new appsettings.json
-cat > /app/appsettings.json <<EOF
-{
-  "Kestrel": {
-    "Endpoints": {
-      "Http": {
-        "Url": "http://0.0.0.0:10000"
-      }
-    }
-  },
-  "BridgeBeats": {
-    "NodeNumber": $NODE_NUMBER,
-    "AppleTeamId": "$APPLE_TEAM_ID",
-    "AppleKeyId": "$APPLE_KEY_ID",
-    "AppleKeyPath": "$(escape_bs "$APPLE_KEY_PATH")",
-    "SpotifyClientId": "$SPOTIFY_CLIENT_ID",
-    "SpotifyClientSecret": "$SPOTIFY_CLIENT_SECRET",
-    "TidalClientId": "$TIDAL_CLIENT_ID",
-    "TidalClientSecret": "$TIDAL_CLIENT_SECRET",
-    "DiscordToken": "$DISCORD_TOKEN",
-    "IdentityConnectionString": "$(escape_bs "$IDENTITY_CONNECTION_STRING")",
-    "ApiKeySalt": "$API_KEY_SALT",
-    "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR,
-    "ATProtoIdentifier": "$ATPROTO_IDENTIFIER",
-    "ATProtoUserDID": "$ATPROTO_USER_DID",
-    "ATProtoPassword": "$ATPROTO_PASSWORD",
-    "CacheDays": $CACHE_DAYS,
-    "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
-    "BaseUrl": "$BASEURL",
-    "LogFilePath": "$(escape_bs "$LOG_FILE_PATH")",
-    "CardCacheExpirationHours": $CARD_CACHE_EXPIRATION_HOURS,
-    "CardCacheCleanupInterval": $CARD_CACHE_CLEANUP_INTERVAL
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "$DEFAULT_LOGLEVEL",
-      "Microsoft.Hosting.Lifetime": "$HOSTING_DEFAULT_LOGLEVEL",
-      "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
-      "Microsoft.AspNetCore.Routing.EndpointMiddleware": "Warning"
-    }
-  },
-  "Serilog": {
-    "MinimumLevel": {
-      "Default": "$DEFAULT_LOGLEVEL",
-      "Override": {
-        "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
-        "Microsoft.AspNetCore.Routing.EndpointMiddleware": "Warning"
-      }
-    }
-  },
-  "OpenTelemetry": {
-    "OtlpEndpoint": "$OTLP_ENDPOINT"
-  },
-  "AllowedHosts": "*"
-}
-EOF
+# ---- Configure Aspire Dashboard ----
+# Dashboard will run on port 18888 (exposed by container)
+export ASPNETCORE_URLS="http://0.0.0.0:18888;http://0.0.0.0:10000"
+export DOTNET_DASHBOARD_OTLP_ENDPOINT_URL="http://localhost:18889"
 
-# 3) Launch the BridgeBeats application
-echo "Starting BridgeBeats application..."
-exec "/app/BridgeBeats"
+# ---- Configure Logging ----
+export Logging__LogLevel__Default="$DEFAULT_LOGLEVEL"
+export Logging__LogLevel__Microsoft__Hosting__Lifetime="$HOSTING_DEFAULT_LOGLEVEL"
+export Serilog__MinimumLevel__Default="$DEFAULT_LOGLEVEL"
+
+# Launch the Aspire AppHost
+# The AppHost will orchestrate starting the Aspire Dashboard and BridgeBeats.Web application
+echo "Starting BridgeBeats Aspire AppHost..."
+exec "/app/BridgeBeats.AppHost"
