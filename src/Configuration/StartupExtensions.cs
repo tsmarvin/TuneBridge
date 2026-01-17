@@ -15,7 +15,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.OpenApi;
 using NetCord;
+using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using Serilog;
 using Serilog.Events;
@@ -374,26 +376,26 @@ namespace BridgeBeats.Configuration {
         private static void ConfigureSwagger( IServiceCollection services ) {
             _ = services.AddEndpointsApiExplorer( );
             _ = services.AddSwaggerGen( options => {
-                options.SwaggerDoc( "v1", new Microsoft.OpenApi.Models.OpenApiInfo {
+                options.SwaggerDoc( "v1", new OpenApiInfo {
                     Title = "BridgeBeats API",
                     Version = "v1",
                     Description = "Cross-platform music link converter and lookup service for Apple Music, Spotify, and Tidal. Convert music links between platforms, search by URL, ISRC, UPC, or title/artist.",
-                    Contact = new Microsoft.OpenApi.Models.OpenApiContact {
+                    Contact = new OpenApiContact {
                         Name = "BridgeBeats",
                         Url = new Uri( "https://github.com/tsmarvin/BridgeBeats" )
                     },
-                    License = new Microsoft.OpenApi.Models.OpenApiLicense {
+                    License = new OpenApiLicense {
                         Name = "MIT License",
                         Url = new Uri( "https://github.com/tsmarvin/BridgeBeats/blob/main/LICENSE" )
                     }
                 } );
-                options.AddSecurityDefinition( "ApiKey", new Microsoft.OpenApi.Models.OpenApiSecurityScheme {
-                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
-                    In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                options.AddSecurityDefinition( "ApiKey", new OpenApiSecurityScheme {
+                    Type = SecuritySchemeType.ApiKey,
+                    In = ParameterLocation.Header,
                     Name = "X-API-Key",
                     Description = "API Key authentication. Get your API key by registering at /account/register"
                 } );
-                options.AddSecurityRequirement( _ => new Microsoft.OpenApi.Models.OpenApiSecurityRequirement { [new( "X-API-Key" )] = [] } );
+                options.AddSecurityRequirement( _ => new OpenApiSecurityRequirement { [new( "X-API-Key" )] = [] } );
 
                 // Include XML comments from all assemblies if available
                 foreach (string xmlPath in Directory.GetFiles( AppContext.BaseDirectory, "*.xml" )) {
