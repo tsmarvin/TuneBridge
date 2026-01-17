@@ -15,7 +15,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.OpenApi;
+using Microsoft.OpenApi.Models;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
@@ -376,7 +376,7 @@ namespace BridgeBeats.Configuration {
         private static void ConfigureSwagger( IServiceCollection services ) {
             _ = services.AddEndpointsApiExplorer( );
             _ = services.AddSwaggerGen( options => {
-                options.SwaggerDoc( "v1", new OpenApiInfo {
+                options.SwaggerDoc( "v1", new OpenApiContact {OpenApiInfo {
                     Title = "BridgeBeats API",
                     Version = "v1",
                     Description = "Cross-platform music link converter and lookup service for Apple Music, Spotify, and Tidal. Convert music links between platforms, search by URL, ISRC, UPC, or title/artist.",
