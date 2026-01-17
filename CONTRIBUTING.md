@@ -7,6 +7,8 @@ BridgeBeats is a cross-platform music link converter that helps people share mus
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
+- [Security](#security)
+- [Getting Help](#getting-help)
 - [Ways to Contribute](#ways-to-contribute)
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
@@ -15,12 +17,57 @@ BridgeBeats is a cross-platform music link converter that helps people share mus
 - [Coding Standards](#coding-standards)
 - [Testing Guidelines](#testing-guidelines)
 - [Documentation Guidelines](#documentation-guidelines)
-- [Security](#security)
-- [Getting Help](#getting-help)
 
 ## Code of Conduct
 
 This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior as described in the Code of Conduct.
+
+## Security
+
+Security is a top priority for BridgeBeats.
+
+### Reporting Security Vulnerabilities
+
+**Never open public issues for security vulnerabilities.** Instead:
+
+1. **Create a private security advisory** at [GitHub Security](https://github.com/tsmarvin/BridgeBeats/security/advisories/new)
+2. **Include**: Description, impact, reproduction steps, affected versions
+
+See our complete [Security Policy](SECURITY.md) for details, response timelines, and contact information.
+
+### Security Best Practices for Contributors
+
+- **Never commit secrets** - use environment variables
+- **Validate all inputs** - prevent injection attacks
+- **Update dependencies** - keep libraries current (Dependabot helps)
+- **Review security advisories** - stay informed about vulnerabilities
+- **Test security features** - verify authentication and authorization work correctly
+
+## Getting Help
+
+Need help or have questions?
+
+### Documentation
+
+- 📚 **[Documentation Site](https://docs.bridgebeats.link)** - Comprehensive guides
+- 📖 **[README](README.md)** - Project overview and quick start
+- ⚙️ **[Configuration Guide](docs/CONFIGURATION.md)** - Setup instructions
+- 🚀 **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment
+- 🧑‍💻 **[Local Development Guide](docs/LOCAL_DEVELOPMENT.md)** - Development setup
+
+### Getting Support
+
+- **Questions about usage**: Search or open a [GitHub Issue](https://github.com/tsmarvin/BridgeBeats/issues)
+- **Bugs or problems**: Use the [Bug Report template](https://github.com/tsmarvin/BridgeBeats/issues/new?template=bug_report.yml)
+- **Feature ideas**: Use the [Feature Request template](https://github.com/tsmarvin/BridgeBeats/issues/new?template=feature_request.yml)
+- **Security issues**: Follow the [Security Policy](SECURITY.md)
+
+### Community
+
+- **Be respectful**: Follow our [Code of Conduct](CODE_OF_CONDUCT.md)
+- **Be patient**: Maintainers and contributors are often volunteers
+- **Be helpful**: Share your knowledge and help others
+- **Be open**: Welcome feedback and different perspectives
 
 ## Ways to Contribute
 
@@ -337,54 +384,6 @@ Clear documentation helps everyone use and contribute to BridgeBeats.
 
 - Small fixes (typos, broken links): Open a PR directly
 - Larger changes: Open a [documentation issue](https://github.com/tsmarvin/BridgeBeats/issues/new?template=documentation.yml) first to discuss
-
-## Security
-
-Security is a top priority for BridgeBeats.
-
-### Reporting Security Vulnerabilities
-
-**Never open public issues for security vulnerabilities.** Instead:
-
-1. **Create a private security advisory** at [GitHub Security](https://github.com/tsmarvin/BridgeBeats/security/advisories/new)
-2. **Or email**: admin@bridgebeats.link
-3. **Include**: Description, impact, reproduction steps, affected versions
-
-See our complete [Security Policy](SECURITY.md) for details and response timelines.
-
-### Security Best Practices for Contributors
-
-- **Never commit secrets** - use environment variables
-- **Validate all inputs** - prevent injection attacks
-- **Update dependencies** - keep libraries current (Dependabot helps)
-- **Review security advisories** - stay informed about vulnerabilities
-- **Test security features** - verify authentication and authorization work correctly
-
-## Getting Help
-
-Need help or have questions?
-
-### Documentation
-
-- 📚 **[Documentation Site](https://docs.bridgebeats.link)** - Comprehensive guides
-- 📖 **[README](README.md)** - Project overview and quick start
-- ⚙️ **[Configuration Guide](docs/CONFIGURATION.md)** - Setup instructions
-- 🚀 **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment
-- 🧑‍💻 **[Local Development Guide](docs/LOCAL_DEVELOPMENT.md)** - Development setup
-
-### Getting Support
-
-- **Questions about usage**: Search or open a [GitHub Issue](https://github.com/tsmarvin/BridgeBeats/issues)
-- **Bugs or problems**: Use the [Bug Report template](https://github.com/tsmarvin/BridgeBeats/issues/new?template=bug_report.yml)
-- **Feature ideas**: Use the [Feature Request template](https://github.com/tsmarvin/BridgeBeats/issues/new?template=feature_request.yml)
-- **Security issues**: Follow the [Security Policy](SECURITY.md)
-
-### Community
-
-- **Be respectful**: Follow our [Code of Conduct](CODE_OF_CONDUCT.md)
-- **Be patient**: Maintainers and contributors are often volunteers
-- **Be helpful**: Share your knowledge and help others
-- **Be open**: Welcome feedback and different perspectives
 
 ## Additional Resources
 
