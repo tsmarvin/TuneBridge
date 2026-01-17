@@ -1,8 +1,8 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Domain.Implementations.Extensions;
 using BridgeBeats.Infrastructure.Storage;
+using BridgeBeats.Services.LinkResolver;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;

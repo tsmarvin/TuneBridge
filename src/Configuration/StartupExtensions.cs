@@ -1,18 +1,24 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using AspNetCore.Authentication.ApiKey;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Domain.Implementations.Middleware;
-using BridgeBeats.Domain.Implementations.Services;
 using BridgeBeats.Infrastructure.Cache;
 using BridgeBeats.Infrastructure.Identity;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.Providers;
 using BridgeBeats.ServiceDefaults;
+using BridgeBeats.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using NetCord;
+using NetCord.Hosting.Gateway;
+using Serilog;
+using Serilog.Events;
 
 namespace BridgeBeats.Configuration {
 
@@ -95,31 +101,6 @@ namespace BridgeBeats.Configuration {
             ConfigureApiKeyAuth( services, settings );
             ConfigureSwagger( services );
 
-            // Validate card cache settings
-            if (settings.CardCacheExpirationHours <= 0) {
-                throw new InvalidOperationException( $"CardCacheExpirationHours must be greater than zero. Current value: {settings.CardCacheExpirationHours}" );
-            }
-            if (settings.CardCacheCleanupInterval <= 0) {
-                throw new InvalidOperationException( $"CardCacheCleanupInterval must be greater than zero. Current value: {settings.CardCacheCleanupInterval}" );
-            }
-
-            // Misc domain services
-            _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>(
-                _ => new OpenGraphCardService(
-                    settings.BaseUrl,
-                    settings.CardCacheExpirationHours,
-                    settings.CardCacheCleanupInterval
-                )
-            );
-
-            // Playlist service (singleton with DbContextFactory for thread-safe database access)
-            _ = services.AddSingleton<IPlaylistService, PlaylistService>(
-                p => new PlaylistService( settings.BaseUrl, p.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( ) )
-            );
-
-            // Register playlist cleanup background service
-            _ = services.AddHostedService<PlaylistCleanupService>( );
-
             // Optional ATProto storage and cache services
             ConfigureATProtoIfEnabled( services, settings );
 
@@ -131,8 +112,16 @@ namespace BridgeBeats.Configuration {
                 throw new InvalidOperationException( "Required settings are missing. Cannot add BridgeBeats services if no IMusicLookupService(s) are available." );
             }
 
-            // MediaLink services (base + optional cache wrapper)
-            RegisterMediaLinkService( services, enabledProviders, settings );
+            // Register all BridgeBeats services (media link resolver, card services, playlist cleanup)
+            bool useCaching = !string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) &&
+                              !string.IsNullOrWhiteSpace( settings.ATProtoPassword );
+            _ = services.AddBridgeBeatsServices(
+                enabledProviders,
+                useCaching,
+                settings.BaseUrl,
+                settings.CardCacheExpirationHours,
+                settings.CardCacheCleanupInterval
+            );
             _ = services.AddSingleton( enabledProviders );
 
             // Discord configuration
@@ -385,26 +374,26 @@ namespace BridgeBeats.Configuration {
         private static void ConfigureSwagger( IServiceCollection services ) {
             _ = services.AddEndpointsApiExplorer( );
             _ = services.AddSwaggerGen( options => {
-                options.SwaggerDoc( "v1", new OpenApiInfo {
+                options.SwaggerDoc( "v1", new Microsoft.OpenApi.Models.OpenApiInfo {
                     Title = "BridgeBeats API",
                     Version = "v1",
                     Description = "Cross-platform music link converter and lookup service for Apple Music, Spotify, and Tidal. Convert music links between platforms, search by URL, ISRC, UPC, or title/artist.",
-                    Contact = new OpenApiContact {
+                    Contact = new Microsoft.OpenApi.Models.OpenApiContact {
                         Name = "BridgeBeats",
                         Url = new Uri( "https://github.com/tsmarvin/BridgeBeats" )
                     },
-                    License = new OpenApiLicense {
+                    License = new Microsoft.OpenApi.Models.OpenApiLicense {
                         Name = "MIT License",
                         Url = new Uri( "https://github.com/tsmarvin/BridgeBeats/blob/main/LICENSE" )
                     }
                 } );
-                options.AddSecurityDefinition( "ApiKey", new OpenApiSecurityScheme {
-                    Type = SecuritySchemeType.ApiKey,
-                    In = ParameterLocation.Header,
+                options.AddSecurityDefinition( "ApiKey", new Microsoft.OpenApi.Models.OpenApiSecurityScheme {
+                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+                    In = Microsoft.OpenApi.Models.ParameterLocation.Header,
                     Name = "X-API-Key",
                     Description = "API Key authentication. Get your API key by registering at /account/register"
                 } );
-                options.AddSecurityRequirement( _ => new OpenApiSecurityRequirement { [new( "X-API-Key" )] = [] } );
+                options.AddSecurityRequirement( _ => new Microsoft.OpenApi.Models.OpenApiSecurityRequirement { [new( "X-API-Key" )] = [] } );
 
                 // Include XML comments from all assemblies if available
                 foreach (string xmlPath in Directory.GetFiles( AppContext.BaseDirectory, "*.xml" )) {
@@ -449,31 +438,6 @@ namespace BridgeBeats.Configuration {
             );
         }
 
-        private static void RegisterMediaLinkService(
-            IServiceCollection services,
-            HashSet<SupportedProviders> enabledProviders,
-            AppSettings settings
-        ) {
-            _ = services.AddTransient<IMediaLinkService>( s => {
-                Dictionary<SupportedProviders, IMusicLookupService> providerServices = GetEnabledProviderServices( enabledProviders, s );
-
-                // Use caching service if ATProto is configured, otherwise use default service
-                return !string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) &&
-                    !string.IsNullOrWhiteSpace( settings.ATProtoPassword )
-                    ? new CachingMediaLinkService(
-                        providerServices,
-                        s.GetRequiredService<IMediaLinkCacheRepository>( ),
-                        s.GetRequiredService<ILogger<CachingMediaLinkService>>( ),
-                        s.GetRequiredService<JsonSerializerOptions>( )
-                    )
-                    : new DefaultMediaLinkService(
-                        providerServices,
-                        s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
-                        s.GetRequiredService<JsonSerializerOptions>( )
-                    );
-            } );
-        }
-
         private static void ConfigureDiscordIfEnabled(
             IServiceCollection services,
             AppSettings settings,
@@ -489,36 +453,6 @@ namespace BridgeBeats.Configuration {
                 options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
             } );
             _ = services.AddShardedGatewayHandlers( typeof( Program ).Assembly );
-        }
-
-        /// <summary>
-        /// Creates a dictionary that maps enabled providers (by their enums designation) to their corresponding
-        /// <see cref="IMusicLookupService"/> implementations.
-        /// This is a helper method used during service registration to enable adding the
-        /// <see cref="IMusicLookupService"/> implementations to the <see cref="DefaultMediaLinkService"/>.
-        /// </summary>
-        /// <param name="enabledProviders">The set of providers that have been enabled based on configuration.</param>
-        /// <param name="serviceProvider">The service provider used to resolve service instances.</param>
-        /// <returns>A dictionary of provider to service instances.</returns>
-        private static Dictionary<SupportedProviders, IMusicLookupService> GetEnabledProviderServices(
-            HashSet<SupportedProviders> enabledProviders,
-            IServiceProvider serviceProvider
-        ) {
-            Dictionary<SupportedProviders, IMusicLookupService> results = [ ];
-            foreach (SupportedProviders provider in enabledProviders) {
-                switch (provider) {
-                    case SupportedProviders.AppleMusic:
-                        results.Add( SupportedProviders.AppleMusic, serviceProvider.GetRequiredService<Providers.AppleMusic.AppleMusicLookupService>( ) );
-                        break;
-                    case SupportedProviders.Spotify:
-                        results.Add( SupportedProviders.Spotify, serviceProvider.GetRequiredService<Providers.Spotify.SpotifyLookupService>( ) );
-                        break;
-                    case SupportedProviders.Tidal:
-                        results.Add( SupportedProviders.Tidal, serviceProvider.GetRequiredService<Providers.Tidal.TidalLookupService>( ) );
-                        break;
-                }
-            }
-            return results;
         }
 
         /// <summary>

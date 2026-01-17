@@ -1,6 +1,8 @@
 using BridgeBeats.Contracts.Interfaces;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-namespace BridgeBeats.Domain.Implementations.Services {
+namespace BridgeBeats.Services.Cards {
 
     /// <summary>
     /// Background service that periodically cleans up expired anonymous playlists.

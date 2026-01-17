@@ -1,6 +1,7 @@
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace BridgeBeats.Configuration;
 

@@ -3,7 +3,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Infrastructure.Storage;
 
-namespace BridgeBeats.Domain.Implementations.Services {
+namespace BridgeBeats.Services.Cards {
 
     /// <summary>
     /// In-memory implementation of the OpenGraph card service for storing MediaLinkResult objects.

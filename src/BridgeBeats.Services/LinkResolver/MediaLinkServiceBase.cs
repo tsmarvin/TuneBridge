@@ -3,10 +3,11 @@ using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Domain.Implementations.Extensions;
 using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Services.Extensions;
+using Microsoft.Extensions.Logging;
 
-namespace BridgeBeats.Domain.Types.Bases {
+namespace BridgeBeats.Services.LinkResolver {
 
     /// <summary>
     /// Abstract base class providing shared infrastructure for media link aggregation services.

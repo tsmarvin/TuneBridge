@@ -19,6 +19,7 @@
     <InternalsVisibleTo Include="BridgeBeats" />
     <InternalsVisibleTo Include="BridgeBeats.Infrastructure" />
     <InternalsVisibleTo Include="BridgeBeats.Providers" />
+    <InternalsVisibleTo Include="BridgeBeats.Services" />
     <InternalsVisibleTo Include="BridgeBeats.Tests" />
   </ItemGroup>
 

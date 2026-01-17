@@ -1160,10 +1160,12 @@
           "BridgeBeats.Infrastructure": "[1.0.0, )",
           "BridgeBeats.Providers": "[1.0.0, )",
           "BridgeBeats.ServiceDefaults": "[1.0.0, )",
+          "BridgeBeats.Services": "[1.0.0, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.2, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.2, )",
           "Microsoft.Extensions.Http.Resilience": "[10.2.0, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
+          "Microsoft.OpenApi": "[2.3.0, )",
           "NetCord": "[1.0.0-alpha.455, )",
           "NetCord.Hosting": "[1.0.0-alpha.455, )",
           "Serilog.AspNetCore": "[10.0.0, )",
@@ -1207,6 +1209,17 @@
           "OpenTelemetry.Instrumentation.AspNetCore": "[1.14.0, )",
           "OpenTelemetry.Instrumentation.Http": "[1.14.0, )",
           "OpenTelemetry.Instrumentation.Runtime": "[1.14.0, )"
+        }
+      },
+      "bridgebeats.services": {
+        "type": "Project",
+        "dependencies": {
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "BridgeBeats.Infrastructure": "[1.0.0, )",
+          "BridgeBeats.Providers": "[1.0.0, )",
+          "Microsoft.Extensions.Hosting.Abstractions": "[10.0.2, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.2, )",
+          "NetCord": "[1.0.0-alpha.455, )"
         }
       }
     }

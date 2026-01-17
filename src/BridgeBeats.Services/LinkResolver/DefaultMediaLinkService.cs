@@ -2,9 +2,9 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Domain.Types.Bases;
+using Microsoft.Extensions.Logging;
 
-namespace BridgeBeats.Domain.Implementations.Services {
+namespace BridgeBeats.Services.LinkResolver {
 
     /// <summary>
     /// Default implementation of <see cref="IMediaLinkService"/> that coordinates parallel lookups across
