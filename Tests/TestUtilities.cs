@@ -1,5 +1,6 @@
 using BridgeBeats.Infrastructure.Cache;
 using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Web;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +16,7 @@ namespace BridgeBeats.Tests;
 /// Ensures test configuration completely overrides any file-based configuration (like appsettings.json).
 /// Uses file-based SQLite databases with unique names per factory instance to ensure test isolation.
 /// </summary>
-public class CustomWebApplicationFactory : WebApplicationFactory<BridgeBeats.Web.Program> {
+public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
     private readonly Dictionary<string, string?> _configData;
     private readonly string _identityDbPath;
     private readonly string _linkCacheDbPath;

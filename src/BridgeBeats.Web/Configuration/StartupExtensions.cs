@@ -18,7 +18,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi;
 using Serilog;
-using Serilog.Events;
 
 namespace BridgeBeats.Web.Configuration {
 

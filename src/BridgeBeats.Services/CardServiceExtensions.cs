@@ -3,7 +3,6 @@ using BridgeBeats.Infrastructure.Identity;
 using BridgeBeats.Services.Cards;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace BridgeBeats.Services {
 

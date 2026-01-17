@@ -13,7 +13,6 @@ namespace BridgeBeats.Web {
         /// <param name="args">Command-line arguments for configuration overrides.</param>
         public static async Task Main( string[] args ) {
             WebApplicationBuilder builder = WebApplication.CreateBuilder( new WebApplicationOptions {
-                ApplicationName = "BridgeBeats",
                 Args = args,
                 WebRootPath = "wwwroot"
             } );

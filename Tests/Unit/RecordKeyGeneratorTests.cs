@@ -21,7 +21,7 @@ namespace BridgeBeats.Tests.Unit {
             } );
 
             // Act
-            string? rkey = RecordKeyGenerator.GenerateRkey( result );
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
             _ = rkey.Should( ).NotBeNull( );
@@ -41,7 +41,7 @@ namespace BridgeBeats.Tests.Unit {
             } );
 
             // Act
-            string? rkey = RecordKeyGenerator.GenerateRkey( result );
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
             _ = rkey.Should( ).NotBeNull( );
@@ -81,7 +81,7 @@ namespace BridgeBeats.Tests.Unit {
             } );
 
             // Act
-            string? rkey = RecordKeyGenerator.GenerateRkey( result );
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
             _ = rkey.Should( ).NotBeNull( );

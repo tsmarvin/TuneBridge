@@ -1,6 +1,5 @@
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Web.Configuration;
-using NetCord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 

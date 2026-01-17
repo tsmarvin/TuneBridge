@@ -24,7 +24,7 @@ public class DashboardAuthorizationTests : IDisposable {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
             .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
-            .AddUserSecrets<BridgeBeats.Web.Program>( optional: true )
+            .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables()
             .Build();
 

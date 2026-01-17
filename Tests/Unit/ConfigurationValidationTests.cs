@@ -1,5 +1,5 @@
-using BridgeBeats.Web.Configuration;
 using BridgeBeats.Contracts.Interfaces; // Added for IMediaLinkService
+using BridgeBeats.Web.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -63,7 +63,7 @@ public class ConfigurationValidationTests {
                 ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
             };
             IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
 
             // Act & Assert
             InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
@@ -95,7 +95,7 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
         IServiceCollection services = new ServiceCollection( );
-        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
@@ -126,7 +126,7 @@ public class ConfigurationValidationTests {
 
         // Act
         IServiceCollection services = new ServiceCollection( );
-        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
         _ = services.AddBridgeBeatsServices( config, "Testing" );
         ServiceProvider sp = services.BuildServiceProvider( );
 
@@ -149,7 +149,7 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:CardCacheCleanupInterval"] = "500",
         };
         IServiceCollection services = new ServiceCollection( );
-        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
@@ -171,7 +171,7 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:CardCacheCleanupInterval"] = "500",
         };
         IServiceCollection services = new ServiceCollection( );
-        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
@@ -193,7 +193,7 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:CardCacheCleanupInterval"] = "0",
         };
         IServiceCollection services = new ServiceCollection( );
-        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
@@ -215,7 +215,7 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:CardCacheCleanupInterval"] = "-1",
         };
         IServiceCollection services = new ServiceCollection( );
-        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {

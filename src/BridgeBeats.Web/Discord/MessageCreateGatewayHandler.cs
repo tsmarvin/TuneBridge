@@ -2,8 +2,6 @@ using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Services.Extensions;
-using BridgeBeats.Web.Discord;
-using NetCord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 

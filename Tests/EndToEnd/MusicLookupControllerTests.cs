@@ -24,7 +24,7 @@ public class MusicLookupControllerTests {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
             .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
-            .AddUserSecrets<BridgeBeats.Web.Program>( optional: true )
+            .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables()
             .Build();
 
@@ -65,7 +65,7 @@ public class MusicLookupControllerTests {
         }
 
         // Extract API key from response
-        JsonElement? registerResult = await registerResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>( context.CancellationToken );
+        JsonElement? registerResult = await registerResponse.Content.ReadFromJsonAsync<JsonElement>( context.CancellationToken );
         if (!registerResult.HasValue) {
             throw new Exception( "Failed to parse registration response" );
         }
