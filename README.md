@@ -81,16 +81,37 @@ This starts the app with the Aspire Dashboard for monitoring, tracing, and struc
 dotnet run
 ```
 
+## 📁 Project Structure
+
+```
+BridgeBeats/
+├── src/
+│   ├── BridgeBeats.Web/             # ASP.NET Core web application (MVC, controllers, views)
+│   ├── BridgeBeats.Services/        # Business logic and service layer
+│   ├── BridgeBeats.Providers/       # Music provider integrations (Apple Music, Spotify, Tidal)
+│   ├── BridgeBeats.Infrastructure/  # Data access, caching, identity, storage
+│   ├── BridgeBeats.Contracts/       # Shared DTOs, interfaces, enums, constants
+│   ├── BridgeBeats.AppHost/         # .NET Aspire orchestration
+│   └── BridgeBeats.ServiceDefaults/ # Shared service configuration (telemetry, resilience)
+├── Tests/                           # Test project
+│   ├── Unit/                        # Unit tests
+│   ├── Integration/                 # Integration tests (service interactions)
+│   └── EndToEnd/                    # End-to-end tests (full request/response flows)
+├── docs/                            # Documentation (guides, API reference)
+├── .github/                         # GitHub templates and workflows
+└── docker-compose.yml               # Production deployment configuration
+```
+
 ## 📖 Documentation
 
-- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get up and running in 5 minutes
 - **[Local Development Guide](docs/LOCAL_DEVELOPMENT.md)** - Develop with .NET Aspire Dashboard
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Set up API credentials and environment variables
 - **[API Reference](docs/API.md)** - Integrate BridgeBeats into your applications
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
 - **[SBOM and Provenance Guide](docs/SBOM_AND_PROVENANCE.md)** - Verify supply chain security and inspect dependencies
 - **[Caddy Cloudflare Guide](docs/CADDY_CLOUDFLARE.md)** - Configure Cloudflare DNS for wildcard certificates
-- **[Testing Guide](docs/TESTING.md)** - Run and write tests
+- **[Contributing Guidelines](CONTRIBUTING.md)** - Learn how to contribute to BridgeBeats
 - **[Caching Guide](docs/CACHING.md)** - Configure ATProto PDS caching
 - **[ATProto Lexicon Setup](docs/ATPROTO_LEXICON.md)** - Configure lexicon resolution and DNS for ATProto compliance
 
@@ -171,7 +192,19 @@ dotnet test
 dotnet test --filter "FullyQualifiedName~Unit"
 ```
 
-See the [Testing Guide](docs/TESTING.md) for more details.
+For more details on testing, see the [Contributing Guidelines](CONTRIBUTING.md#testing-guidelines).
+
+## 🤝 Contributing
+
+We welcome contributions! Whether you're fixing bugs, adding features, improving documentation, or helping others, your contributions make BridgeBeats better for everyone.
+
+Please read our [Contributing Guidelines](CONTRIBUTING.md) to get started. Key points:
+
+- Follow our [Code of Conduct](CODE_OF_CONDUCT.md)
+- Check existing issues before opening a new one
+- Use our issue templates for bug reports and feature requests
+- Keep pull requests focused and well-tested
+- Respect our security practices - see [Security Policy](SECURITY.md)
 
 ## 📝 License
 
