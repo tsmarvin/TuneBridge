@@ -2,6 +2,8 @@
 
 BridgeBeats is designed for easy deployment across various platforms. This guide covers deployment options and best practices.
 
+> **Note**: This guide covers **production deployment**. For local development with the Aspire Dashboard, see the [Local Development Guide](LOCAL_DEVELOPMENT.md).
+
 ## Quick Start with Docker Compose
 
 The easiest way to deploy BridgeBeats is with Docker Compose, which includes Caddy as a secure reverse proxy with automatic HTTPS.

@@ -441,6 +441,11 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.2"
         }
       },
+      "Microsoft.Extensions.Features": {
+        "type": "Transitive",
+        "resolved": "10.0.2",
+        "contentHash": "X7tm2aV2w3lN9roSSGhl19lz4w76HvdiuKNhIv2XOiorYII9XCm66o/z9IJ0+QwkgvEv5gMZDM6rV6uwABHEQQ=="
+      },
       "Microsoft.Extensions.FileProviders.Abstractions": {
         "type": "Transitive",
         "resolved": "10.0.2",
@@ -690,6 +695,29 @@
           "Polly.RateLimiting": "8.4.2"
         }
       },
+      "Microsoft.Extensions.ServiceDiscovery": {
+        "type": "Transitive",
+        "resolved": "10.2.0",
+        "contentHash": "AHTPfiKodj66xA8RwRkFD4q11V2AvzcuDsujv6ViPkOPtvBEYcPVplHakK56pPzWlX08MDS+TAQXfFXAeP7J5w==",
+        "dependencies": {
+          "Microsoft.Extensions.Http": "10.0.2",
+          "Microsoft.Extensions.ServiceDiscovery.Abstractions": "10.2.0"
+        }
+      },
+      "Microsoft.Extensions.ServiceDiscovery.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.2.0",
+        "contentHash": "sANlOvfqfw/yfych4CLlHSKSWzIie6mQG7w83gVur1foNOafyHxcgpoQMvBf+KiB4Tpls6P1/Z77IIQSK8hxFg==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.2",
+          "Microsoft.Extensions.Configuration.Binder": "10.0.2",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.2",
+          "Microsoft.Extensions.Features": "10.0.2",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.2",
+          "Microsoft.Extensions.Options": "10.0.2",
+          "Microsoft.Extensions.Primitives": "10.0.2"
+        }
+      },
       "Microsoft.Extensions.Telemetry": {
         "type": "Transitive",
         "resolved": "10.2.0",
@@ -901,6 +929,14 @@
           "Microsoft.Extensions.Configuration": "10.0.0",
           "Microsoft.Extensions.Options": "10.0.0",
           "OpenTelemetry.Api.ProviderBuilderExtensions": "[1.14.0, 2.0.0)"
+        }
+      },
+      "OpenTelemetry.Instrumentation.Runtime": {
+        "type": "Transitive",
+        "resolved": "1.14.0",
+        "contentHash": "Z6o4JDOQaKv6bInAYZxuyxxfMKr6hFpwLnKEgQ+q+oBNA9Fm1sysjFCOzRzk7U0WD86LsRPXX+chv1vJIg7cfg==",
+        "dependencies": {
+          "OpenTelemetry.Api": "[1.14.0, 2.0.0)"
         }
       },
       "PeterO.Cbor": {
@@ -1120,20 +1156,57 @@
         "type": "Project",
         "dependencies": {
           "AspNetCore.Authentication.ApiKey": "[9.0.0, )",
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "BridgeBeats.Infrastructure": "[1.0.0, )",
+          "BridgeBeats.Providers": "[1.0.0, )",
+          "BridgeBeats.ServiceDefaults": "[1.0.0, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.2, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.2, )",
           "Microsoft.Extensions.Http.Resilience": "[10.2.0, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
           "NetCord": "[1.0.0-alpha.455, )",
           "NetCord.Hosting": "[1.0.0-alpha.455, )",
+          "Serilog.AspNetCore": "[10.0.0, )",
+          "Serilog.Sinks.File": "[7.0.0, )",
+          "Swashbuckle.AspNetCore": "[10.1.0, )"
+        }
+      },
+      "bridgebeats.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "idunno.AtProto": "[1.3.0, )",
+          "idunno.Bluesky": "[1.3.0, )"
+        }
+      },
+      "bridgebeats.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "AspNetCore.Authentication.ApiKey": "[9.0.0, )",
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.2, )",
+          "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.2, )",
+          "idunno.AtProto": "[1.3.0, )",
+          "idunno.Bluesky": "[1.3.0, )"
+        }
+      },
+      "bridgebeats.providers": {
+        "type": "Project",
+        "dependencies": {
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "Microsoft.Extensions.Http.Resilience": "[10.2.0, )",
+          "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )"
+        }
+      },
+      "bridgebeats.servicedefaults": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Http.Resilience": "[10.2.0, )",
+          "Microsoft.Extensions.ServiceDiscovery": "[10.2.0, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.14.0, )",
           "OpenTelemetry.Extensions.Hosting": "[1.14.0, )",
           "OpenTelemetry.Instrumentation.AspNetCore": "[1.14.0, )",
           "OpenTelemetry.Instrumentation.Http": "[1.14.0, )",
-          "Serilog.AspNetCore": "[10.0.0, )",
-          "Serilog.Sinks.File": "[7.0.0, )",
-          "Swashbuckle.AspNetCore": "[10.1.0, )",
-          "idunno.Bluesky": "[1.3.0, )"
+          "OpenTelemetry.Instrumentation.Runtime": "[1.14.0, )"
         }
       }
     }

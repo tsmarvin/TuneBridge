@@ -1,6 +1,6 @@
-using BridgeBeats.Domain.Contracts.Entities;
-using BridgeBeats.Domain.Implementations.Utilities;
-using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,7 +35,7 @@ public class PlaylistsController( IPlaylistService? playlistService, ILogger<Pla
         }
 
         try {
-            List<PlaylistEntry> playlists = await _playlistService.GetUserPlaylistsAsync( userId );
+            List<PlaylistEntryDto> playlists = await _playlistService.GetUserPlaylistsAsync( userId );
 
             PlaylistsViewModel viewModel = new( ) {
                 Playlists = [.. playlists.Select( p => new PlaylistsViewModel.PlaylistSummary {
@@ -47,6 +47,7 @@ public class PlaylistsController( IPlaylistService? playlistService, ILogger<Pla
                     PlaylistUrl = $"https://{_playlistService.BaseUrl}/playlist/{p.PlaylistId}"
                 } )]
             };
+
 
             return View( "Index", viewModel );
         } catch (Exception ex) {

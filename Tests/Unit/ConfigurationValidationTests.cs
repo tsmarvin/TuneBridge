@@ -1,5 +1,5 @@
 using BridgeBeats.Configuration;
-using BridgeBeats.Domain.Interfaces; // Added for IMediaLinkService
+using BridgeBeats.Contracts.Interfaces; // Added for IMediaLinkService
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -30,11 +30,11 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
             ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
+        IServiceCollection services = new ServiceCollection( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
 
         // Act & Assert
         FileNotFoundException ex = Assert.ThrowsExactly<FileNotFoundException>( () => {
-            IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
             _ = services.AddBridgeBeatsServices( config, "Testing" );
         } );
         Assert.Contains( ".p8", ex.Message );
@@ -62,11 +62,11 @@ public class ConfigurationValidationTests {
                 ["BridgeBeats:ATProtoPassword"] = string.Empty,
                 ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
             };
+            IServiceCollection services = new ServiceCollection( );
+            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
 
             // Act & Assert
             InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
-                IServiceCollection services = new ServiceCollection( );
-                IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
                 _ = services.AddBridgeBeatsServices( config, "Testing" );
             } );
             Assert.Contains( "missing contents", ex.Message );
@@ -94,11 +94,11 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
             ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
+        IServiceCollection services = new ServiceCollection( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
             _ = services.AddBridgeBeatsServices( config, "Testing" );
         } );
         Assert.Contains( "Required settings are missing", ex.Message );
@@ -148,11 +148,11 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:CardCacheExpirationHours"] = "0",
             ["BridgeBeats:CardCacheCleanupInterval"] = "500",
         };
+        IServiceCollection services = new ServiceCollection( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
             _ = services.AddBridgeBeatsServices( config, "Testing" );
         } );
         Assert.Contains( "CardCacheExpirationHours must be greater than zero", ex.Message );
@@ -170,11 +170,11 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:CardCacheExpirationHours"] = "-1",
             ["BridgeBeats:CardCacheCleanupInterval"] = "500",
         };
+        IServiceCollection services = new ServiceCollection( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
             _ = services.AddBridgeBeatsServices( config, "Testing" );
         } );
         Assert.Contains( "CardCacheExpirationHours must be greater than zero", ex.Message );
@@ -192,11 +192,11 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:CardCacheExpirationHours"] = "1",
             ["BridgeBeats:CardCacheCleanupInterval"] = "0",
         };
+        IServiceCollection services = new ServiceCollection( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
             _ = services.AddBridgeBeatsServices( config, "Testing" );
         } );
         Assert.Contains( "CardCacheCleanupInterval must be greater than zero", ex.Message );
@@ -214,11 +214,11 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:CardCacheExpirationHours"] = "1",
             ["BridgeBeats:CardCacheCleanupInterval"] = "-1",
         };
+        IServiceCollection services = new ServiceCollection( );
+        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides! ).Build( );
             _ = services.AddBridgeBeatsServices( config, "Testing" );
         } );
         Assert.Contains( "CardCacheCleanupInterval must be greater than zero", ex.Message );

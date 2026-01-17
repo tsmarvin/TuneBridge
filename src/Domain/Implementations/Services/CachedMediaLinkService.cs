@@ -1,10 +1,9 @@
 using System.Text.Json;
-using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Domain.Implementations.Extensions;
-using BridgeBeats.Domain.Interfaces;
 using BridgeBeats.Domain.Types.Bases;
-using BridgeBeats.Domain.Types.Enums;
-using Microsoft.EntityFrameworkCore;
 
 namespace BridgeBeats.Domain.Implementations.Services {
 

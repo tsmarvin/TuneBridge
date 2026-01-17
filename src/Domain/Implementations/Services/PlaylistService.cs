@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using BridgeBeats.Domain.Contracts.Entities;
-using BridgeBeats.Domain.Interfaces;
-using BridgeBeats.Domain.Models;
-using Microsoft.EntityFrameworkCore;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Infrastructure.Playlists;
 
 namespace BridgeBeats.Domain.Implementations.Services {
 
@@ -86,7 +86,7 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
-        public async Task<PlaylistEntry?> GetPlaylistAsync( string playlistId ) {
+        public async Task<PlaylistEntryDto?> GetPlaylistAsync( string playlistId ) {
             using ApplicationDbContext context = await _contextFactory.CreateDbContextAsync( );
 
             PlaylistEntry? playlist = await context.Playlists
@@ -103,17 +103,19 @@ namespace BridgeBeats.Domain.Implementations.Services {
                 return null;
             }
 
-            return playlist;
+            return ToDto( playlist );
         }
 
         /// <inheritdoc/>
-        public async Task<List<PlaylistEntry>> GetUserPlaylistsAsync( string userId ) {
+        public async Task<List<PlaylistEntryDto>> GetUserPlaylistsAsync( string userId ) {
             using ApplicationDbContext context = await _contextFactory.CreateDbContextAsync( );
 
-            return await context.Playlists
+            List<PlaylistEntry> entries = await context.Playlists
                 .Where( p => p.UserId == userId )
                 .OrderByDescending( p => p.CreatedAt )
                 .ToListAsync( );
+
+            return entries.ConvertAll( ToDto );
         }
 
         /// <inheritdoc/>
@@ -132,13 +134,15 @@ namespace BridgeBeats.Domain.Implementations.Services {
         }
 
         /// <inheritdoc/>
-        public async Task<List<PlaylistEntry>> ExportUserDataAsync( string userId ) {
+        public async Task<List<PlaylistEntryDto>> ExportUserDataAsync( string userId ) {
             using ApplicationDbContext context = await _contextFactory.CreateDbContextAsync( );
 
-            return await context.Playlists
+            List<PlaylistEntry> entries = await context.Playlists
                 .Where( p => p.UserId == userId )
                 .OrderByDescending( p => p.CreatedAt )
                 .ToListAsync( );
+
+            return entries.ConvertAll( ToDto );
         }
 
         /// <inheritdoc/>
@@ -156,6 +160,22 @@ namespace BridgeBeats.Domain.Implementations.Services {
             _ = await context.SaveChangesAsync( );
             return true;
         }
+
+        /// <summary>
+        /// Converts a PlaylistEntry entity to a PlaylistEntryDto.
+        /// </summary>
+        /// <param name="entry">The EF entity to convert.</param>
+        /// <returns>The DTO representation.</returns>
+        private static PlaylistEntryDto ToDto( PlaylistEntry entry ) => new( ) {
+            PlaylistId = entry.PlaylistId,
+            UserId = entry.UserId,
+            Title = entry.Title,
+            Description = entry.Description,
+            CardIds = entry.CardIds,
+            CardRkeys = entry.CardRkeys,
+            CreatedAt = entry.CreatedAt,
+            ExpiresAt = entry.ExpiresAt
+        };
 
         /// <summary>
         /// Generates a deterministic playlist ID based on the ordered card IDs.

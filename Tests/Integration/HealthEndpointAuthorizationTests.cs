@@ -1,6 +1,6 @@
 using System.Net;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.Integration;
 
@@ -9,18 +9,37 @@ namespace BridgeBeats.Tests.Integration;
 /// </summary>
 [TestClass]
 public class HealthEndpointAuthorizationTests {
-    private static WebApplicationFactory<Program>? _factory;
-    private static HttpClient? _client;
+    private static CustomWebApplicationFactory? s_factory;
+    private static HttpClient? s_client;
 
     [ClassInitialize]
-    public static void Setup( TestContext testContext ) {
-        _factory = new WebApplicationFactory<Program>( );
-        _client = _factory.CreateClient( );
+    public static async Task Setup( TestContext testContext ) {
+        // Load configuration from appsettings.json and user secrets
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
+            .AddUserSecrets<Program>( optional: true )
+            .AddEnvironmentVariables()
+            .Build();
+
+        // Build config overrides from loaded configuration
+        Dictionary<string, string?> configData = configuration
+            .AsEnumerable()
+            .Where( kv => kv.Value is not null )
+            .ToDictionary( kv => kv.Key, kv => kv.Value );
+
+        // Force Discord token to null to prevent Discord service registration
+        configData["BridgeBeats:DiscordToken"] = null;
+
+        s_factory = new CustomWebApplicationFactory( configData );
+        s_client = s_factory.CreateClient( );
+
+        // Initialize databases after services are configured
+        await s_factory.InitializeDatabasesAsync( );
     }
 
     [ClassCleanup]
     public static void Cleanup( ) {
-        _factory?.Dispose( );
+        s_factory?.Dispose( );
     }
 
     // TODO: Fix authorization connection in tests here and then reenable these tests.
@@ -61,9 +80,11 @@ public class HealthEndpointAuthorizationTests {
     [TestMethod]
     public async Task NonHealthEndpoint_NotAffectedByMiddleware( ) {
         // Arrange & Act
-        HttpResponseMessage response = await _client!.GetAsync( "/" );
+        HttpResponseMessage response = await s_client!.GetAsync( "/", TestContext.CancellationToken );
 
         // Assert
         _ = response.StatusCode.Should( ).Be( HttpStatusCode.OK );
     }
+
+    public TestContext TestContext { get; set; }
 }

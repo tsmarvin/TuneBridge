@@ -1,9 +1,10 @@
 using System.Diagnostics;
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Implementations.Utilities;
-using BridgeBeats.Domain.Interfaces;
-using BridgeBeats.Domain.Types.Constants;
-using BridgeBeats.Domain.Types.Enums;
+using BridgeBeats.Contracts.Constants;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Infrastructure.Storage;
+using BridgeBeats.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewEngines;

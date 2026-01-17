@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
-using BridgeBeats.Domain.Contracts.DTOs;
+using System.Text.Json;
+using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Web.Controllers;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.EndToEnd;
 
@@ -15,28 +15,37 @@ namespace BridgeBeats.Tests.EndToEnd;
 [DoNotParallelize] // Prevent parallel execution to avoid overwhelming external APIs with rate limits
 [TestCategory( "EndToEnd" )] // Mark as end-to-end tests
 public class MusicLookupControllerTests {
-    private static WebApplicationFactory<Program>? s_factory;
+    private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
     private static string? s_apiKey;
 
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext context ) {
-        // Create factory with unique database connection strings and higher rate limit for tests
-        Dictionary<string, string?> configData = new( ) {
-            ["BridgeBeats:SpotifyClientId"] = "test",
-            ["BridgeBeats:SpotifyClientSecret"] = "test",
-            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["BridgeBeats:IdentityConnectionString"] = $"Data Source=MusicLookup_Identity_{Guid.NewGuid():N};Mode=Memory",
-            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:ATProtoIdentifier"] = "",
-            ["BridgeBeats:ATProtoPassword"] = "",
-            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=MusicLookup_LinkCache_{Guid.NewGuid():N};Mode=Memory",
-            ["BridgeBeats:RateLimitRequestsPerHour"] = "1000", // Much higher limit for integration tests
-        };
+        // Load configuration from appsettings.json and user secrets
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
+            .AddUserSecrets<Program>( optional: true )
+            .AddEnvironmentVariables()
+            .Build();
+
+        // Build config overrides from loaded configuration
+        Dictionary<string, string?> configData = configuration
+            .AsEnumerable()
+            .Where( kv => kv.Value is not null )
+            .ToDictionary( kv => kv.Key, kv => kv.Value );
+
+        // Force Discord token to null to prevent Discord service registration
+        configData["BridgeBeats:DiscordToken"] = null;
+        // Higher rate limit for integration tests
+        configData["BridgeBeats:RateLimitRequestsPerHour"] = "1000";
+
         s_factory = new CustomWebApplicationFactory( configData );
 
         // Create HTTP client for registration
         HttpClient registrationClient = s_factory.CreateClient();
+
+        // Initialize databases after services are configured
+        await s_factory.InitializeDatabasesAsync( );
 
         // Generate unique email for this test class
         string testEmail = $"musiclookup-test-{Guid.NewGuid():N}@test.com";
@@ -46,16 +55,17 @@ public class MusicLookupControllerTests {
         var registerRequest = new { Email = testEmail, Password = testPassword };
         HttpResponseMessage registerResponse = await registrationClient.PostAsJsonAsync(
             "/account/register",
-            registerRequest
+            registerRequest,
+            cancellationToken: context.CancellationToken
         );
 
         if (!registerResponse.IsSuccessStatusCode) {
-            string errorContent = await registerResponse.Content.ReadAsStringAsync();
+            string errorContent = await registerResponse.Content.ReadAsStringAsync( context.CancellationToken );
             throw new Exception( $"Failed to register test user: {registerResponse.StatusCode} - {errorContent}" );
         }
 
         // Extract API key from response
-        System.Text.Json.JsonElement? registerResult = await registerResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        JsonElement? registerResult = await registerResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>( context.CancellationToken );
         if (!registerResult.HasValue) {
             throw new Exception( "Failed to parse registration response" );
         }
@@ -80,17 +90,18 @@ public class MusicLookupControllerTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "AppleMusic" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByUrlList_WithValidAppleMusicUrl_ReturnsOkWithResults( ) {
         // Arrange
         MusicLookupController.UrlReq request = new("https://music.apple.com/us/album/bohemian-rhapsody/1440806041");
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request );
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>();
+        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( TestContext.CancellationToken );
         Assert.IsNotNull( results );
 
         // If we hit rate limits, results may be empty - that's acceptable for integration tests
@@ -103,17 +114,18 @@ public class MusicLookupControllerTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "Spotify" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByUrlList_WithValidSpotifyUrl_ReturnsOkWithResults( ) {
         // Arrange
         MusicLookupController.UrlReq request = new( "https://open.spotify.com/album/6i6folBtxKV28WX3msQ4FE"  );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request );
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>();
+        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( TestContext.CancellationToken );
         Assert.IsNotNull( results );
 
         // If we hit rate limits, results may be empty - that's acceptable for integration tests
@@ -126,17 +138,18 @@ public class MusicLookupControllerTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByUrlList_WithValidTidalUrl_ReturnsOkWithResults( ) {
         // Arrange
         MusicLookupController.UrlReq request = new(  "https://tidal.com/track/96572657"  );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request );
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>();
+        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( TestContext.CancellationToken );
         Assert.IsNotNull( results );
 
         // If we hit rate limits, results may be empty - that's acceptable for integration tests
@@ -149,6 +162,8 @@ public class MusicLookupControllerTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByUrlList_WithMultipleUrls_ReturnsMultipleResults( ) {
         // Arrange
@@ -158,11 +173,11 @@ public class MusicLookupControllerTests {
         );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request );
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>();
+        List<MediaLinkResult>? results = await response.Content.ReadFromJsonAsync<List<MediaLinkResult>>( TestContext.CancellationToken );
         Assert.IsNotNull( results );
 
         // If we hit rate limits, results may be empty - that's acceptable for integration tests
@@ -176,6 +191,9 @@ public class MusicLookupControllerTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
+    [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByIsrc_WithValidIsrc_ReturnsOkWithResult( ) {
 
@@ -183,11 +201,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.IsrcReq request = new( "GBUM71029604" );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/isrc", request );
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/isrc", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>();
+        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( TestContext.CancellationToken );
 
         // If we hit rate limits, result may be null - that's acceptable for integration tests
         if (result is null || result.Results.Count == 0) {
@@ -200,6 +218,9 @@ public class MusicLookupControllerTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
+    [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByUpc_WithValidUpc_ReturnsOkWithResult( ) {
 
@@ -207,11 +228,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.UpcReq request = new( "00602547202307" );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/upc", request );
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/upc", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>();
+        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( TestContext.CancellationToken );
 
         // If we hit rate limits, result may be null - that's acceptable for integration tests
         if (result is null || result.Results.Count == 0) {
@@ -224,6 +245,9 @@ public class MusicLookupControllerTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
+    [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByTitle_WithValidTitleAndArtist_ReturnsOkWithResult( ) {
 
@@ -231,11 +255,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.TitleReq request = new( "Bohemian Rhapsody", "Queen" );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/title", request );
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/title", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>();
+        MediaLinkResult? result = await response.Content.ReadFromJsonAsync<MediaLinkResult>( TestContext.CancellationToken );
 
         // If we hit rate limits, result may be null - that's acceptable for integration tests
         if (result is null || result.Results.Count == 0) {
@@ -248,6 +272,7 @@ public class MusicLookupControllerTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "Spotify" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByUrl_StreamingEndpoint_ReturnsResults( ) {
 
@@ -255,11 +280,11 @@ public class MusicLookupControllerTests {
         MusicLookupController.UrlReq request = new(  "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv"  );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/url", request );
+        HttpResponseMessage response = await s_client!.PostAsJsonAsync("/music/lookup/url", request, cancellationToken: TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        string content = await response.Content.ReadAsStringAsync( );
+        string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // If we hit rate limits, content may be empty - that's acceptable for integration tests
         if (content.Length == 0) {

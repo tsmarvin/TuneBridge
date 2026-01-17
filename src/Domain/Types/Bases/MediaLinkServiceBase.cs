@@ -1,10 +1,10 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Domain.Implementations.Extensions;
-using BridgeBeats.Domain.Implementations.Utilities;
-using BridgeBeats.Domain.Interfaces;
-using BridgeBeats.Domain.Types.Enums;
+using BridgeBeats.Infrastructure.Utilities;
 
 namespace BridgeBeats.Domain.Types.Bases {
 
@@ -270,7 +270,7 @@ namespace BridgeBeats.Domain.Types.Bases {
                         firstValue.IsAlbum,
                         string.Join( ", ", completedList.Select( l => l.ToString( ) ) )
                     );
-                    Logger.LogTrace( JsonSerializer.Serialize( input, SerializerOptions ) );
+                    Logger.LogTrace( "Input data: {InputData}", JsonSerializer.Serialize( input, SerializerOptions ) );
                 }
             }
             return input;

@@ -1,6 +1,6 @@
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Interfaces;
-using Microsoft.AspNetCore.Mvc.Testing;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,14 +17,15 @@ public class MusicLookupServiceTests {
 
     private static IServiceProvider s_serviceProvider = null!;
 
-    private static WebApplicationFactory<Program>? s_factory;
+    private static CustomWebApplicationFactory? s_factory;
 
     public TestContext TestContext { get; set; } = null!;
 
     [ClassInitialize]
-    public static void ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext context ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
-                                            .AddJsonFile("appsettings.json", optional: true)
+                            .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
+                                            .AddUserSecrets<Program>( optional: true )
                                             .AddEnvironmentVariables()
                                             .Build();
 
@@ -37,13 +38,11 @@ public class MusicLookupServiceTests {
         // Force Discord token to null to prevent Discord service registration in tests
         overrides["BridgeBeats:DiscordToken"] = null;
 
-        // Use unique database connection strings to prevent race conditions between parallel tests
-        string uniqueId = Guid.NewGuid( ).ToString( "N" );
-        overrides["BridgeBeats:IdentityConnectionString"] = $"Data Source=IntegrationTest_Identity_{uniqueId};Mode=Memory;Cache=Shared";
-        overrides["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=IntegrationTest_LinkCache_{uniqueId};Mode=Memory;Cache=Shared";
-
         s_factory = new CustomWebApplicationFactory( overrides );
         s_serviceProvider = s_factory.Services;
+
+        // Initialize databases after services are configured
+        await s_factory.InitializeDatabasesAsync( );
     }
 
     [TestMethod]
@@ -57,6 +56,9 @@ public class MusicLookupServiceTests {
     }
 
     [TestMethod]
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
+    [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for simple ISRC lookup
     public async Task GetInfoByISRC_WithValidISRC_ShouldReturnResult( ) {
         // Arrange
@@ -82,6 +84,9 @@ public class MusicLookupServiceTests {
     }
 
     [TestMethod]
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
+    [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for simple UPC lookup
     public async Task GetInfoByUPC_WithValidUPC_ShouldReturnResult( ) {
         // Arrange
@@ -107,6 +112,9 @@ public class MusicLookupServiceTests {
     }
 
     [TestMethod]
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
+    [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for title/artist search
     public async Task GetInfoByTitle_WithValidTitleAndArtist_ShouldReturnResult( ) {
         // Arrange
@@ -128,10 +136,11 @@ public class MusicLookupServiceTests {
         MusicLookupResult firstResult = result.Results.First( ).Value;
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
-        Assert.IsTrue( firstResult.Title?.Contains( "Bohemian", StringComparison.OrdinalIgnoreCase ), "Title should contain Bohemian" );
+        Assert.IsTrue( firstResult.Title.Contains( "Bohemian", StringComparison.OrdinalIgnoreCase ), "Title should contain Bohemian" );
     }
 
     [TestMethod]
+    [TestCategory( "AppleMusic" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for URL lookup
     public async Task GetInfoByUrl_WithAppleMusicUrl_ShouldReturnResult( ) {
         // Arrange
@@ -161,6 +170,7 @@ public class MusicLookupServiceTests {
     }
 
     [TestMethod]
+    [TestCategory( "Spotify" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for URL lookup
     public async Task GetInfoByUrl_WithSpotifyUrl_ShouldReturnResult( ) {
         // Arrange
@@ -190,6 +200,9 @@ public class MusicLookupServiceTests {
     }
 
     [TestMethod]
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
+    [TestCategory( "Tidal" )]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - invalid ISRC should fail fast
     public async Task GetInfoByISRC_WithInvalidISRC_ShouldReturnNull( ) {
         // Arrange
@@ -204,6 +217,7 @@ public class MusicLookupServiceTests {
     }
 
     [TestMethod]
+    [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for URL lookup
     public async Task GetInfoByUrl_WithTidalUrl_ShouldReturnResult( ) {
         // Arrange
@@ -240,6 +254,8 @@ public class MusicLookupServiceTests {
     /// Track: "Chiron" by Shades (Alix Perez & Eprom)
     /// </summary>
     [TestMethod]
+    [TestCategory( "AppleMusic" )]
+    [TestCategory( "Spotify" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for URL lookup
     public async Task GetInfoByUrl_WithAppleMusicChironTrack_ShouldFindOnSpotify( ) {
         // Arrange
@@ -264,7 +280,8 @@ public class MusicLookupServiceTests {
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
 
         // Verify Apple Music result
-        Assert.IsTrue( firstResult.Results.TryGetValue( Domain.Types.Enums.SupportedProviders.AppleMusic, out MusicLookupResult? appleResult ), "Should have Apple Music result" );
+        Assert.IsTrue( firstResult.Results.TryGetValue( SupportedProviders.AppleMusic, out MusicLookupResult? appleResult ), "Should have Apple Music result" );
+        Assert.IsNotNull( appleResult );
         Assert.IsNotNull( appleResult.Title );
         Assert.IsNotNull( appleResult.Artist );
         Assert.IsFalse( appleResult.IsAlbum ?? true, "Should be a track, not an album" );
@@ -275,7 +292,7 @@ public class MusicLookupServiceTests {
 
         // Verify Spotify result is present (the main issue being tested)
         // Note: This may fail if Spotify rate limits are hit
-        if (!firstResult.Results.TryGetValue( Domain.Types.Enums.SupportedProviders.Spotify, out MusicLookupResult? spotifyResult )) {
+        if (!firstResult.Results.TryGetValue( SupportedProviders.Spotify, out MusicLookupResult? spotifyResult )) {
             Assert.Inconclusive( "Spotify result not found - possibly due to rate limiting" );
             return;
         }

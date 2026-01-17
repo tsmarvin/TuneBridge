@@ -2,6 +2,8 @@
   href: index.md
 - name: Configuration
   href: CONFIGURATION.md
+- name: Local Development
+  href: LOCAL_DEVELOPMENT.md
 - name: API Reference
   href: API.md
 - name: Deployment

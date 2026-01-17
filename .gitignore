@@ -82,6 +82,9 @@ medialinkscache.db-wal
 .env
 docker-compose.override.yml
 
+# Aspire publish output
+aspire-output/
+
 # Secrets directory
 secrets/
 

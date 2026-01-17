@@ -1,4 +1,4 @@
-using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Contracts.Interfaces;
 
 namespace BridgeBeats.Domain.Implementations.Services {
 

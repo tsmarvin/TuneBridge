@@ -1,7 +1,6 @@
-using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Domain.Implementations.Services;
-using BridgeBeats.Domain.Interfaces;
-using BridgeBeats.Domain.Types.Enums;
 
 namespace BridgeBeats.Tests.Unit;
 
@@ -12,7 +11,7 @@ public class OpenGraphCardServiceTests {
     public void BaseUrl_WhenSet_ReturnsBaseUrl( ) {
         // Arrange
         string baseUrl = "bridgebeats.link";
-        IOpenGraphCardService service = new OpenGraphCardService( baseUrl, 1, 500 );
+        OpenGraphCardService service = new( baseUrl, 1, 500 );
 
         // Act
         string result = service.BaseUrl;
@@ -25,7 +24,7 @@ public class OpenGraphCardServiceTests {
     public void IsEnabled_WhenBaseUrlIsNotEmpty_ReturnsTrue( ) {
         // Arrange
         string baseUrl = "bridgebeats.link";
-        IOpenGraphCardService service = new OpenGraphCardService( baseUrl, 1, 500 );
+        OpenGraphCardService service = new( baseUrl, 1, 500 );
 
         // Act
         bool result = service.IsEnabled;
@@ -38,7 +37,7 @@ public class OpenGraphCardServiceTests {
     public void IsEnabled_WhenBaseUrlIsEmpty_ReturnsFalse( ) {
         // Arrange
         string baseUrl = string.Empty;
-        IOpenGraphCardService service = new OpenGraphCardService( baseUrl, 1, 500 );
+        OpenGraphCardService service = new( baseUrl, 1, 500 );
 
         // Act
         bool result = service.IsEnabled;
@@ -51,7 +50,7 @@ public class OpenGraphCardServiceTests {
     public void StoreResult_WhenCalled_ReturnsUrlWithBaseUrl( ) {
         // Arrange
         string baseUrl = "bridgebeats.link";
-        IOpenGraphCardService service = new OpenGraphCardService( baseUrl, 1, 500 );
+        OpenGraphCardService service = new( baseUrl, 1, 500 );
         MediaLinkResult result = new( ) {
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 {

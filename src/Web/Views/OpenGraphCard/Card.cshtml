@@ -1,6 +1,6 @@
-@model BridgeBeats.Domain.Contracts.DTOs.MediaLinkResult
+@model BridgeBeats.Contracts.DTOs.MediaLinkResult
 @using BridgeBeats.Domain.Implementations.Extensions
-@using BridgeBeats.Domain.Types.Enums
+@using BridgeBeats.Contracts.Enums
 @using Microsoft.AspNetCore.Html
 @{
     var metadata = ViewBag.Metadata as Dictionary<string, string>;
@@ -33,7 +33,7 @@
         }
     }
     Layout = null;
-    
+
     // Get CSP nonce from HttpContext
     var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }

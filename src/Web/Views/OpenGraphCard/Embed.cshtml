@@ -1,15 +1,15 @@
-@using BridgeBeats.Domain.Types.Enums
+@using BridgeBeats.Contracts.Enums
 @using BridgeBeats.Domain.Implementations.Extensions
 @using Microsoft.AspNetCore.Html
 @{
     Layout = null;
-    var result = Model.Result as BridgeBeats.Domain.Contracts.DTOs.MediaLinkResult;
+    var result = Model.Result as BridgeBeats.Contracts.DTOs.MediaLinkResult;
     var primaryProvider = (SupportedProviders)Model.PrimaryProvider;
-    var primaryResult = Model.PrimaryResult as BridgeBeats.Domain.Contracts.DTOs.MusicLookupResult;
+    var primaryResult = Model.PrimaryResult as BridgeBeats.Contracts.DTOs.MusicLookupResult;
     var cardUrl = Model.CardUrl as string;
     var atProtoUri = Model.ATProtoUri as string;
     var providerClass = $"provider-{primaryProvider.ToString().ToLowerInvariant()}";
-    
+
     // Get CSP nonce from HttpContext
     var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }

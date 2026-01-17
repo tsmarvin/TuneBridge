@@ -1,26 +1,18 @@
 using System.Security.Cryptography;
 using System.Text.Json;
-using AspNetCore.Authentication.ApiKey;
-using BridgeBeats.Domain.Implementations.Auth;
-using BridgeBeats.Domain.Implementations.Database;
+using BridgeBeats.Contracts.Constants;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Domain.Implementations.Middleware;
 using BridgeBeats.Domain.Implementations.Services;
-using BridgeBeats.Domain.Interfaces;
-using BridgeBeats.Domain.Models;
-using BridgeBeats.Domain.Types.Constants;
-using BridgeBeats.Domain.Types.Enums;
+using BridgeBeats.Infrastructure.Cache;
+using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Infrastructure.Storage;
+using BridgeBeats.Providers;
+using BridgeBeats.ServiceDefaults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Http.Resilience;
-using Microsoft.OpenApi;
-using NetCord.Gateway;
-using NetCord.Hosting.Gateway;
-using OpenTelemetry.Logs;
-using OpenTelemetry.Resources;
-using Polly;
-using Serilog;
 
 namespace BridgeBeats.Configuration {
 
@@ -39,14 +31,16 @@ namespace BridgeBeats.Configuration {
             this WebApplicationBuilder builder,
             string[] args
         ) {
-            if (builder.Environment.EnvironmentName != "Testing") {
-                _ = builder.Configuration
-                .ConfigureAppSettings( args );
+            // Always load configuration (appsettings.json, user secrets, env vars)
+            // Tests can override via environment variables or WebApplicationFactory hooks
+            _ = builder.Configuration.ConfigureAppSettings( args );
 
-                // Configure logging after configuration is loaded
+            // Configure logging only in non-Testing environments
+            if (builder.Environment.EnvironmentName != "Testing") {
                 ConfigureSerilog( builder );
-                ConfigureOpenTelemetry( builder );
             }
+
+            _ = builder.AddServiceDefaults( );
 
             _ = builder.WebHost.ConfigureBridgeBeatsServices(
                 builder.Services,
@@ -111,7 +105,7 @@ namespace BridgeBeats.Configuration {
 
             // Misc domain services
             _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>(
-                p => new OpenGraphCardService(
+                _ => new OpenGraphCardService(
                     settings.BaseUrl,
                     settings.CardCacheExpirationHours,
                     settings.CardCacheCleanupInterval
@@ -163,11 +157,15 @@ namespace BridgeBeats.Configuration {
             AppSettings settings = new( );
             config.GetRequiredSection( "BridgeBeats" ).Bind( settings );
 
-            // Initialize cache database if configured
-            InitializeCacheDatabase( app.Services );
+            // Skip database initialization in Testing environment - tests will configure their own databases
+            // via WebApplicationFactory.ConfigureServices which replaces the DbContext factories
+            if (app.Environment.EnvironmentName != "Testing") {
+                // Initialize cache database if configured
+                InitializeCacheDatabase( app.Services );
 
-            // Initialize database and seed roles
-            _ = await app.InitializeDatabaseAsync( );
+                // Initialize database and seed roles
+                _ = await app.InitializeDatabaseAsync( );
+            }
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment( )) {
@@ -244,7 +242,7 @@ namespace BridgeBeats.Configuration {
             _ = app.UseStaticFiles( ); // Serve static files from wwwroot
             _ = app.UseRouting( );
 
-            // Restrict health endpoint access to internal requests only
+            // Restrict liveness endpoint access to internal requests only
             // NOTE: This middleware is intentionally placed before authentication because it uses IP-based authorization
             // and does not require authenticated user context. If future changes require authentication, adjust the order accordingly.
             _ = app.UseMiddleware<HealthEndpointAuthorizationMiddleware>( );
@@ -266,6 +264,7 @@ namespace BridgeBeats.Configuration {
                 options.DocumentTitle = "BridgeBeats API Documentation";
             } );
 
+            _ = app.MapDefaultEndpoints( );
             _ = app.MapStaticAssets( );
             _ = app.MapControllerRoute(
                     name: "default",
@@ -276,7 +275,7 @@ namespace BridgeBeats.Configuration {
         }
 
         /// <summary>
-        /// Configures the application settings by adding command line arguments, environment variables, and the appsettings.json file.
+        /// Configures the application settings by adding command line arguments, environment variables, user secrets, and the appsettings.json file.
         /// </summary>
         /// <param name="config">The configuration builder to extend.</param>
         /// <param name="args">Command line arguments passed to the application.</param>
@@ -288,7 +287,8 @@ namespace BridgeBeats.Configuration {
                     path: "appsettings.json",
                     optional: false,
                     reloadOnChange: false
-                ).AddCommandLine( args )
+                ).AddUserSecrets<Program>( optional: true )
+                .AddCommandLine( args )
                 .AddEnvironmentVariables( );
 
         /// <summary>
@@ -312,67 +312,22 @@ namespace BridgeBeats.Configuration {
             }
         }
 
-        /// <summary>
-        /// Adds a standard http client resilience pipeline to the builder, configuring retry and timeout policies.
-        /// </summary>
-        /// <param name="builder">The HTTP client builder to configure.</param>
-        /// <returns>The configured <see cref="IHttpStandardResiliencePipelineBuilder"/>.</returns>
-        private static IHttpStandardResiliencePipelineBuilder AddStandardResilience( this IHttpClientBuilder builder ) {
-            IHttpStandardResiliencePipelineBuilder resilienceBuilder = builder.AddStandardResilienceHandler( options => {
-                options.Retry.BackoffType = DelayBackoffType.Exponential;
-                options.Retry.UseJitter = true;
-                options.Retry.MaxRetryAttempts = 5;
-                options.Retry.Delay = TimeSpan.FromSeconds( 3 );
-                options.Retry.MaxDelay = TimeSpan.FromMinutes( 5 ); // Increased from 60 seconds to 5 minutes
-                options.Retry.ShouldRetryAfterHeader = true; // honor Retry-After
-
-                options.Retry.DisableForUnsafeHttpMethods( ); // Disables retry on POST/PUT/PATCH/DELETE/CONNECT
-
-                // Timeouts (outer total increased to 10 minutes, inner per-attempt)
-                options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( 10 ); // Increased from 120 seconds to 10 minutes
-                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 10 );
-            } );
-
-            // Add retry logging via Configure overload that provides service provider
-            _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {
-                Microsoft.Extensions.Logging.ILogger logger = sp.GetRequiredService<ILoggerFactory>( ).CreateLogger( "HttpResilience" );
-                options.Retry.OnRetry = args => {
-                    TimeSpan? retryAfter = args.Outcome.Result?.Headers?.RetryAfter?.Delta;
-                    double retryAfterSeconds = retryAfter?.TotalSeconds ?? 0;
-
-                    if (retryAfterSeconds > 0) {
-                        logger.LogWarning(
-                            "HTTP request failed (Attempt {AttemptNumber}/{MaxAttempts}). Retrying after {RetryAfterSeconds} seconds due to Retry-After header. Uri: {Uri}",
-                            args.AttemptNumber,
-                            options.Retry.MaxRetryAttempts,
-                            retryAfterSeconds,
-                            args.Outcome.Result?.RequestMessage?.RequestUri
-                        );
-                    } else {
-                        logger.LogWarning(
-                            "HTTP request failed (Attempt {AttemptNumber}/{MaxAttempts}). Retrying with exponential backoff. Uri: {Uri}",
-                            args.AttemptNumber,
-                            options.Retry.MaxRetryAttempts,
-                            args.Outcome.Result?.RequestMessage?.RequestUri
-                        );
-                    }
-
-                    return default;
-                };
-            } );
-
-            return resilienceBuilder;
-        }
         private static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
             // Register DbContext factory for on-demand instance creation
             // Controllers and services will use IDbContextFactory<ApplicationDbContext> to create scoped instances when needed
             _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
-                options.UseSqlite( settings.IdentityConnectionString )
+                options.UseSqlite(
+                    settings.IdentityConnectionString,
+                    b => b.MigrationsAssembly( "BridgeBeats.Infrastructure" )
+                )
             );
 
             // Register a factory for MediaLinkCacheDbContext to be consumed from singleton services safely
             _ = services.AddDbContextFactory<MediaLinkCacheDbContext>( options =>
-                options.UseSqlite( settings.LinkCacheConnectionString )
+                options.UseSqlite(
+                    settings.LinkCacheConnectionString,
+                    b => b.MigrationsAssembly( "BridgeBeats.Infrastructure" )
+                )
             );
         }
 
@@ -449,7 +404,7 @@ namespace BridgeBeats.Configuration {
                     Name = "X-API-Key",
                     Description = "API Key authentication. Get your API key by registering at /account/register"
                 } );
-                options.AddSecurityRequirement( ( d ) => new OpenApiSecurityRequirement { [new( "X-API-Key" )] = [] } );
+                options.AddSecurityRequirement( _ => new OpenApiSecurityRequirement { [new( "X-API-Key" )] = [] } );
 
                 // Include XML comments from all assemblies if available
                 foreach (string xmlPath in Directory.GetFiles( AppContext.BaseDirectory, "*.xml" )) {
@@ -483,93 +438,15 @@ namespace BridgeBeats.Configuration {
         }
 
         private static HashSet<SupportedProviders> RegisterMusicProviders( IServiceCollection services, AppSettings settings ) {
-            HashSet<SupportedProviders> enabledProviders = [ ];
-
-            RegisterAppleIfConfigured( services, settings, enabledProviders );
-            RegisterSpotifyIfConfigured( services, settings, enabledProviders );
-            RegisterTidalIfConfigured( services, settings, enabledProviders );
-
-            return enabledProviders;
-        }
-
-        private static void RegisterAppleIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
-            // Check if Apple Music credentials are provided
-            if (string.IsNullOrWhiteSpace( settings.AppleTeamId ) ||
-                string.IsNullOrWhiteSpace( settings.AppleKeyId )) {
-                return;
-            }
-
-            // If Team ID and Key ID are provided, the key path must also be provided and valid
-            if (string.IsNullOrWhiteSpace( settings.AppleKeyPath )) {
-                return;
-            }
-
-            // Fail fast if missing required apple key file.
-            FileInfo keyPath = new( settings.AppleKeyPath );
-            if (!keyPath.Exists) {
-                throw new FileNotFoundException( $"Missing .p8 file at: {keyPath.FullName}" );
-            }
-
-            // Fail fast if apple key file is empty.
-            string keyContents = File.ReadAllText( keyPath.FullName );
-            if (string.IsNullOrWhiteSpace( keyContents )) {
-                throw new InvalidDataException( $".p8 file missing contents at: {keyPath.FullName}" );
-            }
-
-            _ = services.AddHttpClient( "musickit-api", c => {
-                c.BaseAddress = new Uri( "https://api.music.apple.com/v1/catalog/" );
-            } ).AddStandardResilience( );
-
-            _ = services.AddSingleton( new AppleJwtHandler( settings.AppleTeamId, settings.AppleKeyId, keyContents ) );
-            _ = services.AddTransient<AppleMusicLookupService>( );
-
-            _ = enabledProviders.Add( SupportedProviders.AppleMusic );
-        }
-
-        private static void RegisterSpotifyIfConfigured( IServiceCollection services, AppSettings settings, HashSet<SupportedProviders> enabledProviders ) {
-            if (string.IsNullOrWhiteSpace( settings.SpotifyClientId ) ||
-                string.IsNullOrWhiteSpace( settings.SpotifyClientSecret )) {
-                return;
-            }
-
-            _ = services.AddHttpClient( "spotify-auth", c => {
-                c.BaseAddress = new Uri( "https://accounts.spotify.com/" );
-            } ).AddStandardResilience( );
-
-            _ = services.AddHttpClient( "spotify-api", c => {
-                c.BaseAddress = new Uri( "https://api.spotify.com/v1/" );
-            } ).AddStandardResilience( );
-
-            _ = services.AddSingleton( new SpotifyCredentials( settings.SpotifyClientId, settings.SpotifyClientSecret ) );
-            _ = services.AddTransient<SpotifyTokenHandler>( );
-            _ = services.AddTransient<SpotifyLookupService>( );
-
-            _ = enabledProviders.Add( SupportedProviders.Spotify );
-        }
-
-        private static void RegisterTidalIfConfigured(
-            IServiceCollection services,
-            AppSettings settings,
-            HashSet<SupportedProviders> enabledProviders
-        ) {
-            if (string.IsNullOrWhiteSpace( settings.TidalClientId ) ||
-                string.IsNullOrWhiteSpace( settings.TidalClientSecret )) {
-                return;
-            }
-
-            _ = services.AddHttpClient( "tidal-auth", c => {
-                c.BaseAddress = new Uri( "https://auth.tidal.com/" );
-            } ).AddStandardResilience( );
-
-            _ = services.AddHttpClient( "tidal-api", c => {
-                c.BaseAddress = new Uri( "https://openapi.tidal.com/v2/" );
-            } ).AddStandardResilience( );
-
-            _ = services.AddSingleton( new TidalCredentials( settings.TidalClientId, settings.TidalClientSecret ) );
-            _ = services.AddTransient<TidalTokenHandler>( );
-            _ = services.AddTransient<TidalLookupService>( );
-
-            _ = enabledProviders.Add( SupportedProviders.Tidal );
+            return services.AddMusicProviders(
+                settings.AppleTeamId,
+                settings.AppleKeyId,
+                settings.AppleKeyPath,
+                settings.SpotifyClientId,
+                settings.SpotifyClientSecret,
+                settings.TidalClientId,
+                settings.TidalClientSecret
+            );
         }
 
         private static void RegisterMediaLinkService(
@@ -631,13 +508,13 @@ namespace BridgeBeats.Configuration {
             foreach (SupportedProviders provider in enabledProviders) {
                 switch (provider) {
                     case SupportedProviders.AppleMusic:
-                        results.Add( SupportedProviders.AppleMusic, serviceProvider.GetRequiredService<AppleMusicLookupService>( ) );
+                        results.Add( SupportedProviders.AppleMusic, serviceProvider.GetRequiredService<Providers.AppleMusic.AppleMusicLookupService>( ) );
                         break;
                     case SupportedProviders.Spotify:
-                        results.Add( SupportedProviders.Spotify, serviceProvider.GetRequiredService<SpotifyLookupService>( ) );
+                        results.Add( SupportedProviders.Spotify, serviceProvider.GetRequiredService<Providers.Spotify.SpotifyLookupService>( ) );
                         break;
                     case SupportedProviders.Tidal:
-                        results.Add( SupportedProviders.Tidal, serviceProvider.GetRequiredService<TidalLookupService>( ) );
+                        results.Add( SupportedProviders.Tidal, serviceProvider.GetRequiredService<Providers.Tidal.TidalLookupService>( ) );
                         break;
                 }
             }
@@ -705,7 +582,8 @@ namespace BridgeBeats.Configuration {
 
                     // Filter HTTP request completion logs from Serilog.AspNetCore for successful health checks
                     if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
-                        pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) &&
+                        (pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) ||
+                         pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Alive, StringComparison.OrdinalIgnoreCase )) &&
                         logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
                         statusValue.ToString( ) == "200") {
                         return true; // Exclude successful health check HTTP logs
@@ -727,34 +605,5 @@ namespace BridgeBeats.Configuration {
             _ = builder.Host.UseSerilog( );
         }
 
-        /// <summary>
-        /// Configures OpenTelemetry for OTLP export to Aspire Dashboard.
-        /// </summary>
-        /// <param name="builder">The web application builder to configure.</param>
-        private static void ConfigureOpenTelemetry( WebApplicationBuilder builder ) {
-            string? otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
-
-            // Only configure OpenTelemetry if endpoint is provided
-            if (string.IsNullOrWhiteSpace( otlpEndpoint )) {
-                return;
-            }
-
-            if (!Uri.TryCreate( otlpEndpoint, UriKind.Absolute, out Uri? uri )) {
-                Console.WriteLine( $"Warning: Invalid OTLP endpoint URL '{otlpEndpoint}' - OpenTelemetry logging disabled" );
-                return;
-            }
-
-            string version = typeof( Program ).Assembly.GetName( ).Version?.ToString( ) ?? "0.0.1";
-            _ = builder.Logging.AddOpenTelemetry( options => {
-                _ = options.SetResourceBuilder(
-                    ResourceBuilder.CreateDefault( )
-                        .AddService( serviceName: "BridgeBeats", serviceVersion: version )
-                );
-
-                _ = options.AddOtlpExporter( otlpOptions => {
-                    otlpOptions.Endpoint = uri;
-                } );
-            } );
-        }
     }
 }

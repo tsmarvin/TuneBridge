@@ -1,7 +1,7 @@
 using System.Text.Json;
-using BridgeBeats.Domain.Contracts.Entities;
-using BridgeBeats.Domain.Implementations.Auth;
-using BridgeBeats.Domain.Models;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -243,14 +243,14 @@ public class AccountController : Controller {
     [Authorize]
     [HttpPost]
     [Route( "account/download-data" )]
-    public async Task<IActionResult> DownloadPersonalData( [FromServices] BridgeBeats.Domain.Interfaces.IPlaylistService? playlistService ) {
+    public async Task<IActionResult> DownloadPersonalData( [FromServices] IPlaylistService? playlistService ) {
         ApplicationUser? user = await _userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( );
         }
 
         // Get user's playlists
-        List<PlaylistEntry> playlists = playlistService != null
+        List<PlaylistEntryDto> playlists = playlistService != null
             ? await playlistService.ExportUserDataAsync( user.Id )
             : [];
 

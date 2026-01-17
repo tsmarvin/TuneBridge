@@ -1,8 +1,7 @@
 using System.Security.Claims;
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Contracts.Entities;
-using BridgeBeats.Domain.Implementations.Utilities;
-using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -80,7 +79,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             return NotFound( "Playlist service not available" );
         }
 
-        PlaylistEntry? playlist = await _playlistService.GetPlaylistAsync( id );
+        PlaylistEntryDto? playlist = await _playlistService.GetPlaylistAsync( id );
 
         if (playlist == null) {
             return NotFound( "Playlist not found or expired" );
@@ -176,7 +175,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             return NotFound( "Playlist service not available" );
         }
 
-        PlaylistEntry? playlist = await _playlistService.GetPlaylistAsync( id );
+        PlaylistEntryDto? playlist = await _playlistService.GetPlaylistAsync( id );
 
         if (playlist == null) {
             return NotFound( "Playlist not found or expired" );

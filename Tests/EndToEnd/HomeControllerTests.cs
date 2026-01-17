@@ -1,5 +1,5 @@
 using System.Net;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.EndToEnd;
 
@@ -9,24 +9,32 @@ namespace BridgeBeats.Tests.EndToEnd;
 [TestClass]
 [TestCategory( "EndToEnd" )] // Mark as end-to-end tests - these are fast and don't hit external APIs
 public class HomeControllerTests {
-    private static WebApplicationFactory<Program>? s_factory;
+    private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
 
     [ClassInitialize]
-    public static void ClassInitialize( TestContext context ) {
-        // Create factory with unique database connection strings and no Discord token
-        Dictionary<string, string?> configData = new( ) {
-            ["BridgeBeats:SpotifyClientId"] = "test",
-            ["BridgeBeats:SpotifyClientSecret"] = "test",
-            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["BridgeBeats:IdentityConnectionString"] = $"Data Source=Home_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:ATProtoIdentifier"] = "",
-            ["BridgeBeats:ATProtoPassword"] = "",
-            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=Home_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-        };
+    public static async Task ClassInitialize( TestContext context ) {
+        // Load configuration from appsettings.json and user secrets
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddJsonFile( Path.Combine( "src", "appsettings.json" ), optional: true )
+            .AddUserSecrets<Program>( optional: true )
+            .AddEnvironmentVariables()
+            .Build();
+
+        // Build config overrides from loaded configuration
+        Dictionary<string, string?> configData = configuration
+            .AsEnumerable()
+            .Where( kv => kv.Value is not null )
+            .ToDictionary( kv => kv.Key, kv => kv.Value );
+
+        // Force Discord token to null to prevent Discord service registration
+        configData["BridgeBeats:DiscordToken"] = null;
+
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
+
+        // Initialize databases after services are configured
+        await s_factory.InitializeDatabasesAsync( );
     }
 
     [ClassCleanup]

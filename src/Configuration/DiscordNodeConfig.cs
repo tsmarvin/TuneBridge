@@ -1,5 +1,5 @@
+using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Domain.Implementations.DiscordGatewayHandlers;
-using BridgeBeats.Domain.Interfaces;
 
 namespace BridgeBeats.Configuration {
     /// <summary>

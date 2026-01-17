@@ -1,5 +1,5 @@
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Types.Enums;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
 
 namespace BridgeBeats.Web.Models {
     /// <summary>

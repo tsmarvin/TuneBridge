@@ -1,0 +1,63 @@
+using BridgeBeats.Contracts.Enums;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace BridgeBeats.Providers.AppleMusic {
+
+    /// <summary>
+    /// Extension methods for registering Apple Music provider services.
+    /// </summary>
+    public static class AppleMusicServiceExtensions {
+
+        /// <summary>
+        /// Registers Apple Music services if valid credentials are provided.
+        /// </summary>
+        /// <param name="services">The service collection to add services to.</param>
+        /// <param name="teamId">The Apple Developer Team ID.</param>
+        /// <param name="keyId">The Apple Music API Key ID.</param>
+        /// <param name="keyPath">The path to the .p8 private key file.</param>
+        /// <param name="enabledProviders">The set of enabled providers to update.</param>
+        /// <returns>True if Apple Music services were registered; otherwise false.</returns>
+        public static bool AddAppleMusicServices(
+            this IServiceCollection services,
+            string? teamId,
+            string? keyId,
+            string? keyPath,
+            HashSet<SupportedProviders> enabledProviders
+        ) {
+            // Check if Apple Music credentials are provided
+            if (string.IsNullOrWhiteSpace( teamId ) ||
+                string.IsNullOrWhiteSpace( keyId )) {
+                return false;
+            }
+
+            // If Team ID and Key ID are provided, the key path must also be provided and valid
+            if (string.IsNullOrWhiteSpace( keyPath )) {
+                return false;
+            }
+
+            // Fail fast if missing required apple key file.
+            FileInfo keyFile = new( keyPath );
+            if (!keyFile.Exists) {
+                throw new FileNotFoundException( $"Missing .p8 file at: {keyFile.FullName}" );
+            }
+
+            // Fail fast if apple key file is empty.
+            string keyContents = File.ReadAllText( keyFile.FullName );
+            if (string.IsNullOrWhiteSpace( keyContents )) {
+                throw new InvalidDataException( $".p8 file missing contents at: {keyFile.FullName}" );
+            }
+
+            _ = services.AddHttpClient( "musickit-api", c => {
+                c.BaseAddress = new Uri( "https://api.music.apple.com/v1/catalog/" );
+            } );
+
+            _ = services.AddSingleton( new AppleJwtHandler( teamId, keyId, keyContents ) );
+            _ = services.AddTransient<AppleMusicLookupService>( );
+
+            _ = enabledProviders.Add( SupportedProviders.AppleMusic );
+            return true;
+        }
+
+    }
+
+}

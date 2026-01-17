@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Implementations.Utilities;
-using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Infrastructure.Storage;
 
 namespace BridgeBeats.Domain.Implementations.Services {
 

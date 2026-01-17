@@ -1,10 +1,10 @@
-using BridgeBeats.Domain.Types.Constants;
+using BridgeBeats.Contracts.Constants;
 
 namespace BridgeBeats.Domain.Implementations.Middleware;
 
 /// <summary>
-/// Middleware to restrict access to the health endpoint to internal requests only (localhost and Docker network).
-/// Allows Aspire Dashboard and Caddy to access the health endpoint while blocking public access.
+/// Middleware to restrict access to the liveness endpoint to internal requests only (localhost and Docker network).
+/// Allows Aspire Dashboard and Caddy to access the liveness endpoint while blocking public access.
 /// </summary>
 public class HealthEndpointAuthorizationMiddleware {
     private readonly RequestDelegate _next;
@@ -29,8 +29,8 @@ public class HealthEndpointAuthorizationMiddleware {
     /// <param name="context">The HTTP context.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task InvokeAsync( HttpContext context ) {
-        // Only intercept requests to health endpoint
-        if (!context.Request.Path.Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase )) {
+        // Only intercept requests to liveness endpoint
+        if (!context.Request.Path.Equals( EndpointPaths.Alive, StringComparison.OrdinalIgnoreCase )) {
             await _next( context );
             return;
         }
@@ -46,9 +46,9 @@ public class HealthEndpointAuthorizationMiddleware {
         }
 
         // Block external access
-        _logger.LogWarning( "Blocked external access to health endpoint from {IP}", remoteIp );
+        _logger.LogWarning( "Blocked external access to liveness endpoint from {IP}", remoteIp );
         context.Response.StatusCode = 403;
-        await context.Response.WriteAsync( "Forbidden: Health endpoint is not publicly accessible." );
+        await context.Response.WriteAsync( "Forbidden: Liveness endpoint is not publicly accessible." );
     }
 
     /// <summary>

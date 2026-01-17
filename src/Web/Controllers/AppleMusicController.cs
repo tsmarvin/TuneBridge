@@ -1,10 +1,11 @@
 using System.Text.Json;
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Implementations.Auth;
-using BridgeBeats.Domain.Implementations.Utilities;
-using BridgeBeats.Domain.Interfaces;
-using BridgeBeats.Domain.Models;
-using BridgeBeats.Domain.Types.Enums;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Infrastructure.Storage;
+using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Providers.AppleMusic;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;

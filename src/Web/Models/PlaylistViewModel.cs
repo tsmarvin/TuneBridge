@@ -1,4 +1,4 @@
-using BridgeBeats.Domain.Contracts.DTOs;
+using BridgeBeats.Contracts.DTOs;
 
 namespace BridgeBeats.Web.Models {
 

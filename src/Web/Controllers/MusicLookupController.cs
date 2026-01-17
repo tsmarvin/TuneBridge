@@ -1,5 +1,5 @@
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Interfaces;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

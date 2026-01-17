@@ -66,11 +66,25 @@ Visit `http://localhost:10000` to start converting links.
 1. Install [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10)
 2. Clone the repository
 3. Add your API credentials to `appsettings.json` (see [Configuration Guide](docs/CONFIGURATION.md))
-4. Run: `dotnet run`
+
+**Option A: Using .NET Aspire (Recommended)**
+
+```bash
+aspire run
+```
+
+This starts the app with the Aspire Dashboard for monitoring, tracing, and structured logging. See the [Local Development Guide](docs/LOCAL_DEVELOPMENT.md) for details.
+
+**Option B: Direct .NET Run**
+
+```bash
+dotnet run
+```
 
 ## 📖 Documentation
 
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Local Development Guide](docs/LOCAL_DEVELOPMENT.md)** - Develop with .NET Aspire Dashboard
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Set up API credentials and environment variables
 - **[API Reference](docs/API.md)** - Integrate BridgeBeats into your applications
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
