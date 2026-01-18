@@ -98,3 +98,7 @@ caddy-logs/
 
 # macOS file
 .DS_Store
+
+# EF Core BuildHost directories
+**/BuildHost-net472/
+**/BuildHost-netcore/
