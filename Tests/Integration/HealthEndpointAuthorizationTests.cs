@@ -14,22 +14,12 @@ public class HealthEndpointAuthorizationTests {
 
     [ClassInitialize]
     public static async Task Setup( TestContext testContext ) {
-        // Load configuration from appsettings.json and user secrets
-        IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
-            .AddUserSecrets<Web.Program>( optional: true )
-            .AddEnvironmentVariables()
-            .Build();
-
-        // Build config overrides from loaded configuration
-        Dictionary<string, string?> configData = configuration
-            .AsEnumerable()
-            .Where( kv => kv.Value is not null )
-            .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
-            .ToDictionary( kv => kv.Key, kv => kv.Value );
-
-        // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = null;
+        // Use minimal configuration to avoid issues with empty provider credentials from appsettings.json
+        // CustomWebApplicationFactory will provide default test credentials
+        Dictionary<string, string?> configData = new( ) {
+            // Discord token must be explicitly null to prevent registration
+            ["BridgeBeats:DiscordToken"] = null
+        };
 
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
@@ -44,36 +34,36 @@ public class HealthEndpointAuthorizationTests {
     }
 
     // TODO: Fix authorization connection in tests here and then reenable these tests.
-    ///// <summary>
-    ///// Tests that the health endpoint is accessible (the test environment appears as localhost).
-    ///// In production, this would be restricted to internal Docker network IPs.
-    ///// </summary>
-    //[TestMethod]
-    //public async Task HealthEndpoint_FromTestClient_ReturnsOk( ) {
-    //    // Arrange
-    //    // The test client appears as localhost/internal to the middleware
-    //
-    //    // Act
-    //    HttpResponseMessage response = await _client!.GetAsync( "/health" );
-    //
-    //    // Assert
-    //    _ = response.StatusCode.Should( ).Be( HttpStatusCode.OK );
-    //}
-    //
-    ///// <summary>
-    ///// Tests that the health endpoint returns JSON with expected structure.
-    ///// </summary>
-    //[TestMethod]
-    //public async Task HealthEndpoint_ReturnsValidJson( ) {
-    //    // Arrange & Act
-    //    HttpResponseMessage response = await _client!.GetAsync( "/health" );
-    //    string content = await response.Content.ReadAsStringAsync( );
-    //
-    //    // Assert
-    //    _ = response.StatusCode.Should( ).Be( HttpStatusCode.OK );
-    //    _ = content.Should( ).Contain( "healthy" );
-    //    _ = content.Should( ).Contain( "timestamp" );
-    //}
+    /// <summary>
+    /// Tests that the health endpoint is accessible (the test environment appears as localhost).
+    /// In production, this would be restricted to internal Docker network IPs.
+    /// </summary>
+    [TestMethod]
+    public async Task HealthEndpoint_FromTestClient_ReturnsOk( ) {
+        // Arrange
+        // The test client appears as localhost/internal to the middleware
+
+        // Act
+        HttpResponseMessage response = await s_client!.GetAsync( "/health" );
+
+        // Assert
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
+    }
+
+    /// <summary>
+    /// Tests that the health endpoint returns JSON with expected structure.
+    /// </summary>
+    [TestMethod]
+    public async Task HealthEndpoint_ReturnsValidJson( ) {
+        // Arrange & Act
+        HttpResponseMessage response = await s_client!.GetAsync( "/health" );
+        string content = await response.Content.ReadAsStringAsync( );
+
+        // Assert
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
+        Assert.IsTrue( content.Contains( "healthy" ) );
+        Assert.IsTrue( content.Contains( "timestamp" ) );
+    }
 
     /// <summary>
     /// Tests that non-health endpoints are not affected by the health endpoint middleware.
