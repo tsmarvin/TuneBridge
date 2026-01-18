@@ -1,5 +1,6 @@
-#nullable disable
 using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
 
 namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
     /// <inheritdoc />
