@@ -33,7 +33,6 @@ public class HealthEndpointAuthorizationTests {
         s_factory?.Dispose( );
     }
 
-    // TODO: Fix authorization connection in tests here and then reenable these tests.
     /// <summary>
     /// Tests that the health endpoint is accessible (the test environment appears as localhost).
     /// In production, this would be restricted to internal Docker network IPs.

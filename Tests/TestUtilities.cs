@@ -72,10 +72,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
         _ = builder.UseEnvironment( "Testing" );
 
         // Ensure Spotify credentials are set for tests (required for service registration)
-        if (!_configData.ContainsKey( "BridgeBeats:SpotifyClientId" ) || string.IsNullOrWhiteSpace( _configData["BridgeBeats:SpotifyClientId"] )) {
+        if (!_configData.TryGetValue( "BridgeBeats:SpotifyClientId", out string? spotifyClientId ) || string.IsNullOrWhiteSpace( spotifyClientId )) {
             _configData["BridgeBeats:SpotifyClientId"] = "test";
         }
-        if (!_configData.ContainsKey( "BridgeBeats:SpotifyClientSecret" ) || string.IsNullOrWhiteSpace( _configData["BridgeBeats:SpotifyClientSecret"] )) {
+        if (!_configData.TryGetValue( "BridgeBeats:SpotifyClientSecret", out string? spotifyClientSecret ) || string.IsNullOrWhiteSpace( spotifyClientSecret )) {
             _configData["BridgeBeats:SpotifyClientSecret"] = "test";
         }
 

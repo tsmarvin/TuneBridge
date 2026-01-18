@@ -62,7 +62,6 @@ public class DashboardAuthorizationTests : IDisposable {
         GC.SuppressFinalize( this );
     }
 
-    // TODO: Fix authorization connection in tests here and then reenable these tests.
     /// <summary>
     /// Tests that unauthenticated requests to dashboard authorization endpoint return 401.
     /// </summary>
