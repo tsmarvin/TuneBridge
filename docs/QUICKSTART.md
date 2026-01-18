@@ -11,7 +11,7 @@ This guide will get you up and running with BridgeBeats using Docker Compose in 
 
 ```bash
 git clone https://github.com/tsmarvin/BridgeBeats.git
-cd BridgeBeats
+cd BridgeBeats/containers
 ```
 
 ## Step 2: Set Up Secrets

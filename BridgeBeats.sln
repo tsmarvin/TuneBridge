@@ -12,39 +12,51 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Contracts", "sr
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 	ProjectSection(SolutionItems) = preProject
+		.github\CODE_OF_CONDUCT.md = .github\CODE_OF_CONDUCT.md
+		.github\CONTRIBUTING.md = .github\CONTRIBUTING.md
 		.github\copilot-instructions.md = .github\copilot-instructions.md
+		.github\dependabot.yml = .github\dependabot.yml
+		.github\PULL_REQUEST_TEMPLATE.md = .github\PULL_REQUEST_TEMPLATE.md
+		.github\SECURITY.md = .github\SECURITY.md
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{84723DB4-9E80-49CC-91CB-6F846986B937}"
 	ProjectSection(SolutionItems) = preProject
 		docs\API.md = docs\API.md
+		docs\ATPROTO_LEXICON.md = docs\ATPROTO_LEXICON.md
 		docs\CACHING.md = docs\CACHING.md
 		docs\CADDY_CLOUDFLARE.md = docs\CADDY_CLOUDFLARE.md
 		docs\CONFIGURATION.md = docs\CONFIGURATION.md
 		docs\DEPLOYMENT.md = docs\DEPLOYMENT.md
 		docs\DISCORD_BOT.md = docs\DISCORD_BOT.md
+		docs\docfx.json = docs\docfx.json
+		docs\LOCAL_DEVELOPMENT.md = docs\LOCAL_DEVELOPMENT.md
 		docs\QUICKSTART.md = docs\QUICKSTART.md
+		docs\SBOM_AND_PROVENANCE.md = docs\SBOM_AND_PROVENANCE.md
 		docs\toc.yml = docs\toc.yml
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
-		.env.example = .env.example
 		.gitignore = .gitignore
-		Caddyfile = Caddyfile
 		CNAME = CNAME
-		docfx.json = docfx.json
-		docker-compose.yml = docker-compose.yml
-		Dockerfile = Dockerfile
-		Dockerfile.caddy = Dockerfile.caddy
-		entrypoint.sh = entrypoint.sh
 		LICENSE = LICENSE
 		README.md = README.md
-		setup-secrets.sh = setup-secrets.sh
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Tests", "Tests\BridgeBeats.Tests.csproj", "{5C9180AA-5AD7-4B42-B7B9-7550011F2926}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "containers", "containers", "{C1D2E3F4-A5B6-47C8-9D0E-1F2A3B4C5D6E}"
+	ProjectSection(SolutionItems) = preProject
+		containers\.env.example = containers\.env.example
+		containers\Caddyfile = containers\Caddyfile
+		containers\docker-compose.yml = containers\docker-compose.yml
+		containers\Dockerfile = containers\Dockerfile
+		containers\Dockerfile.caddy = containers\Dockerfile.caddy
+		containers\entrypoint.sh = containers\entrypoint.sh
+		containers\setup-secrets.sh = containers\setup-secrets.sh
+	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{DA4FC95F-B638-4F11-8AD2-C83FE858DAD4}"
 	ProjectSection(SolutionItems) = preProject
@@ -64,6 +76,19 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{3D85A2F0-F6D0-4694-93C1-6D4BD674680C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Services", "src\BridgeBeats.Services\BridgeBeats.Services.csproj", "{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ISSUE_TEMPLATE", "ISSUE_TEMPLATE", "{074D0D26-C6F1-46DD-A2B7-BEF6B3DA96C0}"
+	ProjectSection(SolutionItems) = preProject
+		.github\ISSUE_TEMPLATE\bug_report.yml = .github\ISSUE_TEMPLATE\bug_report.yml
+		.github\ISSUE_TEMPLATE\config.yml = .github\ISSUE_TEMPLATE\config.yml
+		.github\ISSUE_TEMPLATE\documentation.yml = .github\ISSUE_TEMPLATE\documentation.yml
+		.github\ISSUE_TEMPLATE\feature_request.yml = .github\ISSUE_TEMPLATE\feature_request.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".aspire", ".aspire", "{E327282B-AB0A-4653-888D-8C844370FF15}"
+	ProjectSection(SolutionItems) = preProject
+		.aspire\settings.json = .aspire\settings.json
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -185,6 +210,7 @@ Global
 		{DEDDBEDE-4E39-467F-98C0-706181A959A2} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{843D154A-35E2-43B7-AA38-7EF759002123} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{074D0D26-C6F1-46DD-A2B7-BEF6B3DA96C0} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E3F1E544-83BC-4F4B-8E16-713C98E01F4B}

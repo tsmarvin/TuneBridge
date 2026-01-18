@@ -32,13 +32,13 @@ Get started in 5 minutes with automatic HTTPS:
 
 ```bash
 git clone https://github.com/tsmarvin/BridgeBeats.git
-cd BridgeBeats
+cd BridgeBeats/containers
 ./setup-secrets.sh
-nano apple_key.p8
-nano atproto_password.txt
-nano discord_token.txt
-nano spotify_client_secret.txt
-nano tidal_client_secret.txt
+nano secrets/apple_key.p8
+nano secrets/atproto_password.txt
+nano secrets/discord_token.txt
+nano secrets/spotify_client_secret.txt
+nano secrets/tidal_client_secret.txt
 # Edit secrets/ with your credentials
 cp .env.example .env
 nano .env
@@ -98,8 +98,8 @@ BridgeBeats/
 │   ├── Integration/                 # Integration tests (service interactions)
 │   └── EndToEnd/                    # End-to-end tests (full request/response flows)
 ├── docs/                            # Documentation (guides, API reference)
-├── .github/                         # GitHub templates and workflows
-└── docker-compose.yml               # Production deployment configuration
+├── containers/                      # Docker deployment configuration
+├── .github/                         # GitHub templates, workflows, and community files
 ```
 
 ## 📖 Documentation
@@ -111,7 +111,7 @@ BridgeBeats/
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
 - **[SBOM and Provenance Guide](docs/SBOM_AND_PROVENANCE.md)** - Verify supply chain security and inspect dependencies
 - **[Caddy Cloudflare Guide](docs/CADDY_CLOUDFLARE.md)** - Configure Cloudflare DNS for wildcard certificates
-- **[Contributing Guidelines](CONTRIBUTING.md)** - Learn how to contribute to BridgeBeats
+- **[Contributing Guidelines](.github/CONTRIBUTING.md)** - Learn how to contribute to BridgeBeats
 - **[Caching Guide](docs/CACHING.md)** - Configure ATProto PDS caching
 - **[ATProto Lexicon Setup](docs/ATPROTO_LEXICON.md)** - Configure lexicon resolution and DNS for ATProto compliance
 
@@ -198,13 +198,13 @@ For more details on testing, see the [Contributing Guidelines](CONTRIBUTING.md#t
 
 We welcome contributions! Whether you're fixing bugs, adding features, improving documentation, or helping others, your contributions make BridgeBeats better for everyone.
 
-Please read our [Contributing Guidelines](CONTRIBUTING.md) to get started. Key points:
+Please read our [Contributing Guidelines](.github/CONTRIBUTING.md) to get started. Key points:
 
-- Follow our [Code of Conduct](CODE_OF_CONDUCT.md)
+- Follow our [Code of Conduct](.github/CODE_OF_CONDUCT.md)
 - Check existing issues before opening a new one
 - Use our issue templates for bug reports and feature requests
 - Keep pull requests focused and well-tested
-- Respect our security practices - see [Security Policy](SECURITY.md)
+- Respect our security practices - see [Security Policy](.github/SECURITY.md)
 
 ## 📝 License
 

@@ -3,11 +3,11 @@
     {
       "src": [
         {
-          "src": "src",
+          "src": "../src",
           "files": [ "**.csproj" ]
         }
       ],
-      "dest": "docs/api",
+      "dest": "api",
       "disableGitFeatures": false,
       "disableDefaultFilter": false
     }
@@ -16,27 +16,27 @@
     "content": [
       {
         "files": [ "**.{md,yml}" ],
-        "src": "docs"
+        "src": "."
       },
       {
         "files": [ "**.md" ],
-        "src": ".",
-        "exclude": [ "_site/**" ]
+        "src": "..",
+        "exclude": [ "_site/**", "docs/**", "MigrationPlan/**" ]
       }
     ],
     "resource": [
       {
         "files": [ "images/**" ],
-        "src": "docs"
+        "src": "."
       },
       {
         "files": [ "favicon.ico" ],
-        "src": "src/Web/wwwroot",
+        "src": "../src/BridgeBeats.Web/wwwroot",
         "dest": "."
       },
       {
         "files": [ "public/**" ],
-        "src": "src/Web/wwwroot",
+        "src": "../src/BridgeBeats.Web/wwwroot",
         "dest": "."
       }
     ],
@@ -46,6 +46,7 @@
     "postProcessors": [],
     "keepFileLink": false,
     "disableGitFeatures": false,
+    "dest": "../_site",
     "globalMetadata": {
       "_appTitle": "BridgeBeats",
       "_appName": "BridgeBeats API Documentation",

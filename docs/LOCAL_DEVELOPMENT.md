@@ -72,10 +72,17 @@ The AppHost passes all provider credentials to the application via environment v
   - Debugging and testing
   - Exploring telemetry and logs
 
-- **Use `docker-compose up`** for:
+- **Use `docker compose up`** for:
   - Production deployments
   - CI/CD pipeline testing
   - Replicating production environment locally
+
+When using Docker Compose, navigate to the `containers/` directory first:
+
+```bash
+cd containers
+docker compose up -d
+```
 
 ## Generating Deployment Artifacts
 
@@ -89,7 +96,7 @@ This outputs files to `aspire-output/`:
 - `docker-compose.yaml` - Generated compose file
 - `.env` - Environment configuration
 
-> **Note**: The generated compose files are for development/prototyping. The production `docker-compose.yml` in the repository root is optimized for production use with Caddy reverse proxy, health checks, and proper secret management.
+> **Note**: The generated compose files are for development/prototyping. The production `docker-compose.yml` in the `containers/` directory is optimized for production use with Caddy reverse proxy, health checks, and proper secret management.
 
 ## Troubleshooting
 
