@@ -1,5 +1,4 @@
 using System.Net;
-using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.Integration;
@@ -85,7 +84,7 @@ public class HealthEndpointAuthorizationTests {
         HttpResponseMessage response = await s_client!.GetAsync( "/", TestContext.CancellationToken );
 
         // Assert
-        _ = response.StatusCode.Should( ).Be( HttpStatusCode.OK );
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
     }
 
     public TestContext TestContext { get; set; }
