@@ -10,7 +10,7 @@ The easiest way to deploy BridgeBeats is with Docker Compose, which includes Cad
 
 ```bash
 git clone https://github.com/tsmarvin/BridgeBeats.git
-cd BridgeBeats
+cd BridgeBeats/containers
 ./setup-secrets.sh
 # Edit secrets/ with your credentials
 cp .env.example .env

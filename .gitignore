@@ -53,6 +53,9 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
+# Visual Studio Code Configuration
+.vscode/*
+
 # Visual Studio Configuration
 .vs/*
 
@@ -95,3 +98,7 @@ caddy-logs/
 
 # macOS file
 .DS_Store
+
+# EF Core BuildHost directories
+**/BuildHost-net472/
+**/BuildHost-netcore/

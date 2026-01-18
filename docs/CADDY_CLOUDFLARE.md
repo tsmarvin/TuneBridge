@@ -80,7 +80,7 @@ caddy:
 
 ### 4. Caddyfile Configuration
 
-The wildcard domain configuration in `Caddyfile` reads the token from the secret file:
+The wildcard domain configuration in `containers/Caddyfile` reads the token from the secret file:
 
 ```caddyfile
 *.{$PDS_HOSTNAME}, {$PDS_HOSTNAME} {
@@ -97,8 +97,11 @@ The wildcard domain configuration in `Caddyfile` reads the token from the secret
 
 ### Using Docker Compose
 
+From the `containers/` directory:
+
 1. Set up secrets:
 ```bash
+cd containers
 ./setup-secrets.sh
 nano secrets/cloudflare_api_token.txt  # Add your Cloudflare API token
 ```
@@ -121,10 +124,10 @@ docker compose logs caddy | grep -i certificate
 
 ### Manual Docker Build
 
-To build the custom Caddy image locally:
+To build the custom Caddy image locally (from the repository root):
 
 ```bash
-docker build -f Dockerfile.caddy -t caddy-cloudflare:local .
+docker build -f containers/Dockerfile.caddy -t caddy-cloudflare:local .
 ```
 
 ## Automated Publishing
