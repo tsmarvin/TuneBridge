@@ -115,10 +115,10 @@ For local development, you can use an `appsettings.json` file instead of environ
     "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
     "LinkCacheConnectionString": "Data Source=bridgebeats.db",
-      "BaseUrl": "localhost",
-      "LogFilePath": "./logs/bridgebeats-.log",
-      "CardCacheExpirationHours": 1,
-      "CardCacheCleanupInterval": 500
+    "BaseUrl": "localhost",
+    "LogFilePath": "./logs/bridgebeats-.log",
+    "CardCacheExpirationHours": 1,
+    "CardCacheCleanupInterval": 500
     },
   "Logging": {
     "LogLevel": {
