@@ -54,6 +54,9 @@ jobs:
               -e 's/"{TidalClientId}"/"${{ secrets.TIDALCLIENTID }}"/g' \
               -e 's/"{TidalClientSecret}"/"${{ secrets.TIDALCLIENTSECRET }}"/g' \
               -e 's/"{DiscordToken}"/""/g' \
+              -e 's/"{ApiKeySalt}"/"test_api_key_salt_for_ci"/g' \
+              -e 's/{CardCacheExpirationHours}/1/g' \
+              -e 's/{CardCacheCleanupInterval}/500/g' \
               -e 's/"{Default_LogLevel}"/"Information"/g' \
               -e 's/"{Hosting_LogLevel}"/"Information"/g' \
               -e 's/"{Allowed_Hosts}"/"*"/g' \
