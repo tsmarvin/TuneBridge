@@ -77,10 +77,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
             config.Sources.Clear();
             
             // Add back non-memory sources (like environment variables, command line, etc.)
-            foreach (IConfigurationSource source in existingSources) {
-                if (source is not Microsoft.Extensions.Configuration.Memory.MemoryConfigurationSource) {
-                    config.Sources.Add( source );
-                }
+            foreach (IConfigurationSource source in existingSources.Where( s => s is not Microsoft.Extensions.Configuration.Memory.MemoryConfigurationSource )) {
+                config.Sources.Add( source );
             }
             
             // Add test configuration as the highest priority source (last wins)

@@ -20,7 +20,6 @@ namespace BridgeBeats.Tests.Integration;
 public class DashboardAuthorizationTests : IDisposable {
     private CustomWebApplicationFactory? _factory;
     private HttpClient? _client;
-    private ApplicationDbContext? _dbContext;
     private const string TestUserEmail = "dashboardtest@example.com";
     private const string TestUserPassword = "TestPassword123!";
 
@@ -48,10 +47,6 @@ public class DashboardAuthorizationTests : IDisposable {
 
         // Initialize databases after services are configured
         await _factory.InitializeDatabasesAsync( );
-
-        // Get and store DbContext for cleanup
-        using IServiceScope scope = _factory.Services.CreateScope( );
-        _dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
     }
 
     [TestCleanup]
@@ -63,9 +58,10 @@ public class DashboardAuthorizationTests : IDisposable {
         _client?.Dispose( );
 
         // Clean up the in-memory database
-        if (_dbContext != null) {
-            _ = _dbContext.Database.EnsureDeleted( );
-            _dbContext.Dispose( );
+        if (_factory != null) {
+            using IServiceScope scope = _factory.Services.CreateScope( );
+            ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
+            _ = dbContext.Database.EnsureDeleted( );
         }
 
         _factory?.Dispose( );

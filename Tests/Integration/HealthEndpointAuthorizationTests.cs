@@ -86,5 +86,5 @@ public class HealthEndpointAuthorizationTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
     }
 
-    public TestContext TestContext { get; set; }
+    public TestContext TestContext { get; set; } = null!;
 }
