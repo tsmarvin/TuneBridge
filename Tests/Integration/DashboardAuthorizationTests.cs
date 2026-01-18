@@ -26,11 +26,11 @@ public class DashboardAuthorizationTests : IDisposable {
 
     [TestInitialize]
     public async Task Setup( ) {
-        // Use minimal configuration to avoid issues with empty provider credentials from appsettings.json
-        // CustomWebApplicationFactory will provide default test credentials
+        // Explicitly provide all configuration needed for tests
         Dictionary<string, string?> configData = new( ) {
-            // Discord token must be explicitly null to prevent registration
-            ["BridgeBeats:DiscordToken"] = null
+            ["BridgeBeats:SpotifyClientId"] = "test",
+            ["BridgeBeats:SpotifyClientSecret"] = "test",
+            ["BridgeBeats:DiscordToken"] = ""
         };
 
         _factory = new CustomWebApplicationFactory( configData );

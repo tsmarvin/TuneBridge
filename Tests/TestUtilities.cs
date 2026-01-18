@@ -71,8 +71,27 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
         _ = builder.UseEnvironment( "Testing" );
 
+        // Ensure Spotify credentials are set for tests (required for service registration)
+        if (!_configData.ContainsKey( "BridgeBeats:SpotifyClientId" ) || string.IsNullOrWhiteSpace( _configData["BridgeBeats:SpotifyClientId"] )) {
+            _configData["BridgeBeats:SpotifyClientId"] = "test";
+        }
+        if (!_configData.ContainsKey( "BridgeBeats:SpotifyClientSecret" ) || string.IsNullOrWhiteSpace( _configData["BridgeBeats:SpotifyClientSecret"] )) {
+            _configData["BridgeBeats:SpotifyClientSecret"] = "test";
+        }
+
         _ = builder.ConfigureAppConfiguration( ( context, config ) => {
-            // Add test configuration as an override layer (last added wins)
+            // Remove any existing in-memory collections to avoid conflicts
+            IConfigurationSource[] existingSources = config.Sources.ToArray();
+            config.Sources.Clear();
+            
+            // Add back non-memory sources (like environment variables, command line, etc.)
+            foreach (IConfigurationSource source in existingSources) {
+                if (source is not Microsoft.Extensions.Configuration.Memory.MemoryConfigurationSource) {
+                    config.Sources.Add( source );
+                }
+            }
+            
+            // Add test configuration as the highest priority source (last wins)
             _ = config.AddInMemoryCollection( _configData );
         } );
 
