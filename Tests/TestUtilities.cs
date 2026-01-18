@@ -70,18 +70,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
 
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
         _ = builder.UseEnvironment( "Testing" );
-
+        
         _ = builder.ConfigureAppConfiguration( ( context, config ) => {
-            // Remove any existing in-memory collections to avoid conflicts
-            IConfigurationSource[] existingSources = config.Sources.ToArray();
-            config.Sources.Clear();
-            
-            // Add back non-memory sources (like environment variables, command line, etc.)
-            foreach (IConfigurationSource source in existingSources.Where( s => s is not Microsoft.Extensions.Configuration.Memory.MemoryConfigurationSource )) {
-                config.Sources.Add( source );
-            }
-            
-            // Add test configuration as the highest priority source (last wins)
+            // Add test configuration as highest priority source
             _ = config.AddInMemoryCollection( _configData );
         } );
 

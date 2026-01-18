@@ -33,4 +33,14 @@
     <ProjectReference Include="..\src\BridgeBeats.Web\BridgeBeats.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Include test-specific appsettings files -->
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="appsettings.Testing.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

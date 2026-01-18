@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.Integration;
 
@@ -14,22 +13,11 @@ public class HealthEndpointAuthorizationTests {
 
     [ClassInitialize]
     public static async Task Setup( TestContext testContext ) {
-        // Load configuration from appsettings.json and user secrets
-        IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
-            .AddUserSecrets<Web.Program>( optional: true )
-            .AddEnvironmentVariables()
-            .Build();
-
-        // Build config overrides from loaded configuration
-        Dictionary<string, string?> configData = configuration
-            .AsEnumerable()
-            .Where( kv => kv.Value is not null )
-            .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
-            .ToDictionary( kv => kv.Key, kv => kv.Value );
-
-        // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = null;
+        // Use minimal config - let factory provide test defaults for Spotify
+        Dictionary<string, string?> configData = new( ) {
+            // Force Discord token to empty string to prevent Discord service registration
+            ["BridgeBeats:DiscordToken"] = ""
+        };
 
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );

@@ -6,7 +6,6 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -25,22 +24,11 @@ public class DashboardAuthorizationTests : IDisposable {
 
     [TestInitialize]
     public async Task Setup( ) {
-        // Load configuration from appsettings.json and user secrets
-        IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
-            .AddUserSecrets<Web.Program>( optional: true )
-            .AddEnvironmentVariables()
-            .Build();
-
-        // Build config overrides from loaded configuration
-        Dictionary<string, string?> configData = configuration
-            .AsEnumerable()
-            .Where( kv => kv.Value is not null )
-            .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
-            .ToDictionary( kv => kv.Key, kv => kv.Value );
-
-        // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = null;
+        // Use minimal config - let factory provide test defaults for Spotify
+        Dictionary<string, string?> configData = new( ) {
+            // Force Discord token to empty string to prevent Discord service registration
+            ["BridgeBeats:DiscordToken"] = ""
+        };
 
         _factory = new CustomWebApplicationFactory( configData );
         _client = _factory.CreateClient( );
@@ -56,14 +44,6 @@ public class DashboardAuthorizationTests : IDisposable {
 
     public void Dispose( ) {
         _client?.Dispose( );
-
-        // Clean up the in-memory database
-        if (_factory != null) {
-            using IServiceScope scope = _factory.Services.CreateScope( );
-            ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
-            _ = dbContext.Database.EnsureDeleted( );
-        }
-
         _factory?.Dispose( );
         GC.SuppressFinalize( this );
     }
