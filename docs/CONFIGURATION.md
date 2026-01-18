@@ -119,7 +119,7 @@ For local development, you can use an `appsettings.json` file instead of environ
     "LogFilePath": "./logs/bridgebeats-.log",
     "CardCacheExpirationHours": 1,
     "CardCacheCleanupInterval": 500
-    },
+  },
   "Logging": {
     "LogLevel": {
       "Default": "Information",
