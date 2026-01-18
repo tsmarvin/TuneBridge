@@ -27,7 +27,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\BridgeBeats.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Contracts\BridgeBeats.Contracts.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Services\BridgeBeats.Services.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Web\BridgeBeats.Web.csproj" />
   </ItemGroup>
 
 </Project>

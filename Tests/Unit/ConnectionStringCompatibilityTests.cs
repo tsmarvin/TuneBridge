@@ -1,4 +1,4 @@
-using BridgeBeats.Configuration;
+using BridgeBeats.Web.Configuration;
 using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.Unit;

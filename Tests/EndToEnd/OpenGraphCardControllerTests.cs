@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace BridgeBeats.Tests.EndToEnd;
 
@@ -12,24 +12,33 @@ namespace BridgeBeats.Tests.EndToEnd;
 [DoNotParallelize] // Prevent parallel execution to avoid overwhelming external APIs with rate limits
 [TestCategory( "EndToEnd" )] // Mark as end-to-end tests
 public class WebLookupTests {
-    private static WebApplicationFactory<Program>? s_factory;
+    private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
 
     [ClassInitialize]
-    public static void ClassInitialize( TestContext context ) {
-        // Create factory with unique database connection strings and no Discord token
-        Dictionary<string, string?> configData = new( ) {
-            ["BridgeBeats:SpotifyClientId"] = "test",
-            ["BridgeBeats:SpotifyClientSecret"] = "test",
-            ["BridgeBeats:DiscordToken"] = null, // Explicitly null to prevent Discord service registration
-            ["BridgeBeats:IdentityConnectionString"] = $"Data Source=WebLookup_Identity_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:ATProtoIdentifier"] = "",
-            ["BridgeBeats:ATProtoPassword"] = "",
-            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source=WebLookup_LinkCache_{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
-        };
+    public static async Task ClassInitialize( TestContext context ) {
+        // Load configuration from appsettings.json and user secrets
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
+            .AddUserSecrets<Web.Program>( optional: true )
+            .AddEnvironmentVariables()
+            .Build();
+
+        // Build config overrides from loaded configuration
+        Dictionary<string, string?> configData = configuration
+            .AsEnumerable()
+            .Where( kv => kv.Value is not null )
+            .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
+            .ToDictionary( kv => kv.Key, kv => kv.Value );
+
+        // Force Discord token to null to prevent Discord service registration
+        configData["BridgeBeats:DiscordToken"] = null;
+
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
+
+        // Initialize databases after services are configured
+        await s_factory.InitializeDatabasesAsync( );
     }
 
     [ClassCleanup]
@@ -39,6 +48,7 @@ public class WebLookupTests {
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "Spotify" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task WebLookup_WithValidSpotifyUrl_ReturnsCardUrl( ) {
         // Arrange
@@ -54,10 +64,9 @@ public class WebLookupTests {
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
 
-        dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
-        Assert.IsNotNull( data );
+        JsonElement data = await response.Content.ReadFromJsonAsync<JsonElement>( TestContext.CancellationToken );
 
-        bool hasResults = data?.GetProperty( "hasResults" ).GetBoolean( );
+        bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
 
         // If we hit rate limits, hasResults may be false - that's acceptable for integration tests
         if (!hasResults) {
@@ -68,12 +77,14 @@ public class WebLookupTests {
         Assert.IsTrue( hasResults, "Should have results for valid Spotify URL" );
 
         // Check items array exists
-        JsonElement itemsElement;
-        Assert.IsTrue( data?.TryGetProperty( "items", out itemsElement ), "Should have items array" );
+        JsonElement itemsElement = data.GetProperty( "items" );
+        Assert.AreEqual( JsonValueKind.Array, itemsElement.ValueKind );
     }
 
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
+    [TestCategory( "Spotify" )]
+    [TestCategory( "AppleMusic" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task WebLookup_WithMultipleUrls_ReturnsMultipleCards( ) {
         // Arrange - Multiple URLs separated by space/newline
@@ -89,10 +100,9 @@ public class WebLookupTests {
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
 
-        dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
-        Assert.IsNotNull( data );
+        JsonElement data = await response.Content.ReadFromJsonAsync<JsonElement>( TestContext.CancellationToken );
 
-        bool hasResults = data?.GetProperty( "hasResults" ).GetBoolean( );
+        bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
 
         // If we hit rate limits, hasResults may be false - that's acceptable for integration tests
         if (!hasResults) {
@@ -103,8 +113,8 @@ public class WebLookupTests {
         Assert.IsTrue( hasResults, "Should have results for valid URLs" );
 
         // Check that we have multiple items
-        dynamic? items = data?.GetProperty( "items" );
-        int itemCount = items?.GetArrayLength( ) ?? 0;
+        JsonElement items = data.GetProperty( "items" );
+        int itemCount = items.GetArrayLength( );
         Assert.IsGreaterThan( 0, itemCount, "Should have at least one item" );
     }
 
@@ -141,10 +151,9 @@ public class WebLookupTests {
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
 
-        dynamic? data = await response.Content.ReadFromJsonAsync<dynamic>( TestContext.CancellationToken );
-        Assert.IsNotNull( data );
+        JsonElement data = await response.Content.ReadFromJsonAsync<JsonElement>( TestContext.CancellationToken );
 
-        bool hasResults = data?.GetProperty( "hasResults" ).GetBoolean( );
+        bool hasResults = data.GetProperty( "hasResults" ).GetBoolean( );
         Assert.IsFalse( hasResults, "Should have no results for invalid URL" );
     }
 

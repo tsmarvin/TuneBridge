@@ -47,6 +47,8 @@ At least one complete set of music provider credentials is required:
 | `BridgeBeats__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=bridgebeats.db` |
 | `BridgeBeats__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=bridgebeats.db` |
 | `BridgeBeats__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
+| `CARD_CACHE_EXPIRATION_HOURS` | Number of hours to cache OpenGraph cards in memory | `1` |
+| `CARD_CACHE_CLEANUP_INTERVAL` | Number of operations between cleanup cycles for expired cards | `500` |
 
 **Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `BridgeBeats__BaseUrl` maps to `BridgeBeats:BaseUrl` in configuration).
 
@@ -114,7 +116,9 @@ For local development, you can use an `appsettings.json` file instead of environ
     "CacheDays": 7,
     "LinkCacheConnectionString": "Data Source=bridgebeats.db",
     "BaseUrl": "localhost",
-    "LogFilePath": "./logs/bridgebeats-.log"
+    "LogFilePath": "./logs/bridgebeats-.log",
+    "CardCacheExpirationHours": 1,
+    "CardCacheCleanupInterval": 500
   },
   "Logging": {
     "LogLevel": {

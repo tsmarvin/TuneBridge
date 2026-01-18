@@ -1,14 +1,8 @@
-using System.Net;
-using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
-using BridgeBeats.Domain.Models;
-using BridgeBeats.Domain.Types.Constants;
-using FluentAssertions;
+using BridgeBeats.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,37 +14,35 @@ namespace BridgeBeats.Tests.Integration;
 /// </summary>
 [TestClass]
 public class DashboardAuthorizationTests : IDisposable {
-    private WebApplicationFactory<Program>? _factory;
+    private CustomWebApplicationFactory? _factory;
     private HttpClient? _client;
     private ApplicationDbContext? _dbContext;
     private const string TestUserEmail = "dashboardtest@example.com";
-    private const string TestUserPassword = "Test@Password123!";
 
     [TestInitialize]
-    public void Setup( ) {
-        _factory = new WebApplicationFactory<Program>( )
-            .WithWebHostBuilder( builder => {
-                _ = builder.ConfigureServices( services => {
-                    // Replace the database with an in-memory database for testing
-                    ServiceDescriptor? descriptor = services.SingleOrDefault(
-                        d => d.ServiceType == typeof( DbContextOptions<ApplicationDbContext> )
-                    );
+    public async Task Setup( ) {
+        // Load configuration from appsettings.json and user secrets
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
+            .AddUserSecrets<Web.Program>( optional: true )
+            .AddEnvironmentVariables()
+            .Build();
 
-                    if (descriptor != null) {
-                        _ = services.Remove( descriptor );
-                    }
+        // Build config overrides from loaded configuration
+        Dictionary<string, string?> configData = configuration
+            .AsEnumerable()
+            .Where( kv => kv.Value is not null )
+            .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
+            .ToDictionary( kv => kv.Key, kv => kv.Value );
 
-                    _ = services.AddDbContext<ApplicationDbContext>( options => {
-                        _ = options.UseInMemoryDatabase( "InMemoryDbForTesting" );
-                    } );
+        // Force Discord token to null to prevent Discord service registration
+        configData["BridgeBeats:DiscordToken"] = null;
 
-                    // Add test authentication scheme with default scheme set
-                    _ = services.AddAuthentication( options => { options.DefaultScheme = "TestScheme"; } )
-                        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>( "TestScheme", options => { } );
-                } );
-            } );
-
+        _factory = new CustomWebApplicationFactory( configData );
         _client = _factory.CreateClient( );
+
+        // Initialize databases after services are configured
+        await _factory.InitializeDatabasesAsync( );
 
         // Get and store DbContext for cleanup
         using IServiceScope scope = _factory.Services.CreateScope( );
@@ -173,13 +165,11 @@ public class DashboardAuthorizationTests : IDisposable {
     /// <summary>
     /// Test authentication handler for integration tests.
     /// </summary>
-    public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions> {
-        public TestAuthHandler(
-            IOptionsMonitor<AuthenticationSchemeOptions> options,
-            ILoggerFactory logger,
-            UrlEncoder encoder
-        ) : base( options, logger, encoder ) { }
-
+    public class TestAuthHandler(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder
+    ) : AuthenticationHandler<AuthenticationSchemeOptions>( options, logger, encoder ) {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync( ) {
             Claim[] claims = [
                 new Claim( ClaimTypes.Name, TestUserEmail ),

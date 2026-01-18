@@ -1,6 +1,6 @@
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Implementations.Extensions;
-using BridgeBeats.Domain.Types.Enums;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Services.LinkResolver;
 
 namespace BridgeBeats.Tests.Unit;
 

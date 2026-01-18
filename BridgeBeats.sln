@@ -2,43 +2,61 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.0.11205.157
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats", "src\BridgeBeats.csproj", "{127C27A6-B3FD-14C2-BC7E-3176B16766B2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Web", "src\BridgeBeats.Web\BridgeBeats.Web.csproj", "{127C27A6-B3FD-14C2-BC7E-3176B16766B2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.ServiceDefaults", "src\BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj", "{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.AppHost", "src\BridgeBeats.AppHost\BridgeBeats.AppHost.csproj", "{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Contracts", "src\BridgeBeats.Contracts\BridgeBeats.Contracts.csproj", "{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 	ProjectSection(SolutionItems) = preProject
+		.github\CODE_OF_CONDUCT.md = .github\CODE_OF_CONDUCT.md
+		.github\CONTRIBUTING.md = .github\CONTRIBUTING.md
 		.github\copilot-instructions.md = .github\copilot-instructions.md
+		.github\dependabot.yml = .github\dependabot.yml
+		.github\PULL_REQUEST_TEMPLATE.md = .github\PULL_REQUEST_TEMPLATE.md
+		.github\SECURITY.md = .github\SECURITY.md
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{84723DB4-9E80-49CC-91CB-6F846986B937}"
 	ProjectSection(SolutionItems) = preProject
 		docs\API.md = docs\API.md
+		docs\ATPROTO_LEXICON.md = docs\ATPROTO_LEXICON.md
 		docs\CACHING.md = docs\CACHING.md
 		docs\CADDY_CLOUDFLARE.md = docs\CADDY_CLOUDFLARE.md
 		docs\CONFIGURATION.md = docs\CONFIGURATION.md
 		docs\DEPLOYMENT.md = docs\DEPLOYMENT.md
 		docs\DISCORD_BOT.md = docs\DISCORD_BOT.md
+		docs\docfx.json = docs\docfx.json
+		docs\LOCAL_DEVELOPMENT.md = docs\LOCAL_DEVELOPMENT.md
 		docs\QUICKSTART.md = docs\QUICKSTART.md
+		docs\SBOM_AND_PROVENANCE.md = docs\SBOM_AND_PROVENANCE.md
 		docs\toc.yml = docs\toc.yml
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
-		.env.example = .env.example
 		.gitignore = .gitignore
-		Caddyfile = Caddyfile
 		CNAME = CNAME
-		docfx.json = docfx.json
-		docker-compose.yml = docker-compose.yml
-		Dockerfile = Dockerfile
-		Dockerfile.caddy = Dockerfile.caddy
-		entrypoint.sh = entrypoint.sh
 		LICENSE = LICENSE
 		README.md = README.md
-		setup-secrets.sh = setup-secrets.sh
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Tests", "Tests\BridgeBeats.Tests.csproj", "{5C9180AA-5AD7-4B42-B7B9-7550011F2926}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "containers", "containers", "{C1D2E3F4-A5B6-47C8-9D0E-1F2A3B4C5D6E}"
+	ProjectSection(SolutionItems) = preProject
+		containers\.env.example = containers\.env.example
+		containers\Caddyfile = containers\Caddyfile
+		containers\docker-compose.yml = containers\docker-compose.yml
+		containers\Dockerfile = containers\Dockerfile
+		containers\Dockerfile.caddy = containers\Dockerfile.caddy
+		containers\entrypoint.sh = containers\entrypoint.sh
+		containers\setup-secrets.sh = containers\setup-secrets.sh
+	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{DA4FC95F-B638-4F11-8AD2-C83FE858DAD4}"
 	ProjectSection(SolutionItems) = preProject
@@ -47,6 +65,29 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{
 		.github\workflows\publish-caddy-cloudflare.yml = .github\workflows\publish-caddy-cloudflare.yml
 		.github\workflows\scorecard.yml = .github\workflows\scorecard.yml
 		.github\workflows\tests.yml = .github\workflows\tests.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Infrastructure", "src\BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj", "{DEDDBEDE-4E39-467F-98C0-706181A959A2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Providers", "src\BridgeBeats.Providers\BridgeBeats.Providers.csproj", "{843D154A-35E2-43B7-AA38-7EF759002123}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{3D85A2F0-F6D0-4694-93C1-6D4BD674680C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Services", "src\BridgeBeats.Services\BridgeBeats.Services.csproj", "{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ISSUE_TEMPLATE", "ISSUE_TEMPLATE", "{074D0D26-C6F1-46DD-A2B7-BEF6B3DA96C0}"
+	ProjectSection(SolutionItems) = preProject
+		.github\ISSUE_TEMPLATE\bug_report.yml = .github\ISSUE_TEMPLATE\bug_report.yml
+		.github\ISSUE_TEMPLATE\config.yml = .github\ISSUE_TEMPLATE\config.yml
+		.github\ISSUE_TEMPLATE\documentation.yml = .github\ISSUE_TEMPLATE\documentation.yml
+		.github\ISSUE_TEMPLATE\feature_request.yml = .github\ISSUE_TEMPLATE\feature_request.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".aspire", ".aspire", "{E327282B-AB0A-4653-888D-8C844370FF15}"
+	ProjectSection(SolutionItems) = preProject
+		.aspire\settings.json = .aspire\settings.json
 	EndProjectSection
 EndProject
 Global
@@ -71,6 +112,42 @@ Global
 		{127C27A6-B3FD-14C2-BC7E-3176B16766B2}.Release|x64.Build.0 = Release|Any CPU
 		{127C27A6-B3FD-14C2-BC7E-3176B16766B2}.Release|x86.ActiveCfg = Release|Any CPU
 		{127C27A6-B3FD-14C2-BC7E-3176B16766B2}.Release|x86.Build.0 = Release|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Debug|x64.Build.0 = Debug|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Debug|x86.Build.0 = Debug|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Release|x64.ActiveCfg = Release|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Release|x64.Build.0 = Release|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Release|x86.ActiveCfg = Release|Any CPU
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0}.Release|x86.Build.0 = Release|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Debug|x64.Build.0 = Debug|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Debug|x86.Build.0 = Debug|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Release|x64.ActiveCfg = Release|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Release|x64.Build.0 = Release|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Release|x86.ActiveCfg = Release|Any CPU
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9}.Release|x86.Build.0 = Release|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Debug|x64.Build.0 = Debug|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Debug|x86.Build.0 = Debug|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Release|x64.ActiveCfg = Release|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Release|x64.Build.0 = Release|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Release|x86.ActiveCfg = Release|Any CPU
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E}.Release|x86.Build.0 = Release|Any CPU
 		{5C9180AA-5AD7-4B42-B7B9-7550011F2926}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5C9180AA-5AD7-4B42-B7B9-7550011F2926}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5C9180AA-5AD7-4B42-B7B9-7550011F2926}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -83,12 +160,57 @@ Global
 		{5C9180AA-5AD7-4B42-B7B9-7550011F2926}.Release|x64.Build.0 = Release|Any CPU
 		{5C9180AA-5AD7-4B42-B7B9-7550011F2926}.Release|x86.ActiveCfg = Release|Any CPU
 		{5C9180AA-5AD7-4B42-B7B9-7550011F2926}.Release|x86.Build.0 = Release|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Debug|x64.Build.0 = Debug|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Debug|x86.Build.0 = Debug|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Release|x64.ActiveCfg = Release|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Release|x64.Build.0 = Release|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Release|x86.ActiveCfg = Release|Any CPU
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2}.Release|x86.Build.0 = Release|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Debug|x64.Build.0 = Debug|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Debug|x86.Build.0 = Debug|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Release|Any CPU.Build.0 = Release|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Release|x64.ActiveCfg = Release|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Release|x64.Build.0 = Release|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Release|x86.ActiveCfg = Release|Any CPU
+		{843D154A-35E2-43B7-AA38-7EF759002123}.Release|x86.Build.0 = Release|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Debug|x64.Build.0 = Debug|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Debug|x86.Build.0 = Debug|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Release|x64.ActiveCfg = Release|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Release|x64.Build.0 = Release|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Release|x86.ActiveCfg = Release|Any CPU
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{127C27A6-B3FD-14C2-BC7E-3176B16766B2} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A4D6D6A2-5E0C-4F16-9B7E-6D9E9E6DF9A0} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{E2FBD0E7-7D67-4BB3-90B4-1E0B16D680C9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{B1C2D3E4-F5A6-4B7C-8D9E-0F1A2B3C4D5E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{5C9180AA-5AD7-4B42-B7B9-7550011F2926} = {3D85A2F0-F6D0-4694-93C1-6D4BD674680C}
 		{DA4FC95F-B638-4F11-8AD2-C83FE858DAD4} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{DEDDBEDE-4E39-467F-98C0-706181A959A2} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{843D154A-35E2-43B7-AA38-7EF759002123} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{5F2C1137-D5D4-42FF-BCA8-60F8153F0530} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{074D0D26-C6F1-46DD-A2B7-BEF6B3DA96C0} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E3F1E544-83BC-4F4B-8E16-713C98E01F4B}

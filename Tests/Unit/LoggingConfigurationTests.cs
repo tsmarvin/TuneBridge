@@ -1,4 +1,5 @@
-using BridgeBeats.Domain.Types.Constants;
+using System.Text.RegularExpressions;
+using BridgeBeats.Contracts.Constants;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 using Serilog.Core;
@@ -10,7 +11,7 @@ namespace BridgeBeats.Tests.Unit;
 /// Tests Serilog file logging and OpenTelemetry configuration.
 /// </summary>
 [TestClass]
-public class LoggingConfigurationTests {
+public partial class LoggingConfigurationTests {
     [TestMethod]
     public void ConfigureSerilog_WithDefaultFilePath_ShouldCreateLogger( ) {
         // Arrange
@@ -216,7 +217,7 @@ public class LoggingConfigurationTests {
                     if (sourceContext != null &&
                         (sourceContext.Contains( "Microsoft.AspNetCore.Mvc" ) ||
                          sourceContext.Contains( "Microsoft.AspNetCore.Routing" ))) {
-                        
+
                         // Check ActionName property first (most reliable indicator)
                         if (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue )) {
                             string actionName = actionValue.ToString( );
@@ -290,7 +291,7 @@ public class LoggingConfigurationTests {
             string logContent = File.ReadAllText( logPath );
 
             // Successful health check (200 OK at Information level) should be filtered out
-            int healthOccurrences = System.Text.RegularExpressions.Regex.Matches( logContent, "/health" ).Count;
+            int healthOccurrences = s_HealthEndpoint( ).Count( logContent );
 
             // Should only have 1 occurrence (the warning for 500 error), not 2
             Assert.AreEqual( 1, healthOccurrences,
@@ -345,4 +346,7 @@ public class LoggingConfigurationTests {
             }
         }
     }
+
+    [GeneratedRegex( "/health" )]
+    private static partial Regex s_HealthEndpoint( );
 }

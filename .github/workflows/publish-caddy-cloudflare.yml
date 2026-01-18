@@ -6,12 +6,12 @@ on:
   push:
     branches: [ main, develop ]
     paths:
-      - 'Dockerfile.caddy'
+      - 'containers/Dockerfile.caddy'
       - '.github/workflows/publish-caddy-cloudflare.yml'
   pull_request:
     branches: [ main, develop ]
     paths:
-      - 'Dockerfile.caddy'
+      - 'containers/Dockerfile.caddy'
       - '.github/workflows/publish-caddy-cloudflare.yml'
   workflow_dispatch:
 
@@ -73,7 +73,7 @@ jobs:
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
         with:
           context: .
-          file: ./Dockerfile.caddy
+          file: ./containers/Dockerfile.caddy
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max

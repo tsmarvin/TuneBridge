@@ -1,6 +1,6 @@
-using BridgeBeats.Domain.Contracts.DTOs;
-using BridgeBeats.Domain.Implementations.Utilities;
-using BridgeBeats.Domain.Types.Enums;
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Infrastructure.Storage;
 using FluentAssertions;
 
 namespace BridgeBeats.Tests.Unit {
@@ -21,7 +21,7 @@ namespace BridgeBeats.Tests.Unit {
             } );
 
             // Act
-            string? rkey = RecordKeyGenerator.GenerateRkey( result );
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
             _ = rkey.Should( ).NotBeNull( );
@@ -41,7 +41,7 @@ namespace BridgeBeats.Tests.Unit {
             } );
 
             // Act
-            string? rkey = RecordKeyGenerator.GenerateRkey( result );
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
             _ = rkey.Should( ).NotBeNull( );
@@ -81,7 +81,7 @@ namespace BridgeBeats.Tests.Unit {
             } );
 
             // Act
-            string? rkey = RecordKeyGenerator.GenerateRkey( result );
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Assert
             _ = rkey.Should( ).NotBeNull( );
