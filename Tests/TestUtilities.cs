@@ -71,14 +71,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program> {
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
         _ = builder.UseEnvironment( "Testing" );
 
-        // Ensure Spotify credentials are set for tests (required for service registration)
-        if (!_configData.TryGetValue( "BridgeBeats:SpotifyClientId", out string? spotifyClientId ) || string.IsNullOrWhiteSpace( spotifyClientId )) {
-            _configData["BridgeBeats:SpotifyClientId"] = "test";
-        }
-        if (!_configData.TryGetValue( "BridgeBeats:SpotifyClientSecret", out string? spotifyClientSecret ) || string.IsNullOrWhiteSpace( spotifyClientSecret )) {
-            _configData["BridgeBeats:SpotifyClientSecret"] = "test";
-        }
-
         _ = builder.ConfigureAppConfiguration( ( context, config ) => {
             // Remove any existing in-memory collections to avoid conflicts
             IConfigurationSource[] existingSources = config.Sources.ToArray();
