@@ -178,7 +178,7 @@ namespace BridgeBeats.Providers.AppleMusic {
         private static partial Regex AppleMusicLink( );
 
         private static readonly Regex s_albumSongIdRegex = AlbumSongId();
-        [GeneratedRegex( @"\?i\=(?<songId>.*)", RegexOptions.Compiled )]
+        [GeneratedRegex( @"\?i\=(?<songId>[^&]*)", RegexOptions.Compiled )]
         private static partial Regex AlbumSongId( );
 
         private static readonly Regex s_validAlbum = ValidAlbumURI();
