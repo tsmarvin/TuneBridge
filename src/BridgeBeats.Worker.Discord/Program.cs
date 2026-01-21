@@ -48,7 +48,9 @@ if (useWorkerServices) {
     // When not using worker services, we can't determine enabled providers
     // The Discord worker requires at least one provider to function
     throw new InvalidOperationException(
-        "Discord worker requires UseWorkerServices to be true and at least one provider worker to be enabled."
+        "Discord worker requires UseWorkerServices to be true and at least one provider worker to be enabled. " +
+        "Set BridgeBeats:Workers:UseWorkerServices=true in configuration and ensure at least one provider worker " +
+        "(Spotify, Apple Music, or Tidal) is configured and running."
     );
 }
 
