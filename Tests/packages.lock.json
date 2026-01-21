@@ -1001,6 +1001,15 @@
           "Microsoft.Extensions.Primitives": "10.0.2"
         }
       },
+      "Microsoft.Extensions.Options.DataAnnotations": {
+        "type": "Transitive",
+        "resolved": "10.0.2",
+        "contentHash": "4+3rxbvA7CNW+zUmLGHOPo1ZAQmJwipQG7vQsf4PzESD65vJzGF4TaIJ1lCWdANmKKlMAfNu+CuJvR3KsSshKg==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.2",
+          "Microsoft.Extensions.Options": "10.0.2"
+        }
+      },
       "Microsoft.Extensions.Primitives": {
         "type": "Transitive",
         "resolved": "10.0.2",
@@ -1205,6 +1214,18 @@
         "type": "Transitive",
         "resolved": "1.0.0-alpha.455",
         "contentHash": "RHV5OdZ8O5CtDBMjIVS3Aq4JcRtiwSnTtYWbuPUllJUK0nQ+MSSBK2OWnc1iQ/7nu1VWMseh2WgExl5nXMDHLw=="
+      },
+      "NetCord.Hosting": {
+        "type": "Transitive",
+        "resolved": "1.0.0-alpha.455",
+        "contentHash": "hvyyKoZ5DggyCU9aPkNzGsYwtn7QnPlqOj7gYORWdxp6KVkI/M/vYPjlflnh8oRFh2hOD5U1HN8l/y6Tv9n6Aw==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Binder": "10.0.2",
+          "Microsoft.Extensions.Hosting.Abstractions": "10.0.2",
+          "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.2",
+          "Microsoft.Extensions.Options.DataAnnotations": "10.0.2",
+          "NetCord": "1.0.0-alpha.455"
+        }
       },
       "Newtonsoft.Json": {
         "type": "Transitive",
@@ -1634,6 +1655,15 @@
         "dependencies": {
           "BridgeBeats.Infrastructure": "[1.0.0, )",
           "BridgeBeats.ServiceDefaults": "[1.0.0, )"
+        }
+      },
+      "bridgebeats.worker.discord": {
+        "type": "Project",
+        "dependencies": {
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "BridgeBeats.ServiceDefaults": "[1.0.0, )",
+          "BridgeBeats.Services": "[1.0.0, )",
+          "NetCord.Hosting": "[1.0.0-alpha.455, )"
         }
       },
       "bridgebeats.worker.sagacoordinator": {
