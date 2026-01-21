@@ -27,6 +27,24 @@ public sealed class MediaLinkResult {
     /// </summary>
     public DateTime LookedUpAt { get; init; }
 
+    /// <summary>
+    /// Indicates whether this result is partial (some providers are still pending).
+    /// </summary>
+    /// <remarks>
+    /// When <c>true</c>, <see cref="RateLimitedProviders"/> contains the providers
+    /// that were rate-limited and will be retried later. The result may be updated
+    /// when those providers complete.
+    /// </remarks>
+    public bool IsPartial { get; set; }
+
+    /// <summary>
+    /// The list of providers that were rate-limited when this result was generated.
+    /// </summary>
+    /// <remarks>
+    /// Only populated when <see cref="IsPartial"/> is <c>true</c>.
+    /// </remarks>
+    public List<SupportedProviders>? RateLimitedProviders { get; set; }
+
     /// <inheritdoc/>
     public override bool Equals( object? obj ) {
         if (

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BridgeBeats.Worker.Spotify</RootNamespace>
+    <UserSecretsId>bridgebeats-apphost</UserSecretsId>
+    <RepositoryUrl>https://github.com/tsmarvin/BridgeBeats</RepositoryUrl>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DebugType>embedded</DebugType>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Services\BridgeBeats.Services.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,364 @@
+using System.Text;
+using System.Text.Json;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Providers.AppleMusic;
+using BridgeBeats.Providers.Common;
+using BridgeBeats.Providers.Spotify;
+using BridgeBeats.Providers.Tidal;
+using idunno.AtProto;
+using idunno.AtProto.Jetstream;
+using idunno.Bluesky;
+using idunno.Bluesky.Embed;
+using idunno.Bluesky.Feed;
+using idunno.Bluesky.RichText;
+
+namespace BridgeBeats.Worker.JetStreamWatcher;
+
+/// <summary>
+/// Background service that monitors the Bluesky Jetstream for music links
+/// and submits them to provider queues for processing at bulk priority.
+/// </summary>
+/// <remarks>
+/// This service is fire-and-forget: it extracts music links from Bluesky posts,
+/// validates them against known provider patterns, and enqueues them for processing
+/// without waiting for results. Deduplication is handled by the queue infrastructure.
+/// </remarks>
+public sealed class JetStreamWatcherService : BackgroundService {
+    private readonly ILogger<JetStreamWatcherService> _logger;
+    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="JetStreamWatcherService"/> class.
+    /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="queueResolver">The provider queue resolver for submitting lookup requests.</param>
+    public JetStreamWatcherService(
+        ILogger<JetStreamWatcherService> logger,
+        IProviderQueueResolver<QueuedLookupRequest> queueResolver
+    ) {
+        _logger = logger;
+        _queueResolver = queueResolver;
+    }
+
+    /// <summary>
+    /// The main execution loop that connects to Jetstream and processes incoming events.
+    /// </summary>
+    /// <param name="stoppingToken">The cancellation token for graceful shutdown.</param>
+    protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
+        Console.OutputEncoding = Encoding.UTF8;
+        _logger.LogInformation( "BridgeBeats Jetstream Watcher starting..." );
+        _logger.LogInformation( "Watching for music links in Bluesky posts, reposts, and quote posts." );
+
+        while (!stoppingToken.IsCancellationRequested) {
+            try {
+                await RunJetstreamConnectionAsync( stoppingToken );
+            } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                // Graceful shutdown - expected
+                break;
+            } catch (Exception ex) {
+                _logger.LogError( ex, "Jetstream connection error. Reconnecting in 5 seconds..." );
+                await Task.Delay( TimeSpan.FromSeconds( 5 ), stoppingToken )
+                    .ConfigureAwait( ConfigureAwaitOptions.SuppressThrowing );
+            }
+        }
+
+        _logger.LogInformation( "JetStream Watcher stopped." );
+    }
+
+    /// <summary>
+    /// Establishes and maintains a connection to the Jetstream.
+    /// </summary>
+    private async Task RunJetstreamConnectionAsync( CancellationToken stoppingToken ) {
+        // Create Bluesky agent for fetching posts (no authentication required for public posts)
+        using BlueskyAgent blueskyAgent = new( );
+
+        // Create jetstream instance, filtered to watch for Bluesky posts and reposts
+        using AtProtoJetstream jetStream = new( collections: ["app.bsky.feed.post", "app.bsky.feed.repost"] );
+
+        jetStream.RecordReceived += async ( sender, e ) => {
+            if (e.ParsedEvent is AtJetstreamCommitEvent commitEvent &&
+                string.Equals( commitEvent.Commit.Operation, "create", StringComparison.OrdinalIgnoreCase ) &&
+                commitEvent.Commit.Record is not null
+            ) {
+                try {
+                    string collection = commitEvent.Commit.Collection.ToString( );
+
+                    if (collection == "app.bsky.feed.post") {
+                        await ProcessPostAsync( commitEvent.Commit.Record, blueskyAgent, stoppingToken );
+                    } else if (collection == "app.bsky.feed.repost") {
+                        await ProcessRepostAsync( commitEvent.Commit.Record, blueskyAgent, stoppingToken );
+                    }
+                } catch (JsonException) {
+                    // Skip records that can't be deserialized - this is expected for some record types
+                } catch (OperationCanceledException) {
+                    // Shutdown in progress
+                } catch (Exception ex) {
+                    // Log unexpected errors but continue processing
+                    if (!IsExpectedParsingError( ex )) {
+                        _logger.LogDebug( ex, "Error processing Jetstream record" );
+                    }
+                }
+            }
+        };
+
+        // Connect to jetstream
+        await jetStream.ConnectAsync( cancellationToken: stoppingToken );
+        _logger.LogInformation( "Connected to Jetstream." );
+
+        // Keep running until cancellation or disconnect
+        while (!stoppingToken.IsCancellationRequested && jetStream.IsConnected) {
+            await Task.Delay( 500, stoppingToken ).ConfigureAwait( ConfigureAwaitOptions.SuppressThrowing );
+        }
+
+        await jetStream.CloseAsync( );
+        _logger.LogInformation( "Disconnected from Jetstream." );
+    }
+
+    /// <summary>
+    /// Determines if an exception is an expected parsing error that shouldn't be logged.
+    /// </summary>
+    private static bool IsExpectedParsingError( Exception ex ) {
+        return ex.Message.StartsWith( "The value cannot be an empty string", StringComparison.Ordinal ) ||
+               ex.Message.StartsWith( "Value cannot be null.", StringComparison.Ordinal ) ||
+               ex.Message.StartsWith( "images.Count", StringComparison.Ordinal ) ||
+               ex.Message.StartsWith( "features.Count", StringComparison.Ordinal );
+    }
+
+    /// <summary>
+    /// Processes a post record, extracting links from facets, embedded content, and quote posts.
+    /// </summary>
+    private async Task ProcessPostAsync(
+        JsonDocument record,
+        BlueskyAgent blueskyAgent,
+        CancellationToken cancellationToken
+    ) {
+        Post? post = JsonSerializer.Deserialize<Post>(
+            record,
+            BlueskyServer.BlueskyJsonSerializerOptions
+        );
+
+        if (post is null) {
+            return;
+        }
+
+        // Extract links from facets (inline links in text)
+        await ExtractLinksFromFacetsAsync( post.Facets, cancellationToken );
+
+        // Extract links from embedded external content (link cards)
+        if (post.EmbeddedRecord is EmbeddedExternal embeddedExternal) {
+            await ProcessEmbeddedExternalAsync( embeddedExternal, cancellationToken );
+        }
+
+        // Handle quote posts (posts with EmbeddedRecord pointing to another post)
+        if (post.EmbeddedRecord is EmbeddedRecord embeddedRecord) {
+            await ProcessQuotePostAsync( embeddedRecord, blueskyAgent, cancellationToken );
+        }
+
+        // Handle embedded record with media (quote post with images/video)
+        if (post.EmbeddedRecord is EmbeddedRecordWithMedia embeddedRecordWithMedia) {
+            await ProcessQuotePostAsync( embeddedRecordWithMedia.Record, blueskyAgent, cancellationToken );
+        }
+    }
+
+    /// <summary>
+    /// Processes a repost record by fetching the original post and extracting links.
+    /// </summary>
+    private async Task ProcessRepostAsync(
+        JsonDocument record,
+        BlueskyAgent blueskyAgent,
+        CancellationToken cancellationToken
+    ) {
+        JsonElement repostSubject = record.RootElement.GetProperty( "subject" );
+        if (!repostSubject.TryGetProperty( "uri", out JsonElement uriElement )) {
+            return;
+        }
+
+        string repostedUriString = uriElement.GetString( ) ?? string.Empty;
+        if (string.IsNullOrEmpty( repostedUriString )) {
+            return;
+        }
+
+        // Fetch the original post to extract links
+        AtUri repostedUri = new( repostedUriString );
+        AtProtoHttpResult<PostView> postResult = await blueskyAgent.GetPostView( repostedUri, cancellationToken: cancellationToken );
+
+        if (postResult.Succeeded && postResult.Result is not null) {
+            PostView postView = postResult.Result;
+
+            // Extract links from the original post's facets
+            await ExtractLinksFromFacetsAsync( postView.Record.Facets, cancellationToken );
+
+            // Extract links from embedded external content
+            if (postView.Record.EmbeddedRecord is EmbeddedExternal embeddedExternal) {
+                await ProcessEmbeddedExternalAsync( embeddedExternal, cancellationToken );
+            }
+        }
+    }
+
+    /// <summary>
+    /// Processes a quote post by fetching the quoted post and extracting links.
+    /// </summary>
+    private async Task ProcessQuotePostAsync(
+        EmbeddedRecord embeddedRecord,
+        BlueskyAgent blueskyAgent,
+        CancellationToken cancellationToken
+    ) {
+        if (embeddedRecord.Record?.Uri is null) {
+            return;
+        }
+
+        // Fetch the quoted post to extract links
+        AtProtoHttpResult<PostView> postResult = await blueskyAgent.GetPostView( embeddedRecord.Record.Uri, cancellationToken: cancellationToken );
+
+        if (postResult.Succeeded && postResult.Result is not null) {
+            PostView postView = postResult.Result;
+
+            // Extract links from the quoted post's facets
+            await ExtractLinksFromFacetsAsync( postView.Record.Facets, cancellationToken );
+
+            // Extract links from embedded external content
+            if (postView.Record.EmbeddedRecord is EmbeddedExternal embeddedExternal) {
+                await ProcessEmbeddedExternalAsync( embeddedExternal, cancellationToken );
+            }
+        }
+    }
+
+    /// <summary>
+    /// Extracts HTTPS links from post facets.
+    /// </summary>
+    private async Task ExtractLinksFromFacetsAsync(
+        ICollection<Facet>? facets,
+        CancellationToken cancellationToken
+    ) {
+        if (facets is null) {
+            return;
+        }
+
+        foreach (Facet facet in facets) {
+            foreach (FacetFeature feature in facet.Features) {
+                if (feature is LinkFacetFeature linkFeature &&
+                    linkFeature.Uri is not null &&
+                    linkFeature.Uri.ToString( ).StartsWith( "https://", StringComparison.OrdinalIgnoreCase )
+                ) {
+                    string link = linkFeature.Uri.ToString( );
+                    await EnqueueMusicLinkAsync( link, cancellationToken );
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Processes an embedded external link card.
+    /// </summary>
+    private async Task ProcessEmbeddedExternalAsync(
+        EmbeddedExternal embeddedExternal,
+        CancellationToken cancellationToken
+    ) {
+        if (embeddedExternal.External.Uri.ToString( ).StartsWith( "https://", StringComparison.OrdinalIgnoreCase )) {
+            string link = embeddedExternal.External.Uri.ToString( );
+            await EnqueueMusicLinkAsync( link, cancellationToken );
+        }
+    }
+
+    /// <summary>
+    /// Validates a link against known music provider patterns and enqueues it for processing.
+    /// </summary>
+    /// <param name="link">The URL to process.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    private async Task EnqueueMusicLinkAsync( string link, CancellationToken cancellationToken ) {
+        // Normalize link by removing query parameters (except Apple Music song IDs)
+        string normalizedLink = NormalizeMusicLink( link );
+
+        // Try to identify and enqueue to the appropriate provider queue
+        (SupportedProviders? provider, LookupRequestType lookupType, bool isAlbum) = await IdentifyProviderAsync( normalizedLink );
+
+        if (provider is null) {
+            // Not a recognized music link - skip silently
+            return;
+        }
+
+        // Create the lookup request
+        QueuedLookupRequest request = new( ) {
+            RequestId = Guid.NewGuid( ).ToString( "N" ),
+            Provider = provider.Value,
+            LookupType = lookupType,
+            LookupValue = normalizedLink,
+            SagaId = GenerateSagaId( normalizedLink ),
+            IsAlbum = isAlbum
+        };
+
+        // Fire-and-forget: enqueue at bulk priority
+        try {
+            IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( provider.Value );
+            await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
+        } catch (Exception ex) {
+            _logger.LogDebug( ex, "Failed to enqueue music link: {Link}", normalizedLink );
+        }
+    }
+
+    /// <summary>
+    /// Normalizes a music link by stripping unnecessary query parameters.
+    /// </summary>
+    private static string NormalizeMusicLink( string link ) {
+        // For most links, remove everything after &
+        // Exception: Apple Music links need to preserve ?i= for song IDs within albums
+        if (link.Contains( "music.apple.com", StringComparison.OrdinalIgnoreCase )) {
+            // Keep ?i= query parameter for Apple Music song IDs
+            return link;
+        }
+
+        // Strip tracking/share parameters from other providers
+        int ampersandIndex = link.IndexOf( '&' );
+        return ampersandIndex > 0 ? link[..ampersandIndex] : link;
+    }
+
+    /// <summary>
+    /// Identifies the music provider for a link and determines the lookup type.
+    /// </summary>
+    /// <returns>
+    /// A tuple of (provider, lookupType, isAlbum) or (null, _, _) if not a recognized music link.
+    /// </returns>
+    private static async Task<(SupportedProviders? provider, LookupRequestType lookupType, bool isAlbum)> IdentifyProviderAsync(
+        string link
+    ) {
+        string normalizedLink = LinkNormalizer.Normalize( link );
+
+        // Check Spotify (including short links)
+        if (normalizedLink.Contains( "spotify.link", StringComparison.OrdinalIgnoreCase )) {
+            // Short link - worker will resolve it
+            return (SupportedProviders.Spotify, LookupRequestType.UriLookup, false);
+        }
+
+        (bool success, SpotifyEntity kind, string id) = await SpotifyLinkParser.TryParseUriAsync( link );
+        if (success && !string.IsNullOrEmpty( id )) {
+            bool isAlbum = kind == SpotifyEntity.Album;
+            return (SupportedProviders.Spotify, LookupRequestType.UriLookup, isAlbum);
+        }
+
+        // Check Tidal
+        if (TidalLinkParser.TryParseUri( normalizedLink, out TidalEntity tidalKind, out string tidalId ) &&
+            !string.IsNullOrEmpty( tidalId )
+        ) {
+            bool isAlbum = tidalKind == TidalEntity.Album;
+            return (SupportedProviders.Tidal, LookupRequestType.UriLookup, isAlbum);
+        }
+
+        // Check Apple Music
+        if (AppleMusicLinkParser.TryParseUri( normalizedLink, out _, out _, out bool appleIsAlbum )) {
+            return (SupportedProviders.AppleMusic, LookupRequestType.UriLookup, appleIsAlbum);
+        }
+
+        return (null, default, false);
+    }
+
+    /// <summary>
+    /// Generates a saga ID based on the normalized link for deduplication.
+    /// </summary>
+    private static string GenerateSagaId( string link ) {
+        string normalized = LinkNormalizer.Normalize( link );
+        return $"jetstream:{normalized.GetHashCode( ):X8}:{DateTimeOffset.UtcNow:yyyyMMddHHmm}";
+    }
+}

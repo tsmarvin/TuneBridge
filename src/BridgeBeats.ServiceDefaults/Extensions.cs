@@ -1,4 +1,5 @@
 using System.Reflection;
+using BridgeBeats.Contracts.Exceptions;
 using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
@@ -6,6 +7,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Polly;
+using Polly.Retry;
 
 namespace BridgeBeats.ServiceDefaults;
 
@@ -24,20 +26,33 @@ public static class Extensions {
         _ = builder.Services.AddServiceDiscovery( );
         _ = builder.Services.AddHealthChecks( );
 
+        // Read resilience configuration with defaults
+        int maxRetryAttempts = builder.Configuration.GetValue( "BridgeBeats:Resilience:MaxRetryAttempts", 5 );
+        int totalTimeoutMinutes = builder.Configuration.GetValue( "BridgeBeats:Resilience:TotalTimeoutMinutes", 10 );
+        int attemptTimeoutSeconds = builder.Configuration.GetValue( "BridgeBeats:Resilience:AttemptTimeoutSeconds", 10 );
+
         _ = builder.Services.ConfigureHttpClientDefaults( http => {
             _ = http.AddServiceDiscovery( );
 
             IHttpStandardResiliencePipelineBuilder resilienceBuilder = http.AddStandardResilienceHandler( options => {
                 options.Retry.BackoffType = DelayBackoffType.Exponential;
                 options.Retry.UseJitter = true;
-                options.Retry.MaxRetryAttempts = 5;
+                options.Retry.MaxRetryAttempts = maxRetryAttempts;
                 options.Retry.Delay = TimeSpan.FromSeconds( 3 );
                 options.Retry.MaxDelay = TimeSpan.FromMinutes( 5 );
                 options.Retry.ShouldRetryAfterHeader = true;
                 options.Retry.DisableForUnsafeHttpMethods( );
 
-                options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( 10 );
-                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 10 );
+                // Exclude RetryAfterExceededException from retry logic - this is thrown intentionally
+                // to fail fast when Retry-After headers exceed the configured threshold
+                Func<RetryPredicateArguments<HttpResponseMessage>, ValueTask<bool>> originalShouldHandle = options.Retry.ShouldHandle;
+                options.Retry.ShouldHandle = args => {
+                    // If the exception is RetryAfterExceededException, do not retry
+                    return args.Outcome.Exception is RetryAfterExceededException ? ValueTask.FromResult( false ) : originalShouldHandle( args );
+                };
+
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( totalTimeoutMinutes );
+                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( attemptTimeoutSeconds );
             } );
 
             _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {
@@ -139,7 +154,9 @@ public static class Extensions {
                     .SetResourceBuilder( resourceBuilder )
                     .AddAspNetCoreInstrumentation( )
                     .AddHttpClientInstrumentation( )
-                    .AddRuntimeInstrumentation( );
+                    .AddRuntimeInstrumentation( )
+                    .AddMeter( "BridgeBeats.Queue" )
+                    .AddMeter( "BridgeBeats.Providers" );
 
                 if (hasValidEndpoint) {
                     _ = metrics.AddOtlpExporter( otlpOptions => {

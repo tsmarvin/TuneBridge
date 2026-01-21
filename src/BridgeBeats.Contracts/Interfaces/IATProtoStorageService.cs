@@ -24,4 +24,18 @@ public interface IATProtoStorageService {
     /// <returns>The MediaLinkResult, or null if not found.</returns>
     Task<MediaLinkResult?> GetMediaLinkResultAsync( string recordUri );
 
+    /// <summary>
+    /// Lists all MediaLinkResult records from the ATProto PDS collection.
+    /// Uses unauthenticated access for public records with cursor-based pagination.
+    /// </summary>
+    /// <param name="pdsUri">The PDS URI to query (e.g., "https://pds.bridgebeats.link").</param>
+    /// <param name="userDid">The DID of the account whose collection to query.</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>An async enumerable of tuples containing the AT-URI and MediaLinkResult for each record.</returns>
+    IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ListAllRecordsAsync(
+        Uri pdsUri,
+        string userDid,
+        CancellationToken cancellationToken = default
+    );
+
 }

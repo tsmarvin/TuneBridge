@@ -149,6 +149,32 @@ namespace BridgeBeats.Providers.Spotify {
             => TracksURI
                 .Replace( "{id}", trackId );
 
+        /// <summary>
+        /// Constructs an API URI for bulk track lookup by IDs.
+        /// </summary>
+        /// <param name="trackIds">The collection of Spotify track IDs (max 50).</param>
+        /// <returns>The API URI for bulk track lookup.</returns>
+        /// <remarks>
+        /// Endpoint: GET /tracks?ids={comma-separated-ids}
+        /// Maximum: 50 track IDs per request
+        /// Documentation: https://developer.spotify.com/documentation/web-api/reference/get-several-tracks
+        /// </remarks>
+        public static string GetBulkTracksUri( IEnumerable<string> trackIds )
+            => BulkTracksURI.Replace( "{ids}", string.Join( ",", trackIds ) );
+
+        /// <summary>
+        /// Constructs an API URI for bulk album lookup by IDs.
+        /// </summary>
+        /// <param name="albumIds">The collection of Spotify album IDs (max 20).</param>
+        /// <returns>The API URI for bulk album lookup.</returns>
+        /// <remarks>
+        /// Endpoint: GET /albums?ids={comma-separated-ids}
+        /// Maximum: 20 album IDs per request
+        /// Documentation: https://developer.spotify.com/documentation/web-api/reference/get-multiple-albums
+        /// </remarks>
+        public static string GetBulkAlbumsUri( IEnumerable<string> albumIds )
+            => BulkAlbumsURI.Replace( "{ids}", string.Join( ",", albumIds ) );
+
 
         private const string TracksIsrcURI = "search?q=isrc:{isrc}&type=track";
         private const string AlbumsUpcURI = "search?q=upc:{upc}&type=album";
@@ -157,6 +183,8 @@ namespace BridgeBeats.Providers.Spotify {
         private const string AlbumTracksURI = "albums/{id}/tracks";
         private const string AlbumsURI = "albums/{id}";
         private const string TracksURI = "tracks/{id}";
+        private const string BulkTracksURI = "tracks?ids={ids}";
+        private const string BulkAlbumsURI = "albums?ids={ids}";
 
     }
 }

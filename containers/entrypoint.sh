@@ -54,6 +54,12 @@ RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 # Logging configuration
 LOG_FILE_PATH="${LOG_FILE_PATH:-/app/data/logs/bridgebeats-.log}"
 
+# Resilience configuration
+RESILIENCE_MAX_RETRY_AFTER_SECONDS="${RESILIENCE_MAX_RETRY_AFTER_SECONDS:-120}"
+RESILIENCE_MAX_RETRY_ATTEMPTS="${RESILIENCE_MAX_RETRY_ATTEMPTS:-5}"
+RESILIENCE_TOTAL_TIMEOUT_MINUTES="${RESILIENCE_TOTAL_TIMEOUT_MINUTES:-10}"
+RESILIENCE_ATTEMPT_TIMEOUT_SECONDS="${RESILIENCE_ATTEMPT_TIMEOUT_SECONDS:-10}"
+
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 
@@ -94,7 +100,19 @@ cat > /app/appsettings.json <<EOF
     "BaseUrl": "$BASEURL",
     "LogFilePath": "$(escape_bs "$LOG_FILE_PATH")",
     "CardCacheExpirationHours": $CARD_CACHE_EXPIRATION_HOURS,
-    "CardCacheCleanupInterval": $CARD_CACHE_CLEANUP_INTERVAL
+    "CardCacheCleanupInterval": $CARD_CACHE_CLEANUP_INTERVAL,
+    "Resilience": {
+      "MaxRetryAfterSeconds": $RESILIENCE_MAX_RETRY_AFTER_SECONDS,
+      "MaxRetryAttempts": $RESILIENCE_MAX_RETRY_ATTEMPTS,
+      "TotalTimeoutMinutes": $RESILIENCE_TOTAL_TIMEOUT_MINUTES,
+      "AttemptTimeoutSeconds": $RESILIENCE_ATTEMPT_TIMEOUT_SECONDS
+    },
+    "Workers": {
+      "UseWorkerServices": true,
+      "SpotifyWorkerEnabled": $( [ -n "$SPOTIFY_CLIENT_ID" ] && [ -n "$SPOTIFY_CLIENT_SECRET" ] && echo "true" || echo "false" ),
+      "AppleMusicWorkerEnabled": $( [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_KEY_ID" ] && [ -n "$APPLE_KEY_PATH" ] && echo "true" || echo "false" ),
+      "TidalWorkerEnabled": $( [ -n "$TIDAL_CLIENT_ID" ] && [ -n "$TIDAL_CLIENT_SECRET" ] && echo "true" || echo "false" )
+    }
   },
   "Logging": {
     "LogLevel": {
@@ -117,6 +135,34 @@ cat > /app/appsettings.json <<EOF
 }
 EOF
 
-# 3) Launch the BridgeBeats application
-echo "Starting BridgeBeats application..."
-exec "/app/BridgeBeats"
+# 3) Set up environment variables for Aspire AppHost parameters
+# These are read by the AppHost to configure workers
+export Parameters__SpotifyClientId="$SPOTIFY_CLIENT_ID"
+export Parameters__SpotifyClientSecret="$SPOTIFY_CLIENT_SECRET"
+export Parameters__AppleTeamId="$APPLE_TEAM_ID"
+export Parameters__AppleKeyId="$APPLE_KEY_ID"
+export Parameters__AppleKeyPath="$APPLE_KEY_PATH"
+export Parameters__TidalClientId="$TIDAL_CLIENT_ID"
+export Parameters__TidalClientSecret="$TIDAL_CLIENT_SECRET"
+export Parameters__DiscordToken="$DISCORD_TOKEN"
+export Parameters__ATProtoIdentifier="$ATPROTO_IDENTIFIER"
+export Parameters__ATProtoPassword="$ATPROTO_PASSWORD"
+export Parameters__ATProtoUserDID="$ATPROTO_USER_DID"
+export Parameters__ApiKeySalt="$API_KEY_SALT"
+export Parameters__NodeNumber="$NODE_NUMBER"
+export Parameters__BaseUrl="$BASEURL"
+export Parameters__RateLimitRequestsPerHour="$RATE_LIMIT_REQUESTS_PER_HOUR"
+export Parameters__CacheDays="$CACHE_DAYS"
+export Parameters__LinkCacheConnectionString="$LINK_CACHE_CONNECTION_STRING"
+export Parameters__IdentityConnectionString="$IDENTITY_CONNECTION_STRING"
+export Parameters__LogFilePath="$LOG_FILE_PATH"
+export Parameters__CardCacheExpirationHours="$CARD_CACHE_EXPIRATION_HOURS"
+export Parameters__CardCacheCleanupInterval="$CARD_CACHE_CLEANUP_INTERVAL"
+export Parameters__ResilienceMaxRetryAfterSeconds="$RESILIENCE_MAX_RETRY_AFTER_SECONDS"
+export Parameters__ResilienceMaxRetryAttempts="$RESILIENCE_MAX_RETRY_ATTEMPTS"
+export Parameters__ResilienceTotalTimeoutMinutes="$RESILIENCE_TOTAL_TIMEOUT_MINUTES"
+export Parameters__ResilienceAttemptTimeoutSeconds="$RESILIENCE_ATTEMPT_TIMEOUT_SECONDS"
+
+# 4) Launch the BridgeBeats AppHost (orchestrator)
+echo "Starting BridgeBeats AppHost..."
+exec "/app/apphost/BridgeBeats.AppHost"

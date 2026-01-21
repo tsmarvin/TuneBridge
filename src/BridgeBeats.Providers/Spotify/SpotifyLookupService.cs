@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
@@ -115,6 +116,187 @@ namespace BridgeBeats.Providers.Spotify {
 
             using JsonDocument jsonDoc = JsonDocument.Parse(body);
             return ParseSpotifyResponse( jsonDoc.RootElement, requestKey, kind, true );
+        }
+
+        /// <summary>
+        /// Performs a bulk lookup of tracks by their Spotify IDs.
+        /// </summary>
+        /// <param name="trackIds">The collection of Spotify track IDs to look up (max 50).</param>
+        /// <returns>
+        /// A dictionary mapping track ID to lookup result.
+        /// Null values indicate the track was not found.
+        /// </returns>
+        /// <remarks>
+        /// Uses a separate rate limit endpoint key (<see cref="SpotifyConstants.BulkTracksEndpoint"/>)
+        /// from single-track lookups to allow independent rate limit tracking.
+        /// </remarks>
+        /// <exception cref="ArgumentException">Thrown when more than 50 track IDs are provided.</exception>
+        public async Task<Dictionary<string, MusicLookupResult?>> GetTracksByIdsAsync( IEnumerable<string> trackIds ) {
+            List<string> idList = trackIds.ToList( );
+
+            if (idList.Count == 0) {
+                return [];
+            }
+
+            if (idList.Count > SpotifyConstants.MaxTracksPerBatchLookup) {
+                throw new ArgumentException(
+                    $"Cannot request more than {SpotifyConstants.MaxTracksPerBatchLookup} tracks at once. Received {idList.Count}.",
+                    nameof( trackIds )
+                );
+            }
+
+            string requestUri = SpotifyLinkParser.GetBulkTracksUri( idList );
+            string? body = await NewBulkMusicApiRequest( requestUri, SpotifyConstants.BulkTracksEndpoint );
+
+            Dictionary<string, MusicLookupResult?> results = [];
+
+            if (string.IsNullOrWhiteSpace( body )) {
+                // Request failed - return empty dictionary (caller should requeue)
+                return results;
+            }
+
+            try {
+                SpotifyTracksResponse? response = JsonSerializer.Deserialize<SpotifyTracksResponse>( body, SerializerOptions );
+
+                if (response?.Tracks == null) {
+                    Logger.LogError( "Failed to deserialize bulk tracks response from Spotify." );
+                    return results;
+                }
+
+                // Map results back to IDs - position in response matches position in request
+                for (int i = 0; i < idList.Count && i < response.Tracks.Count; i++) {
+                    SpotifyTrack? track = response.Tracks[i];
+                    if (track == null) {
+                        // Track not found - null indicates not found
+                        results[idList[i]] = null;
+                    } else {
+                        results[idList[i]] = new MusicLookupResult {
+                            Artist = track.Artists is { Count: > 0 } ? track.Artists[0].Name : string.Empty,
+                            Title = track.Name,
+                            ExternalId = track.ExternalIds?.Isrc ?? string.Empty,
+                            URL = track.ExternalUrls?.Spotify ?? string.Empty,
+                            ArtUrl = track.Album?.Images is { Count: > 0 } ? track.Album.Images[0].Url : string.Empty,
+                            IsAlbum = false,
+                            IsPrimary = true
+                        };
+                    }
+                }
+            } catch (Exception ex) {
+                Logger.LogError( ex, "An error occurred while parsing bulk tracks response from Spotify." );
+                Logger.LogTrace( "{ResponseBody}", body );
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Performs a bulk lookup of albums by their Spotify IDs.
+        /// </summary>
+        /// <param name="albumIds">The collection of Spotify album IDs to look up (max 20).</param>
+        /// <returns>
+        /// A dictionary mapping album ID to lookup result.
+        /// Null values indicate the album was not found.
+        /// </returns>
+        /// <remarks>
+        /// Uses a separate rate limit endpoint key (<see cref="SpotifyConstants.BulkAlbumsEndpoint"/>)
+        /// from single-album lookups to allow independent rate limit tracking.
+        /// </remarks>
+        /// <exception cref="ArgumentException">Thrown when more than 20 album IDs are provided.</exception>
+        public async Task<Dictionary<string, MusicLookupResult?>> GetAlbumsByIdsAsync( IEnumerable<string> albumIds ) {
+            List<string> idList = albumIds.ToList( );
+
+            if (idList.Count == 0) {
+                return [];
+            }
+
+            if (idList.Count > SpotifyConstants.MaxAlbumsPerBatchLookup) {
+                throw new ArgumentException(
+                    $"Cannot request more than {SpotifyConstants.MaxAlbumsPerBatchLookup} albums at once. Received {idList.Count}.",
+                    nameof( albumIds )
+                );
+            }
+
+            string requestUri = SpotifyLinkParser.GetBulkAlbumsUri( idList );
+            string? body = await NewBulkMusicApiRequest( requestUri, SpotifyConstants.BulkAlbumsEndpoint );
+
+            Dictionary<string, MusicLookupResult?> results = [];
+
+            if (string.IsNullOrWhiteSpace( body )) {
+                // Request failed - return empty dictionary (caller should requeue)
+                return results;
+            }
+
+            try {
+                SpotifyAlbumsResponse? response = JsonSerializer.Deserialize<SpotifyAlbumsResponse>( body, SerializerOptions );
+
+                if (response?.Albums == null) {
+                    Logger.LogError( "Failed to deserialize bulk albums response from Spotify." );
+                    return results;
+                }
+
+                // Map results back to IDs - position in response matches position in request
+                for (int i = 0; i < idList.Count && i < response.Albums.Count; i++) {
+                    SpotifyAlbum? album = response.Albums[i];
+                    if (album == null) {
+                        // Album not found - null indicates not found
+                        results[idList[i]] = null;
+                    } else {
+                        results[idList[i]] = new MusicLookupResult {
+                            Artist = album.Artists is { Count: > 0 } ? album.Artists[0].Name : string.Empty,
+                            Title = album.Name,
+                            ExternalId = album.ExternalIds?.Upc ?? string.Empty,
+                            URL = album.ExternalUrls?.Spotify ?? string.Empty,
+                            ArtUrl = album.Images is { Count: > 0 } ? album.Images[0].Url : string.Empty,
+                            IsAlbum = true,
+                            IsPrimary = true
+                        };
+                    }
+                }
+            } catch (Exception ex) {
+                Logger.LogError( ex, "An error occurred while parsing bulk albums response from Spotify." );
+                Logger.LogTrace( "{ResponseBody}", body );
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Performs an API request for bulk lookup operations with a custom endpoint key for rate limiting.
+        /// </summary>
+        /// <param name="requestUri">The API endpoint URI.</param>
+        /// <param name="endpointKey">The endpoint key for rate limit tracking.</param>
+        /// <returns>The response body, or null if the request failed.</returns>
+        private async Task<string?> NewBulkMusicApiRequest( string requestUri, string endpointKey ) {
+            using HttpClient client = await CreateAuthenticatedClientAsync( );
+            HttpResponseMessage response = await client.GetAsync( requestUri );
+
+            if (response.IsSuccessStatusCode) {
+                return await response.Content.ReadAsStringAsync( );
+            }
+
+            // Handle rate limiting with custom endpoint key
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests) {
+                TimeSpan retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds( 30 );
+                Logger.LogWarning(
+                    "Rate limited on bulk endpoint {Endpoint}, retry after {RetryAfter}",
+                    endpointKey,
+                    retryAfter
+                );
+                // Use the standard threshold - bulk requests are always thrown for requeue
+                throw new Contracts.Exceptions.RetryAfterExceededException(
+                    retryAfter,
+                    TimeSpan.Zero, // Threshold is 0 since bulk requests are always queued
+                    new Uri( client.BaseAddress!, requestUri ),
+                    SupportedProviders.Spotify
+                );
+            }
+
+            Logger.LogWarning(
+                "Bulk API request to {Endpoint} failed with status {StatusCode}",
+                endpointKey,
+                response.StatusCode
+            );
+            return null;
         }
 
         private protected override async Task<HttpClient> CreateAuthenticatedClientAsync( ) {

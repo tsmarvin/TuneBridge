@@ -1,6 +1,8 @@
 using System.Text.Json;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.Services.LinkResolver;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,23 +26,39 @@ namespace BridgeBeats.Services {
             HashSet<SupportedProviders> enabledProviders,
             bool useCaching
         ) {
-            _ = services.AddTransient<IMediaLinkService>( s => {
-                Dictionary<SupportedProviders, IMusicLookupService> providerServices = GetEnabledProviderServices( enabledProviders, s );
-
-                // Use caching service if ATProto is configured, otherwise use default service
-                return useCaching
-                    ? new CachingMediaLinkService(
-                        providerServices,
+            if (useCaching) {
+                // Register the lookup orchestrator
+                _ = services.AddSingleton<ILookupOrchestrator>( s =>
+                    new LookupOrchestrator(
                         s.GetRequiredService<IMediaLinkCacheRepository>( ),
-                        s.GetRequiredService<ILogger<CachingMediaLinkService>>( ),
-                        s.GetRequiredService<JsonSerializerOptions>( )
+                        s.GetRequiredService<IRequestDeduplicator>( ),
+                        s.GetRequiredService<ISagaStateManager>( ),
+                        s.GetRequiredService<IProviderQueueResolver<QueuedLookupRequest>>( ),
+                        s.GetRequiredService<IATProtoStorageService>( ),
+                        enabledProviders,
+                        s.GetRequiredService<ILogger<LookupOrchestrator>>( )
                     )
-                    : new DefaultMediaLinkService(
+                );
+
+                // Register CachingMediaLinkService that delegates to the orchestrator
+                _ = services.AddTransient<IMediaLinkService>( s =>
+                    new CachingMediaLinkService(
+                        s.GetRequiredService<ILookupOrchestrator>( ),
+                        s.GetRequiredService<ILogger<CachingMediaLinkService>>( )
+                    )
+                );
+            } else {
+                // Use default (non-caching) service
+                _ = services.AddTransient<IMediaLinkService>( s => {
+                    Dictionary<SupportedProviders, IMusicLookupService> providerServices = GetEnabledProviderServices( enabledProviders, s );
+
+                    return new DefaultMediaLinkService(
                         providerServices,
                         s.GetRequiredService<ILogger<DefaultMediaLinkService>>( ),
                         s.GetRequiredService<JsonSerializerOptions>( )
                     );
-            } );
+                } );
+            }
 
             return services;
         }

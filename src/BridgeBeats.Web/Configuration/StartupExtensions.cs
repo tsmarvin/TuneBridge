@@ -4,12 +4,15 @@ using AspNetCore.Authentication.ApiKey;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
 using BridgeBeats.Infrastructure.Cache;
 using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.Providers;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Services;
+using BridgeBeats.Services.Statistics;
 using BridgeBeats.Web.Discord;
 using BridgeBeats.Web.Middleware;
 using Microsoft.AspNetCore.Identity;
@@ -18,6 +21,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi;
 using Serilog;
+using StackExchange.Redis;
 
 namespace BridgeBeats.Web.Configuration {
 
@@ -46,6 +50,10 @@ namespace BridgeBeats.Web.Configuration {
             }
 
             _ = builder.AddServiceDefaults( );
+
+            // Register Redis client via Aspire (provides IConnectionMultiplexer)
+            // In tests, CustomWebApplicationFactory provides the connection string via Testcontainers
+            builder.AddRedisClient( "redis" );
 
             _ = builder.WebHost.ConfigureBridgeBeatsServices(
                 builder.Services,
@@ -94,6 +102,11 @@ namespace BridgeBeats.Web.Configuration {
             // Common singletons and caching
             _ = services.AddSingleton( new JsonSerializerOptions { WriteIndented = true } );
             _ = services.AddMemoryCache( );
+
+            // Configure QueueSettings from configuration (with defaults)
+            _ = services.Configure<QueueSettings>(
+                config.GetSection( "BridgeBeats:Queue" )
+            );
 
             ConfigureDatabases( services, settings );
             ConfigureIdentity( services );
@@ -279,40 +292,36 @@ namespace BridgeBeats.Web.Configuration {
                 .AddEnvironmentVariables( );
 
         /// <summary>
-        /// Initializes the SQLite database for caching if ATProto PDS is configured.
+        /// Validates Redis connectivity for caching. Redis is registered via Aspire.
         /// </summary>
         /// <param name="serviceProvider">The service provider to use for resolving services.</param>
         private static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
+            Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Web.Configuration.StartupExtensions" );
             try {
-                // Create a scope to resolve services properly
-                using IServiceScope scope = serviceProvider.CreateScope( );
-                IDbContextFactory<MediaLinkCacheDbContext>? factory = scope.ServiceProvider.GetService<IDbContextFactory<MediaLinkCacheDbContext>>( );
-                if (factory is null) { return; }
+                // Validate Redis connection (fail-fast if unavailable)
+                IConnectionMultiplexer? redis = serviceProvider.GetService<IConnectionMultiplexer>( );
+                if (redis is null) {
+                    logger.LogWarning( "BridgeBeats: Redis not configured - caching will be unavailable" );
+                    return;
+                }
 
-                using MediaLinkCacheDbContext dbContext = factory.CreateDbContext( );
-                dbContext.Database.Migrate( );
-                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Web.Configuration.StartupExtensions" );
-                logger.LogInformation( "BridgeBeats: SQLite cache database initialized successfully" );
+                if (!redis.IsConnected) {
+                    throw new InvalidOperationException( "Redis connection is not established. Check Redis configuration and connectivity." );
+                }
+
+                logger.LogInformation( "BridgeBeats: Redis cache connection established successfully" );
             } catch (Exception ex) {
-                Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Web.Configuration.StartupExtensions" );
-                logger.LogError( ex, "Failed to initialize SQLite cache database" );
+                logger.LogError( ex, "Failed to initialize Redis cache connection" );
+                throw; // Fail-fast on Redis unavailability
             }
         }
 
         private static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
-            // Register DbContext factory for on-demand instance creation
-            // Controllers and services will use IDbContextFactory<ApplicationDbContext> to create scoped instances when needed
+            // Register DbContext factory for Identity only (SQLite)
+            // Media link cache is now handled by Redis (see ConfigureATProtoIfEnabled)
             _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
                 options.UseSqlite(
                     settings.IdentityConnectionString,
-                    b => b.MigrationsAssembly( "BridgeBeats.Infrastructure" )
-                )
-            );
-
-            // Register a factory for MediaLinkCacheDbContext to be consumed from singleton services safely
-            _ = services.AddDbContextFactory<MediaLinkCacheDbContext>( options =>
-                options.UseSqlite(
-                    settings.LinkCacheConnectionString,
                     b => b.MigrationsAssembly( "BridgeBeats.Infrastructure" )
                 )
             );
@@ -414,17 +423,54 @@ namespace BridgeBeats.Web.Configuration {
                 )
             );
 
-            // Register cache service as singleton using DbContextFactory so it is root-safe
-            _ = services.AddSingleton<IMediaLinkCacheRepository>( s => new MediaLinkCacheRepository(
-                s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
+            // Register Redis-based cache service (requires IConnectionMultiplexer from Aspire)
+            _ = services.AddSingleton<IMediaLinkCacheRepository>( s => new RedisMediaLinkCache(
+                s.GetRequiredService<IConnectionMultiplexer>( ),
                 s.GetRequiredService<IATProtoStorageService>( ),
-                s.GetRequiredService<ILogger<MediaLinkCacheRepository>>( ),
+                s.GetRequiredService<ILogger<RedisMediaLinkCache>>( ),
                 settings.CacheDays,
                 settings.ATProtoUserDID
             ) );
+
+            // Register statistics service for the Statistics page
+            Uri pdsUri = new( settings.ATProtoPdsUri ?? "https://pds.bridgebeats.link" );
+            StatisticsSettings statsSettings = new(
+                pdsUri,
+                settings.ATProtoUserDID,
+                TimeSpan.FromHours( 6 ) // Cache statistics for 6 hours
+            );
+            _ = services.AddSingleton( statsSettings );
+            _ = services.AddSingleton<IStatisticsService>( s => new StatisticsService(
+                s.GetRequiredService<IATProtoStorageService>( ),
+                statsSettings,
+                s.GetRequiredService<ILogger<StatisticsService>>( )
+            ) );
+
+            // Register queue infrastructure (deduplicator, rate limit tracker, saga manager)
+            // and provider-specific queues for the LookupOrchestrator
+            _ = services.AddQueueInfrastructure( );
+            _ = services.AddAllProviderQueues<QueuedLookupRequest>( );
+
+            // Register SQLite to Redis migration service (runs once at startup if SQLite DB exists)
+            _ = services.AddSqliteToRedisMigration(
+                settings.LinkCacheConnectionString,
+                settings.CacheDays,
+                settings.ATProtoUserDID
+            );
         }
 
         private static HashSet<SupportedProviders> RegisterMusicProviders( IServiceCollection services, AppSettings settings ) {
+            // When UseWorkerServices is true, register HTTP clients that call worker services
+            // instead of direct provider implementations
+            if (settings.Workers.UseWorkerServices) {
+                return services.AddMusicProviderHttpClients(
+                    settings.Workers.SpotifyWorkerEnabled,
+                    settings.Workers.AppleMusicWorkerEnabled,
+                    settings.Workers.TidalWorkerEnabled
+                );
+            }
+
+            // Otherwise, register direct provider implementations (legacy mode for testing/standalone)
             return services.AddMusicProviders(
                 settings.AppleTeamId,
                 settings.AppleKeyId,
@@ -432,7 +478,8 @@ namespace BridgeBeats.Web.Configuration {
                 settings.SpotifyClientId,
                 settings.SpotifyClientSecret,
                 settings.TidalClientId,
-                settings.TidalClientSecret
+                settings.TidalClientSecret,
+                settings.Resilience.MaxRetryAfterSeconds
             );
         }
 

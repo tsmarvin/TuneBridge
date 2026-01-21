@@ -1,4 +1,5 @@
 using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Providers.Common;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BridgeBeats.Providers.AppleMusic {
@@ -16,13 +17,15 @@ namespace BridgeBeats.Providers.AppleMusic {
         /// <param name="keyId">The Apple Music API Key ID.</param>
         /// <param name="keyPath">The path to the .p8 private key file.</param>
         /// <param name="enabledProviders">The set of enabled providers to update.</param>
+        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
         /// <returns>True if Apple Music services were registered; otherwise false.</returns>
         public static bool AddAppleMusicServices(
             this IServiceCollection services,
             string? teamId,
             string? keyId,
             string? keyPath,
-            HashSet<SupportedProviders> enabledProviders
+            HashSet<SupportedProviders> enabledProviders,
+            int maxRetryAfterSeconds = 120
         ) {
             // Check if Apple Music credentials are provided
             if (string.IsNullOrWhiteSpace( teamId ) ||
@@ -49,7 +52,9 @@ namespace BridgeBeats.Providers.AppleMusic {
 
             _ = services.AddHttpClient( "musickit-api", c => {
                 c.BaseAddress = new Uri( "https://api.music.apple.com/v1/catalog/" );
-            } );
+            } )
+            .AddHttpMessageHandler( ProviderServiceExtensions.CreateRetryAfterLimitHandlerFactory( maxRetryAfterSeconds ) )
+            .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "applemusic" ) );
 
             _ = services.AddSingleton( new AppleJwtHandler( teamId, keyId, keyContents ) );
             _ = services.AddTransient<AppleMusicLookupService>( );

@@ -3,15 +3,27 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <UserSecretsId>bridgebeats-apphost</UserSecretsId>
+    <RepositoryUrl>https://github.com/tsmarvin/BridgeBeats</RepositoryUrl>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>bridgebeats-apphost</UserSecretsId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DebugType>embedded</DebugType>
+    <Deterministic>true</Deterministic>
   </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.Docker" Version="13.1.0-preview.1.25616.3" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.1.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\BridgeBeats.Web\BridgeBeats.Web.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.Spotify\BridgeBeats.Worker.Spotify.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.AppleMusic\BridgeBeats.Worker.AppleMusic.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.Tidal\BridgeBeats.Worker.Tidal.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.SagaCoordinator\BridgeBeats.Worker.SagaCoordinator.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.JetStreamWatcher\BridgeBeats.Worker.JetStreamWatcher.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.CacheBootstrap\BridgeBeats.Worker.CacheBootstrap.csproj" />
   </ItemGroup>
 </Project>

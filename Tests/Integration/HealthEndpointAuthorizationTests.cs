@@ -13,6 +13,7 @@ public class HealthEndpointAuthorizationTests {
     private static HttpClient? s_client;
 
     [ClassInitialize]
+    [Obsolete]
     public static async Task Setup( TestContext testContext ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -29,7 +30,13 @@ public class HealthEndpointAuthorizationTests {
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = null;
+        configData["BridgeBeats:DiscordToken"] = "";
+        // Disable worker services mode - use direct provider implementations
+        configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
+        // Force ATProto credentials to empty to disable caching service
+        configData["BridgeBeats:ATProtoIdentifier"] = "";
+        configData["BridgeBeats:ATProtoPassword"] = "";
+        configData["BridgeBeats:ATProtoUserDID"] = "";
 
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
@@ -70,8 +77,8 @@ public class HealthEndpointAuthorizationTests {
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
-        Assert.IsTrue( content.Contains( "healthy" ) );
-        Assert.IsTrue( content.Contains( "timestamp" ) );
+        Assert.Contains( "healthy", content );
+        Assert.Contains( "timestamp", content );
     }
 
     /// <summary>

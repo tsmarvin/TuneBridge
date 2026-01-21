@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
@@ -266,5 +267,47 @@ public class ATProtoStorageService(
 
         return !string.IsNullOrWhiteSpace( providerString )
             && s_providerStringToEnum.Value.TryGetValue( providerString, out provider );
+    }
+
+    /// <inheritdoc/>
+    public async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ListAllRecordsAsync(
+        Uri pdsUri,
+        string userDid,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default
+    ) {
+        // Use unauthenticated agent for public record access
+        BlueskyAgent unauthenticatedAgent = new( );
+        Did repo = new( userDid );
+        string? cursor = null;
+
+        do {
+            cancellationToken.ThrowIfCancellationRequested( );
+
+            AtProtoHttpResult<PagedReadOnlyCollection<AtProtoRepositoryRecord<MediaLinkResultRecord>>> listResult =
+                await unauthenticatedAgent.ListRecords<MediaLinkResultRecord>(
+                    repo: repo,
+                    collection: s_mediaLinkResultCollection,
+                    limit: 100,
+                    cursor: cursor,
+                    service: pdsUri
+                );
+
+            if (!listResult.Succeeded || listResult.Result is null) {
+                string errorMsg = listResult.AtErrorDetail?.Message ?? $"HTTP {listResult.StatusCode}";
+                logger.LogError( "Failed to list records from ATProto PDS: {Error}", errorMsg );
+                yield break;
+            }
+
+            foreach (AtProtoRepositoryRecord<MediaLinkResultRecord> record in listResult.Result) {
+                if (record.Value is not null) {
+                    MediaLinkResult? converted = ConvertFromRecord( record.Value );
+                    if (converted is not null) {
+                        yield return (record.Uri.ToString( ), converted);
+                    }
+                }
+            }
+
+            cursor = listResult.Result.Cursor;
+        } while (!string.IsNullOrEmpty( cursor ));
     }
 }

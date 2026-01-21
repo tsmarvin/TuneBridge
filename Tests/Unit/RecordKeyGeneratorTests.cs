@@ -64,7 +64,7 @@ namespace BridgeBeats.Tests.Unit {
 
             // Assert
             Assert.IsNotNull( rkey );
-            Assert.IsTrue( rkey.StartsWith( "metadata:" ) );
+            Assert.StartsWith( "metadata:", rkey );
         }
 
         [TestMethod]
@@ -143,7 +143,7 @@ namespace BridgeBeats.Tests.Unit {
             string cardId = RecordKeyGenerator.GenerateCardId( rkey );
 
             // Assert
-            Assert.IsTrue( cardId.Length <= 32, "Card ID should not exceed 32 characters" );
+            Assert.IsLessThanOrEqualTo( 32, cardId.Length, "Card ID should not exceed 32 characters" );
             Assert.IsTrue( cardId.All( c => char.IsLetterOrDigit( c ) || c == '-' ), "Card ID should be URL-safe" );
             Assert.IsTrue( cardId.All( c => !char.IsUpper( c ) ), "Card ID should be lowercase" );
         }
@@ -203,7 +203,7 @@ namespace BridgeBeats.Tests.Unit {
 
             // Act & Assert
             ArgumentException ex = Assert.ThrowsExactly<ArgumentException>( ( ) => RecordKeyGenerator.GenerateRkey( result ) );
-            Assert.IsTrue( ex.Message.Contains( "both Title and Artist are empty" ), "Exception message should contain expected text" );
+            Assert.Contains( "both Title and Artist are empty", ex.Message, "Exception message should contain expected text" );
         }
 
         [TestMethod]

@@ -66,6 +66,56 @@
           "OpenTelemetry.Api": "[1.14.0, 2.0.0)"
         }
       },
+      "DnsClient": {
+        "type": "Transitive",
+        "resolved": "1.8.0",
+        "contentHash": "RRwtaCXkXWsx0mmsReGDqCbRLtItfUbkRJlet1FpdciVhyMGKcPd57T1+8Jki9ojHlq9fntVhXQroOOgRak8DQ=="
+      },
+      "Duende.IdentityModel": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "8i+Tv4c38LgwoTRKbD0+MqtnNNDSVA83G6JkjGHgC4/7jH0nxZBP0RBhH8xTsvNQ5Pv9zrg+TR8rmtWK9HDOPg=="
+      },
+      "Duende.IdentityModel.OidcClient": {
+        "type": "Transitive",
+        "resolved": "7.0.0",
+        "contentHash": "kCgnw4kkE889lY5NzBfnyMh6Ao8I0+UiNmFUx2+c9vYdh5nOsk6UafUQsytoIGqDbtrNoq5a0V/uY+o3fDc+8Q==",
+        "dependencies": {
+          "Duende.IdentityModel": "8.0.0"
+        }
+      },
+      "Duende.IdentityModel.OidcClient.Extensions": {
+        "type": "Transitive",
+        "resolved": "7.0.0",
+        "contentHash": "A6vkgMqyaOso+WIJ72FwIW/uGcJYe04XENNMJbd605ZM3M+fONydzK3tXkErhjv1mmU40hj4unKUukGy+JPGMA==",
+        "dependencies": {
+          "Duende.IdentityModel.OidcClient": "7.0.0",
+          "System.IdentityModel.Tokens.Jwt": "[8.0.1, 9.0.0)"
+        }
+      },
+      "idunno.AtProto": {
+        "type": "Transitive",
+        "resolved": "1.4.0",
+        "contentHash": "sCd4QLsAbhztnWFCV62RuG+lcQf1+PrR6UAz92ZJoLsYipG9k4XxZznThqZFujqSN+qhzzJl4TrXQxDZoTh0jg==",
+        "dependencies": {
+          "DnsClient": "1.8.0",
+          "Duende.IdentityModel.OidcClient": "7.0.0",
+          "Duende.IdentityModel.OidcClient.Extensions": "7.0.0",
+          "Microsoft.IdentityModel.JsonWebTokens": "8.15.0",
+          "PeterO.Cbor": "4.5.5",
+          "SimpleBase": "5.6.0",
+          "ZstdSharp.Port": "0.8.7",
+          "idunno.AtProto.Types": "1.4.0"
+        }
+      },
+      "idunno.AtProto.Types": {
+        "type": "Transitive",
+        "resolved": "1.4.0",
+        "contentHash": "rcu45B4llwtb3uwOFTfh5c2lI+0VMgEoIL9KCelRnTfqPp6ogjkbr4CuXY2ppeuDBuestMiYy3xo3SuB3LYvdA==",
+        "dependencies": {
+          "SimpleBase": "5.6.0"
+        }
+      },
       "Microsoft.Extensions.AmbientMetadata.Application": {
         "type": "Transitive",
         "resolved": "10.2.0",
@@ -128,6 +178,35 @@
           "Microsoft.Extensions.Compliance.Abstractions": "10.2.0"
         }
       },
+      "Microsoft.IdentityModel.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.15.0",
+        "contentHash": "e/DApa1GfxUqHSBHcpiQg8yaghKAvFVBQFcWh25jNoRobDZbduTUACY8bZ54eeGWXvimGmEDdF0zkS5Dq16XPQ=="
+      },
+      "Microsoft.IdentityModel.JsonWebTokens": {
+        "type": "Transitive",
+        "resolved": "8.15.0",
+        "contentHash": "3513f5VzvOZy3ELd42wGnh1Q3e83tlGAuXFSNbENpgWYoAhLLzgFtd5PiaOPGAU0gqKhYGVzKavghLUGfX3HQg==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Tokens": "8.15.0"
+        }
+      },
+      "Microsoft.IdentityModel.Logging": {
+        "type": "Transitive",
+        "resolved": "8.15.0",
+        "contentHash": "1gJLjhy0LV2RQMJ9NGzi5Tnb2l+c37o8D8Lrk2mrvmb6OQHZ7XJstd/XxvncXgBpad4x9CGXdipbZzJJCXKyAg==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Abstractions": "8.15.0"
+        }
+      },
+      "Microsoft.IdentityModel.Tokens": {
+        "type": "Transitive",
+        "resolved": "8.15.0",
+        "contentHash": "zUE9ysJXBtXlHHRtcRK3Sp8NzdCI1z/BRDTXJQ2TvBoI0ENRtnufYIep0O5TSCJRJGDwwuLTUx+l/bEYZUxpCA==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Logging": "8.15.0"
+        }
+      },
       "OpenTelemetry": {
         "type": "Transitive",
         "resolved": "1.14.0",
@@ -149,6 +228,25 @@
           "OpenTelemetry.Api": "1.14.0"
         }
       },
+      "PeterO.Cbor": {
+        "type": "Transitive",
+        "resolved": "4.5.5",
+        "contentHash": "9fMcLg2SUm9ri1j3gVPYxk6+Ev4l4wu93bYwFG1tvntg1Qy4m0rFDdxStG88XR/W4DggOtBXfPVkC3bLF10nqw==",
+        "dependencies": {
+          "PeterO.Numbers": "1.8.2",
+          "PeterO.URIUtility": "1.0.0"
+        }
+      },
+      "PeterO.Numbers": {
+        "type": "Transitive",
+        "resolved": "1.8.2",
+        "contentHash": "d+A5KLoWbwOTpvubPaGXLgCzANE00jXmsT+yneHwLe2OlobBBFLaIHyoDwmekuHM17z9hU++RF6mL+zZ2x69nA=="
+      },
+      "PeterO.URIUtility": {
+        "type": "Transitive",
+        "resolved": "1.0.0",
+        "contentHash": "fpRTBsYACMp7NvTECauYRomubWTC3vUNw4hMXdIedP8ctBGK6tea9HOJwE+qVzis6MZYkL3LIs8qeY3rc6Jdlw=="
+      },
       "Polly.Core": {
         "type": "Transitive",
         "resolved": "8.4.2",
@@ -168,6 +266,31 @@
         "contentHash": "ehTImQ/eUyO07VYW2WvwSmU9rRH200SKJ/3jku9rOkyWE0A2JxNFmAVms8dSn49QLSjmjFRRSgfNyOgr/2PSmA==",
         "dependencies": {
           "Polly.Core": "8.4.2"
+        }
+      },
+      "SimpleBase": {
+        "type": "Transitive",
+        "resolved": "5.6.0",
+        "contentHash": "1nNr/DCvcxTrQzN1gUnYzFpLkbAKcFYhF/aMK34jVxrPUjMwL/J3KNEp89M0WaW2k9FUpacxRe4BmjFFjOv3zw=="
+      },
+      "System.IdentityModel.Tokens.Jwt": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "GJw3bYkWpOgvN3tJo5X4lYUeIFA2HD293FPUhKmp7qxS+g5ywAb34Dnd3cDAFLkcMohy5XTpoaZ4uAHuw0uSPQ==",
+        "dependencies": {
+          "Microsoft.IdentityModel.JsonWebTokens": "8.0.1",
+          "Microsoft.IdentityModel.Tokens": "8.0.1"
+        }
+      },
+      "ZstdSharp.Port": {
+        "type": "Transitive",
+        "resolved": "0.8.7",
+        "contentHash": "+4VpxvzEKaHpfTjsLRMhQHx6brqGBkIA+fjUM3wUW8ZoWpPFAeKrO2Nf4uZDeBjjzNDNxSRvLQH4b3S9Ku4JJQ=="
+      },
+      "bridgebeats.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "idunno.AtProto": "[1.4.0, )"
         }
       }
     }

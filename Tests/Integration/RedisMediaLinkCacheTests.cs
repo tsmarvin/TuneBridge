@@ -1,0 +1,332 @@
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Infrastructure.Cache;
+using BridgeBeats.Infrastructure.Utilities;
+using Microsoft.Extensions.Logging;
+using Moq;
+using StackExchange.Redis;
+
+namespace BridgeBeats.Tests.Integration;
+
+/// <summary>
+/// Integration tests for <see cref="RedisMediaLinkCache"/> using the shared Redis container.
+/// Requires Docker to be running on the host machine.
+/// </summary>
+[TestClass]
+[TestCategory( "Integration" )]
+[TestCategory( "Docker" )]
+public class RedisMediaLinkCacheTests {
+
+    private static IConnectionMultiplexer? _redis;
+
+    private Mock<IATProtoStorageService> _mockAtProto = null!;
+    private Mock<ILogger<RedisMediaLinkCache>> _mockLogger = null!;
+    private RedisMediaLinkCache _cache = null!;
+
+    private const int CacheDays = 7;
+    private const string UserDID = "did:plc:testuser123";
+
+    [ClassInitialize]
+    [Obsolete]
+    public static async Task ClassInitialize( TestContext context ) {
+        SharedTestInfrastructure.RequireRedis( );
+        _redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
+    }
+
+    [ClassCleanup]
+    public static async Task ClassCleanup( ) {
+        if (_redis is not null) {
+            await _redis.CloseAsync( );
+            _redis.Dispose( );
+        }
+    }
+
+    [TestInitialize]
+    public async Task TestInitialize( ) {
+        // Clear only cache-related keys before each test
+        IDatabase db = _redis!.GetDatabase( );
+        IServer server = _redis.GetServer( _redis.GetEndPoints( )[0] );
+        await foreach (RedisKey key in server.KeysAsync( pattern: "lookup:*" )) {
+            _ = await db.KeyDeleteAsync( key );
+        }
+
+        _mockAtProto = new Mock<IATProtoStorageService>( );
+        _mockLogger = new Mock<ILogger<RedisMediaLinkCache>>( );
+
+        _cache = new RedisMediaLinkCache(
+            _redis,
+            _mockAtProto.Object,
+            _mockLogger.Object,
+            CacheDays,
+            UserDID
+        );
+    }
+
+    [TestMethod]
+    public async Task CacheResultAsync_StoresLookupKeys_InRedis( ) {
+        // Arrange
+        MediaLinkResult result = CreateTestResult( "USRC12345678", false );
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:USRC12345678";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        // Act
+        string cachedUri = await _cache.CacheResultAsync( result );
+
+        // Assert
+        Assert.AreEqual( recordUri, cachedUri );
+
+        // Verify ISRC key exists
+        IDatabase db = _redis!.GetDatabase( );
+        RedisValue isrcValue = await db.StringGetAsync( "lookup:isrc:USRC12345678" );
+        Assert.IsFalse( isrcValue.IsNullOrEmpty );
+        Assert.AreEqual( recordUri, isrcValue.ToString( ) );
+    }
+
+    [TestMethod]
+    public async Task TryGetCachedResultByISRCAsync_ReturnsResult_WhenCached( ) {
+        // Arrange
+        MediaLinkResult result = CreateTestResult( "ISRC999888777", false );
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:ISRC999888777";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        _ = await _cache.CacheResultAsync( result );
+
+        // Act
+        (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
+            await _cache.TryGetCachedResultByISRCAsync( "ISRC999888777" );
+
+        // Assert
+        Assert.IsNotNull( lookupResult );
+        Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
+        Assert.IsFalse( lookupResult.Value.isStale );
+    }
+
+    [TestMethod]
+    public async Task TryGetCachedResultByUPCAsync_ReturnsResult_WhenCached( ) {
+        // Arrange
+        MediaLinkResult result = CreateTestResult( "123456789012", true );
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/album:123456789012";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        _ = await _cache.CacheResultAsync( result );
+
+        // Act
+        (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
+            await _cache.TryGetCachedResultByUPCAsync( "123456789012" );
+
+        // Assert
+        Assert.IsNotNull( lookupResult );
+        Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
+    }
+
+    [TestMethod]
+    public async Task TryGetCachedResultAsync_ReturnsResult_WhenUrlCached( ) {
+        // Arrange
+        string inputUrl = "https://open.spotify.com/track/abc123";
+        MediaLinkResult result = CreateTestResult( "TESTISRC001", false );
+        result._inputLinks.Add( inputUrl );
+
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:TESTISRC001";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        _ = await _cache.CacheResultAsync( result );
+
+        // Act
+        (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
+            await _cache.TryGetCachedResultAsync( inputUrl );
+
+        // Assert
+        Assert.IsNotNull( lookupResult );
+        Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
+    }
+
+    [TestMethod]
+    public async Task TryGetCachedResultByCardIdAsync_ReturnsResult_WhenCached( ) {
+        // Arrange
+        MediaLinkResult result = CreateTestResult( "CARDTEST123", false );
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:CARDTEST123";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        _ = await _cache.CacheResultAsync( result );
+
+        // Get the card ID from the result
+        string rkey = BridgeBeats.Infrastructure.Storage.RecordKeyGenerator.GenerateRkey( result );
+        string cardId = BridgeBeats.Infrastructure.Storage.RecordKeyGenerator.GenerateCardId( rkey );
+
+        // Act
+        (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
+            await _cache.TryGetCachedResultByCardIdAsync( cardId );
+
+        // Assert
+        Assert.IsNotNull( lookupResult );
+        Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
+    }
+
+    [TestMethod]
+    public async Task TryGetCachedResultByProviderIdAsync_ReturnsResult_WhenCached( ) {
+        // Arrange
+        MediaLinkResult result = CreateTestResult( "PROVIDERTEST", false );
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:PROVIDERTEST";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        _ = await _cache.CacheResultAsync( result );
+
+        // Act
+        (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
+            await _cache.TryGetCachedResultByProviderIdAsync( "abc123", SupportedProviders.Spotify, false );
+
+        // Assert
+        Assert.IsNotNull( lookupResult );
+        Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
+    }
+
+    [TestMethod]
+    public async Task CacheResultAsync_CleansUpOldKeys_OnRefresh( ) {
+        // Arrange
+        MediaLinkResult result1 = CreateTestResult( "REFRESHTEST1", false );
+        result1._inputLinks.Add( "https://old.url/track1" );
+
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:REFRESHTEST1";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result1 );
+
+        _ = await _cache.CacheResultAsync( result1 );
+
+        // Verify old URL is cached
+        IDatabase db = _redis!.GetDatabase( );
+        string oldUrlHash = HashUtility.HashUrl( "https://old.url/track1" );
+        RedisValue oldValue = await db.StringGetAsync( $"lookup:url:{oldUrlHash}" );
+        Assert.IsFalse( oldValue.IsNullOrEmpty, "Old URL should be cached" );
+
+        // Now cache the same result with a different URL (simulating refresh)
+        MediaLinkResult result2 = CreateTestResult( "REFRESHTEST1", false );
+        result2._inputLinks.Add( "https://new.url/track1" );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result2 );
+
+        _ = await _cache.CacheResultAsync( result2 );
+
+        // Assert: Old URL key should be removed
+        RedisValue oldValueAfterRefresh = await db.StringGetAsync( $"lookup:url:{oldUrlHash}" );
+        Assert.IsTrue( oldValueAfterRefresh.IsNullOrEmpty, "Old URL key should be cleaned up on refresh" );
+
+        // Assert: New URL key should exist
+        string newUrlHash = HashUtility.HashUrl( "https://new.url/track1" );
+        RedisValue newValue = await db.StringGetAsync( $"lookup:url:{newUrlHash}" );
+        Assert.IsFalse( newValue.IsNullOrEmpty, "New URL should be cached" );
+    }
+
+    [TestMethod]
+    public async Task TryGetCachedResultByISRCAsync_ReturnsNull_WhenNotCached( ) {
+        // Act
+        (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
+            await _cache.TryGetCachedResultByISRCAsync( "NONEXISTENT123" );
+
+        // Assert
+        Assert.IsNull( lookupResult );
+    }
+
+    [TestMethod]
+    public async Task CheckRecordFreshness_ReturnsStale_WhenOlderThanCacheDays( ) {
+        // Arrange
+        // Create a result with LookedUpAt set to 8 days ago (older than CacheDays=7)
+        MediaLinkResult result = CreateTestResultWithDate( "STALETEST123", false, DateTime.UtcNow.AddDays( -8 ) );
+
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:STALETEST123";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        _ = await _cache.CacheResultAsync( result );
+
+        // Act
+        (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
+            await _cache.TryGetCachedResultByISRCAsync( "STALETEST123" );
+
+        // Assert
+        Assert.IsNotNull( lookupResult );
+        Assert.IsTrue( lookupResult.Value.isStale, "Result should be marked as stale" );
+    }
+
+    /// <summary>
+    /// Creates a test MediaLinkResult with the specified external ID.
+    /// </summary>
+    private static MediaLinkResult CreateTestResult( string externalId, bool isAlbum )
+        => CreateTestResultWithDate( externalId, isAlbum, DateTime.UtcNow );
+
+    /// <summary>
+    /// Creates a test MediaLinkResult with the specified external ID and LookedUpAt date.
+    /// </summary>
+    private static MediaLinkResult CreateTestResultWithDate( string externalId, bool isAlbum, DateTime lookedUpAt ) {
+        MediaLinkResult result = new( ) {
+            LookedUpAt = lookedUpAt
+        };
+
+        result.Results[SupportedProviders.Spotify] = new MusicLookupResult {
+            Artist = "Test Artist",
+            Title = isAlbum ? "Test Album" : "Test Track",
+            ExternalId = externalId,
+            URL = $"https://open.spotify.com/{(isAlbum ? "album" : "track")}/abc123",
+            ArtUrl = "https://example.com/art.jpg",
+            IsAlbum = isAlbum
+        };
+
+        return result;
+    }
+}

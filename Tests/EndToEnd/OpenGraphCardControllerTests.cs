@@ -16,6 +16,7 @@ public class WebLookupTests {
     private static HttpClient? s_client;
 
     [ClassInitialize]
+    [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -32,7 +33,14 @@ public class WebLookupTests {
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = null;
+        configData["BridgeBeats:DiscordToken"] = "";
+        // Disable worker services mode - use direct provider implementations
+        configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
+        // Force ATProto credentials to empty to disable caching service
+        // The caching service requires background workers that are not running in the test environment
+        configData["BridgeBeats:ATProtoIdentifier"] = "";
+        configData["BridgeBeats:ATProtoPassword"] = "";
+        configData["BridgeBeats:ATProtoUserDID"] = "";
 
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
@@ -116,6 +124,11 @@ public class WebLookupTests {
         JsonElement items = data.GetProperty( "items" );
         int itemCount = items.GetArrayLength( );
         Assert.IsGreaterThan( 0, itemCount, "Should have at least one item" );
+        if (itemCount < 2) {
+            Assert.Inconclusive( "Expected 2 items but got fewer - possibly due to rate limiting" );
+        } else {
+            Assert.AreEqual( 2, itemCount, "Should have exactly 2 items" );
+        }
     }
 
     [TestMethod]

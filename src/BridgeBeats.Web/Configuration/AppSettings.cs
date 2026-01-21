@@ -97,6 +97,11 @@ namespace BridgeBeats.Web.Configuration {
         public string ATProtoUserDID { get; set; } = string.Empty;
 
         /// <summary>
+        /// The ATProto PDS URI for public record access. Default is https://pds.bridgebeats.link.
+        /// </summary>
+        public string? ATProtoPdsUri { get; set; } = "https://pds.bridgebeats.link";
+
+        /// <summary>
         /// The number of days to cache MediaLinkResult lookups. Default is 7 days.
         /// </summary>
         public int CacheDays { get; set; } = 7;
@@ -126,5 +131,73 @@ namespace BridgeBeats.Web.Configuration {
         /// </summary>
         public int CardCacheCleanupInterval { get; set; } = 500;
 
+        /// <summary>
+        /// HTTP resilience configuration settings for music provider API requests.
+        /// </summary>
+        public ResilienceSettings Resilience { get; set; } = new( );
+
+        /// <summary>
+        /// Worker service configuration settings.
+        /// When UseWorkerServices is true, the web app communicates with provider workers via HTTP
+        /// instead of making direct API calls.
+        /// </summary>
+        public WorkerSettings Workers { get; set; } = new( );
+
+    }
+
+    /// <summary>
+    /// Configuration settings for worker services.
+    /// Controls whether the web app uses HTTP-based worker services for music provider lookups.
+    /// </summary>
+    public class WorkerSettings {
+        /// <summary>
+        /// Whether to use worker services for music provider lookups.
+        /// When true, the web app communicates with provider workers via HTTP.
+        /// When false, the web app makes direct API calls to music providers.
+        /// </summary>
+        public bool UseWorkerServices { get; set; }
+
+        /// <summary>
+        /// Whether the Spotify worker is enabled. Only used when UseWorkerServices is true.
+        /// </summary>
+        public bool SpotifyWorkerEnabled { get; set; }
+
+        /// <summary>
+        /// Whether the Apple Music worker is enabled. Only used when UseWorkerServices is true.
+        /// </summary>
+        public bool AppleMusicWorkerEnabled { get; set; }
+
+        /// <summary>
+        /// Whether the Tidal worker is enabled. Only used when UseWorkerServices is true.
+        /// </summary>
+        public bool TidalWorkerEnabled { get; set; }
+    }
+
+    /// <summary>
+    /// Configuration settings for HTTP resilience policies applied to music provider API requests.
+    /// These settings control retry behavior, timeouts, and rate limit handling.
+    /// </summary>
+    public class ResilienceSettings {
+        /// <summary>
+        /// Maximum Retry-After header value (in seconds) to honor before failing fast.
+        /// When a music provider returns HTTP 429 with a Retry-After value exceeding this threshold,
+        /// the request will fail immediately instead of waiting. Default is 120 seconds (2 minutes).
+        /// </summary>
+        public int MaxRetryAfterSeconds { get; set; } = 120;
+
+        /// <summary>
+        /// Maximum number of retry attempts for transient failures. Default is 5.
+        /// </summary>
+        public int MaxRetryAttempts { get; set; } = 5;
+
+        /// <summary>
+        /// Total timeout for all retry attempts combined, in minutes. Default is 10 minutes.
+        /// </summary>
+        public int TotalTimeoutMinutes { get; set; } = 10;
+
+        /// <summary>
+        /// Timeout for each individual request attempt, in seconds. Default is 10 seconds.
+        /// </summary>
+        public int AttemptTimeoutSeconds { get; set; } = 10;
     }
 }

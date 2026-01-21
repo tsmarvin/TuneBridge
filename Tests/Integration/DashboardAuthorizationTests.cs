@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,12 +19,13 @@ namespace BridgeBeats.Tests.Integration;
 /// </summary>
 [TestClass]
 public class DashboardAuthorizationTests : IDisposable {
-    private CustomWebApplicationFactory? _factory;
+    private DashboardTestWebApplicationFactory? _factory;
     private HttpClient? _client;
     private const string TestUserEmail = "dashboardtest@example.com";
     private const string TestUserPassword = "TestPassword123!";
 
     [TestInitialize]
+    [Obsolete]
     public async Task Setup( ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -40,9 +42,15 @@ public class DashboardAuthorizationTests : IDisposable {
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = null;
+        configData["BridgeBeats:DiscordToken"] = "";
+        // Disable worker services mode - use direct provider implementations
+        configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
+        // Force ATProto credentials to empty to disable caching service
+        configData["BridgeBeats:ATProtoIdentifier"] = "";
+        configData["BridgeBeats:ATProtoPassword"] = "";
+        configData["BridgeBeats:ATProtoUserDID"] = "";
 
-        _factory = new CustomWebApplicationFactory( configData );
+        _factory = new DashboardTestWebApplicationFactory( configData );
         _client = _factory.CreateClient( );
 
         // Initialize databases after services are configured
@@ -56,15 +64,22 @@ public class DashboardAuthorizationTests : IDisposable {
 
     public void Dispose( ) {
         _client?.Dispose( );
+        _client = null;
 
         // Clean up the in-memory database
+        // Note: We need to clean up before disposing the factory
         if (_factory != null) {
-            using IServiceScope scope = _factory.Services.CreateScope( );
-            ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
-            _ = dbContext.Database.EnsureDeleted( );
+            try {
+                using IServiceScope scope = _factory.Services.CreateScope( );
+                ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
+                _ = dbContext.Database.EnsureDeleted( );
+            } catch (ObjectDisposedException) {
+                // Factory was already disposed, nothing to clean up
+            }
+            _factory.Dispose( );
+            _factory = null;
         }
 
-        _factory?.Dispose( );
         GC.SuppressFinalize( this );
     }
 
@@ -160,26 +175,82 @@ public class DashboardAuthorizationTests : IDisposable {
         if (hasRole) {
             _ = await userManager.AddToRoleAsync( user, Roles.AspireDashboardAccess );
         }
+
+        // Store user info in the factory for the test auth handler
+        _factory.SetTestUser( user.Id, TestUserEmail, hasRole );
     }
 
     /// <summary>
-    /// Test authentication handler for integration tests.
+    /// Custom factory that adds test authentication scheme.
     /// </summary>
-    public class TestAuthHandler(
-        IOptionsMonitor<AuthenticationSchemeOptions> options,
-        ILoggerFactory logger,
-        UrlEncoder encoder
-    ) : AuthenticationHandler<AuthenticationSchemeOptions>( options, logger, encoder ) {
-        protected override Task<AuthenticateResult> HandleAuthenticateAsync( ) {
-            Claim[] claims = [
-                new Claim( ClaimTypes.Name, TestUserEmail ),
-                new Claim( ClaimTypes.Email, TestUserEmail )
-            ];
-            ClaimsIdentity identity = new( claims, "TestScheme" );
-            ClaimsPrincipal principal = new( identity );
-            AuthenticationTicket ticket = new( principal, "TestScheme" );
+    private sealed class DashboardTestWebApplicationFactory : CustomWebApplicationFactory {
+        private string? _testUserId;
+        private string? _testUserEmail;
+        private bool _testUserHasRole;
 
-            return Task.FromResult( AuthenticateResult.Success( ticket ) );
+        [Obsolete]
+        public DashboardTestWebApplicationFactory( Dictionary<string, string?>? configOverrides )
+            : base( configOverrides ) { }
+
+        public void SetTestUser( string userId, string email, bool hasRole ) {
+            _testUserId = userId;
+            _testUserEmail = email;
+            _testUserHasRole = hasRole;
+        }
+
+        protected override void ConfigureWebHost( IWebHostBuilder builder ) {
+            base.ConfigureWebHost( builder );
+
+            _ = builder.ConfigureServices( services => {
+                // Add test authentication scheme
+                _ = services.AddAuthentication( options => {
+                    options.DefaultAuthenticateScheme = "TestScheme";
+                    options.DefaultChallengeScheme = "TestScheme";
+                } )
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>( "TestScheme", _ => { } );
+
+                // Register this factory as a singleton so the handler can access it
+                _ = services.AddSingleton( this );
+            } );
+        }
+
+        /// <summary>
+        /// Test authentication handler for integration tests.
+        /// </summary>
+        private sealed class TestAuthHandler(
+            IOptionsMonitor<AuthenticationSchemeOptions> options,
+            ILoggerFactory logger,
+            UrlEncoder encoder,
+            DashboardTestWebApplicationFactory factory
+        ) : AuthenticationHandler<AuthenticationSchemeOptions>( options, logger, encoder ) {
+            protected override Task<AuthenticateResult> HandleAuthenticateAsync( ) {
+                // Only authenticate if Authorization header is present
+                if (!Request.Headers.ContainsKey( "Authorization" )) {
+                    return Task.FromResult( AuthenticateResult.NoResult( ) );
+                }
+
+                // Check if test user has been set
+                if (string.IsNullOrEmpty( factory._testUserId ) || string.IsNullOrEmpty( factory._testUserEmail )) {
+                    return Task.FromResult( AuthenticateResult.Fail( "No test user configured" ) );
+                }
+
+                List<Claim> claims = [
+                    new Claim( ClaimTypes.NameIdentifier, factory._testUserId ),
+                    new Claim( ClaimTypes.Name, factory._testUserEmail ),
+                    new Claim( ClaimTypes.Email, factory._testUserEmail )
+                ];
+
+                // Add role claim if the test user has the role
+                if (factory._testUserHasRole) {
+                    claims.Add( new Claim( ClaimTypes.Role, Roles.AspireDashboardAccess ) );
+                }
+
+                ClaimsIdentity identity = new( claims, "TestScheme" );
+                ClaimsPrincipal principal = new( identity );
+                AuthenticationTicket ticket = new( principal, "TestScheme" );
+
+                return Task.FromResult( AuthenticateResult.Success( ticket ) );
+            }
         }
     }
 }

@@ -13,7 +13,7 @@ namespace BridgeBeats.Providers.Tidal {
     /// "track", "album", or "artist", and {id} is a numeric identifier.
     /// This parser validates the URL structure and extracts both components for API calls.
     /// </remarks>
-    internal static partial class TidalLinkParser {
+    public static partial class TidalLinkParser {
 
         /// <summary>
         /// Parses a Tidal web URL to extract the entity type and Tidal ID. Validates URL structure

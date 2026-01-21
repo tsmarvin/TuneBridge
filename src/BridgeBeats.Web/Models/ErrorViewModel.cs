@@ -9,6 +9,11 @@ namespace BridgeBeats.Web.Models {
         public string? RequestId { get; set; }
 
         /// <summary>
+        /// An optional custom error message to display.
+        /// </summary>
+        public string? Message { get; set; }
+
+        /// <summary>
         /// Indicates whether the request ID should be displayed.
         /// </summary>
         public bool ShowRequestId => !string.IsNullOrEmpty( RequestId );

@@ -1,0 +1,410 @@
+using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Services.LinkResolver;
+using Microsoft.Extensions.Logging;
+using Moq;
+
+namespace BridgeBeats.Tests.Unit;
+
+/// <summary>
+/// Unit tests for <see cref="CachingMediaLinkService"/> to verify proper delegation
+/// to the orchestrator and partial result message handling.
+/// </summary>
+[TestClass]
+public class CachingMediaLinkServiceTests {
+    private Mock<ILookupOrchestrator> _orchestratorMock = null!;
+    private Mock<ILogger<CachingMediaLinkService>> _loggerMock = null!;
+    private CachingMediaLinkService _service = null!;
+
+    private const string TestIsrc = "USRC17607839";
+    private const string TestUpc = "012345678901";
+    private const string TestTitle = "Test Song";
+    private const string TestArtist = "Test Artist";
+    private const string TestProviderId = "spotify-123";
+    private const string TestContent = "https://open.spotify.com/track/abc123";
+
+    [TestInitialize]
+    public void Initialize( ) {
+        _orchestratorMock = new Mock<ILookupOrchestrator>( );
+        _loggerMock = new Mock<ILogger<CachingMediaLinkService>>( );
+        _service = new CachingMediaLinkService( _orchestratorMock.Object, _loggerMock.Object );
+    }
+
+    #region Constructor Tests
+
+    [TestMethod]
+    public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
+        // Act
+        CachingMediaLinkService service = new( _orchestratorMock.Object, _loggerMock.Object );
+
+        // Assert
+        Assert.IsNotNull( service );
+    }
+
+    [TestMethod]
+    public void Constructor_WithNullOrchestrator_ShouldThrowArgumentNullException( ) {
+        // Act & Assert
+        _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
+            new CachingMediaLinkService( null!, _loggerMock.Object )
+        );
+    }
+
+    [TestMethod]
+    public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
+        // Act & Assert
+        _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
+            new CachingMediaLinkService( _orchestratorMock.Object, null! )
+        );
+    }
+
+    #endregion
+
+    #region GetInfoAsync (Metadata) Tests
+
+    [TestMethod]
+    public async Task GetInfoAsync_WithMetadata_ShouldDelegateToOrchestrator( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByMetadataAsync( TestTitle, TestArtist ) )
+            .ReturnsAsync( new LookupResult { Result = expectedResult, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoAsync( TestTitle, TestArtist );
+
+        // Assert
+        Assert.IsNotNull( result );
+        _orchestratorMock.Verify( o => o.LookupByMetadataAsync( TestTitle, TestArtist ), Times.Once );
+    }
+
+    [TestMethod]
+    public async Task GetInfoAsync_WhenOrchestratorReturnsNull_ShouldReturnNull( ) {
+        // Arrange
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByMetadataAsync( It.IsAny<string>( ), It.IsAny<string>( ) ) )
+            .ReturnsAsync( new LookupResult { Result = null, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoAsync( TestTitle, TestArtist );
+
+        // Assert
+        Assert.IsNull( result );
+    }
+
+    #endregion
+
+    #region GetInfoByISRCAsync Tests
+
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_ShouldDelegateToOrchestrator( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByIsrcAsync( TestIsrc ) )
+            .ReturnsAsync( new LookupResult { Result = expectedResult, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByISRCAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result );
+        _orchestratorMock.Verify( o => o.LookupByIsrcAsync( TestIsrc ), Times.Once );
+    }
+
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_WhenOrchestratorReturnsNull_ShouldReturnNull( ) {
+        // Arrange
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByIsrcAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( new LookupResult { Result = null, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByISRCAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNull( result );
+    }
+
+    #endregion
+
+    #region GetInfoByUPCAsync Tests
+
+    [TestMethod]
+    public async Task GetInfoByUPCAsync_ShouldDelegateToOrchestrator( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByUpcAsync( TestUpc ) )
+            .ReturnsAsync( new LookupResult { Result = expectedResult, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByUPCAsync( TestUpc );
+
+        // Assert
+        Assert.IsNotNull( result );
+        _orchestratorMock.Verify( o => o.LookupByUpcAsync( TestUpc ), Times.Once );
+    }
+
+    [TestMethod]
+    public async Task GetInfoByUPCAsync_WhenOrchestratorReturnsNull_ShouldReturnNull( ) {
+        // Arrange
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByUpcAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( new LookupResult { Result = null, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByUPCAsync( TestUpc );
+
+        // Assert
+        Assert.IsNull( result );
+    }
+
+    #endregion
+
+    #region GetInfoByProviderIdAsync Tests
+
+    [TestMethod]
+    public async Task GetInfoByProviderIdAsync_ForTrack_ShouldDelegateToOrchestrator( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByProviderIdAsync( TestProviderId, SupportedProviders.Spotify, false ) )
+            .ReturnsAsync( new LookupResult { Result = expectedResult, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByProviderIdAsync( TestProviderId, SupportedProviders.Spotify, false );
+
+        // Assert
+        Assert.IsNotNull( result );
+        _orchestratorMock.Verify(
+            o => o.LookupByProviderIdAsync( TestProviderId, SupportedProviders.Spotify, false ),
+            Times.Once
+        );
+    }
+
+    [TestMethod]
+    public async Task GetInfoByProviderIdAsync_ForAlbum_ShouldDelegateToOrchestrator( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByProviderIdAsync( TestProviderId, SupportedProviders.AppleMusic, true ) )
+            .ReturnsAsync( new LookupResult { Result = expectedResult, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByProviderIdAsync( TestProviderId, SupportedProviders.AppleMusic, true );
+
+        // Assert
+        Assert.IsNotNull( result );
+        _orchestratorMock.Verify(
+            o => o.LookupByProviderIdAsync( TestProviderId, SupportedProviders.AppleMusic, true ),
+            Times.Once
+        );
+    }
+
+    [TestMethod]
+    public async Task GetInfoByProviderIdAsync_WhenOrchestratorReturnsNull_ShouldReturnNull( ) {
+        // Arrange
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByProviderIdAsync( It.IsAny<string>( ), It.IsAny<SupportedProviders>( ), It.IsAny<bool>( ) ) )
+            .ReturnsAsync( new LookupResult { Result = null, IsPartial = false } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByProviderIdAsync( TestProviderId, SupportedProviders.Spotify, false );
+
+        // Assert
+        Assert.IsNull( result );
+    }
+
+    #endregion
+
+    #region GetInfoAsync (Content) Tests
+
+    [TestMethod]
+    public async Task GetInfoAsync_WithContent_ShouldDelegateToOrchestrator( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByContentAsync( TestContent ) )
+            .Returns( CreateAsyncEnumerable( new LookupResult { Result = expectedResult, IsPartial = false } ) );
+
+        // Act
+        List<MediaLinkResult> results = [];
+        await foreach (MediaLinkResult result in _service.GetInfoAsync( TestContent )) {
+            results.Add( result );
+        }
+
+        // Assert
+        Assert.HasCount( 1, results );
+        Assert.IsNotNull( results[0] );
+        _orchestratorMock.Verify( o => o.LookupByContentAsync( TestContent ), Times.Once );
+    }
+
+    [TestMethod]
+    public async Task GetInfoAsync_WithContentReturningNull_ShouldSkipNullResults( ) {
+        // Arrange
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByContentAsync( TestContent ) )
+            .Returns( CreateAsyncEnumerable(
+                new LookupResult { Result = null, IsPartial = false },
+                new LookupResult { Result = CreateMediaLinkResult( ), IsPartial = false }
+            ) );
+
+        // Act
+        List<MediaLinkResult> results = [];
+        await foreach (MediaLinkResult result in _service.GetInfoAsync( TestContent )) {
+            results.Add( result );
+        }
+
+        // Assert - should only have the non-null result
+        Assert.HasCount( 1, results );
+    }
+
+    [TestMethod]
+    public async Task GetInfoAsync_WithNoResults_ShouldReturnEmpty( ) {
+        // Arrange
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByContentAsync( It.IsAny<string>( ) ) )
+            .Returns( CreateAsyncEnumerable<LookupResult>( ) );
+
+        // Act
+        List<MediaLinkResult> results = [];
+        await foreach (MediaLinkResult result in _service.GetInfoAsync( TestContent )) {
+            results.Add( result );
+        }
+
+        // Assert
+        Assert.IsEmpty( results );
+    }
+
+    #endregion
+
+    #region Partial Result Message Tests
+
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_WhenPartial_ShouldAddRateLimitMessage( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddMinutes( 5 );
+
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByIsrcAsync( TestIsrc ) )
+            .ReturnsAsync( new LookupResult {
+                Result = expectedResult,
+                IsPartial = true,
+                SagaId = "test-saga",
+                RateLimitedProviders = [
+                    new ProviderRateLimitInfo( SupportedProviders.AppleMusic, retryAfter, "/v1/catalog" )
+                ]
+            } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByISRCAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result );
+        Assert.IsNotNull( result.Messages );
+        Assert.HasCount( 1, result.Messages );
+        Assert.Contains( "AppleMusic", result.Messages[0] );
+        Assert.Contains( "temporarily unavailable", result.Messages[0] );
+    }
+
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_WhenPartialWithMultipleRateLimited_ShouldAddAllMessages( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddMinutes( 5 );
+
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByIsrcAsync( TestIsrc ) )
+            .ReturnsAsync( new LookupResult {
+                Result = expectedResult,
+                IsPartial = true,
+                SagaId = "test-saga",
+                RateLimitedProviders = [
+                    new ProviderRateLimitInfo( SupportedProviders.AppleMusic, retryAfter, "/v1/catalog" ),
+                    new ProviderRateLimitInfo( SupportedProviders.Tidal, retryAfter.AddMinutes( 2 ), "/v1/tracks" )
+                ]
+            } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByISRCAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result );
+        Assert.IsNotNull( result.Messages );
+        Assert.HasCount( 2, result.Messages );
+        Assert.Contains( "AppleMusic", result.Messages[0] );
+        Assert.Contains( "Tidal", result.Messages[1] );
+    }
+
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_WhenNotPartial_ShouldNotAddMessages( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByIsrcAsync( TestIsrc ) )
+            .ReturnsAsync( new LookupResult {
+                Result = expectedResult,
+                IsPartial = false
+            } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByISRCAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result );
+        Assert.IsNull( result.Messages );
+    }
+
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_WhenPartialButNoRateLimitedProviders_ShouldNotAddMessages( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByIsrcAsync( TestIsrc ) )
+            .ReturnsAsync( new LookupResult {
+                Result = expectedResult,
+                IsPartial = true,
+                RateLimitedProviders = []
+            } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByISRCAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result );
+        Assert.IsNull( result.Messages );
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    private static MediaLinkResult CreateMediaLinkResult( ) {
+        return new MediaLinkResult {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
+                [SupportedProviders.Spotify] = new MusicLookupResult {
+                    Artist = TestArtist,
+                    Title = TestTitle,
+                    ExternalId = TestIsrc,
+                    URL = "https://open.spotify.com/track/123",
+                    ArtUrl = "https://example.com/art.jpg",
+                    IsAlbum = false
+                }
+            }
+        };
+    }
+
+    private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>( params T[] items ) {
+        foreach (T item in items) {
+            await Task.Yield( );
+            yield return item;
+        }
+    }
+
+    #endregion
+}

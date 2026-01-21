@@ -1,5 +1,6 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,8 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for music lookup services (Apple Music and Spotify).
-/// These tests require valid API credentials in appsettings.json.
+/// Integration tests for music lookup services (Apple Music, Spotify, and Tidal).
+/// These tests require valid API credentials in appsettings.json or user secrets.
+/// Tests use direct provider mode (not queue-based) for fast API validation.
 /// </summary>
 [TestClass]
 [DoNotParallelize] // Prevent parallel execution to avoid overwhelming external APIs with rate limits
@@ -22,6 +24,7 @@ public class MusicLookupServiceTests {
     public TestContext TestContext { get; set; } = null!;
 
     [ClassInitialize]
+    [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
                             .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
@@ -36,8 +39,20 @@ public class MusicLookupServiceTests {
          .Where(kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ))
          .ToDictionary(kv => kv.Key, kv => kv.Value);
 
-        // Force Discord token to null to prevent Discord service registration in tests
-        overrides["BridgeBeats:DiscordToken"] = null;
+        // ============================================================================
+        // CRITICAL: Configure for direct provider mode (not queue-based)
+        // ============================================================================
+
+        // Disable Discord in tests
+        overrides["BridgeBeats:DiscordToken"] = "";
+
+        // Disable worker services mode - use direct provider implementations
+        overrides["BridgeBeats:Workers:UseWorkerServices"] = "false";
+
+        // Disable ATProto caching/queue mode - forces DefaultMediaLinkService (direct calls)
+        overrides["BridgeBeats:ATProtoIdentifier"] = "";
+        overrides["BridgeBeats:ATProtoPassword"] = "";
+        overrides["BridgeBeats:ATProtoUserDID"] = "";
 
         s_factory = new CustomWebApplicationFactory( overrides );
         s_serviceProvider = s_factory.Services;
@@ -67,17 +82,21 @@ public class MusicLookupServiceTests {
         // Using a well-known ISRC for "Bohemian Rhapsody" by Queen
         string isrc = "GBUM71029604";
 
-        // Act
-        MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( isrc );
-
-        // Assert
-        // If we hit rate limits, result may be null - that's acceptable for integration tests
-        if (result is null) {
-            Assert.Inconclusive( "API returned no results - possibly due to rate limiting" );
+        // Act - wrap in rate limit handler
+        MediaLinkResult? result;
+        try {
+            result = await mediaLinkService.GetInfoByISRCAsync( isrc );
+        } catch (RetryAfterExceededException ex) {
+            RateLimitTestHelper.HandleRateLimitException( ex, "ISRC lookup" );
             return;
         }
 
-        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
+        // Assert
+        if (!RateLimitTestHelper.AssertNotNullOrRateLimited( result, "ISRC lookup" )) {
+            return;
+        }
+
+        Assert.IsNotEmpty( result!.Results, "result.Results should not be empty" );
         MusicLookupResult firstResult = result.Results.First( ).Value;
         Assert.IsFalse( firstResult.IsAlbum ?? true );
         Assert.IsNotNull( firstResult.Title );
@@ -96,16 +115,20 @@ public class MusicLookupServiceTests {
         string upc = "00602547202307";
 
         // Act
-        MediaLinkResult? result = await mediaLinkService.GetInfoByUPCAsync( upc );
-
-        // Assert
-        // If we hit rate limits, result may be null - that's acceptable for integration tests
-        if (result is null) {
-            Assert.Inconclusive( "API returned no results - possibly due to rate limiting" );
+        MediaLinkResult? result;
+        try {
+            result = await mediaLinkService.GetInfoByUPCAsync( upc );
+        } catch (RetryAfterExceededException ex) {
+            RateLimitTestHelper.HandleRateLimitException( ex, "UPC lookup" );
             return;
         }
 
-        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
+        // Assert
+        if (!RateLimitTestHelper.AssertNotNullOrRateLimited( result, "UPC lookup" )) {
+            return;
+        }
+
+        Assert.IsNotEmpty( result!.Results, "result.Results should not be empty" );
         MusicLookupResult firstResult = result.Results.First( ).Value;
         Assert.IsTrue( firstResult.IsAlbum ?? false );
         Assert.IsNotNull( firstResult.Title );
@@ -124,16 +147,20 @@ public class MusicLookupServiceTests {
         string artist = "Queen";
 
         // Act
-        MediaLinkResult? result = await mediaLinkService.GetInfoAsync( title, artist );
-
-        // Assert
-        // If we hit rate limits, result may be null - that's acceptable for integration tests
-        if (result is null) {
-            Assert.Inconclusive( "API returned no results - possibly due to rate limiting" );
+        MediaLinkResult? result;
+        try {
+            result = await mediaLinkService.GetInfoAsync( title, artist );
+        } catch (RetryAfterExceededException ex) {
+            RateLimitTestHelper.HandleRateLimitException( ex, "Title/Artist lookup" );
             return;
         }
 
-        Assert.IsNotEmpty( result.Results, "result.Results should not be empty" );
+        // Assert
+        if (!RateLimitTestHelper.AssertNotNullOrRateLimited( result, "Title/Artist lookup" )) {
+            return;
+        }
+
+        Assert.IsNotEmpty( result!.Results, "result.Results should not be empty" );
         MusicLookupResult firstResult = result.Results.First( ).Value;
         Assert.IsNotNull( firstResult.Title );
         Assert.IsNotNull( firstResult.Artist );
@@ -151,18 +178,20 @@ public class MusicLookupServiceTests {
 
         // Act
         List<MediaLinkResult> results = [];
-        await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( appleUrl )) {
-            results.Add( result );
-        }
-
-        // Assert
-        // If we hit rate limits, results may be empty - that's acceptable for integration tests
-        if (results.Count == 0) {
-            Assert.Inconclusive( "API returned no results - possibly due to rate limiting" );
+        try {
+            await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( appleUrl )) {
+                results.Add( result );
+            }
+        } catch (RetryAfterExceededException ex) {
+            RateLimitTestHelper.HandleRateLimitException( ex, "Apple Music URL lookup" );
             return;
         }
 
-        Assert.IsNotEmpty( results, "Results collection should not be empty" );
+        // Assert
+        if (!RateLimitTestHelper.AssertNotEmptyOrRateLimited( results, "Apple Music URL lookup" )) {
+            return;
+        }
+
         MediaLinkResult firstResult = results[0];
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
         MusicLookupResult firstLookup = firstResult.Results.First( ).Value;
@@ -181,18 +210,20 @@ public class MusicLookupServiceTests {
 
         // Act
         List<MediaLinkResult> results = [];
-        await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( spotifyUrl )) {
-            results.Add( result );
-        }
-
-        // Assert
-        // If we hit rate limits, results may be empty - that's acceptable for integration tests
-        if (results.Count == 0) {
-            Assert.Inconclusive( "API returned no results - possibly due to rate limiting" );
+        try {
+            await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( spotifyUrl )) {
+                results.Add( result );
+            }
+        } catch (RetryAfterExceededException ex) {
+            RateLimitTestHelper.HandleRateLimitException( ex, "Spotify URL lookup" );
             return;
         }
 
-        Assert.IsNotEmpty( results, "Results collection should not be empty" );
+        // Assert
+        if (!RateLimitTestHelper.AssertNotEmptyOrRateLimited( results, "Spotify URL lookup" )) {
+            return;
+        }
+
         MediaLinkResult firstResult = results[0];
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
         MusicLookupResult firstLookup = firstResult.Results.First( ).Value;
@@ -211,7 +242,13 @@ public class MusicLookupServiceTests {
         string invalidIsrc = "INVALID12345";
 
         // Act
-        MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( invalidIsrc );
+        MediaLinkResult? result;
+        try {
+            result = await mediaLinkService.GetInfoByISRCAsync( invalidIsrc );
+        } catch (RetryAfterExceededException ex) {
+            RateLimitTestHelper.HandleRateLimitException( ex, "Invalid ISRC lookup" );
+            return;
+        }
 
         // Assert - Should handle gracefully, either null or empty results
         Assert.IsTrue( result == null || result.Results.Count == 0 );
@@ -228,18 +265,20 @@ public class MusicLookupServiceTests {
 
         // Act
         List<MediaLinkResult> results = [];
-        await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( tidalUrl )) {
-            results.Add( result );
-        }
-
-        // Assert
-        // If we hit rate limits, results may be empty - that's acceptable for integration tests
-        if (results.Count == 0) {
-            Assert.Inconclusive( "API returned no results - possibly due to rate limiting" );
+        try {
+            await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( tidalUrl )) {
+                results.Add( result );
+            }
+        } catch (RetryAfterExceededException ex) {
+            RateLimitTestHelper.HandleRateLimitException( ex, "Tidal URL lookup" );
             return;
         }
 
-        Assert.IsNotEmpty( results, "Results collection should not be empty" );
+        // Assert
+        if (!RateLimitTestHelper.AssertNotEmptyOrRateLimited( results, "Tidal URL lookup" )) {
+            return;
+        }
+
         MediaLinkResult firstResult = results[0];
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
         MusicLookupResult firstLookup = firstResult.Results.First( ).Value;
@@ -265,18 +304,20 @@ public class MusicLookupServiceTests {
 
         // Act
         List<MediaLinkResult> results = [];
-        await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( appleUrl )) {
-            results.Add( result );
-        }
-
-        // Assert
-        // If we hit rate limits, results may be empty - that's acceptable for integration tests
-        if (results.Count == 0) {
-            Assert.Inconclusive( "API returned no results - possibly due to rate limiting" );
+        try {
+            await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( appleUrl )) {
+                results.Add( result );
+            }
+        } catch (RetryAfterExceededException ex) {
+            RateLimitTestHelper.HandleRateLimitException( ex, "Apple Music Chiron lookup" );
             return;
         }
 
-        Assert.IsNotEmpty( results, "Results collection should not be empty" );
+        // Assert
+        if (!RateLimitTestHelper.AssertNotEmptyOrRateLimited( results, "Apple Music Chiron lookup" )) {
+            return;
+        }
+
         MediaLinkResult firstResult = results[0];
         Assert.IsNotEmpty( firstResult.Results, "firstResult.Results should not be empty" );
 
