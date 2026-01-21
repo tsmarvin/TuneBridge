@@ -19,12 +19,12 @@ public static class HashUtility {
     /// base32-encoded string suitable for use as a cache key.
     /// </summary>
     /// <param name="input">The string to hash.</param>
-    /// <returns>A lowercase base32-encoded SHA-256 hash string.</returns>
+    /// <returns>A lowercase base32-encoded SHA-256 hash string (52 characters).</returns>
     /// <exception cref="ArgumentNullException">Thrown when input is null.</exception>
     /// <remarks>
     /// The resulting hash is URL-safe and case-insensitive, making it suitable
-    /// for Redis keys and other storage systems. The hash is truncated to 32 characters
-    /// (160 bits) for practical key length while maintaining collision resistance.
+    /// for Redis keys and other storage systems. The full SHA-256 hash (256 bits)
+    /// is encoded as base32 for maximum collision resistance.
     /// </remarks>
     public static string ComputeSha256Base32( string input ) {
         ArgumentNullException.ThrowIfNull( input );
@@ -32,8 +32,7 @@ public static class HashUtility {
         byte[] hashBytes = SHA256.HashData( Encoding.UTF8.GetBytes( input ) );
         string base32Hash = ToBase32( hashBytes );
 
-        // Truncate to 32 characters for practical key length
-        return base32Hash[..Math.Min( 32, base32Hash.Length )].ToLowerInvariant( );
+        return base32Hash.ToLowerInvariant( );
     }
 
     /// <summary>

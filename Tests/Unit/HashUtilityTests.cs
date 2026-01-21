@@ -48,7 +48,7 @@ public class HashUtilityTests {
     }
 
     [TestMethod]
-    public void ComputeSha256Base32_Returns32Characters( ) {
+    public void ComputeSha256Base32_ReturnsFullHashLength( ) {
         // Arrange
         string input = "any input string";
 
@@ -56,7 +56,8 @@ public class HashUtilityTests {
         string hash = HashUtility.ComputeSha256Base32( input );
 
         // Assert
-        Assert.AreEqual( 32, hash.Length );
+        // SHA-256 produces 256 bits, base32 encodes 5 bits per character = 52 characters
+        Assert.AreEqual( 52, hash.Length );
     }
 
     [TestMethod]
@@ -121,7 +122,7 @@ public class HashUtilityTests {
 
         // Assert
         Assert.IsNotNull( hash );
-        Assert.AreEqual( 32, hash.Length );
+        Assert.AreEqual( 52, hash.Length );
     }
 
     [TestMethod]
@@ -134,7 +135,7 @@ public class HashUtilityTests {
 
         // Assert
         Assert.IsNotNull( hash );
-        Assert.AreEqual( 32, hash.Length );
+        Assert.AreEqual( 52, hash.Length );
     }
 
     [TestMethod]
@@ -147,6 +148,6 @@ public class HashUtilityTests {
 
         // Assert
         Assert.IsNotNull( hash );
-        Assert.AreEqual( 32, hash.Length );
+        Assert.AreEqual( 52, hash.Length );
     }
 }
