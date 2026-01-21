@@ -110,6 +110,17 @@ A: Everyone in the channel can see the conversion embeds posted by the bot. The 
 A: The bot sees the content of all messages in channels where it has access, including user IDs and message content. However, it does not store or log this information beyond what is necessary for link conversion.
 The only information stored, or logged, are the parsed URLs shared for conversion purposes and the discord user ID of the person who shared them. The discord user ID will only be logged if an error occurs during processing to help with debugging.
 
+## 🏗️ Self-Hosting
+
+If you want to run your own instance of the BridgeBeats Discord bot:
+
+1. **Prerequisites**: You need at least one music provider configured (Spotify, Apple Music, or Tidal)
+2. **Deployment**: The Discord bot runs as a separate worker service managed by .NET Aspire
+3. **Configuration**: Set the `DISCORD_TOKEN` environment variable with your bot token
+4. **Architecture**: The bot communicates with provider workers via HTTP endpoints for music lookups
+
+For detailed deployment instructions, see the [Configuration Guide](CONFIGURATION.md) and [Deployment Guide](DEPLOYMENT.md).
+
 
 ---
 

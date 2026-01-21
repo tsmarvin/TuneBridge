@@ -4,7 +4,7 @@ This guide covers how to configure BridgeBeats with API credentials and environm
 
 ## Environment Variables
 
-BridgeBeats requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord integration is optional.
+BridgeBeats requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord integration is optional and runs as a separate worker service.
 
 ### Required Music Provider Credentials
 
@@ -75,6 +75,8 @@ At least one complete set of music provider credentials is required:
 
 ### Discord Bot Token
 
+**Note:** The Discord bot runs as a separate worker service within the BridgeBeats Aspire orchestration. It requires at least one music provider worker to be configured (Spotify, Apple Music, or Tidal).
+
 1. Visit the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Follow the [Getting Started Guide](https://discord.com/developers/docs/quick-start/getting-started)
 3. Create a bot and copy its token
@@ -101,7 +103,6 @@ For local development, you can use an `appsettings.json` file instead of environ
 ```json
 {
   "BridgeBeats": {
-    "NodeNumber": 0,
     "AppleTeamId": "your_team_id",
     "AppleKeyId": "your_key_id",
     "AppleKeyPath": "/path/to/AuthKey.p8",
@@ -110,6 +111,7 @@ For local development, you can use an `appsettings.json` file instead of environ
     "TidalClientId": "your_tidal_client_id",
     "TidalClientSecret": "your_tidal_client_secret",
     "DiscordToken": "your_bot_token",
+    "NodeNumber": 0,
     "IdentityConnectionString": "Data Source=bridgebeats.db",
     "ATProtoIdentifier": "your-handle.bsky.social",
     "ATProtoPassword": "your-app-password",

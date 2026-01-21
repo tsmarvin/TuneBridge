@@ -151,15 +151,17 @@ BridgeBeats is stateless (except for the optional SQLite cache) and can be horiz
 
 ### Discord Bot Sharding
 
-For large Discord deployments, use the `NODE_NUMBER` environment variable:
+The Discord bot runs as a separate worker service managed by .NET Aspire. For large Discord deployments with multiple shards, use the `NODE_NUMBER` environment variable to assign each instance to a specific shard:
 
 ```bash
-# Instance 1
+# Instance 1 (handles shard 0)
 -e NODE_NUMBER=0
 
-# Instance 2
+# Instance 2 (handles shard 1)
 -e NODE_NUMBER=1
 ```
+
+**Important**: Each Discord worker instance must have a unique `NODE_NUMBER` to avoid duplicate responses. The Discord worker requires at least one music provider worker (Spotify, Apple Music, or Tidal) to be configured and running.
 
 Note: If you do not increment this integer you could have multiple instances replying to the same events.
 
@@ -218,6 +220,7 @@ Verify:
 
 Check:
 - `DISCORD_TOKEN` is set correctly
+- At least one music provider worker is configured and running
 - Bot has required permissions in Discord server
 - Bot is invited to the server
 
