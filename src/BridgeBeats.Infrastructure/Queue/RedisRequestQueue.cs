@@ -632,8 +632,14 @@ public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQu
             searchStart--;
         }
 
-        if (searchStart <= 0 || compositeId[searchStart] != ':') {
+        // Validate we found a proper separator and have a complete timestamp
+        if (searchStart < 0 || compositeId[searchStart] != ':') {
             throw new ArgumentException( $"Invalid composite message ID format: {compositeId}", nameof( compositeId ) );
+        }
+
+        // Verify we have at least one digit in the timestamp portion
+        if (searchStart >= lastDash - 1) {
+            throw new ArgumentException( $"Invalid composite message ID: no timestamp digits found: {compositeId}", nameof( compositeId ) );
         }
 
         // Split at this colon: everything before is stream, everything after is the Redis ID
