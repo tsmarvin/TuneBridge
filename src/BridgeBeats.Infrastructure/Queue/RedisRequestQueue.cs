@@ -613,42 +613,33 @@ public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQu
     }
 
     private static (string stream, string id) ParseMessageId( string compositeId ) {
-        int lastColon = compositeId.LastIndexOf( ':' );
-        if (lastColon <= 0) {
-            throw new ArgumentException( $"Invalid composite message ID: {compositeId}", nameof( compositeId ) );
+        ArgumentException.ThrowIfNullOrWhiteSpace( compositeId );
+
+        // Redis stream IDs are in format "timestamp-sequence" (e.g., "1234567890123-0")
+        // Our composite format is "stream:timestamp-sequence"
+        // We need to find the last occurrence of a pattern that looks like a Redis stream ID
+
+        // Find the last dash which should be part of the Redis stream ID
+        int lastDash = compositeId.LastIndexOf( '-' );
+        if (lastDash <= 0) {
+            throw new ArgumentException( $"Invalid composite message ID (no dash found): {compositeId}", nameof( compositeId ) );
         }
 
-        // Redis stream IDs contain a colon (e.g., "1234567890123-0")
-        // Our composite format is "stream:streamId" where streamId is "timestamp-sequence"
-        // So we need to find the stream prefix by looking for known patterns
-        foreach (string prefix in new[] { "queue:", "dlq:" }) {
-            if (compositeId.StartsWith( prefix, StringComparison.OrdinalIgnoreCase )) {
-                // Find the position after the stream name
-                // Format: queue:{provider}:{priority}:{redis-id} or queue:{provider}:dlq:{redis-id}
-                string[] parts = compositeId.Split( ':' );
-                if (parts.Length >= 4) {
-                    // Reconstruct stream and ID
-                    string stream = string.Join( ':', parts[..^1] );
-                    string id = parts[^1];
-
-                    // Check if the ID part looks like a Redis stream ID (contains a dash or ends with sequence)
-                    // Redis stream IDs are "timestamp-sequence", handle cases like "1234567890123-0"
-                    if (parts[^1].Contains( '-' ) || (parts.Length >= 5 && parts[^2].All( char.IsDigit ))) {
-                        if (parts.Length >= 5) {
-                            // ID spans last two parts: "1234567890123-0" was split
-                            stream = string.Join( ':', parts[..^2] );
-                            id = $"{parts[^2]}:{parts[^1]}";
-                        }
-                    }
-
-                    return (stream, id);
-                }
-            }
+        // Find the last colon before the timestamp part of the stream ID
+        // Work backwards from the dash to find where timestamp begins
+        int searchStart = lastDash - 1;
+        while (searchStart > 0 && char.IsDigit( compositeId[searchStart] )) {
+            searchStart--;
         }
 
-        // Fallback: assume last segment after colon is the ID
-        string streamPart = compositeId[..lastColon];
-        string idPart = compositeId[(lastColon + 1)..];
-        return (streamPart, idPart);
+        if (searchStart <= 0 || compositeId[searchStart] != ':') {
+            throw new ArgumentException( $"Invalid composite message ID format: {compositeId}", nameof( compositeId ) );
+        }
+
+        // Split at this colon: everything before is stream, everything after is the Redis ID
+        string stream = compositeId[..searchStart];
+        string id = compositeId[(searchStart + 1)..];
+
+        return (stream, id);
     }
 }

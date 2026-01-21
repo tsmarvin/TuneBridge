@@ -16,7 +16,7 @@ public class QueueMetricsTests {
     public void Meter_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "BridgeBeats.Queue", QueueMetrics.MeterName );
-        Assert.AreEqual( QueueMetrics.MeterName, QueueMetrics.Meter.Name );
+        Assert.AreEqual( "BridgeBeats.Queue", QueueMetrics.Meter.Name );
     }
 
     [TestMethod]
@@ -148,46 +148,62 @@ public class QueueMetricsTests {
     [TestMethod]
     public void EnqueuedTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.EnqueuedTotal.Add( 1,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Priority, "interactive" )
-        );
+        try {
+            QueueMetrics.EnqueuedTotal.Add( 1,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Priority, "interactive" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.EnqueuedTotal );
     }
 
     [TestMethod]
     public void DequeuedTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.DequeuedTotal.Add( 1,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "applemusic" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Priority, "background" )
-        );
+        try {
+            QueueMetrics.DequeuedTotal.Add( 1,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "applemusic" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Priority, "background" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.DequeuedTotal );
     }
 
     [TestMethod]
     public void RateLimitEventsTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.RateLimitEventsTotal.Add( 1,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "tidal" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, "/v1/tracks" )
-        );
+        try {
+            QueueMetrics.RateLimitEventsTotal.Add( 1,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "tidal" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, "/v1/tracks" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.RateLimitEventsTotal );
     }
 
     [TestMethod]
     public void DeduplicatedTotal_CanRecordWithoutTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.DeduplicatedTotal.Add( 1 );
+        try {
+            QueueMetrics.DeduplicatedTotal.Add( 1 );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.DeduplicatedTotal );
     }
 
     #endregion
@@ -197,26 +213,34 @@ public class QueueMetricsTests {
     [TestMethod]
     public void ProcessingDuration_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.ProcessingDuration.Record( 1.5,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.LookupType, "IsrcLookup" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Status, "success" )
-        );
+        try {
+            QueueMetrics.ProcessingDuration.Record( 1.5,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.LookupType, "IsrcLookup" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Status, "success" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.ProcessingDuration );
     }
 
     [TestMethod]
     public void RateLimitDuration_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.RateLimitDuration.Record( 60.0,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, "/v1/albums" )
-        );
+        try {
+            QueueMetrics.RateLimitDuration.Record( 60.0,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, "/v1/albums" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.RateLimitDuration );
     }
 
     #endregion
