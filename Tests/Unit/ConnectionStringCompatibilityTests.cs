@@ -8,6 +8,10 @@ namespace BridgeBeats.Tests.Unit;
 /// </summary>
 [TestClass]
 public class ConnectionStringCompatibilityTests {
+    /// <summary>
+    /// Verifies that both IdentityConnectionString and LinkCacheConnectionString can use the same
+    /// connection string format with a Data Source path.
+    /// </summary>
     [TestMethod]
     public void BothConnectionStrings_CanUseSameValueFormat_WithDataSource( ) {
         // Arrange - Use the same connection string format for both databases
@@ -32,6 +36,10 @@ public class ConnectionStringCompatibilityTests {
         Assert.AreEqual( settings.IdentityConnectionString, settings.LinkCacheConnectionString );
     }
 
+    /// <summary>
+    /// Verifies that both IdentityConnectionString and LinkCacheConnectionString can use the same
+    /// in-memory connection string format with shared cache mode.
+    /// </summary>
     [TestMethod]
     public void BothConnectionStrings_CanUseSameValueFormat_WithMemoryMode( ) {
         // Arrange - Use the same in-memory connection string format for both databases
@@ -56,6 +64,10 @@ public class ConnectionStringCompatibilityTests {
         Assert.AreEqual( settings.IdentityConnectionString, settings.LinkCacheConnectionString );
     }
 
+    /// <summary>
+    /// Verifies that IdentityConnectionString and LinkCacheConnectionString can be configured
+    /// with different values to use separate database files.
+    /// </summary>
     [TestMethod]
     public void BothConnectionStrings_CanUseDifferentValues( ) {
         // Arrange - Use different connection strings for each database
@@ -81,6 +93,9 @@ public class ConnectionStringCompatibilityTests {
         Assert.AreNotEqual( settings.IdentityConnectionString, settings.LinkCacheConnectionString );
     }
 
+    /// <summary>
+    /// Verifies that both connection string defaults use a consistent "Data Source=" format.
+    /// </summary>
     [TestMethod]
     public void BothConnectionStrings_HaveConsistentDefaultFormat( ) {
         // Arrange & Act

@@ -20,6 +20,10 @@ public class MusicLookupControllerTests {
     private static HttpClient? s_client;
     private static string? s_apiKey;
 
+    /// <summary>
+    /// Initializes the test factory, HTTP client, and registers a test user with an API key.
+    /// </summary>
+    /// <param name="context">The test context provided by the test framework.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -94,11 +98,17 @@ public class MusicLookupControllerTests {
         registrationClient.Dispose( );
     }
 
+    /// <summary>
+    /// Disposes of the test factory after all tests complete.
+    /// </summary>
     [ClassCleanup]
     public static void ClassCleanup( ) {
         s_factory?.Dispose( );
     }
 
+    /// <summary>
+    /// Verifies that the URL list lookup endpoint returns results for a valid Apple Music URL.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "AppleMusic" )]
@@ -123,6 +133,9 @@ public class MusicLookupControllerTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the URL list lookup endpoint returns results for a valid Spotify URL.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "Spotify" )]
@@ -147,6 +160,9 @@ public class MusicLookupControllerTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the URL list lookup endpoint returns results for a valid Tidal URL.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "Tidal" )]
@@ -171,6 +187,9 @@ public class MusicLookupControllerTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the URL list lookup endpoint returns multiple results when given multiple URLs.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "AppleMusic" )]
@@ -200,6 +219,9 @@ public class MusicLookupControllerTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the ISRC lookup endpoint returns results for a valid ISRC code.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "AppleMusic" )]
@@ -227,6 +249,9 @@ public class MusicLookupControllerTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the UPC lookup endpoint returns results for a valid UPC code.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "AppleMusic" )]
@@ -254,6 +279,9 @@ public class MusicLookupControllerTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the title lookup endpoint returns results for a valid title and artist combination.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "AppleMusic" )]
@@ -281,6 +309,9 @@ public class MusicLookupControllerTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the streaming URL endpoint returns results for a valid Spotify URL.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "Spotify" )]
@@ -305,5 +336,8 @@ public class MusicLookupControllerTests {
         }
     }
 
+    /// <summary>
+    /// Gets or sets the test context which provides information about the current test run.
+    /// </summary>
     public TestContext TestContext { get; set; } = null!;
 }

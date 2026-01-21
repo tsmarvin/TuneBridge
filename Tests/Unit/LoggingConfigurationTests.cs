@@ -12,6 +12,9 @@ namespace BridgeBeats.Tests.Unit;
 /// </summary>
 [TestClass]
 public partial class LoggingConfigurationTests {
+    /// <summary>
+    /// Verifies that Serilog can be configured with a default file path and creates a logger successfully.
+    /// </summary>
     [TestMethod]
     public void ConfigureSerilog_WithDefaultFilePath_ShouldCreateLogger( ) {
         // Arrange
@@ -55,6 +58,9 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that Serilog file rotation respects the configured retention policy.
+    /// </summary>
     [TestMethod]
     public void ConfigureSerilog_WithFileRotation_ShouldRespectRetentionPolicy( ) {
         // Arrange
@@ -102,6 +108,9 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that OpenTelemetry configuration with a valid endpoint does not throw.
+    /// </summary>
     [TestMethod]
     public void OpenTelemetryConfiguration_WithValidEndpoint_ShouldNotThrow( ) {
         // Arrange
@@ -121,6 +130,9 @@ public partial class LoggingConfigurationTests {
         Assert.AreEqual( "http", uri!.Scheme, "OTLP endpoint should use HTTP scheme" );
     }
 
+    /// <summary>
+    /// Verifies that OpenTelemetry configuration handles empty endpoints gracefully.
+    /// </summary>
     [TestMethod]
     public void OpenTelemetryConfiguration_WithEmptyEndpoint_ShouldHandleGracefully( ) {
         // Arrange
@@ -140,6 +152,9 @@ public partial class LoggingConfigurationTests {
         Assert.IsTrue( string.IsNullOrWhiteSpace( otlpEndpoint ), "OTLP endpoint should be empty" );
     }
 
+    /// <summary>
+    /// Verifies that logging configuration supports both file and OpenTelemetry sinks simultaneously.
+    /// </summary>
     [TestMethod]
     public void LoggingConfiguration_ShouldSupportBothFileAndOpenTelemetry( ) {
         // Arrange
@@ -190,6 +205,9 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the health check logging filter excludes successful health check requests while logging failures.
+    /// </summary>
     [TestMethod]
     public void HealthCheckLoggingFilter_ShouldExcludeSuccessfulHealthChecks( ) {
         // Arrange
@@ -317,6 +335,9 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that Serilog can be configured with console logging output.
+    /// </summary>
     [TestMethod]
     public void ConfigureSerilog_ShouldConfigureConsoleLogging( ) {
         // Arrange

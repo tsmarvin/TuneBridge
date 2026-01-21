@@ -30,6 +30,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     private const string TestLookupKey = "isrc:USRC12345678";
     private const string TestRecordUri = "at://did:plc:test/com.bridgebeats.medialink/abc123";
 
+    /// <summary>
+    /// Initializes mocks before each test.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _redisMock = new Mock<IConnectionMultiplexer>( );
@@ -47,6 +50,9 @@ public class SagaCoordinatorBackgroundServiceTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance with valid dependencies.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -56,6 +62,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         Assert.IsNotNull( service );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when Redis is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullRedis_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -72,6 +81,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when saga manager is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullSagaManager_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -88,6 +100,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when ATProto storage is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullAtProtoStorage_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -104,6 +119,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when cache repository is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullCacheRepository_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -120,6 +138,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when deduplicator is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullDeduplicator_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -136,6 +157,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when result combiner is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullResultCombiner_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -152,6 +176,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when logger is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -172,6 +199,9 @@ public class SagaCoordinatorBackgroundServiceTests {
 
     #region Polling Tests
 
+    /// <summary>
+    /// Verifies that the service processes unfinalized sagas during polling.
+    /// </summary>
     [TestMethod]
     public async Task Polling_WhenUnfinalizedSagasExist_ShouldProcessThem( ) {
         // Arrange
@@ -214,6 +244,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the service does not write anything when no unfinalized sagas exist.
+    /// </summary>
     [TestMethod]
     public async Task Polling_WhenNoUnfinalizedSagas_ShouldNotWriteAnything( ) {
         // Arrange
@@ -245,6 +278,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the service writes final results when sagas are complete.
+    /// </summary>
     [TestMethod]
     public async Task Polling_WhenSagaIsComplete_ShouldWriteFinalResult( ) {
         // Arrange
@@ -301,6 +337,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the service writes partial results first when sagas are partial.
+    /// </summary>
     [TestMethod]
     public async Task Polling_WhenSagaIsPartialWithNoPartialUri_ShouldWritePartialFirst( ) {
         // Arrange
@@ -348,6 +387,9 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the service continues processing when a write fails.
+    /// </summary>
     [TestMethod]
     public async Task Polling_WhenWriteFails_ShouldContinueToNextSaga( ) {
         // Arrange
@@ -393,6 +435,9 @@ public class SagaCoordinatorBackgroundServiceTests {
 
     #region Final Result Writing Tests
 
+    /// <summary>
+    /// Verifies that failed sagas release the lock with null and delete the saga.
+    /// </summary>
     [TestMethod]
     public async Task WriteFinalResult_WhenNoSuccessfulResults_ShouldReleaseWithNullAndDeleteSaga( ) {
         // Arrange
@@ -449,6 +494,10 @@ public class SagaCoordinatorBackgroundServiceTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a new <see cref="SagaCoordinatorBackgroundService"/> instance with the configured mocks.
+    /// </summary>
+    /// <returns>A new <see cref="SagaCoordinatorBackgroundService"/> instance.</returns>
     private SagaCoordinatorBackgroundService CreateService( ) {
         return new SagaCoordinatorBackgroundService(
             _redisMock.Object,
@@ -461,6 +510,10 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Creates a test <see cref="LookupSagaState"/> representing a completed saga with one successful provider.
+    /// </summary>
+    /// <returns>A new <see cref="LookupSagaState"/> instance with complete status.</returns>
     private static LookupSagaState CreateCompleteSaga( ) {
         string resultJson = """
         {

@@ -4,9 +4,15 @@ using BridgeBeats.Services.LinkResolver;
 
 namespace BridgeBeats.Tests.Unit;
 
+/// <summary>
+/// Unit tests for <see cref="OpenGraphExtensions"/> validating OpenGraph metadata generation.
+/// </summary>
 [TestClass]
 public class OpenGraphExtensionsTests {
 
+    /// <summary>
+    /// Verifies that OpenGraph metadata includes ISRC in the description for tracks.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithTrackAndISRC_IncludesISRCInDescription( ) {
         // Arrange
@@ -36,6 +42,9 @@ public class OpenGraphExtensionsTests {
         Assert.Contains( "Artist: Shades, Alix Perez & Eprom", metadata["og:description"], "Description should contain artist" );
     }
 
+    /// <summary>
+    /// Verifies that OpenGraph metadata includes UPC in the description for albums.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithAlbumAndUPC_IncludesUPCInDescription( ) {
         // Arrange
@@ -64,6 +73,9 @@ public class OpenGraphExtensionsTests {
         Assert.Contains( "UPC: 123456789012", metadata["og:description"], "Description should contain UPC for album" );
     }
 
+    /// <summary>
+    /// Verifies that OpenGraph metadata uses Apple Music's red theme color when Apple Music is primary.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithAppleMusicPrimary_HasBlueThemeColor( ) {
         // Arrange
@@ -92,6 +104,9 @@ public class OpenGraphExtensionsTests {
         Assert.AreEqual( "#D60017", metadata["theme-color"], "Apple Music should have red theme color" );
     }
 
+    /// <summary>
+    /// Verifies that OpenGraph metadata uses Spotify's green theme color when Spotify is primary.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithSpotifyPrimary_HasGreenThemeColor( ) {
         // Arrange
@@ -120,6 +135,9 @@ public class OpenGraphExtensionsTests {
         Assert.AreEqual( "#1ED760", metadata["theme-color"], "Spotify should have green theme color" );
     }
 
+    /// <summary>
+    /// Verifies that OpenGraph metadata does not include ISRC or UPC when no external ID is available.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithoutExternalId_DoesNotIncludeISRCOrUPC( ) {
         // Arrange
@@ -150,6 +168,9 @@ public class OpenGraphExtensionsTests {
         Assert.Contains( "Artist: Test Artist", metadata["og:description"], "Description should still contain artist" );
     }
 
+    /// <summary>
+    /// Verifies that OpenGraph metadata does not include provider links or URLs in the description.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_DoesNotIncludeProviderLinksInDescription( ) {
         // Arrange

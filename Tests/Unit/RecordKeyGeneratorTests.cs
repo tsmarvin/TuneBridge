@@ -4,9 +4,15 @@ using BridgeBeats.Infrastructure.Storage;
 
 namespace BridgeBeats.Tests.Unit {
 
+    /// <summary>
+    /// Unit tests for <see cref="RecordKeyGenerator"/> validating record key and card ID generation.
+    /// </summary>
     [TestClass]
     public class RecordKeyGeneratorTests {
 
+        /// <summary>
+        /// Verifies that a track with an ISRC generates a record key with the "track:" prefix.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_WithTrackISRC_ReturnsTrackRkey( ) {
             // Arrange
@@ -27,6 +33,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( "track:USRC12345678", rkey );
         }
 
+        /// <summary>
+        /// Verifies that an album with a UPC generates a record key with the "album:" prefix.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_WithAlbumUPC_ReturnsAlbumRkey( ) {
             // Arrange
@@ -47,6 +56,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( "album:123456789012", rkey );
         }
 
+        /// <summary>
+        /// Verifies that a result without an external ID generates a metadata-based record key.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_WithNoExternalId_ReturnsMetadataBasedRkey( ) {
             // Arrange
@@ -67,6 +79,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.StartsWith( "metadata:", rkey );
         }
 
+        /// <summary>
+        /// Verifies that special characters in external IDs are sanitized from the record key.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_WithExternalIdContainingSpecialChars_SanitizesRkey( ) {
             // Arrange
@@ -87,6 +102,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( "track:US-RC1-23-45678", rkey );
         }
 
+        /// <summary>
+        /// Verifies that the direct GenerateRkey method returns the correct format for tracks.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_DirectMethod_ReturnsCorrectFormat( ) {
             // Act
@@ -96,6 +114,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( "track:USRC12345678", rkey );
         }
 
+        /// <summary>
+        /// Verifies that the direct GenerateRkey method returns the "album:" prefix for albums.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_DirectMethod_WithAlbum_ReturnsAlbumPrefix( ) {
             // Act
@@ -105,12 +126,18 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( "album:123456789012", rkey );
         }
 
+        /// <summary>
+        /// Verifies that the direct GenerateRkey method throws an exception for empty IDs.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_DirectMethod_WithEmptyId_ThrowsException( ) {
             // Act & Assert
             _ = Assert.ThrowsExactly<ArgumentException>( ( ) => RecordKeyGenerator.GenerateRkey( "", false ) );
         }
 
+        /// <summary>
+        /// Verifies that the same record key always generates the same card ID (deterministic).
+        /// </summary>
         [TestMethod]
         public void GenerateCardId_WithSameRkey_ReturnsSameId( ) {
             // Arrange
@@ -124,6 +151,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( id1, id2, "Card IDs should be deterministic" );
         }
 
+        /// <summary>
+        /// Verifies that different record keys generate different card IDs.
+        /// </summary>
         [TestMethod]
         public void GenerateCardId_WithDifferentRkeys_ReturnsDifferentIds( ) {
             // Act
@@ -134,6 +164,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreNotEqual( id1, id2, "Different rkeys should generate different card IDs" );
         }
 
+        /// <summary>
+        /// Verifies that generated card IDs are URL-safe (lowercase, alphanumeric with dashes only).
+        /// </summary>
         [TestMethod]
         public void GenerateCardId_ReturnsUrlSafeString( ) {
             // Arrange
@@ -148,18 +181,27 @@ namespace BridgeBeats.Tests.Unit {
             Assert.IsTrue( cardId.All( c => !char.IsUpper( c ) ), "Card ID should be lowercase" );
         }
 
+        /// <summary>
+        /// Verifies that GenerateCardId throws an exception for empty record keys.
+        /// </summary>
         [TestMethod]
         public void GenerateCardId_WithEmptyRkey_ThrowsException( ) {
             // Act & Assert
             _ = Assert.ThrowsExactly<ArgumentException>( ( ) => RecordKeyGenerator.GenerateCardId( "" ) );
         }
 
+        /// <summary>
+        /// Verifies that GenerateCardId throws an exception for invalid max length values.
+        /// </summary>
         [TestMethod]
         public void GenerateCardId_WithInvalidMaxLength_ThrowsException( ) {
             // Act & Assert
             _ = Assert.ThrowsExactly<ArgumentException>( ( ) => RecordKeyGenerator.GenerateCardId( "track:test", -1 ) );
         }
 
+        /// <summary>
+        /// Verifies that the same metadata generates the same record key across different providers.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_WithSameMetadata_ReturnsSameRkey( ) {
             // Arrange
@@ -189,6 +231,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( rkey1, rkey2, "Same metadata should generate same rkey" );
         }
 
+        /// <summary>
+        /// Verifies that GenerateRkey throws an exception when both title and artist are empty.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_WithEmptyTitleAndArtist_ThrowsException( ) {
             // Arrange
@@ -206,6 +251,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.Contains( "both Title and Artist are empty", ex.Message, "Exception message should contain expected text" );
         }
 
+        /// <summary>
+        /// Verifies that metadata normalization makes case and whitespace irrelevant for record key generation.
+        /// </summary>
         [TestMethod]
         public void GenerateRkey_WithNormalizedMetadata_ReturnsSameRkey( ) {
             // Arrange - Different case and whitespace but same content
@@ -235,6 +283,9 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( rkey1, rkey2, "Metadata normalization should make case and whitespace irrelevant" );
         }
 
+        /// <summary>
+        /// Verifies that GenerateCardId produces properly padded Base32 output.
+        /// </summary>
         [TestMethod]
         public void GenerateCardId_IncludesPadding( ) {
             // Arrange

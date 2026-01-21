@@ -11,6 +11,10 @@ public class LookupStatisticsTests {
 
     #region LookupStatistics Tests
 
+    /// <summary>
+    /// Verifies that <see cref="LookupStatistics"/> initializes with correct default values
+    /// including zero counts and empty collections.
+    /// </summary>
     [TestMethod]
     public void LookupStatistics_DefaultValues_ShouldBeInitialized( ) {
         // Act
@@ -28,6 +32,10 @@ public class LookupStatisticsTests {
         Assert.IsNull( stats.LatestLookup );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="LookupStatistics"/> correctly sets all properties
+    /// when using object initializer syntax.
+    /// </summary>
     [TestMethod]
     public void LookupStatistics_WithInitializer_ShouldSetAllProperties( ) {
         // Arrange
@@ -66,6 +74,10 @@ public class LookupStatisticsTests {
 
     #region RecentLookupEntry Tests
 
+    /// <summary>
+    /// Verifies that <see cref="RecentLookupEntry"/> initializes with correct default values
+    /// including empty strings for required properties and null for optional properties.
+    /// </summary>
     [TestMethod]
     public void RecentLookupEntry_DefaultValues_ShouldBeInitialized( ) {
         // Act
@@ -80,6 +92,10 @@ public class LookupStatisticsTests {
         Assert.IsNull( entry.CardId );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RecentLookupEntry"/> correctly sets all properties
+    /// when using object initializer syntax.
+    /// </summary>
     [TestMethod]
     public void RecentLookupEntry_WithInitializer_ShouldSetAllProperties( ) {
         // Arrange
@@ -104,6 +120,9 @@ public class LookupStatisticsTests {
         Assert.AreEqual( "card123", entry.CardId );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RecentLookupEntry.IsAlbum"/> set to false correctly indicates a track.
+    /// </summary>
     [TestMethod]
     public void RecentLookupEntry_IsAlbumFalse_ShouldIndicateTrack( ) {
         // Act
@@ -113,6 +132,9 @@ public class LookupStatisticsTests {
         Assert.IsFalse( entry.IsAlbum );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RecentLookupEntry.IsAlbum"/> set to true correctly indicates an album.
+    /// </summary>
     [TestMethod]
     public void RecentLookupEntry_IsAlbumTrue_ShouldIndicateAlbum( ) {
         // Act

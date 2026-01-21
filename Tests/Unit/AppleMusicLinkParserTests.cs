@@ -8,6 +8,9 @@ namespace BridgeBeats.Tests.Unit;
 [TestClass]
 public class AppleMusicLinkParserTests {
 
+    /// <summary>
+    /// Verifies that TryParseUri extracts track ID correctly when URL contains 'ls' query parameter.
+    /// </summary>
     [TestMethod]
     public void TryParseUri_WithTrackIdAndLsQueryParam_ExtractsTrackIdCorrectly( ) {
         // Arrange - URL from issue #1
@@ -23,6 +26,9 @@ public class AppleMusicLinkParserTests {
         Assert.AreEqual( "cl/songs/286931431", requestUri, "Should extract song ID '286931431' without query parameters" );
     }
 
+    /// <summary>
+    /// Verifies that TryParseUri extracts track ID correctly when URL contains 'uo' query parameter.
+    /// </summary>
     [TestMethod]
     public void TryParseUri_WithTrackIdAndUoQueryParam_ExtractsTrackIdCorrectly( ) {
         // Arrange - URL from issue #2
@@ -38,6 +44,9 @@ public class AppleMusicLinkParserTests {
         Assert.AreEqual( "au/songs/1531704822", requestUri, "Should extract song ID '1531704822' without query parameters" );
     }
 
+    /// <summary>
+    /// Verifies that TryParseUri extracts track ID correctly when URL has no additional query parameters.
+    /// </summary>
     [TestMethod]
     public void TryParseUri_WithTrackIdWithoutQueryParams_ExtractsTrackIdCorrectly( ) {
         // Arrange - URL without additional query parameters
@@ -53,6 +62,9 @@ public class AppleMusicLinkParserTests {
         Assert.AreEqual( "us/songs/789012", requestUri, "Should extract song ID '789012'" );
     }
 
+    /// <summary>
+    /// Verifies that TryParseUri extracts album ID correctly when URL has query parameters but no track ID.
+    /// </summary>
     [TestMethod]
     public void TryParseUri_WithAlbumIdAndQueryParams_ExtractsAlbumIdCorrectly( ) {
         // Arrange - Album URL with query parameters (no ?i= so should treat as album)
@@ -68,6 +80,9 @@ public class AppleMusicLinkParserTests {
         Assert.AreEqual( "us/albums/123456", requestUri, "Should extract album ID '123456' without query parameters" );
     }
 
+    /// <summary>
+    /// Verifies that TryParseUri extracts ID correctly when URL contains multiple query parameters.
+    /// </summary>
     [TestMethod]
     public void TryParseUri_WithMultipleQueryParams_ExtractsIdCorrectly( ) {
         // Arrange - URL with multiple query parameters
@@ -83,6 +98,9 @@ public class AppleMusicLinkParserTests {
         Assert.AreEqual( "jp/songs/111", requestUri, "Should extract song ID '111' without any query parameters" );
     }
 
+    /// <summary>
+    /// Verifies that TryParseUri extracts album ID correctly when URL only has non-track query parameters.
+    /// </summary>
     [TestMethod]
     public void TryParseUri_AlbumWithQueryParamsOnly_ExtractsAlbumIdCorrectly( ) {
         // Arrange - Album URL with query parameters but no ?i= (should be treated as album)
@@ -98,6 +116,9 @@ public class AppleMusicLinkParserTests {
         Assert.AreEqual( "us/albums/286930912", requestUri, "Should extract album ID '286930912' without query parameters" );
     }
 
+    /// <summary>
+    /// Verifies that TryParseUri extracts album ID correctly when URL contains affiliate token query parameter.
+    /// </summary>
     [TestMethod]
     public void TryParseUri_AlbumWithAtQueryParam_ExtractsAlbumIdCorrectly( ) {
         // Arrange - Album URL with affiliate token query parameter
@@ -113,6 +134,9 @@ public class AppleMusicLinkParserTests {
         Assert.AreEqual( "gb/albums/1234567890", requestUri, "Should extract album ID '1234567890' without query parameters" );
     }
 
+    /// <summary>
+    /// Verifies that TryParseUri extracts song ID correctly from direct song URLs with query parameters.
+    /// </summary>
     [TestMethod]
     public void TryParseUri_DirectSongUrlWithQueryParams_ExtractsSongIdCorrectly( ) {
         // Arrange - Direct song URL (not album with ?i=) with query parameters

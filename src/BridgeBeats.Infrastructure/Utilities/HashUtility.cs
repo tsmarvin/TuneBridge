@@ -23,8 +23,8 @@ public static class HashUtility {
     /// <exception cref="ArgumentNullException">Thrown when input is null.</exception>
     /// <remarks>
     /// The resulting hash is URL-safe and case-insensitive, making it suitable
-    /// for Redis keys and other storage systems. The hash is truncated to 32 characters
-    /// (160 bits) for practical key length while maintaining collision resistance.
+    /// for Redis keys and other storage systems. The full SHA-256 hash (256 bits)
+    /// is encoded as base32 for maximum collision resistance.
     /// </remarks>
     public static string ComputeSha256Base32( string input ) {
         ArgumentNullException.ThrowIfNull( input );
@@ -33,7 +33,7 @@ public static class HashUtility {
         string base32Hash = ToBase32( hashBytes );
 
         // Truncate to 32 characters for practical key length
-        return base32Hash[..Math.Min( 32, base32Hash.Length )].ToLowerInvariant( );
+        return base32Hash.ToLowerInvariant( );
     }
 
     /// <summary>
@@ -60,7 +60,7 @@ public static class HashUtility {
     /// <param name="input">The byte array to convert.</param>
     /// <returns>A base32-encoded string without padding.</returns>
     private static string ToBase32( byte[] input ) {
-        if (input == null || input.Length == 0) {
+        if (input.Length == 0) {
             return string.Empty;
         }
 

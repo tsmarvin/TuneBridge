@@ -2,7 +2,17 @@
 
 This guide explains how to use the BridgeBeats Discord bot, including setup and what to expect when sharing music links in your Discord server.
 
-## 🚀 Getting Started
+## � Architecture
+
+The Discord integration runs as a standalone worker service (`BridgeBeats.Worker.Discord`) that:
+- Connects to Discord via the NetCord gateway library
+- Monitors server channels for music links
+- Calls the BridgeBeats Web API for music lookups
+- Posts conversion embeds back to Discord channels
+
+This separation allows the Discord bot to scale independently of the web application and enables easy horizontal scaling through sharding.
+
+## �🚀 Getting Started
 
 ### Adding the Bot to Your Server
 

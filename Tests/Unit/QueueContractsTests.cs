@@ -17,6 +17,9 @@ public class QueueContractsTests {
 
     #region QueuePriority Enum Tests
 
+    /// <summary>
+    /// Verifies that <see cref="QueuePriority"/> enum has expected numeric values.
+    /// </summary>
     [TestMethod]
     public void QueuePriority_HasExpectedValues( ) {
         // Assert all expected values exist with correct numeric values
@@ -29,6 +32,9 @@ public class QueueContractsTests {
         Assert.AreEqual( 2, bulk );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueuePriority"/> enum has exactly three values.
+    /// </summary>
     [TestMethod]
     public void QueuePriority_HasExactlyThreeValues( ) {
         // Arrange
@@ -44,6 +50,9 @@ public class QueueContractsTests {
 
     #region QueuedLookupRequest Tests
 
+    /// <summary>
+    /// Verifies that <see cref="QueuedLookupRequest"/> record equality returns true for identical records.
+    /// </summary>
     [TestMethod]
     public void QueuedLookupRequest_Equality_ReturnsTrueForIdenticalRecords( ) {
         // Arrange
@@ -70,6 +79,9 @@ public class QueueContractsTests {
         Assert.AreEqual( request1.GetHashCode( ), request2.GetHashCode( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueuedLookupRequest"/> record equality returns false for different records.
+    /// </summary>
     [TestMethod]
     public void QueuedLookupRequest_Equality_ReturnsFalseForDifferentRecords( ) {
         // Arrange
@@ -92,6 +104,9 @@ public class QueueContractsTests {
         Assert.AreNotEqual( request1, request2 );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueuedLookupRequest"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void QueuedLookupRequest_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -119,6 +134,9 @@ public class QueueContractsTests {
         Assert.AreEqual( original, deserialized );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueuedLookupRequest"/> JSON serialization omits null optional fields.
+    /// </summary>
     [TestMethod]
     public void QueuedLookupRequest_Serialization_OmitsNullOptionalFields( ) {
         // Arrange
@@ -145,6 +163,9 @@ public class QueueContractsTests {
 
     #region QueuedMessage<T> Tests
 
+    /// <summary>
+    /// Verifies that <see cref="QueuedMessage{T}"/> record equality returns true for identical records.
+    /// </summary>
     [TestMethod]
     public void QueuedMessage_Equality_ReturnsTrueForIdenticalRecords( ) {
         // Arrange
@@ -157,6 +178,9 @@ public class QueueContractsTests {
         Assert.AreEqual( message1.GetHashCode( ), message2.GetHashCode( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueuedMessage{T}"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void QueuedMessage_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -176,6 +200,9 @@ public class QueueContractsTests {
 
     #region QueueDepth Tests
 
+    /// <summary>
+    /// Verifies that <see cref="QueueDepth"/> record equality returns true for identical records.
+    /// </summary>
     [TestMethod]
     public void QueueDepth_Equality_ReturnsTrueForIdenticalRecords( ) {
         // Arrange
@@ -187,6 +214,9 @@ public class QueueContractsTests {
         Assert.AreEqual( depth1.GetHashCode( ), depth2.GetHashCode( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueueDepth"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void QueueDepth_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -205,6 +235,9 @@ public class QueueContractsTests {
 
     #region DeduplicationResult Tests
 
+    /// <summary>
+    /// Verifies that <see cref="DeduplicationResult"/> record equality returns true for identical records.
+    /// </summary>
     [TestMethod]
     public void DeduplicationResult_Equality_ReturnsTrueForIdenticalRecords( ) {
         // Arrange
@@ -216,6 +249,9 @@ public class QueueContractsTests {
         Assert.AreEqual( result1.GetHashCode( ), result2.GetHashCode( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="DeduplicationResult"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void DeduplicationResult_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -234,6 +270,9 @@ public class QueueContractsTests {
 
     #region RateLimitState Tests
 
+    /// <summary>
+    /// Verifies that <see cref="RateLimitState"/> record equality returns true for identical records.
+    /// </summary>
     [TestMethod]
     public void RateLimitState_Equality_ReturnsTrueForIdenticalRecords( ) {
         // Arrange
@@ -247,6 +286,9 @@ public class QueueContractsTests {
         Assert.AreEqual( state1.GetHashCode( ), state2.GetHashCode( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RateLimitState"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void RateLimitState_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -261,6 +303,9 @@ public class QueueContractsTests {
         Assert.AreEqual( original, deserialized );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RateLimitState"/> JSON serialization omits null optional fields.
+    /// </summary>
     [TestMethod]
     public void RateLimitState_Serialization_OmitsNullOptionalFields( ) {
         // Arrange
@@ -280,6 +325,9 @@ public class QueueContractsTests {
 
     #region RateLimitedEndpoint Tests
 
+    /// <summary>
+    /// Verifies that <see cref="RateLimitedEndpoint"/> record equality returns true for identical records.
+    /// </summary>
     [TestMethod]
     public void RateLimitedEndpoint_Equality_ReturnsTrueForIdenticalRecords( ) {
         // Arrange
@@ -292,6 +340,9 @@ public class QueueContractsTests {
         Assert.AreEqual( endpoint1.GetHashCode( ), endpoint2.GetHashCode( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RateLimitedEndpoint"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void RateLimitedEndpoint_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -310,6 +361,9 @@ public class QueueContractsTests {
 
     #region LookupSagaState Tests
 
+    /// <summary>
+    /// Verifies that <see cref="LookupSagaState"/> record equality compares value properties correctly.
+    /// </summary>
     [TestMethod]
     public void LookupSagaState_Equality_ComparesValueProperties( ) {
         // Arrange - Note: LookupSagaState contains a Dictionary which uses reference equality,
@@ -338,6 +392,9 @@ public class QueueContractsTests {
         Assert.AreEqual( saga1.LookupValue, saga2.LookupValue );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="LookupSagaState"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void LookupSagaState_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -371,6 +428,9 @@ public class QueueContractsTests {
 #pragma warning restore MSTEST0037
     }
 
+    /// <summary>
+    /// Verifies that <see cref="LookupSagaState.IsComplete"/> returns false when no provider states exist.
+    /// </summary>
     [TestMethod]
     public void LookupSagaState_IsComplete_ReturnsFalseWhenEmpty( ) {
         // Arrange
@@ -385,6 +445,9 @@ public class QueueContractsTests {
         Assert.IsFalse( saga.IsComplete );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="LookupSagaState.IsComplete"/> returns false when any provider is incomplete.
+    /// </summary>
     [TestMethod]
     public void LookupSagaState_IsComplete_ReturnsFalseWhenAnyProviderIncomplete( ) {
         // Arrange
@@ -403,6 +466,9 @@ public class QueueContractsTests {
         Assert.IsFalse( saga.IsComplete );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="LookupSagaState.IsComplete"/> returns true when all providers are complete.
+    /// </summary>
     [TestMethod]
     public void LookupSagaState_IsComplete_ReturnsTrueWhenAllProvidersComplete( ) {
         // Arrange
@@ -425,6 +491,9 @@ public class QueueContractsTests {
 
     #region ProviderLookupState Tests
 
+    /// <summary>
+    /// Verifies that <see cref="ProviderLookupState"/> record equality returns true for identical records.
+    /// </summary>
     [TestMethod]
     public void ProviderLookupState_Equality_ReturnsTrueForIdenticalRecords( ) {
         // Arrange
@@ -437,6 +506,9 @@ public class QueueContractsTests {
         Assert.AreEqual( state1.GetHashCode( ), state2.GetHashCode( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ProviderLookupState"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void ProviderLookupState_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -462,6 +534,9 @@ public class QueueContractsTests {
 
     #region QueueSettings Tests
 
+    /// <summary>
+    /// Verifies that <see cref="QueueSettings"/> has expected default values.
+    /// </summary>
     [TestMethod]
     public void QueueSettings_HasExpectedDefaults( ) {
         // Arrange
@@ -473,6 +548,9 @@ public class QueueContractsTests {
         Assert.IsNotNull( settings.Weights );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueueSettings"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void QueueSettings_Serialization_RoundTripsCorrectly( ) {
         // Arrange
@@ -503,6 +581,9 @@ public class QueueContractsTests {
 
     #region PriorityWeights Tests
 
+    /// <summary>
+    /// Verifies that <see cref="PriorityWeights"/> has expected default values.
+    /// </summary>
     [TestMethod]
     public void PriorityWeights_HasExpectedDefaults( ) {
         // Arrange
@@ -514,6 +595,9 @@ public class QueueContractsTests {
         Assert.AreEqual( 1, weights.Bulk );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="PriorityWeights"/> record equality returns true for identical records.
+    /// </summary>
     [TestMethod]
     public void PriorityWeights_Equality_ReturnsTrueForIdenticalRecords( ) {
         // Arrange
@@ -525,6 +609,9 @@ public class QueueContractsTests {
         Assert.AreEqual( weights1.GetHashCode( ), weights2.GetHashCode( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="PriorityWeights"/> serializes and deserializes correctly via JSON round-trip.
+    /// </summary>
     [TestMethod]
     public void PriorityWeights_Serialization_RoundTripsCorrectly( ) {
         // Arrange

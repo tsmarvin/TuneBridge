@@ -26,18 +26,27 @@ At least one complete set of music provider credentials is required:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `DISCORD_TOKEN` | Your Discord bot token | No** |
-| `ATPROTO_IDENTIFIER` | ATProto account identifier (handle or DID) | No*** |
-| `ATPROTO_PASSWORD` | ATProto app password | No*** |
+| `ATPROTO_IDENTIFIER` | ATProto account identifier (handle or DID) | No* |
+| `ATPROTO_PASSWORD` | ATProto app password | No* |
 
-\*\* Required only if using Discord integration  
-\*\*\* Required only if using ATProto PDS storage for caching lookup results. See [ATProto Lexicon Resolution Setup Guide](ATPROTO_LEXICON.md) for complete configuration instructions.
+\* Required only if using ATProto PDS storage for caching lookup results. See [ATProto Lexicon Resolution Setup Guide](ATPROTO_LEXICON.md) for complete configuration instructions.
+
+### Discord Worker Configuration
+
+The Discord integration runs as a separate worker service (`BridgeBeats.Worker.Discord`). These settings are only required if deploying the Discord worker:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `BridgeBeats__DiscordToken` | Your Discord bot token | Yes** |
+| `BridgeBeats__NodeNumber` | Node number for Discord sharding | No (default: `0`) |
+| `BridgeBeats__BaseUrl` | Base URL for API calls (e.g., `https://bridgebeats.link`) | Yes** |
+
+\*\* Required only when deploying the Discord worker service
 
 ### Optional Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NODE_NUMBER` | Node number for Discord sharding | `0` |
 | `ALLOWED_HOSTS` | Allowed hosts for the web server | `*` |
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |

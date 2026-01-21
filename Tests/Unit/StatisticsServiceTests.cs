@@ -21,6 +21,9 @@ public class StatisticsServiceTests {
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
     private const string TestUserDid = "did:plc:testuser123";
 
+    /// <summary>
+    /// Initializes test dependencies before each test method.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _atProtoStorageMock = new Mock<IATProtoStorageService>( );
@@ -34,6 +37,9 @@ public class StatisticsServiceTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance when provided with valid dependencies.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -47,6 +53,10 @@ public class StatisticsServiceTests {
 
     #region GetStatisticsAsync Tests
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> returns zero counts and empty
+    /// collections when the ATProto storage contains no records.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_WithEmptyCollection_ShouldReturnZeroStats( ) {
         // Arrange
@@ -66,6 +76,10 @@ public class StatisticsServiceTests {
         Assert.IsNull( stats.LatestLookup );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> correctly computes statistics
+    /// for a mix of track and album records, including correct total, album, and track counts.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_WithMixedRecords_ShouldComputeCorrectStats( ) {
         // Arrange
@@ -86,6 +100,10 @@ public class StatisticsServiceTests {
         Assert.AreEqual( 2, stats.TrackCount );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> correctly counts the number
+    /// of records per music provider.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_ShouldCountProviders( ) {
         // Arrange
@@ -106,6 +124,10 @@ public class StatisticsServiceTests {
         Assert.AreEqual( 1, stats.ProviderCounts["Tidal"] );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> correctly identifies the
+    /// earliest and latest lookup timestamps from the records.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_ShouldTrackDateRange( ) {
         // Arrange
@@ -129,6 +151,10 @@ public class StatisticsServiceTests {
         Assert.AreEqual( latest, stats.LatestLookup.Value );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> returns only the five most
+    /// recent entries in the correct order (newest first).
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_ShouldReturnFiveMostRecentEntries( ) {
         // Arrange
@@ -153,6 +179,10 @@ public class StatisticsServiceTests {
         Assert.AreEqual( "Track4", stats.RecentEntries[4].Title ); // 5th most recent
     }
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> generates a card ID
+    /// for each recent entry, extracted from the ATProto URI.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_ShouldGenerateCardIdForRecentEntries( ) {
         // Arrange
@@ -175,6 +205,10 @@ public class StatisticsServiceTests {
 
     #region Caching Tests
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> caches results to avoid
+    /// repeated calls to the ATProto storage service.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_ShouldCacheResults( ) {
         // Arrange
@@ -192,6 +226,10 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.RefreshStatisticsAsync"/> bypasses the cache
+    /// and fetches fresh data from the ATProto storage service.
+    /// </summary>
     [TestMethod]
     public async Task RefreshStatisticsAsync_ShouldBypassCache( ) {
         // Arrange
@@ -209,6 +247,10 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> re-fetches data from
+    /// the ATProto storage service after the cache expires.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_AfterCacheExpiry_ShouldRefetch( ) {
         // Arrange - Use very short cache duration
@@ -240,6 +282,10 @@ public class StatisticsServiceTests {
 
     #region Cancellation Tests
 
+    /// <summary>
+    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> throws
+    /// <see cref="OperationCanceledException"/> when the cancellation token is cancelled.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_WhenCancelled_ShouldThrowOperationCanceledException( ) {
         // Arrange
@@ -258,6 +304,10 @@ public class StatisticsServiceTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a <see cref="StatisticsService"/> instance with the mocked dependencies.
+    /// </summary>
+    /// <returns>A configured <see cref="StatisticsService"/> instance.</returns>
     private StatisticsService CreateService( ) {
         return new StatisticsService(
             _atProtoStorageMock.Object,
@@ -266,18 +316,33 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Configures the ATProto storage mock to return an empty list of records.
+    /// </summary>
     private void SetupEmptyRecordList( ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
     }
 
+    /// <summary>
+    /// Configures the ATProto storage mock to return the specified list of records.
+    /// </summary>
+    /// <param name="records">The records to return from the mock.</param>
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( records.ToAsyncEnumerable( ) );
     }
 
+    /// <summary>
+    /// Creates a track record with the specified metadata for testing.
+    /// </summary>
+    /// <param name="atUri">The ATProto URI for the record.</param>
+    /// <param name="artist">The artist name.</param>
+    /// <param name="title">The track title.</param>
+    /// <param name="lookedUpAt">The timestamp when the lookup occurred.</param>
+    /// <returns>A tuple containing the AT URI and the <see cref="MediaLinkResult"/>.</returns>
     private static (string AtUri, MediaLinkResult Result) CreateTrackRecord(
         string atUri,
         string artist,
@@ -297,6 +362,14 @@ public class StatisticsServiceTests {
         return (atUri, result);
     }
 
+    /// <summary>
+    /// Creates an album record with the specified metadata for testing.
+    /// </summary>
+    /// <param name="atUri">The ATProto URI for the record.</param>
+    /// <param name="artist">The artist name.</param>
+    /// <param name="title">The album title.</param>
+    /// <param name="lookedUpAt">The timestamp when the lookup occurred.</param>
+    /// <returns>A tuple containing the AT URI and the <see cref="MediaLinkResult"/>.</returns>
     private static (string AtUri, MediaLinkResult Result) CreateAlbumRecord(
         string atUri,
         string artist,
@@ -316,6 +389,12 @@ public class StatisticsServiceTests {
         return (atUri, result);
     }
 
+    /// <summary>
+    /// Creates a track record with the specified providers for testing provider counting.
+    /// </summary>
+    /// <param name="atUri">The ATProto URI for the record.</param>
+    /// <param name="providers">The providers to include in the result.</param>
+    /// <returns>A tuple containing the AT URI and the <see cref="MediaLinkResult"/>.</returns>
     private static (string AtUri, MediaLinkResult Result) CreateTrackRecordWithProviders(
         string atUri,
         SupportedProviders[] providers

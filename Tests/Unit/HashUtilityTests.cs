@@ -8,6 +8,9 @@ namespace BridgeBeats.Tests.Unit;
 [TestClass]
 public class HashUtilityTests {
 
+    /// <summary>
+    /// Verifies that ComputeSha256Base32 returns consistent hashes for the same input.
+    /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ReturnsConsistentHash_ForSameInput( ) {
         // Arrange
@@ -21,6 +24,9 @@ public class HashUtilityTests {
         Assert.AreEqual( hash1, hash2 );
     }
 
+    /// <summary>
+    /// Verifies that ComputeSha256Base32 returns different hashes for different inputs.
+    /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ReturnsDifferentHash_ForDifferentInput( ) {
         // Arrange
@@ -35,6 +41,9 @@ public class HashUtilityTests {
         Assert.AreNotEqual( hash1, hash2 );
     }
 
+    /// <summary>
+    /// Verifies that ComputeSha256Base32 returns lowercase output.
+    /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ReturnsLowercase( ) {
         // Arrange
@@ -47,8 +56,11 @@ public class HashUtilityTests {
         Assert.AreEqual( hash, hash.ToLowerInvariant( ) );
     }
 
+    /// <summary>
+    /// Verifies that ComputeSha256Base32 returns exactly 52 characters.
+    /// </summary>
     [TestMethod]
-    public void ComputeSha256Base32_Returns32Characters( ) {
+    public void ComputeSha256Base32_ReturnsFullHashLength( ) {
         // Arrange
         string input = "any input string";
 
@@ -56,15 +68,22 @@ public class HashUtilityTests {
         string hash = HashUtility.ComputeSha256Base32( input );
 
         // Assert
-        Assert.AreEqual( 32, hash.Length );
+        // SHA-256 produces 256 bits, base32 encodes 5 bits per character = 52 characters
+        Assert.AreEqual( 52, hash.Length );
     }
 
+    /// <summary>
+    /// Verifies that ComputeSha256Base32 throws <see cref="ArgumentNullException"/> for null input.
+    /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ThrowsArgumentNullException_ForNullInput( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) => HashUtility.ComputeSha256Base32( null! ) );
     }
 
+    /// <summary>
+    /// Verifies that HashUrl normalizes URLs to lowercase for consistent hashing.
+    /// </summary>
     [TestMethod]
     public void HashUrl_NormalizesUrl_ToLowercase( ) {
         // Arrange
@@ -79,6 +98,9 @@ public class HashUtilityTests {
         Assert.AreEqual( hash1, hash2 );
     }
 
+    /// <summary>
+    /// Verifies that HashUrl trims whitespace before hashing.
+    /// </summary>
     [TestMethod]
     public void HashUrl_TrimsWhitespace( ) {
         // Arrange
@@ -93,24 +115,36 @@ public class HashUtilityTests {
         Assert.AreEqual( hash1, hash2 );
     }
 
+    /// <summary>
+    /// Verifies that HashUrl throws <see cref="ArgumentNullException"/> for null URL.
+    /// </summary>
     [TestMethod]
     public void HashUrl_ThrowsArgumentNullException_ForNullUrl( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) => HashUtility.HashUrl( null! ) );
     }
 
+    /// <summary>
+    /// Verifies that HashUrl throws <see cref="ArgumentException"/> for empty URL.
+    /// </summary>
     [TestMethod]
     public void HashUrl_ThrowsArgumentException_ForEmptyUrl( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentException>( ( ) => HashUtility.HashUrl( "" ) );
     }
 
+    /// <summary>
+    /// Verifies that HashUrl throws <see cref="ArgumentException"/> for whitespace-only URL.
+    /// </summary>
     [TestMethod]
     public void HashUrl_ThrowsArgumentException_ForWhitespaceUrl( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentException>( ( ) => HashUtility.HashUrl( "   " ) );
     }
 
+    /// <summary>
+    /// Verifies that ComputeSha256Base32 handles empty strings correctly.
+    /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_HandlesEmptyString( ) {
         // Arrange
@@ -121,9 +155,12 @@ public class HashUtilityTests {
 
         // Assert
         Assert.IsNotNull( hash );
-        Assert.AreEqual( 32, hash.Length );
+        Assert.AreEqual( 52, hash.Length );
     }
 
+    /// <summary>
+    /// Verifies that ComputeSha256Base32 handles Unicode characters correctly.
+    /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_HandlesUnicode( ) {
         // Arrange
@@ -134,9 +171,12 @@ public class HashUtilityTests {
 
         // Assert
         Assert.IsNotNull( hash );
-        Assert.AreEqual( 32, hash.Length );
+        Assert.AreEqual( 52, hash.Length );
     }
 
+    /// <summary>
+    /// Verifies that HashUrl handles very long URLs correctly.
+    /// </summary>
     [TestMethod]
     public void HashUrl_HandlesLongUrls( ) {
         // Arrange
@@ -147,6 +187,6 @@ public class HashUtilityTests {
 
         // Assert
         Assert.IsNotNull( hash );
-        Assert.AreEqual( 32, hash.Length );
+        Assert.AreEqual( 52, hash.Length );
     }
 }

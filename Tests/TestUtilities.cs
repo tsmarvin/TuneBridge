@@ -75,6 +75,10 @@ public static class SharedTestInfrastructure {
         }
     }
 
+    /// <summary>
+    /// Assembly-level initialization that ensures the Redis test infrastructure is started.
+    /// </summary>
+    /// <param name="context">The test context provided by the test framework.</param>
     [AssemblyInitialize]
     [Obsolete]
     public static void AssemblyInitialize( TestContext context ) {
@@ -82,6 +86,9 @@ public static class SharedTestInfrastructure {
         EnsureInitialized( );
     }
 
+    /// <summary>
+    /// Assembly-level cleanup that stops and disposes the Redis test container.
+    /// </summary>
     [AssemblyCleanup]
     public static async Task AssemblyCleanup( ) {
         if (s_redisContainer is not null) {
@@ -117,9 +124,16 @@ public class CustomWebApplicationFactory : WebApplicationFactory<BridgeBeats.Web
     private readonly string _identityDbPath;
     private readonly string _linkCacheDbPath;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CustomWebApplicationFactory"/> with default configuration.
+    /// </summary>
     [Obsolete]
     public CustomWebApplicationFactory( ) : this( null ) { }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CustomWebApplicationFactory"/> with optional configuration overrides.
+    /// </summary>
+    /// <param name="configOverrides">Optional dictionary of configuration values to override defaults.</param>
     [Obsolete]
     public CustomWebApplicationFactory( Dictionary<string, string?>? configOverrides ) {
         // IMPORTANT: Require Redis FIRST, before accessing RedisConnectionString.
@@ -177,6 +191,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<BridgeBeats.Web
         return connectionString; // Return original if parsing fails
     }
 
+    /// <summary>
+    /// Configures the web host for testing with test-specific configuration and services.
+    /// </summary>
+    /// <param name="builder">The web host builder to configure.</param>
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
         _ = builder.UseEnvironment( "Testing" );
 
@@ -326,6 +344,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<BridgeBeats.Web
         }
     }
 
+    /// <summary>
+    /// Disposes of resources including temporary database files.
+    /// </summary>
+    /// <param name="disposing">True if disposing managed resources.</param>
     protected override void Dispose( bool disposing ) {
         base.Dispose( disposing );
 

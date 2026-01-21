@@ -23,6 +23,10 @@ public class RedisRequestQueueTests {
     private IOptions<QueueSettings> _settings = null!;
     private RedisRequestQueue<QueuedLookupRequest> _queue = null!;
 
+    /// <summary>
+    /// Initializes the shared Redis connection for all tests in this class.
+    /// </summary>
+    /// <param name="context">The test context provided by MSTest.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -30,6 +34,9 @@ public class RedisRequestQueueTests {
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
 
+    /// <summary>
+    /// Cleans up the Redis connection after all tests in this class have completed.
+    /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
         if (s_redis is not null) {
@@ -38,6 +45,9 @@ public class RedisRequestQueueTests {
         }
     }
 
+    /// <summary>
+    /// Clears queue-related keys and creates a fresh queue instance before each test.
+    /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
         // Clear only queue-related keys before each test
@@ -61,6 +71,9 @@ public class RedisRequestQueueTests {
         await _queue.EnsureConsumerGroupsAsync( );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the interactive priority stream.
+    /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_AddsMessageToInteractiveStream( ) {
         // Arrange
@@ -77,6 +90,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( 1, depth.Total );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the background priority stream.
+    /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_AddsMessageToBackgroundStream( ) {
         // Arrange
@@ -92,6 +108,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( 0, depth.Bulk );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the bulk priority stream.
+    /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_AddsMessageToBulkStream( ) {
         // Arrange
@@ -107,6 +126,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( 1, depth.Bulk );
     }
 
+    /// <summary>
+    /// Verifies that DequeueAsync returns a message when one is available.
+    /// </summary>
     [TestMethod]
     public async Task DequeueAsync_ReturnsMessage_WhenAvailable( ) {
         // Arrange
@@ -123,6 +145,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( request.LookupValue, message.Payload.LookupValue );
     }
 
+    /// <summary>
+    /// Verifies that DequeueAsync returns null when the queue is empty.
+    /// </summary>
     [TestMethod]
     public async Task DequeueAsync_ReturnsNull_WhenQueueEmpty( ) {
         // Act
@@ -132,6 +157,9 @@ public class RedisRequestQueueTests {
         Assert.IsNull( message );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestQueue{T}.AcknowledgeAsync"/> removes the message from the stream.
+    /// </summary>
     [TestMethod]
     public async Task AcknowledgeAsync_RemovesMessageFromStream( ) {
         // Arrange
@@ -149,6 +177,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( 0, depth.Total );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestQueue{T}.MoveToDlqAsync"/> moves the message to the dead letter queue.
+    /// </summary>
     [TestMethod]
     public async Task MoveToDlqAsync_MovesMessageToDlq( ) {
         // Arrange
@@ -170,6 +201,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( request.RequestId, dlqMessages[0].Payload.RequestId );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestQueue{T}.RequeueFromDlqAsync"/> moves the message back from DLQ to the main queue.
+    /// </summary>
     [TestMethod]
     public async Task RequeueFromDlqAsync_MovesMessageBackToQueue( ) {
         // Arrange
@@ -195,6 +229,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( 1, depth.Background );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestQueue{T}.DeleteFromDlqAsync"/> permanently removes the message from the DLQ.
+    /// </summary>
     [TestMethod]
     public async Task DeleteFromDlqAsync_RemovesMessageFromDlq( ) {
         // Arrange - use Interactive priority to avoid bulk gating
@@ -219,6 +256,9 @@ public class RedisRequestQueueTests {
         Assert.IsEmpty( dlqMessages );
     }
 
+    /// <summary>
+    /// Verifies that queues for different providers are isolated and do not share messages.
+    /// </summary>
     [TestMethod]
     public async Task MultipleProviderQueues_AreIsolated( ) {
         // Arrange
@@ -258,6 +298,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( SupportedProviders.AppleMusic, appleMessage.Payload.Provider );
     }
 
+    /// <summary>
+    /// Verifies that weighted priority selection processes all messages across all priority levels.
+    /// </summary>
     [TestMethod]
     public async Task WeightedPrioritySelection_ProcessesAllMessages( ) {
         // Arrange - add multiple messages to each priority
@@ -299,6 +342,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( 0, depth.Total, "Queue should be empty after processing all messages" );
     }
 
+    /// <summary>
+    /// Verifies that Redis consumer groups allow multiple worker instances to process messages without duplication.
+    /// </summary>
     [TestMethod]
     public async Task ConsumerGroups_AllowMultipleWorkerInstances( ) {
         // Arrange - create two queue instances (simulating two workers)
@@ -348,6 +394,9 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( 0, depth.Total );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestQueue{T}.RequeueAsync"/> puts the message back in the queue for retry.
+    /// </summary>
     [TestMethod]
     public async Task RequeueAsync_PutsMessageBackForRetry( ) {
         // Arrange
@@ -370,6 +419,11 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( request.RequestId, requeued.Payload.RequestId );
     }
 
+    /// <summary>
+    /// Creates a test <see cref="QueuedLookupRequest"/> with a unique ID for the specified provider.
+    /// </summary>
+    /// <param name="provider">The music provider for the request. Defaults to Spotify.</param>
+    /// <returns>A new <see cref="QueuedLookupRequest"/> instance.</returns>
     private static QueuedLookupRequest CreateTestRequest( SupportedProviders provider = SupportedProviders.Spotify ) {
         string id = Guid.NewGuid( ).ToString( "N" )[..8];
         return new QueuedLookupRequest {

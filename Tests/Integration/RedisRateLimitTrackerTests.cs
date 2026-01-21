@@ -21,6 +21,10 @@ public class RedisRateLimitTrackerTests {
     private Mock<ILogger<RedisRateLimitTracker>> _mockLogger = null!;
     private RedisRateLimitTracker _tracker = null!;
 
+    /// <summary>
+    /// Initializes the shared Redis connection for all tests in this class.
+    /// </summary>
+    /// <param name="context">The test context provided by MSTest.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -28,6 +32,9 @@ public class RedisRateLimitTrackerTests {
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
 
+    /// <summary>
+    /// Cleans up the Redis connection after all tests in this class have completed.
+    /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
         if (s_redis is not null) {
@@ -36,6 +43,9 @@ public class RedisRateLimitTrackerTests {
         }
     }
 
+    /// <summary>
+    /// Clears rate limit keys and creates a fresh tracker before each test.
+    /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
         // Clear only rate limit-related keys before each test
@@ -53,6 +63,9 @@ public class RedisRateLimitTrackerTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that GetStateAsync returns not rate limited when no entry exists.
+    /// </summary>
     [TestMethod]
     public async Task GetStateAsync_ReturnsNotRateLimited_WhenNoEntry( ) {
         // Act
@@ -67,6 +80,9 @@ public class RedisRateLimitTrackerTests {
         Assert.IsNull( state.TimeRemaining );
     }
 
+    /// <summary>
+    /// Verifies that SetRateLimitedAsync stores rate limit with correct TTL.
+    /// </summary>
     [TestMethod]
     public async Task SetRateLimitedAsync_StoresRateLimitWithTtl( ) {
         // Arrange
@@ -94,6 +110,9 @@ public class RedisRateLimitTrackerTests {
         Assert.IsTrue( diff < TimeSpan.FromSeconds( 1 ), $"RetryAfter diff was {diff}" );
     }
 
+    /// <summary>
+    /// Verifies that SetRateLimitedAsync does not store already-expired rate limits.
+    /// </summary>
     [TestMethod]
     public async Task SetRateLimitedAsync_DoesNotStore_WhenAlreadyExpired( ) {
         // Arrange
@@ -115,6 +134,9 @@ public class RedisRateLimitTrackerTests {
         Assert.IsFalse( state.IsRateLimited );
     }
 
+    /// <summary>
+    /// Verifies that ClearAsync removes an existing rate limit.
+    /// </summary>
     [TestMethod]
     public async Task ClearAsync_RemovesRateLimit( ) {
         // Arrange
@@ -146,6 +168,9 @@ public class RedisRateLimitTrackerTests {
         Assert.IsFalse( stateAfter.IsRateLimited );
     }
 
+    /// <summary>
+    /// Verifies that GetAllRateLimitedAsync returns all rate-limited endpoints for a provider.
+    /// </summary>
     [TestMethod]
     public async Task GetAllRateLimitedAsync_ReturnsAllEndpointsForProvider( ) {
         // Arrange
@@ -171,6 +196,9 @@ public class RedisRateLimitTrackerTests {
         Assert.IsTrue( appleEndpoints.Any( e => e.Endpoint == "/v1/catalog" ) );
     }
 
+    /// <summary>
+    /// Verifies that different providers have isolated rate limits.
+    /// </summary>
     [TestMethod]
     public async Task DifferentProviders_HaveIsolatedRateLimits( ) {
         // Arrange
@@ -189,6 +217,9 @@ public class RedisRateLimitTrackerTests {
         Assert.IsFalse( tidalState.IsRateLimited );
     }
 
+    /// <summary>
+    /// Verifies that rate limits expire automatically based on TTL.
+    /// </summary>
     [TestMethod]
     public async Task RateLimit_ExpiresAutomatically( ) {
         // Arrange - set a very short TTL

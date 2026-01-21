@@ -22,6 +22,9 @@ public class SagaResultCombinerTests {
         WriteIndented = false
     };
 
+    /// <summary>
+    /// Initializes mocks and test dependencies before each test.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _loggerMock = new Mock<ILogger<SagaResultCombiner>>( );
@@ -30,6 +33,9 @@ public class SagaResultCombinerTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance with a valid logger.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidLogger_ShouldCreateInstance( ) {
         // Act
@@ -39,6 +45,9 @@ public class SagaResultCombinerTests {
         Assert.IsNotNull( combiner );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when logger is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -49,12 +58,18 @@ public class SagaResultCombinerTests {
 
     #region CombineResults(LookupSagaState) Tests
 
+    /// <summary>
+    /// Verifies that CombineResults throws <see cref="ArgumentNullException"/> when saga is null.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithNullSaga_ShouldThrowArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) => _combiner.CombineResults( null! ) );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults returns null when saga has no provider states.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithNoProviderStates_ShouldReturnNull( ) {
         // Arrange
@@ -67,6 +82,9 @@ public class SagaResultCombinerTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults returns null when all providers failed.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithAllFailedProviders_ShouldReturnNull( ) {
         // Arrange
@@ -84,6 +102,9 @@ public class SagaResultCombinerTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults returns a result with a single successful provider.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithSingleSuccessfulProvider_ShouldReturnResult( ) {
         // Arrange
@@ -105,6 +126,9 @@ public class SagaResultCombinerTests {
         Assert.AreEqual( "Test Song", result.Results[SupportedProviders.Spotify].Title );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults returns all results from multiple successful providers.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithMultipleSuccessfulProviders_ShouldReturnAllResults( ) {
         // Arrange
@@ -131,6 +155,9 @@ public class SagaResultCombinerTests {
         Assert.IsTrue( result.Results.ContainsKey( SupportedProviders.Tidal ) );
     }
 
+    /// <summary>
+    /// Verifies that the first provider result is marked as primary.
+    /// </summary>
     [TestMethod]
     public void CombineResults_FirstProviderResult_ShouldBeMarkedAsPrimary( ) {
         // Arrange
@@ -154,6 +181,9 @@ public class SagaResultCombinerTests {
         Assert.AreEqual( 1, primaryCount );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults returns only successful results when mixed with failures.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithMixedSuccessAndFailure_ShouldReturnOnlySuccessfulResults( ) {
         // Arrange
@@ -176,6 +206,9 @@ public class SagaResultCombinerTests {
         Assert.IsTrue( result.Results.ContainsKey( SupportedProviders.Spotify ) );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults combines available results even when saga is incomplete.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithIncompleteSaga_ShouldStillCombineAvailableResults( ) {
         // Arrange - Saga where not all providers have completed
@@ -204,6 +237,9 @@ public class SagaResultCombinerTests {
         Assert.HasCount( 1, result.Results );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults skips providers with null result JSON.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithNullResultJson_ShouldSkipProvider( ) {
         // Arrange
@@ -227,6 +263,9 @@ public class SagaResultCombinerTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults skips providers with empty result JSON.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithEmptyResultJson_ShouldSkipProvider( ) {
         // Arrange
@@ -250,6 +289,9 @@ public class SagaResultCombinerTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that CombineResults skips providers with invalid JSON and logs a warning.
+    /// </summary>
     [TestMethod]
     public void CombineResults_WithInvalidJson_ShouldSkipProviderAndLogWarning( ) {
         // Arrange
@@ -283,6 +325,9 @@ public class SagaResultCombinerTests {
 
     #region CombineResults(IEnumerable) Tests
 
+    /// <summary>
+    /// Verifies that the enumerable overload throws <see cref="ArgumentNullException"/> when results are null.
+    /// </summary>
     [TestMethod]
     public void CombineResults_EnumerableOverload_WithNullResults_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -291,6 +336,9 @@ public class SagaResultCombinerTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the enumerable overload returns null when results are empty.
+    /// </summary>
     [TestMethod]
     public void CombineResults_EnumerableOverload_WithEmptyResults_ShouldReturnNull( ) {
         // Arrange
@@ -303,6 +351,9 @@ public class SagaResultCombinerTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that the enumerable overload returns a result with a single result.
+    /// </summary>
     [TestMethod]
     public void CombineResults_EnumerableOverload_WithSingleResult_ShouldReturnResult( ) {
         // Arrange
@@ -320,6 +371,9 @@ public class SagaResultCombinerTests {
         Assert.IsTrue( result.Results.ContainsKey( SupportedProviders.Spotify ) );
     }
 
+    /// <summary>
+    /// Verifies that the enumerable overload returns all results from multiple providers.
+    /// </summary>
     [TestMethod]
     public void CombineResults_EnumerableOverload_WithMultipleResults_ShouldReturnAllResults( ) {
         // Arrange
@@ -338,6 +392,9 @@ public class SagaResultCombinerTests {
         Assert.HasCount( 2, result.Results );
     }
 
+    /// <summary>
+    /// Verifies that the enumerable overload marks the first result as primary.
+    /// </summary>
     [TestMethod]
     public void CombineResults_EnumerableOverload_FirstResult_ShouldBeMarkedAsPrimary( ) {
         // Arrange
@@ -361,6 +418,11 @@ public class SagaResultCombinerTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a test <see cref="LookupSagaState"/> with default values.
+    /// </summary>
+    /// <param name="sagaId">Optional saga ID. Defaults to "test-saga-123".</param>
+    /// <returns>A new <see cref="LookupSagaState"/> instance.</returns>
     private static LookupSagaState CreateSaga( string? sagaId = null ) => new( ) {
         SagaId = sagaId ?? "test-saga-123",
         LookupKey = "isrc:US1234567890",
@@ -369,6 +431,13 @@ public class SagaResultCombinerTests {
         CreatedAt = DateTimeOffset.UtcNow
     };
 
+    /// <summary>
+    /// Creates a test <see cref="MusicLookupResult"/> with the specified metadata.
+    /// </summary>
+    /// <param name="externalId">The external ID (ISRC) for the result.</param>
+    /// <param name="artist">The artist name.</param>
+    /// <param name="title">The track title.</param>
+    /// <returns>A new <see cref="MusicLookupResult"/> instance.</returns>
     private static MusicLookupResult CreateLookupResult( string externalId, string artist, string title ) => new( ) {
         ExternalId = externalId,
         Artist = artist,
@@ -379,6 +448,12 @@ public class SagaResultCombinerTests {
         MarketRegion = "us"
     };
 
+    /// <summary>
+    /// Creates a successful <see cref="ProviderLookupState"/> with the specified lookup result.
+    /// </summary>
+    /// <param name="provider">The music provider.</param>
+    /// <param name="result">The lookup result to serialize into the state.</param>
+    /// <returns>A new <see cref="ProviderLookupState"/> instance with success status.</returns>
     private static ProviderLookupState CreateProviderState( SupportedProviders provider, MusicLookupResult result ) =>
         new(
             provider,
@@ -389,6 +464,12 @@ public class SagaResultCombinerTests {
             ErrorMessage: null
         );
 
+    /// <summary>
+    /// Creates a <see cref="ProviderLookupState"/> with the specified success status and no result JSON.
+    /// </summary>
+    /// <param name="provider">The music provider.</param>
+    /// <param name="isSuccess">Whether the lookup was successful.</param>
+    /// <returns>A new <see cref="ProviderLookupState"/> instance.</returns>
     private static ProviderLookupState CreateProviderState( SupportedProviders provider, bool isSuccess ) =>
         new(
             provider,

@@ -31,6 +31,9 @@ public class LookupOrchestratorTests {
     private const string TestArtist = "Test Artist";
     private const string TestRecordUri = "at://did:plc:test/com.bridgebeats.media.link/123abc";
 
+    /// <summary>
+    /// Initializes mocks and test dependencies before each test.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _cacheMock = new Mock<IMediaLinkCacheRepository>( );
@@ -53,6 +56,9 @@ public class LookupOrchestratorTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance with all valid dependencies.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -62,6 +68,9 @@ public class LookupOrchestratorTests {
         Assert.IsNotNull( orchestrator );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when cache is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullCache_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -78,6 +87,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when deduplicator is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullDeduplicator_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -94,6 +106,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when saga manager is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullSagaManager_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -110,6 +125,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when queue resolver is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullQueueResolver_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -126,6 +144,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when ATProto storage is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullAtProtoStorage_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -142,6 +163,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when enabled providers is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullEnabledProviders_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -158,6 +182,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when logger is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -178,6 +205,9 @@ public class LookupOrchestratorTests {
 
     #region LookupByIsrcAsync Tests
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync returns an empty result when ISRC is null.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_WithNullIsrc_ShouldReturnEmptyResult( ) {
         // Act
@@ -188,6 +218,9 @@ public class LookupOrchestratorTests {
         Assert.IsFalse( result.IsPartial );
     }
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync returns an empty result when ISRC is empty.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_WithEmptyIsrc_ShouldReturnEmptyResult( ) {
         // Act
@@ -198,6 +231,9 @@ public class LookupOrchestratorTests {
         Assert.IsFalse( result.IsPartial );
     }
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync returns an empty result when ISRC contains only whitespace.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_WithWhitespaceIsrc_ShouldReturnEmptyResult( ) {
         // Act
@@ -208,6 +244,9 @@ public class LookupOrchestratorTests {
         Assert.IsFalse( result.IsPartial );
     }
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync returns cached result when cache hit occurs.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_WithCacheHit_ShouldReturnCachedResult( ) {
         // Arrange
@@ -228,6 +267,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync creates a saga and enqueues request when cache misses and deduplication is acquired.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_WithCacheMissAndDeduplicationAcquired_ShouldCreateSagaAndEnqueue( ) {
         // Arrange
@@ -258,6 +300,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync waits for completion when request is already in-flight.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_WithInFlightRequest_ShouldWaitForCompletion( ) {
         // Arrange
@@ -284,6 +329,9 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync retries cache check when in-flight request times out.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_WithInFlightRequestAndTimeout_ShouldRetryCache( ) {
         // Arrange
@@ -311,6 +359,9 @@ public class LookupOrchestratorTests {
 
     #region LookupByUpcAsync Tests
 
+    /// <summary>
+    /// Verifies that LookupByUpcAsync returns an empty result when UPC is null.
+    /// </summary>
     [TestMethod]
     public async Task LookupByUpcAsync_WithNullUpc_ShouldReturnEmptyResult( ) {
         // Act
@@ -321,6 +372,9 @@ public class LookupOrchestratorTests {
         Assert.IsFalse( result.IsPartial );
     }
 
+    /// <summary>
+    /// Verifies that LookupByUpcAsync returns cached result when cache hit occurs.
+    /// </summary>
     [TestMethod]
     public async Task LookupByUpcAsync_WithCacheHit_ShouldReturnCachedResult( ) {
         // Arrange
@@ -337,6 +391,9 @@ public class LookupOrchestratorTests {
         Assert.IsFalse( result.IsPartial );
     }
 
+    /// <summary>
+    /// Verifies that LookupByUpcAsync queues the request with IsAlbum set to true when cache misses.
+    /// </summary>
     [TestMethod]
     public async Task LookupByUpcAsync_WithCacheMiss_ShouldQueueWithIsAlbumTrue( ) {
         // Arrange
@@ -364,6 +421,9 @@ public class LookupOrchestratorTests {
 
     #region LookupByMetadataAsync Tests
 
+    /// <summary>
+    /// Verifies that LookupByMetadataAsync returns an empty result when title is null.
+    /// </summary>
     [TestMethod]
     public async Task LookupByMetadataAsync_WithNullTitle_ShouldReturnEmptyResult( ) {
         // Act
@@ -373,6 +433,9 @@ public class LookupOrchestratorTests {
         Assert.IsNull( result.Result );
     }
 
+    /// <summary>
+    /// Verifies that LookupByMetadataAsync returns an empty result when artist is null.
+    /// </summary>
     [TestMethod]
     public async Task LookupByMetadataAsync_WithNullArtist_ShouldReturnEmptyResult( ) {
         // Act
@@ -382,6 +445,9 @@ public class LookupOrchestratorTests {
         Assert.IsNull( result.Result );
     }
 
+    /// <summary>
+    /// Verifies that LookupByMetadataAsync returns cached result when cache hit occurs.
+    /// </summary>
     [TestMethod]
     public async Task LookupByMetadataAsync_WithCacheHit_ShouldReturnCachedResult( ) {
         // Arrange
@@ -397,6 +463,9 @@ public class LookupOrchestratorTests {
         Assert.IsNotNull( result.Result );
     }
 
+    /// <summary>
+    /// Verifies that LookupByMetadataAsync queues the request with title and artist metadata when cache misses.
+    /// </summary>
     [TestMethod]
     public async Task LookupByMetadataAsync_WithCacheMiss_ShouldQueueWithTitleAndArtist( ) {
         // Arrange
@@ -428,6 +497,9 @@ public class LookupOrchestratorTests {
 
     #region LookupByProviderIdAsync Tests
 
+    /// <summary>
+    /// Verifies that LookupByProviderIdAsync returns an empty result when provider ID is null.
+    /// </summary>
     [TestMethod]
     public async Task LookupByProviderIdAsync_WithNullProviderId_ShouldReturnEmptyResult( ) {
         // Act
@@ -437,6 +509,9 @@ public class LookupOrchestratorTests {
         Assert.IsNull( result.Result );
     }
 
+    /// <summary>
+    /// Verifies that LookupByProviderIdAsync uses SongIdLookup type for track lookups.
+    /// </summary>
     [TestMethod]
     public async Task LookupByProviderIdAsync_ForTrack_ShouldUseSongIdLookupType( ) {
         // Arrange
@@ -460,6 +535,9 @@ public class LookupOrchestratorTests {
         ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that LookupByProviderIdAsync uses AlbumIdLookup type for album lookups.
+    /// </summary>
     [TestMethod]
     public async Task LookupByProviderIdAsync_ForAlbum_ShouldUseAlbumIdLookupType( ) {
         // Arrange
@@ -487,6 +565,9 @@ public class LookupOrchestratorTests {
 
     #region LookupByContentAsync Tests
 
+    /// <summary>
+    /// Verifies that LookupByContentAsync returns an empty collection when content is null.
+    /// </summary>
     [TestMethod]
     public async Task LookupByContentAsync_WithNullContent_ShouldReturnEmpty( ) {
         // Act
@@ -499,6 +580,9 @@ public class LookupOrchestratorTests {
         Assert.IsEmpty( results );
     }
 
+    /// <summary>
+    /// Verifies that LookupByContentAsync returns an empty collection when content is empty.
+    /// </summary>
     [TestMethod]
     public async Task LookupByContentAsync_WithEmptyContent_ShouldReturnEmpty( ) {
         // Act
@@ -511,6 +595,9 @@ public class LookupOrchestratorTests {
         Assert.IsEmpty( results );
     }
 
+    /// <summary>
+    /// Verifies that LookupByContentAsync returns a result when content contains a Spotify URL.
+    /// </summary>
     [TestMethod]
     public async Task LookupByContentAsync_WithSpotifyUrl_ShouldReturnResult( ) {
         // Arrange
@@ -536,6 +623,9 @@ public class LookupOrchestratorTests {
         Assert.IsNotNull( results[0].Result );
     }
 
+    /// <summary>
+    /// Verifies that LookupByContentAsync returns a result when content contains an Apple Music URL.
+    /// </summary>
     [TestMethod]
     public async Task LookupByContentAsync_WithAppleMusicUrl_ShouldReturnResult( ) {
         // Arrange
@@ -560,6 +650,9 @@ public class LookupOrchestratorTests {
         Assert.HasCount( 1, results );
     }
 
+    /// <summary>
+    /// Verifies that LookupByContentAsync returns a result when content contains a Tidal URL.
+    /// </summary>
     [TestMethod]
     public async Task LookupByContentAsync_WithTidalUrl_ShouldReturnResult( ) {
         // Arrange
@@ -584,6 +677,9 @@ public class LookupOrchestratorTests {
         Assert.HasCount( 1, results );
     }
 
+    /// <summary>
+    /// Verifies that LookupByContentAsync deduplicates identical URLs in the content.
+    /// </summary>
     [TestMethod]
     public async Task LookupByContentAsync_WithMultipleUrls_ShouldDeduplicateSameLinks( ) {
         // Arrange
@@ -609,6 +705,9 @@ public class LookupOrchestratorTests {
         Assert.HasCount( 1, results );
     }
 
+    /// <summary>
+    /// Verifies that LookupByContentAsync returns an empty collection when content has no music URLs.
+    /// </summary>
     [TestMethod]
     public async Task LookupByContentAsync_WithNoMusicUrls_ShouldReturnEmpty( ) {
         // Arrange
@@ -628,6 +727,9 @@ public class LookupOrchestratorTests {
 
     #region Saga and Partial Result Tests
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync returns a partial result with rate limit info when saga indicates partial completion.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_WhenSagaReturnsPartialResult_ShouldReturnPartialWithInfo( ) {
         // Arrange
@@ -673,6 +775,9 @@ public class LookupOrchestratorTests {
         Assert.AreEqual( SupportedProviders.AppleMusic, result.RateLimitedProviders[0].Provider );
     }
 
+    /// <summary>
+    /// Verifies that LookupByIsrcAsync releases the deduplication lock when an error occurs.
+    /// </summary>
     [TestMethod]
     public async Task LookupByIsrcAsync_OnError_ShouldReleaseDeduplicationLock( ) {
         // Arrange
@@ -695,6 +800,10 @@ public class LookupOrchestratorTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a new <see cref="LookupOrchestrator"/> instance with the configured mocks.
+    /// </summary>
+    /// <returns>A new <see cref="LookupOrchestrator"/> instance.</returns>
     private LookupOrchestrator CreateOrchestrator( ) {
         return new LookupOrchestrator(
             _cacheMock.Object,
@@ -707,6 +816,10 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>
+    /// Creates a test <see cref="MediaLinkResult"/> with sample data.
+    /// </summary>
+    /// <returns>A new <see cref="MediaLinkResult"/> with Spotify test data.</returns>
     private static MediaLinkResult CreateMediaLinkResult( ) {
         return new MediaLinkResult {
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
@@ -722,48 +835,72 @@ public class LookupOrchestratorTests {
         };
     }
 
+    /// <summary>
+    /// Configures the cache mock to return null for ISRC lookups (cache miss).
+    /// </summary>
     private void SetupCacheMiss( ) {
         _ = _cacheMock
             .Setup( c => c.TryGetCachedResultByISRCAsync( It.IsAny<string>( ) ) )
             .ReturnsAsync( ((MediaLinkResult result, string recordUri, bool isStale)?)null );
     }
 
+    /// <summary>
+    /// Configures the cache mock to return null for UPC lookups (cache miss).
+    /// </summary>
     private void SetupCacheMissForUpc( ) {
         _ = _cacheMock
             .Setup( c => c.TryGetCachedResultByUPCAsync( It.IsAny<string>( ) ) )
             .ReturnsAsync( ((MediaLinkResult result, string recordUri, bool isStale)?)null );
     }
 
+    /// <summary>
+    /// Configures the cache mock to return null for metadata lookups (cache miss).
+    /// </summary>
     private void SetupCacheMissForMetadata( ) {
         _ = _cacheMock
             .Setup( c => c.TryGetCachedResultByMetadataAsync( It.IsAny<string>( ), It.IsAny<string>( ) ) )
             .ReturnsAsync( ((MediaLinkResult result, string recordUri, bool isStale)?)null );
     }
 
+    /// <summary>
+    /// Configures the cache mock to return null for provider ID lookups (cache miss).
+    /// </summary>
     private void SetupCacheMissForProviderId( ) {
         _ = _cacheMock
             .Setup( c => c.TryGetCachedResultByProviderIdAsync( It.IsAny<string>( ), It.IsAny<SupportedProviders>( ), It.IsAny<bool>( ) ) )
             .ReturnsAsync( ((MediaLinkResult result, string recordUri, bool isStale)?)null );
     }
 
+    /// <summary>
+    /// Configures the cache mock to return null for URL lookups (cache miss).
+    /// </summary>
     private void SetupCacheMissForUrl( ) {
         _ = _cacheMock
             .Setup( c => c.TryGetCachedResultAsync( It.IsAny<string>( ) ) )
             .ReturnsAsync( ((MediaLinkResult result, string recordUri, bool isStale)?)null );
     }
 
+    /// <summary>
+    /// Configures the deduplicator mock to return a successful acquisition result.
+    /// </summary>
     private void SetupDeduplicationAcquired( ) {
         _ = _deduplicatorMock
             .Setup( d => d.TryAcquireAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
             .ReturnsAsync( new DeduplicationResult( Acquired: true, AlreadyInFlight: false, RequestKey: "test-key" ) );
     }
 
+    /// <summary>
+    /// Configures the deduplicator mock to indicate the request is already in-flight.
+    /// </summary>
     private void SetupDeduplicationInFlight( ) {
         _ = _deduplicatorMock
             .Setup( d => d.TryAcquireAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
             .ReturnsAsync( new DeduplicationResult( Acquired: false, AlreadyInFlight: true, RequestKey: "test-key" ) );
     }
 
+    /// <summary>
+    /// Configures the saga manager mock for saga creation and state management.
+    /// </summary>
     private void SetupSagaCreation( ) {
         _ = _sagaManagerMock
             .Setup( s => s.GetOrCreateAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ), It.IsAny<string>( ) ) )
@@ -797,6 +934,9 @@ public class LookupOrchestratorTests {
             } );
     }
 
+    /// <summary>
+    /// Configures the deduplicator mock to return a result URI when waiting for completion.
+    /// </summary>
     private void SetupDeduplicationWaitWithResult( ) {
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )

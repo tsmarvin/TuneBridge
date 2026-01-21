@@ -25,6 +25,9 @@ public class CachingMediaLinkServiceTests {
     private const string TestProviderId = "spotify-123";
     private const string TestContent = "https://open.spotify.com/track/abc123";
 
+    /// <summary>
+    /// Initializes test dependencies before each test method.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _orchestratorMock = new Mock<ILookupOrchestrator>( );
@@ -34,6 +37,9 @@ public class CachingMediaLinkServiceTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance when provided with valid dependencies.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -43,6 +49,9 @@ public class CachingMediaLinkServiceTests {
         Assert.IsNotNull( service );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the orchestrator is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullOrchestrator_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -51,6 +60,9 @@ public class CachingMediaLinkServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the logger is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -63,6 +75,10 @@ public class CachingMediaLinkServiceTests {
 
     #region GetInfoAsync (Metadata) Tests
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoAsync(string, string)"/> properly
+    /// delegates metadata-based lookups to the orchestrator.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_WithMetadata_ShouldDelegateToOrchestrator( ) {
         // Arrange
@@ -79,6 +95,10 @@ public class CachingMediaLinkServiceTests {
         _orchestratorMock.Verify( o => o.LookupByMetadataAsync( TestTitle, TestArtist ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoAsync(string, string)"/> returns null
+    /// when the orchestrator returns a null result.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_WhenOrchestratorReturnsNull_ShouldReturnNull( ) {
         // Arrange
@@ -97,6 +117,10 @@ public class CachingMediaLinkServiceTests {
 
     #region GetInfoByISRCAsync Tests
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoByISRCAsync"/> properly
+    /// delegates ISRC-based lookups to the orchestrator.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByISRCAsync_ShouldDelegateToOrchestrator( ) {
         // Arrange
@@ -113,6 +137,10 @@ public class CachingMediaLinkServiceTests {
         _orchestratorMock.Verify( o => o.LookupByIsrcAsync( TestIsrc ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoByISRCAsync"/> returns null
+    /// when the orchestrator returns a null result.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByISRCAsync_WhenOrchestratorReturnsNull_ShouldReturnNull( ) {
         // Arrange
@@ -131,6 +159,10 @@ public class CachingMediaLinkServiceTests {
 
     #region GetInfoByUPCAsync Tests
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoByUPCAsync"/> properly
+    /// delegates UPC-based lookups to the orchestrator.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByUPCAsync_ShouldDelegateToOrchestrator( ) {
         // Arrange
@@ -147,6 +179,10 @@ public class CachingMediaLinkServiceTests {
         _orchestratorMock.Verify( o => o.LookupByUpcAsync( TestUpc ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoByUPCAsync"/> returns null
+    /// when the orchestrator returns a null result.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByUPCAsync_WhenOrchestratorReturnsNull_ShouldReturnNull( ) {
         // Arrange
@@ -165,6 +201,10 @@ public class CachingMediaLinkServiceTests {
 
     #region GetInfoByProviderIdAsync Tests
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoByProviderIdAsync"/> properly
+    /// delegates track lookups by provider ID to the orchestrator.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByProviderIdAsync_ForTrack_ShouldDelegateToOrchestrator( ) {
         // Arrange
@@ -184,6 +224,10 @@ public class CachingMediaLinkServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoByProviderIdAsync"/> properly
+    /// delegates album lookups by provider ID to the orchestrator.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByProviderIdAsync_ForAlbum_ShouldDelegateToOrchestrator( ) {
         // Arrange
@@ -203,6 +247,10 @@ public class CachingMediaLinkServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoByProviderIdAsync"/> returns null
+    /// when the orchestrator returns a null result.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByProviderIdAsync_WhenOrchestratorReturnsNull_ShouldReturnNull( ) {
         // Arrange
@@ -221,6 +269,10 @@ public class CachingMediaLinkServiceTests {
 
     #region GetInfoAsync (Content) Tests
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoAsync(string)"/> properly
+    /// delegates content-based lookups to the orchestrator.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_WithContent_ShouldDelegateToOrchestrator( ) {
         // Arrange
@@ -241,6 +293,10 @@ public class CachingMediaLinkServiceTests {
         _orchestratorMock.Verify( o => o.LookupByContentAsync( TestContent ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoAsync(string)"/> filters out
+    /// null results returned by the orchestrator.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_WithContentReturningNull_ShouldSkipNullResults( ) {
         // Arrange
@@ -261,6 +317,10 @@ public class CachingMediaLinkServiceTests {
         Assert.HasCount( 1, results );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CachingMediaLinkService.GetInfoAsync(string)"/> returns
+    /// an empty sequence when no results are found.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_WithNoResults_ShouldReturnEmpty( ) {
         // Arrange
@@ -282,6 +342,10 @@ public class CachingMediaLinkServiceTests {
 
     #region Partial Result Message Tests
 
+    /// <summary>
+    /// Verifies that when a partial result is returned due to rate limiting,
+    /// the appropriate rate limit message is added to the result.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByISRCAsync_WhenPartial_ShouldAddRateLimitMessage( ) {
         // Arrange
@@ -310,6 +374,10 @@ public class CachingMediaLinkServiceTests {
         Assert.Contains( "temporarily unavailable", result.Messages[0] );
     }
 
+    /// <summary>
+    /// Verifies that when multiple providers are rate limited, a message is added
+    /// for each rate-limited provider.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByISRCAsync_WhenPartialWithMultipleRateLimited_ShouldAddAllMessages( ) {
         // Arrange
@@ -339,6 +407,9 @@ public class CachingMediaLinkServiceTests {
         Assert.Contains( "Tidal", result.Messages[1] );
     }
 
+    /// <summary>
+    /// Verifies that no messages are added when the result is complete (not partial).
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByISRCAsync_WhenNotPartial_ShouldNotAddMessages( ) {
         // Arrange
@@ -359,6 +430,10 @@ public class CachingMediaLinkServiceTests {
         Assert.IsNull( result.Messages );
     }
 
+    /// <summary>
+    /// Verifies that no messages are added when the result is partial but there
+    /// are no rate-limited providers in the response.
+    /// </summary>
     [TestMethod]
     public async Task GetInfoByISRCAsync_WhenPartialButNoRateLimitedProviders_ShouldNotAddMessages( ) {
         // Arrange
@@ -384,6 +459,10 @@ public class CachingMediaLinkServiceTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a test <see cref="MediaLinkResult"/> with Spotify provider data for use in tests.
+    /// </summary>
+    /// <returns>A populated <see cref="MediaLinkResult"/> instance.</returns>
     private static MediaLinkResult CreateMediaLinkResult( ) {
         return new MediaLinkResult {
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
@@ -399,6 +478,12 @@ public class CachingMediaLinkServiceTests {
         };
     }
 
+    /// <summary>
+    /// Creates an <see cref="IAsyncEnumerable{T}"/> from the provided items for use in async enumeration tests.
+    /// </summary>
+    /// <typeparam name="T">The type of items in the enumerable.</typeparam>
+    /// <param name="items">The items to include in the async enumerable.</param>
+    /// <returns>An async enumerable yielding the provided items.</returns>
     private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>( params T[] items ) {
         foreach (T item in items) {
             await Task.Yield( );

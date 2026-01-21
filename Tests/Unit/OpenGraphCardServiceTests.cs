@@ -4,9 +4,15 @@ using BridgeBeats.Services.Cards;
 
 namespace BridgeBeats.Tests.Unit;
 
+/// <summary>
+/// Unit tests for <see cref="OpenGraphCardService"/> validating card URL generation and configuration.
+/// </summary>
 [TestClass]
 public class OpenGraphCardServiceTests {
 
+    /// <summary>
+    /// Verifies that the BaseUrl property returns the configured base URL.
+    /// </summary>
     [TestMethod]
     public void BaseUrl_WhenSet_ReturnsBaseUrl( ) {
         // Arrange
@@ -20,6 +26,9 @@ public class OpenGraphCardServiceTests {
         Assert.AreEqual( baseUrl, result );
     }
 
+    /// <summary>
+    /// Verifies that IsEnabled returns true when base URL is configured.
+    /// </summary>
     [TestMethod]
     public void IsEnabled_WhenBaseUrlIsNotEmpty_ReturnsTrue( ) {
         // Arrange
@@ -33,6 +42,9 @@ public class OpenGraphCardServiceTests {
         Assert.IsTrue( result );
     }
 
+    /// <summary>
+    /// Verifies that IsEnabled returns false when base URL is empty.
+    /// </summary>
     [TestMethod]
     public void IsEnabled_WhenBaseUrlIsEmpty_ReturnsFalse( ) {
         // Arrange
@@ -46,6 +58,9 @@ public class OpenGraphCardServiceTests {
         Assert.IsFalse( result );
     }
 
+    /// <summary>
+    /// Verifies that StoreResult returns a URL containing the configured base URL.
+    /// </summary>
     [TestMethod]
     public void StoreResult_WhenCalled_ReturnsUrlWithBaseUrl( ) {
         // Arrange
@@ -72,6 +87,9 @@ public class OpenGraphCardServiceTests {
         Assert.StartsWith( $"https://{baseUrl}/card/", cardUrl, "Card URL should start with base URL" );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentOutOfRangeException"/> when expiration hours is zero.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithZeroExpirationHours_ThrowsArgumentOutOfRangeException( ) {
         // Arrange
@@ -84,6 +102,9 @@ public class OpenGraphCardServiceTests {
         Assert.AreEqual( "expirationHours", exception.ParamName );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentOutOfRangeException"/> when expiration hours is negative.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNegativeExpirationHours_ThrowsArgumentOutOfRangeException( ) {
         // Arrange
@@ -96,6 +117,9 @@ public class OpenGraphCardServiceTests {
         Assert.AreEqual( "expirationHours", exception.ParamName );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentOutOfRangeException"/> when cleanup interval is zero.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithZeroCleanupInterval_ThrowsArgumentOutOfRangeException( ) {
         // Arrange
@@ -108,6 +132,9 @@ public class OpenGraphCardServiceTests {
         Assert.AreEqual( "cleanupInterval", exception.ParamName );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentOutOfRangeException"/> when cleanup interval is negative.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNegativeCleanupInterval_ThrowsArgumentOutOfRangeException( ) {
         // Arrange

@@ -12,6 +12,10 @@ public class HomeControllerTests {
     private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
 
+    /// <summary>
+    /// Initializes the test factory and HTTP client for all tests in this class.
+    /// </summary>
+    /// <param name="context">The test context provided by MSTest.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -46,11 +50,17 @@ public class HomeControllerTests {
         await s_factory.InitializeDatabasesAsync( );
     }
 
+    /// <summary>
+    /// Disposes the test factory after all tests in this class have completed.
+    /// </summary>
     [ClassCleanup]
     public static void ClassCleanup( ) {
         s_factory?.Dispose( );
     }
 
+    /// <summary>
+    /// Verifies that the Index page returns a successful HTTP status code.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task Index_ReturnsSuccessStatusCode( ) {
@@ -62,6 +72,9 @@ public class HomeControllerTests {
         Assert.AreEqual( "text/html; charset=utf-8", response.Content.Headers.ContentType?.ToString( ) );
     }
 
+    /// <summary>
+    /// Verifies that the Index page contains the expected BridgeBeats content.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task Index_ContainsExpectedContent( ) {
@@ -73,6 +86,9 @@ public class HomeControllerTests {
         Assert.IsTrue( content.Contains( "BridgeBeats", StringComparison.OrdinalIgnoreCase ) );
     }
 
+    /// <summary>
+    /// Verifies that the Privacy page returns a successful HTTP status code.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task Privacy_ReturnsSuccessStatusCode( ) {
@@ -83,6 +99,9 @@ public class HomeControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
     }
 
+    /// <summary>
+    /// Verifies that the Error page returns a successful HTTP status code.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task Error_ReturnsSuccessStatusCode( ) {
@@ -93,6 +112,9 @@ public class HomeControllerTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
     }
 
+    /// <summary>
+    /// Verifies that non-existent routes return a 404 Not Found status code.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task NonExistentRoute_ReturnsNotFound( ) {
@@ -103,6 +125,9 @@ public class HomeControllerTests {
         Assert.AreEqual( HttpStatusCode.NotFound, response.StatusCode );
     }
 
+    /// <summary>
+    /// Verifies that LookupResults returns a message view when URI is empty.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task LookupResults_WithEmptyUri_ReturnsMessageView( ) {
@@ -120,6 +145,9 @@ public class HomeControllerTests {
         Assert.IsTrue( content.Contains( "URI is required", StringComparison.OrdinalIgnoreCase ) );
     }
 
+    /// <summary>
+    /// Verifies that LookupResultsByIsrc returns a message view when ISRC is empty.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task LookupResultsByIsrc_WithEmptyIsrc_ReturnsMessageView( ) {
@@ -137,6 +165,9 @@ public class HomeControllerTests {
         Assert.IsTrue( content.Contains( "ISRC is required", StringComparison.OrdinalIgnoreCase ) );
     }
 
+    /// <summary>
+    /// Verifies that LookupResultsByUpc returns a message view when UPC is empty.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task LookupResultsByUpc_WithEmptyUpc_ReturnsMessageView( ) {
@@ -154,6 +185,9 @@ public class HomeControllerTests {
         Assert.IsTrue( content.Contains( "UPC is required", StringComparison.OrdinalIgnoreCase ) );
     }
 
+    /// <summary>
+    /// Verifies that LookupResultsByTitle returns a message view when title and artist are empty.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task LookupResultsByTitle_WithEmptyTitleAndArtist_ReturnsMessageView( ) {
@@ -172,6 +206,9 @@ public class HomeControllerTests {
         Assert.IsTrue( content.Contains( "Title and artist are required", StringComparison.OrdinalIgnoreCase ) );
     }
 
+    /// <summary>
+    /// Verifies that LookupResultsByIsrc returns an HTML view when a valid ISRC is provided.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for API call
@@ -193,6 +230,9 @@ public class HomeControllerTests {
                       content.Contains( "No results found", StringComparison.OrdinalIgnoreCase ) );
     }
 
+    /// <summary>
+    /// Verifies that LookupResultsByUpc returns an HTML view when a valid UPC is provided.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for API call
@@ -214,6 +254,9 @@ public class HomeControllerTests {
                       content.Contains( "No results found", StringComparison.OrdinalIgnoreCase ) );
     }
 
+    /// <summary>
+    /// Verifies that LookupResultsByTitle returns an HTML view when valid title and artist are provided.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for API call
@@ -236,5 +279,8 @@ public class HomeControllerTests {
                       content.Contains( "No results found", StringComparison.OrdinalIgnoreCase ) );
     }
 
+    /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
     public TestContext TestContext { get; set; }
 }

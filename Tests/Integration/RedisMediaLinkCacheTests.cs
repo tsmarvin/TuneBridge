@@ -27,6 +27,10 @@ public class RedisMediaLinkCacheTests {
     private const int CacheDays = 7;
     private const string UserDID = "did:plc:testuser123";
 
+    /// <summary>
+    /// Initializes the shared Redis connection for all tests in this class.
+    /// </summary>
+    /// <param name="context">The test context provided by MSTest.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -34,6 +38,9 @@ public class RedisMediaLinkCacheTests {
         _redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
 
+    /// <summary>
+    /// Cleans up the Redis connection after all tests in this class have completed.
+    /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
         if (_redis is not null) {
@@ -42,6 +49,9 @@ public class RedisMediaLinkCacheTests {
         }
     }
 
+    /// <summary>
+    /// Clears cache-related keys and creates a fresh cache instance before each test.
+    /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
         // Clear only cache-related keys before each test
@@ -63,6 +73,9 @@ public class RedisMediaLinkCacheTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.CacheResultAsync"/> stores lookup keys in Redis.
+    /// </summary>
     [TestMethod]
     public async Task CacheResultAsync_StoresLookupKeys_InRedis( ) {
         // Arrange
@@ -90,6 +103,9 @@ public class RedisMediaLinkCacheTests {
         Assert.AreEqual( recordUri, isrcValue.ToString( ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByISRCAsync"/> returns the cached result.
+    /// </summary>
     [TestMethod]
     public async Task TryGetCachedResultByISRCAsync_ReturnsResult_WhenCached( ) {
         // Arrange
@@ -116,6 +132,9 @@ public class RedisMediaLinkCacheTests {
         Assert.IsFalse( lookupResult.Value.isStale );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByUPCAsync"/> returns the cached result.
+    /// </summary>
     [TestMethod]
     public async Task TryGetCachedResultByUPCAsync_ReturnsResult_WhenCached( ) {
         // Arrange
@@ -141,6 +160,9 @@ public class RedisMediaLinkCacheTests {
         Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultAsync"/> returns the cached result by URL.
+    /// </summary>
     [TestMethod]
     public async Task TryGetCachedResultAsync_ReturnsResult_WhenUrlCached( ) {
         // Arrange
@@ -169,6 +191,9 @@ public class RedisMediaLinkCacheTests {
         Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByCardIdAsync"/> returns the cached result by card ID.
+    /// </summary>
     [TestMethod]
     public async Task TryGetCachedResultByCardIdAsync_ReturnsResult_WhenCached( ) {
         // Arrange
@@ -198,6 +223,9 @@ public class RedisMediaLinkCacheTests {
         Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByProviderIdAsync"/> returns the cached result by provider ID.
+    /// </summary>
     [TestMethod]
     public async Task TryGetCachedResultByProviderIdAsync_ReturnsResult_WhenCached( ) {
         // Arrange
@@ -223,6 +251,9 @@ public class RedisMediaLinkCacheTests {
         Assert.AreEqual( recordUri, lookupResult.Value.cachedUri );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.CacheResultAsync"/> cleans up old URL keys when refreshing a cached result.
+    /// </summary>
     [TestMethod]
     public async Task CacheResultAsync_CleansUpOldKeys_OnRefresh( ) {
         // Arrange
@@ -267,6 +298,9 @@ public class RedisMediaLinkCacheTests {
         Assert.IsFalse( newValue.IsNullOrEmpty, "New URL should be cached" );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByISRCAsync"/> returns null when the ISRC is not cached.
+    /// </summary>
     [TestMethod]
     public async Task TryGetCachedResultByISRCAsync_ReturnsNull_WhenNotCached( ) {
         // Act
@@ -277,6 +311,9 @@ public class RedisMediaLinkCacheTests {
         Assert.IsNull( lookupResult );
     }
 
+    /// <summary>
+    /// Verifies that the cache marks results as stale when they are older than the configured cache duration.
+    /// </summary>
     [TestMethod]
     public async Task CheckRecordFreshness_ReturnsStale_WhenOlderThanCacheDays( ) {
         // Arrange
