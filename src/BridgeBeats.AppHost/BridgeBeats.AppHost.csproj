@@ -25,5 +25,6 @@
     <ProjectReference Include="..\BridgeBeats.Worker.SagaCoordinator\BridgeBeats.Worker.SagaCoordinator.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.JetStreamWatcher\BridgeBeats.Worker.JetStreamWatcher.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.CacheBootstrap\BridgeBeats.Worker.CacheBootstrap.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.Discord\BridgeBeats.Worker.Discord.csproj" />
   </ItemGroup>
 </Project>

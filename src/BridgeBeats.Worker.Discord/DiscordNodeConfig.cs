@@ -1,6 +1,6 @@
 using BridgeBeats.Contracts.Interfaces;
 
-namespace BridgeBeats.Web.Discord {
+namespace BridgeBeats.Worker.Discord {
     /// <summary>
     /// Represents the configuration for a Discord gateway node, containing the media link service and the node identifier.
     /// This is used by the <see cref="MessageCreateGatewayHandler"/> to process messages for a specific shard by node.

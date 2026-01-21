@@ -5,7 +5,7 @@ using BridgeBeats.Services.Extensions;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 
-namespace BridgeBeats.Web.Discord {
+namespace BridgeBeats.Worker.Discord {
 
     /// <summary>
     /// Handles Discord message creation events to detect and respond to music links.

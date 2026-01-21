@@ -104,10 +104,10 @@
           "Testcontainers": "4.10.0"
         }
       },
-      "Aspire.Dashboard.Sdk.win-arm64": {
+      "Aspire.Dashboard.Sdk.linux-x64": {
         "type": "Transitive",
         "resolved": "13.1.0",
-        "contentHash": "IArwFpArCawtIgXAfTkS1Tka35WKWg/WDoMYpkEsSYOuEQUV/Cwn44SiCoZYOc/BiBqgzTWP9cRx81BuV0lPgA=="
+        "contentHash": "gIvMR7NdVGw+mUpK9qZsGuuYfDp4CHvBDLlykSSP9pCh5XGlMgDNR3uOMfvKVlqH1hAsOuecvxEcfQ9kjufrWw=="
       },
       "Aspire.Hosting": {
         "type": "Transitive",
@@ -172,10 +172,10 @@
           "System.IO.Hashing": "9.0.10"
         }
       },
-      "Aspire.Hosting.Orchestration.win-arm64": {
+      "Aspire.Hosting.Orchestration.linux-x64": {
         "type": "Transitive",
         "resolved": "13.1.0",
-        "contentHash": "jOk7x6Zuvb3nKqSnCNSN5TelDIIA/g9EbMiDMcEHWC2FFq/Gx5fiiKg2nYki29ToDLkR0wwdGqhZChlEpj2zuw=="
+        "contentHash": "V8u8ukncoflImciXeHG03x1pWbOiR4z1bIl2lwOKgdy7/JshFrlEaabaNuGmAIZFdWEM/fsc/hVDjecQyHF2aQ=="
       },
       "Aspire.Hosting.Redis": {
         "type": "Transitive",
@@ -1001,15 +1001,6 @@
           "Microsoft.Extensions.Primitives": "10.0.2"
         }
       },
-      "Microsoft.Extensions.Options.DataAnnotations": {
-        "type": "Transitive",
-        "resolved": "10.0.2",
-        "contentHash": "4+3rxbvA7CNW+zUmLGHOPo1ZAQmJwipQG7vQsf4PzESD65vJzGF4TaIJ1lCWdANmKKlMAfNu+CuJvR3KsSshKg==",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.2",
-          "Microsoft.Extensions.Options": "10.0.2"
-        }
-      },
       "Microsoft.Extensions.Primitives": {
         "type": "Transitive",
         "resolved": "10.0.2",
@@ -1214,18 +1205,6 @@
         "type": "Transitive",
         "resolved": "1.0.0-alpha.455",
         "contentHash": "RHV5OdZ8O5CtDBMjIVS3Aq4JcRtiwSnTtYWbuPUllJUK0nQ+MSSBK2OWnc1iQ/7nu1VWMseh2WgExl5nXMDHLw=="
-      },
-      "NetCord.Hosting": {
-        "type": "Transitive",
-        "resolved": "1.0.0-alpha.455",
-        "contentHash": "hvyyKoZ5DggyCU9aPkNzGsYwtn7QnPlqOj7gYORWdxp6KVkI/M/vYPjlflnh8oRFh2hOD5U1HN8l/y6Tv9n6Aw==",
-        "dependencies": {
-          "Microsoft.Extensions.Configuration.Binder": "10.0.2",
-          "Microsoft.Extensions.Hosting.Abstractions": "10.0.2",
-          "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.2",
-          "Microsoft.Extensions.Options.DataAnnotations": "10.0.2",
-          "NetCord": "1.0.0-alpha.455"
-        }
       },
       "Newtonsoft.Json": {
         "type": "Transitive",
@@ -1585,9 +1564,9 @@
       "bridgebeats.apphost": {
         "type": "Project",
         "dependencies": {
-          "Aspire.Dashboard.Sdk.win-arm64": "[13.1.0, )",
+          "Aspire.Dashboard.Sdk.linux-x64": "[13.1.0, )",
           "Aspire.Hosting.AppHost": "[13.1.0, )",
-          "Aspire.Hosting.Orchestration.win-arm64": "[13.1.0, )",
+          "Aspire.Hosting.Orchestration.linux-x64": "[13.1.0, )",
           "Aspire.Hosting.Redis": "[13.1.0, )"
         }
       },
@@ -1645,7 +1624,6 @@
           "BridgeBeats.ServiceDefaults": "[1.0.0, )",
           "BridgeBeats.Services": "[1.0.0, )",
           "Microsoft.OpenApi": "[3.2.0, )",
-          "NetCord.Hosting": "[1.0.0-alpha.455, )",
           "Serilog.AspNetCore": "[10.0.0, )",
           "Serilog.Sinks.File": "[7.0.0, )",
           "Swashbuckle.AspNetCore": "[10.1.0, )"

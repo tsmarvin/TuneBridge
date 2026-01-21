@@ -23,6 +23,7 @@
     <InternalsVisibleTo Include="BridgeBeats.Providers" />
     <InternalsVisibleTo Include="BridgeBeats.Services" />
     <InternalsVisibleTo Include="BridgeBeats.Tests" />
+    <InternalsVisibleTo Include="BridgeBeats.Worker.Discord" />
   </ItemGroup>
 
 </Project>

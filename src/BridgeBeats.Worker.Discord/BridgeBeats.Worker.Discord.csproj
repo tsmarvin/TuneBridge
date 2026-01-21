@@ -1,6 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BridgeBeats.Worker.Discord</RootNamespace>
+    <UserSecretsId>bridgebeats-apphost</UserSecretsId>
     <RepositoryUrl>https://github.com/tsmarvin/BridgeBeats</RepositoryUrl>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,16 +15,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NetCord" Version="1.0.0-alpha.455" />
+    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.455" />
   </ItemGroup>
+
   <ItemGroup>
+    <ProjectReference Include="..\BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj" />
     <ProjectReference Include="..\BridgeBeats.Contracts\BridgeBeats.Contracts.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Services\BridgeBeats.Services.csproj" />
   </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="BridgeBeats.Tests" />
-    <InternalsVisibleTo Include="BridgeBeats.Web" />
-    <InternalsVisibleTo Include="BridgeBeats.Worker.Discord" />
   </ItemGroup>
+
 </Project>

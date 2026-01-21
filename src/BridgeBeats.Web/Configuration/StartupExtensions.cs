@@ -13,7 +13,6 @@ using BridgeBeats.Providers;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Services;
 using BridgeBeats.Services.Statistics;
-using BridgeBeats.Web.Discord;
 using BridgeBeats.Web.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
@@ -135,9 +134,6 @@ namespace BridgeBeats.Web.Configuration {
                 settings.CardCacheCleanupInterval
             );
             _ = services.AddSingleton( enabledProviders );
-
-            // Discord configuration
-            _ = services.AddDiscordServices( config, environment );
 
             return services;
         }

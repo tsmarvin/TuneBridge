@@ -1,48 +1,37 @@
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Web.Configuration;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 
-namespace BridgeBeats.Web.Discord {
+namespace BridgeBeats.Worker.Discord {
     /// <summary>
     /// Extension methods for configuring Discord services.
     /// </summary>
     public static class DiscordServiceExtensions {
         /// <summary>
-        /// Adds Discord services to the service collection if Discord token is configured.
+        /// Adds Discord services to the service collection.
         /// </summary>
         /// <param name="services">The service collection to add services to.</param>
-        /// <param name="config">The configuration containing Discord settings.</param>
-        /// <param name="environmentName">The current environment name.</param>
+        /// <param name="discordToken">The Discord bot token.</param>
+        /// <param name="nodeNumber">The node number for sharding.</param>
         /// <returns>The service collection for chaining.</returns>
         public static IServiceCollection AddDiscordServices(
             this IServiceCollection services,
-            IConfiguration config,
-            string environmentName
+            string discordToken,
+            int nodeNumber
         ) {
-            // Skip Discord registration in Testing environment
-            if (environmentName == "Testing") {
-                return services;
-            }
-
-            AppSettings settings = new( );
-            config.GetRequiredSection( "BridgeBeats" ).Bind( settings );
-
-            // Only register Discord services if token is provided
-            if (string.IsNullOrWhiteSpace( settings.DiscordToken )) {
-                return services;
-            }
-
+            // Register Discord node configuration
             _ = services.AddTransient( s => new DiscordNodeConfig(
                 s.GetRequiredService<IMediaLinkService>( ),
-                settings.NodeNumber
+                nodeNumber
             ) );
 
+            // Register Discord gateway with sharding support
             _ = services.AddDiscordShardedGateway( options => {
-                options.Token = settings.DiscordToken;
+                options.Token = discordToken;
                 options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
             } );
 
+            // Register gateway event handlers
             _ = services.AddShardedGatewayHandlers( typeof( DiscordServiceExtensions ).Assembly );
 
             return services;
