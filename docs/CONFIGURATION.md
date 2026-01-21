@@ -44,11 +44,13 @@ At least one complete set of music provider credentials is required:
 | `OTLP_ENDPOINT` | OpenTelemetry OTLP endpoint for Aspire Dashboard | `http://aspire-dashboard:4317` |
 | `LOG_FILE_PATH` | File path for log files | `/app/data/logs/bridgebeats-.log` |
 | `CACHE_DAYS` | Number of days to cache ATProto PDS lookup results | `7` |
-| `BridgeBeats__LinkCacheConnectionString` | SQLite connection string for cache database | `Data Source=bridgebeats.db` |
+| `REDIS_CONNECTION_STRING` | Redis connection string for caching and queuing | `localhost:6379` (provided by Aspire) |
 | `BridgeBeats__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=bridgebeats.db` |
 | `BridgeBeats__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
 | `CARD_CACHE_EXPIRATION_HOURS` | Number of hours to cache OpenGraph cards in memory | `1` |
 | `CARD_CACHE_CLEANUP_INTERVAL` | Number of operations between cleanup cycles for expired cards | `500` |
+| `RATE_LIMIT_RETRY_THRESHOLD` | Re-queue requests if Retry-After exceeds this (format: HH:MM:SS) | `00:02:00` |
+| `JOB_EXPIRATION_MINUTES` | Minutes before incomplete lookup jobs expire | `60` |
 
 **Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `BridgeBeats__BaseUrl` maps to `BridgeBeats:BaseUrl` in configuration).
 
@@ -90,7 +92,18 @@ If you want to store lookup results on a ATProto PDS for persistent caching:
 4. Use your handle (e.g., `yourname.bsky.social`) as `ATPROTO_IDENTIFIER`
 5. Use the generated app password as `ATPROTO_PASSWORD`
 
-**Note**: Lookup results are stored as custom AT Protocol lexicon records on your PDS. Input links with tracking parameters are kept private in a local SQLite database for privacy protection.
+**Note**: Lookup results are stored as custom AT Protocol lexicon records on your PDS. Input links with tracking parameters are kept private in Redis for efficient lookup (URL hashes only) and are never exposed publicly.
+
+### Redis Configuration (Required - provided by Aspire)
+
+Redis is used for distributed caching, request queuing, and rate limit tracking. In development, Aspire provides and configures Redis automatically. In production:
+
+1. Deploy a Redis instance (standalone or cluster)
+2. Set `REDIS_CONNECTION_STRING` to your Redis endpoint
+3. Recommended: Use Redis with persistence (RDB or AOF) for queue durability
+4. Recommended: Enable TLS and authentication for production deployments
+
+**Note**: Redis stores only lookup indices and queue messages. All actual MediaLinkResult data is stored on ATProto PDS.
 
 ## Configuration Files
 
@@ -114,11 +127,13 @@ For local development, you can use an `appsettings.json` file instead of environ
     "ATProtoIdentifier": "your-handle.bsky.social",
     "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
-    "LinkCacheConnectionString": "Data Source=bridgebeats.db",
+    "RedisConnectionString": "localhost:6379",
     "BaseUrl": "localhost",
     "LogFilePath": "./logs/bridgebeats-.log",
     "CardCacheExpirationHours": 1,
-    "CardCacheCleanupInterval": 500
+    "CardCacheCleanupInterval": 500,
+    "RateLimitRetryThreshold": "00:02:00",
+    "JobExpirationMinutes": 60
   },
   "Logging": {
     "LogLevel": {

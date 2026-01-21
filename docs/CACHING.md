@@ -1,4 +1,4 @@
-# MediaLinkResult Caching with ATProto PDS Storage
+# MediaLinkResult Caching with Redis and ATProto PDS Storage
 
 This document describes the caching and storage system for MediaLinkResult DTOs in BridgeBeats.
 
@@ -6,12 +6,71 @@ This document describes the caching and storage system for MediaLinkResult DTOs 
 
 BridgeBeats implements a two-tier caching system for MediaLinkResult lookups:
 
-1. **SQLite Database**: Local cache for fast lookups and tracking input links
+1. **Redis**: Distributed cache for fast lookups with support for horizontal scaling
 2. **ATProto PDS**: Persistent storage of MediaLinkResults as ATProto posts
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       Lookup Request Flow                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  User Request                                                   │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌──────────────────────────────────────┐                       │
+│  │   Request Deduplicator (Redis)      │                       │
+│  │   SETNX lock on request key         │                       │
+│  └─────────────┬────────────────────────┘                       │
+│                │                                                │
+│       ┌────────┴────────┐                                       │
+│       ▼                 ▼                                       │
+│   Duplicate        New Request                                  │
+│   (wait)            │                                           │
+│       │             ▼                                           │
+│       │        ┌────────────────────────────┐                   │
+│       │        │   Redis Cache Lookup       │                   │
+│       │        │   (Check for RecordUri)    │                   │
+│       │        └────────┬───────────────────┘                   │
+│       │                 │                                       │
+│       │        ┌────────┴────────┐                              │
+│       │        ▼                 ▼                              │
+│       │    Cache Hit         Cache Miss                         │
+│       │        │                 │                              │
+│       │        ▼                 ▼                              │
+│       │   ┌─────────────┐   ┌────────────┐                     │
+│       │   │ Fetch from  │   │  Parallel  │                     │
+│       │   │   PDS       │   │  Provider  │                     │
+│       │   │             │   │  Lookups   │                     │
+│       │   └──────┬──────┘   └─────┬──────┘                     │
+│       │          │                 │                            │
+│       │          ▼                 ▼                            │
+│       │   ┌──────────────────────────┐                          │
+│       │   │   Check Staleness        │                          │
+│       │   │   (LookedUpAt vs Now)    │                          │
+│       │   └──────┬───────────────────┘                          │
+│       │          │                                              │
+│       │     ┌────┴─────┐                                        │
+│       │     ▼          ▼                                        │
+│       │  Fresh      Stale                                       │
+│       │     │          │                                        │
+│       │     │          ▼                                        │
+│       │     │    ┌──────────────┐                               │
+│       │     │    │  Queue for   │                               │
+│       │     │    │  Background  │                               │
+│       │     │    │  Refresh     │                               │
+│       │     │    └──────────────┘                               │
+│       │     │                                                   │
+│       └─────┴──────────▼                                        │
+│              Return Result                                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Configuration
 
-Add the following settings to your `appsettings.json`:
+Add the following settings to your `appsettings.json` or environment variables:
 
 ```json
 {
@@ -19,7 +78,7 @@ Add the following settings to your `appsettings.json`:
     "ATProtoIdentifier": "your-handle.bsky.social",
     "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
-    "LinkCacheConnectionString": "Data Source=medialinkscache.db"
+    "RedisConnectionString": "localhost:6379"
   }
 }
 ```
@@ -29,81 +88,69 @@ Add the following settings to your `appsettings.json`:
 - **ATProtoIdentifier**: Your ATProto handle or DID
 - **ATProtoPassword**: Your ATProto password or app password (recommended: use app password)
 - **CacheDays**: Number of days to keep cache entries valid (default: 7)
-- **LinkCacheConnectionString**: SQLite connection string for the cache database (default: `Data Source=bridgebeats.db`)
+- **RedisConnectionString**: Redis connection string (provided by Aspire in development)
 
 > **Security Note**: Use a ATProto app password instead of your main account password. Generate an app password at: Settings → App Passwords in ATProto.
 
-## SQLite Database Schema
+## Redis Key Patterns
 
-The cache database consists of two main tables. **Important**: The SQLite database is used only for efficient lookups to find ATProto PDS record locations. All actual MediaLinkResult data is stored on and retrieved from the ATProto PDS.
+The cache uses the following Redis key patterns for efficient lookups:
 
-### MediaLinkCacheEntry
+| Key Pattern | Description | Example |
+|-------------|-------------|---------|
+| `lookup:isrc:{isrc}` | Track lookup by ISRC code | `lookup:isrc:USRC12345678` |
+| `lookup:upc:{upc}` | Album lookup by UPC code | `lookup:upc:123456789012` |
+| `lookup:url:{urlHash}` | Lookup by URL hash (SHA256) | `lookup:url:abc123...` |
+| `lookup:card:{cardId}` | Lookup by card ID | `lookup:card:xyz789` |
+| `lookup:provider:{provider}:{id}` | Lookup by provider ID | `lookup:provider:spotify:track123` |
+| `lookup:metadata:{metadataHash}` | Lookup by title+artist hash | `lookup:metadata:def456...` |
+| `meta:{rkey}` | Metadata for a record | `meta:track_abc123` |
+| `keys:{rkey}` | Set of lookup keys for cleanup | `keys:track_abc123` |
 
-Stores ATProto PDS record locations for efficient lookups.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| Id | INTEGER | Primary key |
-| RecordUri | TEXT | AT-URI of the ATProto record (e.g., `at://did:plc:xxx/link.bridgebeats.lookup/yyy`) |
-| CreatedAt | DATETIME | When this cache entry was created |
-| LastLookedUpAt | DATETIME | When this record was last looked up or refreshed on PDS (used for staleness check) |
-
-**Indexes:**
-- Unique index on `RecordUri`
-- Index on `LastLookedUpAt` for efficient expiration queries
-
-### InputLinkEntry
-
-Tracks input links that map to cached results. Multiple input links can point to the same cache entry.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| Id | INTEGER | Primary key |
-| Link | TEXT | Normalized input link (without protocol) |
-| MediaLinkCacheEntryId | INTEGER | Foreign key to MediaLinkCacheEntry |
-| CreatedAt | DATETIME | When this link was first added |
-
-**Indexes:**
-- Unique index on `Link`
-- Foreign key relationship with MediaLinkCacheEntry (cascade delete)
+All keys have a TTL equal to `CacheDays` and automatically expire when stale.
 
 ## Caching Behavior
 
 ### Lookup Flow
 
-1. **Cache Check**: When a lookup is requested with input links, the system checks the SQLite database for a matching link
-2. **PDS Fetch**: If found, fetches the actual MediaLinkResult from ATProto PDS using the stored RecordUri
-3. **Staleness Check**: Checks if the record's `lookedUpAt` timestamp is older than the cache window (X days from `LastLookedUpAt` in SQLite)
-4. **Cache Hit**: If fresh, returns the PDS result
-5. **Cache Miss/Stale**: If not found, missing from PDS, or stale, performs a fresh lookup
+1. **Deduplication Check**: Redis SETNX used to prevent duplicate in-flight requests
+2. **Cache Check**: Multiple lookup strategies tried in order of specificity:
+   - By ISRC/UPC (for tracks/albums)
+   - By provider ID (Spotify/Apple Music/Tidal)
+   - By metadata hash (title + artist)
+   - By URL hash (input link)
+3. **PDS Fetch**: If RecordUri found in Redis, fetch actual data from ATProto PDS
+4. **Staleness Check**: Check if record's `lookedUpAt` timestamp exceeds `CacheDays`
+5. **Cache Hit**: If fresh, return immediately (with stale-while-revalidate queuing if stale)
+6. **Cache Miss**: Perform fresh lookup via providers
 
 ### Storage Flow
 
-1. **Lookup Execution**: Performs lookup across configured music providers
-2. **ATProto Storage**: Stores the MediaLinkResult as a ATProto PDS record with JSON content and current timestamp
-3. **SQLite Storage**: Stores only the ATProto record URI and lookup timestamp in SQLite (no data duplication)
-4. **Link Association**: Associates all input links with the cache entry in SQLite
+1. **Lookup Execution**: Parallel lookup across configured music providers
+2. **ATProto Storage**: Store MediaLinkResult as ATProto PDS record with deterministic rkey
+3. **Redis Indexing**: Create lookup indices in Redis (no data duplication)
+4. **Link Association**: Associate all input links with the RecordUri in Redis
 
-### Record Refresh
+### Stale-While-Revalidate
 
-When a record is found to be stale (older than cache window):
-1. A fresh lookup is performed via the music provider APIs
-2. The existing PDS record is **updated** (using PutRecord) with:
-   - New provider results
-   - Updated `lookedUpAt` timestamp
-3. Input links are associated with the record in SQLite only (not stored on PDS for privacy)
-4. The SQLite `LastLookedUpAt` is updated
-5. The same RecordUri is maintained (no new record created)
+When a stale record is found (older than `CacheDays`):
+1. The stale result is returned immediately to the user
+2. A background refresh job is enqueued to update the record
+3. The refresh writes a new PDS record and updates all Redis indices
+4. Future requests get the refreshed data
 
-### Link Association
+This ensures users always get fast responses while keeping data fresh.
 
-When a new lookup is performed with a link that resolves to an already-cached result:
-1. The new link is added to the SQLite `InputLinkEntry` table for future lookups
-2. The SQLite cache entry remains pointed to the same PDS record
+### Request Deduplication
 
-**Privacy Protection**: Input links are stored ONLY in the local SQLite database, not on ATProto PDS. This prevents exposure of potentially tracking-laden URLs (query parameters, referral codes, etc.) on the public ATProto network while still enabling efficient lookup-to-record mapping locally.
+To prevent thundering herd problems with concurrent identical requests:
+1. Redis SETNX creates a lock with TTL (default: job timeout duration)
+2. First request acquires lock and processes the lookup
+3. Concurrent identical requests wait for the result via Redis Pub/Sub
+4. When complete, the result is published to all waiting requests
+5. All waiting requests receive the same cached result
 
-**Important**: There is no practical limit on the number of input links that can be associated with a record in SQLite. All links that resolve to the same music content will be mapped to the same PDS record.
+This dramatically reduces provider API calls during traffic spikes.
 
 ## ATProto Storage Format
 
@@ -111,52 +158,23 @@ MediaLinkResults are stored as custom AT Protocol records using the `link.bridge
 
 ### Lexicon Definition
 
-The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/link.bridgebeats.lookup` and served at `https://<your-domain>/.well-known/atproto-lexicon/link.bridgebeats.lookup`:
+The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/link.bridgebeats.lookup` and served at `https://<your-domain>/.well-known/atproto-lexicon/link.bridgebeats.lookup`.
 
-```json
-{
-  "lexicon": 1,
-  "id": "link.bridgebeats.lookup",
-  "defs": {
-    "main": {
-      "type": "record",
-      "description": "Result of parsing and looking up media links across supported music streaming providers.",
-      "key": "tid",
-      "record": {
-        "type": "object",
-        "required": ["results", "lookedUpAt"],
-        "properties": {
-          "results": { /* array of providerResult */ },
-          "lookedUpAt": { /* ISO 8601 datetime */ }
-        }
-      }
-    },
-    "providerResult": {
-      "type": "object",
-      "required": ["provider", "artist", "title", "url", "marketRegion"],
-      "properties": {
-        "provider": { /* appleMusic, spotify, or tidal */ },
-        "artist": { /* string */ },
-        "title": { /* string */ },
-        "externalId": { /* ISRC/UPC */ },
-        "url": { /* URI */ },
-        "artUrl": { /* URI */ },
-        "marketRegion": { /* ISO 3166-1 alpha-2 */ },
-        "isAlbum": { /* boolean */ }
-      }
-    }
-  }
-}
-```
+See [ATPROTO_LEXICON.md](ATPROTO_LEXICON.md) for the complete lexicon definition.
+
+### Record Key Generation
+
+Records use deterministic `rkey` generation for idempotent storage:
+
+- **Tracks with ISRC**: `track_{base32(sha256(isrc))}`
+- **Albums with UPC**: `album_{base32(sha256(upc))}`
+- **Metadata-based**: `meta_{base32(sha256(title|artist))}`
+
+This ensures identical music content always maps to the same PDS record, even if looked up via different URLs or providers.
 
 ### Record Structure
 
-Records are stored using the AT Protocol's `com.atproto.repo.createRecord` endpoint with:
-- **Collection**: `link.bridgebeats.lookup`
-- **Record Key**: Auto-generated TID (timestamp identifier)
-- **Record Value**: MediaLinkResultRecord (custom C# record class)
-
-Example record structure:
+Example record structure stored on PDS:
 
 ```json
 {
@@ -170,32 +188,37 @@ Example record structure:
       "artUrl": "https://i.scdn.co/image/...",
       "marketRegion": "us",
       "isAlbum": false
-    },
-    {
-      "provider": "appleMusic",
-      "artist": "Artist Name",
-      "title": "Track Title",
-      "externalId": "USRC12345678",
-      "url": "https://music.apple.com/us/album/...",
-      "artUrl": "https://is1-ssl.mzstatic.com/image/...",
-      "marketRegion": "us",
-      "isAlbum": false
     }
   ],
-  "lookedUpAt": "2025-10-19T23:00:00Z"
+  "lookedUpAt": "2025-01-19T23:00:00Z"
 }
 ```
 
-**Important Privacy Note**: Input links (the URLs users provide) are intentionally NOT stored in ATProto PDS records. They are tracked only in the local SQLite database. This protects user privacy by not exposing potentially tracking-laden URLs on the public ATProto network.
+**Important Privacy Note**: Input links (the URLs users provide) are intentionally NOT stored in ATProto PDS records. They are tracked only in Redis as URL hashes for lookup purposes. This protects user privacy by not exposing potentially tracking-laden URLs on the public ATProto network.
 
-### Benefits of Custom Lexicon
+## Performance Considerations
 
-- **Structured Data**: Records are properly typed and validated against the lexicon schema
-- **Queryable**: Can be indexed and queried efficiently by ATProto infrastructure
-- **Versioned**: Lexicon versioning allows for future schema evolution
-- **Interoperable**: Other AT Protocol clients can understand and display the data
-- **Privacy-Focused**: Input URLs are not stored on PDS, preventing exposure of tracking parameters
-- **Efficient**: More compact than storing JSON in post text
+- **Redis Lookup**: ~1-5ms (O(1) key lookup)
+- **PDS Fetch**: ~100-500ms (ATProto PDS API call)
+- **Fresh Lookup**: ~500-2000ms (Music provider API calls + PDS storage)
+- **Record Update**: ~100-500ms (PDS API call to update existing record)
+- **Memory Usage**: ~500 bytes per cached record (Redis index keys only, no data)
+
+### Horizontal Scaling
+
+Redis-based caching enables horizontal scaling:
+- Multiple application instances share the same Redis cache
+- Request deduplication prevents duplicate API calls across instances
+- No cache coordination needed (Redis handles it)
+- Stale-while-revalidate minimizes provider API load
+
+### Key Cleanup
+
+Redis keys automatically expire via TTL:
+- All lookup keys have TTL = `CacheDays`
+- Stale keys are automatically removed by Redis
+- Explicit cleanup on record refresh removes old keys before adding new ones
+- `keys:{rkey}` set tracks all keys for a record for efficient cleanup
 
 ## API Interfaces
 
@@ -205,93 +228,80 @@ Example record structure:
 public interface IATProtoStorageService {
     Task<string> StoreMediaLinkResultAsync(MediaLinkResult result);
     Task<MediaLinkResult?> GetMediaLinkResultAsync(string recordUri);
-    Task<bool> UpdateMediaLinkResultAsync(string recordUri, MediaLinkResult result);
 }
 ```
 
-**Methods:**
-- `StoreMediaLinkResultAsync`: Creates a new record on ATProto PDS
-- `GetMediaLinkResultAsync`: Retrieves a record from ATProto PDS by its AT-URI
-- `UpdateMediaLinkResultAsync`: Updates an existing record on ATProto PDS (used for refreshing stale records with new music metadata)
-
-### IMediaLinkCacheService
+### IMediaLinkCacheRepository
 
 ```csharp
-public interface IMediaLinkCacheService {
+public interface IMediaLinkCacheRepository {
     Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultAsync(string inputLink);
-    Task<string> CacheResultAsync(MediaLinkResult result, IEnumerable<string> inputLinks);
-    Task UpdateCacheEntryAsync(string recordUri, MediaLinkResult result, IEnumerable<string> inputLinks);
-    Task AddInputLinksAsync(string recordUri, IEnumerable<string> newLinks);
+    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByISRCAsync(string isrc);
+    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByUPCAsync(string upc);
+    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByProviderIdAsync(string providerId, SupportedProviders provider, bool isAlbum);
+    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByMetadataAsync(string title, string artist);
+    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByCardIdAsync(string cardId);
+    Task<string> CacheResultAsync(MediaLinkResult result);
+    Task AddInputLinksAsync(string recordUri, MediaLinkResult result);
 }
 ```
 
-### CachedMediaLinkService
+### CachingMediaLinkService
 
 A decorator for `IMediaLinkService` that transparently adds caching:
 - Checks cache before performing lookups
 - Stores results after successful lookups
-- Updates link associations automatically
-
-## Performance Considerations
-
-- **Cache Lookup**: ~1-5ms (SQLite query to find RecordUri)
-- **PDS Fetch**: ~100-500ms (ATProto PDS API call to retrieve record)
-- **Fresh Lookup + PDS Storage**: ~500-2000ms (Music provider API calls + PDS record creation/update)
-- **Record Update**: ~100-500ms (PDS API call to update existing record)
-- **Database Size**: Approximately 100-200 bytes per cached link + record URI (no result data stored in SQLite)
-
-### Key Points
-
-- SQLite is used only for efficient link-to-RecordUri lookups
-- All MediaLinkResult data is stored on and retrieved from ATProto PDS
-- Stale records are updated on PDS, not replaced
-- No data duplication between SQLite and PDS
+- Implements stale-while-revalidate pattern
+- Handles request deduplication automatically
 
 ## Maintenance
 
 ### Record Refresh
 
-Records older than `CacheDays` are automatically refreshed on next access:
-- A fresh lookup is performed
-- The PDS record is updated (not replaced) with new data and timestamp
-- The SQLite `LastLookedUpAt` is updated
+Records older than `CacheDays` are automatically queued for background refresh:
+- Stale data is served immediately
+- Background job performs fresh provider lookups
+- PDS record is created/updated with new data
+- All Redis indices are updated atomically
 
-### Manual Cache Cleanup
+### Manual Cache Invalidation
 
-To remove orphaned SQLite entries (where PDS records have been manually deleted):
-
-```sql
--- Find cache entries where PDS record no longer exists
--- (Manual verification required via PDS queries)
-
--- Remove a specific cache entry
-DELETE FROM MediaLinkCacheEntry WHERE RecordUri = 'at://...';
-
--- Remove very old cache entries (30+ days)
-DELETE FROM MediaLinkCacheEntry WHERE LastLookedUpAt < datetime('now', '-30 days');
-```
-
-### Database Backup
-
-The SQLite database file can be backed up while the application is running:
+To invalidate specific cache entries:
 
 ```bash
-sqlite3 medialinkscache.db ".backup medialinkscache.backup.db"
+# Connect to Redis
+redis-cli
+
+# Delete all lookup keys for a specific record
+SMEMBERS keys:track_abc123
+# (copy the keys returned)
+DEL lookup:isrc:USRC12345678 lookup:url:xyz789 ...
+DEL keys:track_abc123
+DEL meta:track_abc123
 ```
 
-**Note**: Backing up only the SQLite database is insufficient for full data recovery. The actual MediaLinkResult data is stored on ATProto PDS.
+### Migration from SQLite
+
+The system includes a `SqliteToRedisMigrator` for migrating existing SQLite cache data to Redis:
+
+```bash
+# Run the migration (via CacheBootstrap worker or manual invocation)
+# All SQLite MediaLinkCacheEntry records are migrated to Redis indices
+# ATProto PDS records remain unchanged (source of truth)
+```
 
 ## Limitations
 
-- Custom lexicon records are stored in the user's AT Protocol repository
-- Records are not displayed as standard posts in ATProto feeds
-- Records are publicly accessible via AT Protocol if you know the record URI
+- Redis keys expire after `CacheDays` (stale records are refreshed on access)
+- ATProto PDS is the source of truth; Redis is an index layer only
+- Provider URLs may change (cache uses stable ISRC/UPC when available)
 - Rate limits apply to ATProto API (authenticated: 3000/hour, 30000/day)
-- Maximum record size depends on PDS configuration (typically sufficient for MediaLinkResults)
+- Maximum record size depends on PDS configuration
 
 ## Security Considerations
 
 - Use ATProto app passwords (not main password)
 - Store credentials securely (environment variables or secret management)
-- SQLite database contains serialized MediaLinkResults (treat as sensitive if results contain user data)
+- Redis should be secured (password, firewall, TLS in production)
+- URL hashes in Redis prevent exposure of tracking parameters
 - No PII is stored in the cache by default

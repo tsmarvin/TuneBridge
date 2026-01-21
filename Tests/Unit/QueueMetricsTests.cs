@@ -14,9 +14,12 @@ public class QueueMetricsTests {
 
     [TestMethod]
     public void Meter_HasCorrectName( ) {
+        // Arrange
+        const string expectedName = "BridgeBeats.Queue";
+
         // Assert
-        Assert.AreEqual( "BridgeBeats.Queue", QueueMetrics.MeterName );
-        Assert.AreEqual( "BridgeBeats.Queue", QueueMetrics.Meter.Name );
+        Assert.AreEqual( expectedName, QueueMetrics.MeterName );
+        Assert.AreEqual( expectedName, QueueMetrics.Meter.Name );
     }
 
     [TestMethod]
@@ -249,54 +252,91 @@ public class QueueMetricsTests {
 
     [TestMethod]
     public void QueueMetricTags_Provider_HasCorrectValue( ) {
+        // Arrange
+        const string expected = "provider";
+
         // Assert
-        Assert.AreEqual( "provider", QueueMetricTags.Provider );
+        Assert.AreEqual( expected, QueueMetricTags.Provider );
     }
 
     [TestMethod]
     public void QueueMetricTags_Priority_HasCorrectValue( ) {
+        // Arrange
+        const string expected = "priority";
+
         // Assert
-        Assert.AreEqual( "priority", QueueMetricTags.Priority );
+        Assert.AreEqual( expected, QueueMetricTags.Priority );
     }
 
     [TestMethod]
     public void QueueMetricTags_Endpoint_HasCorrectValue( ) {
+        // Arrange
+        const string expected = "endpoint";
+
         // Assert
-        Assert.AreEqual( "endpoint", QueueMetricTags.Endpoint );
+        Assert.AreEqual( expected, QueueMetricTags.Endpoint );
     }
 
     [TestMethod]
     public void QueueMetricTags_LookupType_HasCorrectValue( ) {
+        // Arrange
+        const string expected = "lookup_type";
+
         // Assert
-        Assert.AreEqual( "lookup_type", QueueMetricTags.LookupType );
+        Assert.AreEqual( expected, QueueMetricTags.LookupType );
     }
 
     [TestMethod]
     public void QueueMetricTags_Status_HasCorrectValue( ) {
+        // Arrange
+        const string expected = "status";
+
         // Assert
-        Assert.AreEqual( "status", QueueMetricTags.Status );
+        Assert.AreEqual( expected, QueueMetricTags.Status );
     }
 
     [TestMethod]
     public void QueueMetricTags_StatusCode_HasCorrectValue( ) {
+        // Arrange
+        const string expected = "status_code";
+
         // Assert
-        Assert.AreEqual( "status_code", QueueMetricTags.StatusCode );
+        Assert.AreEqual( expected, QueueMetricTags.StatusCode );
     }
 
     [TestMethod]
     public void QueueMetricTags_Method_HasCorrectValue( ) {
+        // Arrange
+        const string expected = "method";
+
         // Assert
-        Assert.AreEqual( "method", QueueMetricTags.Method );
+        Assert.AreEqual( expected, QueueMetricTags.Method );
     }
 
     [TestMethod]
     public void QueueMetricTags_AllTagsAreNonNullAndNonEmpty( ) {
         // Assert - Validate all tag constants are usable
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Provider ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Priority ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Endpoint ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.LookupType ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Status ) );
+        Assert.IsNotNull( QueueMetricTags.Provider );
+        Assert.IsTrue( QueueMetricTags.Provider.Length > 0 );
+
+        Assert.IsNotNull( QueueMetricTags.Priority );
+        Assert.IsTrue( QueueMetricTags.Priority.Length > 0 );
+
+        Assert.IsNotNull( QueueMetricTags.Endpoint );
+        Assert.IsTrue( QueueMetricTags.Endpoint.Length > 0 );
+
+        Assert.IsNotNull( QueueMetricTags.LookupType );
+        Assert.IsTrue( QueueMetricTags.LookupType.Length > 0 );
+
+        Assert.IsNotNull( QueueMetricTags.Status );
+        Assert.IsTrue( QueueMetricTags.Status.Length > 0 );
+
+        Assert.IsNotNull( QueueMetricTags.StatusCode );
+        Assert.IsTrue( QueueMetricTags.StatusCode.Length > 0 );
+
+        Assert.IsNotNull( QueueMetricTags.Method );
+        Assert.IsTrue( QueueMetricTags.Method.Length > 0 );
+    }
         Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.StatusCode ) );
         Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Method ) );
     }
