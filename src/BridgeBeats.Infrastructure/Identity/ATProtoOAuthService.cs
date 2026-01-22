@@ -458,43 +458,23 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         // Step 5: Parse the token response
         string responseContent = await response.Content.ReadAsStringAsync( cancellationToken );
         
+        string accessToken;
+        string refreshToken;
+        int expiresIn;
+        string? scope;
+        string? sub;
+        
         try {
             using JsonDocument doc = JsonDocument.Parse( responseContent );
             JsonElement root = doc.RootElement;
 
-            string accessToken = root.GetProperty( "access_token" ).GetString( )
+            accessToken = root.GetProperty( "access_token" ).GetString( )
                 ?? throw new InvalidOperationException( "access_token missing from token response" );
-            string refreshToken = root.GetProperty( "refresh_token" ).GetString( )
+            refreshToken = root.GetProperty( "refresh_token" ).GetString( )
                 ?? throw new InvalidOperationException( "refresh_token missing from token response" );
-            int expiresIn = root.GetProperty( "expires_in" ).GetInt32( );
-            string? scope = root.TryGetProperty( "scope", out JsonElement scopeElem ) ? scopeElem.GetString( ) : null;
-            string? sub = root.TryGetProperty( "sub", out JsonElement subElem ) ? subElem.GetString( ) : null;
-
-            // Step 6: Validate the sub (DID) if present
-            if (!string.IsNullOrWhiteSpace( sub ) && !string.Equals( sub, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
-                _logger.LogWarning(
-                    "DID mismatch in token response. Expected: {Expected}, Got: {Actual}",
-                    oauthState.Did,
-                    sub
-                );
-                throw new InvalidOperationException( "Token response DID does not match expected DID" );
-            }
-
-            _logger.LogInformation(
-                "Successfully exchanged authorization code for tokens. DID: {Did}",
-                oauthState.Did
-            );
-
-            // Step 7: Return the OAuth result
-            return new ATProtoOAuthResult {
-                Did = sub ?? oauthState.Did!,
-                Handle = oauthState.Handle!,
-                AccessToken = accessToken,
-                RefreshToken = refreshToken,
-                DPoPKeyJwk = oauthState.DPoPKeyJwk!,
-                TokenExpiration = DateTime.UtcNow.AddSeconds( expiresIn ),
-                Scope = scope ?? string.Join( " ", s_requiredScopes )
-            };
+            expiresIn = root.GetProperty( "expires_in" ).GetInt32( );
+            scope = root.TryGetProperty( "scope", out JsonElement scopeElem ) ? scopeElem.GetString( ) : null;
+            sub = root.TryGetProperty( "sub", out JsonElement subElem ) ? subElem.GetString( ) : null;
         } catch (JsonException ex) {
             _logger.LogError(
                 ex,
@@ -503,6 +483,32 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             );
             throw new InvalidOperationException( "Token response had invalid JSON or unexpected schema.", ex );
         }
+
+        // Step 6: Validate the sub (DID) if present
+        if (!string.IsNullOrWhiteSpace( sub ) && !string.Equals( sub, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
+            _logger.LogWarning(
+                "DID mismatch in token response. Expected: {Expected}, Got: {Actual}",
+                oauthState.Did,
+                sub
+            );
+            throw new InvalidOperationException( "Token response DID does not match expected DID" );
+        }
+
+        _logger.LogInformation(
+            "Successfully exchanged authorization code for tokens. DID: {Did}",
+            oauthState.Did
+        );
+
+        // Step 7: Return the OAuth result
+        return new ATProtoOAuthResult {
+            Did = sub ?? oauthState.Did!,
+            Handle = oauthState.Handle!,
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            DPoPKeyJwk = oauthState.DPoPKeyJwk!,
+            TokenExpiration = DateTime.UtcNow.AddSeconds( expiresIn ),
+            Scope = scope ?? string.Join( " ", s_requiredScopes )
+        };
     }
 
     /// <summary>
@@ -592,8 +598,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
 
         // Create and write the token while ECDsa is still in scope
         SecurityToken token = handler.CreateToken( descriptor );
-        string jwt = handler.WriteToken( token );
-        return jwt;
+        return handler.WriteToken( token );
     }
 
     /// <summary>
