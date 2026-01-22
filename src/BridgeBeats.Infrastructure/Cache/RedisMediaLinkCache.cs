@@ -390,6 +390,7 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
     /// Extracts the Apple Music catalog ID from a URL.
     /// </summary>
     private static string? ExtractAppleMusicId( string url ) {
+        // Apple Music has a special query parameter format for track IDs
         if (url.Contains( "?i=" )) {
             int queryIndex = url.IndexOf( "?i=" );
             if (queryIndex > 0) {
@@ -400,53 +401,61 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
             }
         }
 
-        string[] parts = url.Split( '/' );
-        for (int i = 0; i < parts.Length; i++) {
-            if ((parts[i].Equals( "album", StringComparison.OrdinalIgnoreCase ) ||
-                 parts[i].Equals( "song", StringComparison.OrdinalIgnoreCase )) &&
-                i + 2 < parts.Length) {
-                string id = parts[i + 2].Split( '?' )[0];
-                if (!string.IsNullOrWhiteSpace( id ) && id.All( char.IsDigit )) {
-                    return id;
-                }
-            }
-        }
-
-        return null;
+        // Apple Music URLs: .../album/name/id or .../song/name/id (offset +2 after type)
+        return ExtractIdFromUrlPath( url, ["album", "song"], offsetAfterType: 2, validateDigitsOnly: true );
     }
 
     /// <summary>
     /// Extracts the Spotify track or album ID from a URL.
     /// </summary>
     private static string? ExtractSpotifyId( string url ) {
-        string[] parts = url.Split( '/' );
-        for (int i = 0; i < parts.Length; i++) {
-            if ((parts[i].Equals( "track", StringComparison.OrdinalIgnoreCase ) ||
-                 parts[i].Equals( "album", StringComparison.OrdinalIgnoreCase )) &&
-                i + 1 < parts.Length) {
-                string id = parts[i + 1].Split( '?' )[0];
-                if (!string.IsNullOrWhiteSpace( id )) {
-                    return id;
-                }
-            }
-        }
-
-        return null;
+        // Spotify URLs: .../track/id or .../album/id (offset +1 after type)
+        return ExtractIdFromUrlPath( url, ["track", "album"], offsetAfterType: 1, validateDigitsOnly: false );
     }
 
     /// <summary>
     /// Extracts the Tidal track or album ID from a URL.
     /// </summary>
     private static string? ExtractTidalId( string url ) {
+        // Tidal URLs: .../track/id or .../album/id (offset +1 after type)
+        return ExtractIdFromUrlPath( url, ["track", "album"], offsetAfterType: 1, validateDigitsOnly: true );
+    }
+
+    /// <summary>
+    /// Helper method to extract an ID from a URL path based on type keywords and offset.
+    /// </summary>
+    /// <param name="url">The URL to parse.</param>
+    /// <param name="typeKeywords">Array of type keywords to search for (e.g., "track", "album").</param>
+    /// <param name="offsetAfterType">Number of segments after the type keyword where the ID is located.</param>
+    /// <param name="validateDigitsOnly">Whether to validate that the extracted ID contains only digits.</param>
+    /// <returns>The extracted ID, or null if not found or invalid.</returns>
+    private static string? ExtractIdFromUrlPath( string url, string[] typeKeywords, int offsetAfterType, bool validateDigitsOnly ) {
         string[] parts = url.Split( '/' );
+        
         for (int i = 0; i < parts.Length; i++) {
-            if ((parts[i].Equals( "track", StringComparison.OrdinalIgnoreCase ) ||
-                 parts[i].Equals( "album", StringComparison.OrdinalIgnoreCase )) &&
-                i + 1 < parts.Length) {
-                string id = parts[i + 1].Split( '?' )[0];
-                if (!string.IsNullOrWhiteSpace( id ) && id.All( char.IsDigit )) {
-                    return id;
+            // Check if current part matches any type keyword
+            bool matchesType = false;
+            foreach (string keyword in typeKeywords) {
+                if (parts[i].Equals( keyword, StringComparison.OrdinalIgnoreCase )) {
+                    matchesType = true;
+                    break;
                 }
+            }
+
+            if (matchesType && i + offsetAfterType < parts.Length) {
+                // Extract ID from the specified offset and remove query parameters
+                string id = parts[i + offsetAfterType].Split( '?' )[0];
+                
+                if (string.IsNullOrWhiteSpace( id )) {
+                    continue;
+                }
+
+                // Validate digits only if required
+                if (validateDigitsOnly && !id.All( char.IsDigit )) {
+                    continue;
+                }
+
+                return id;
             }
         }
 
