@@ -432,11 +432,11 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
     private static string? ExtractIdFromUrlPath( string url, string[] typeKeywords, int offsetAfterType, bool validateDigitsOnly ) {
         string[] parts = url.Split( '/' );
         
+        // Use HashSet for O(1) keyword lookups instead of O(m) linear search
+        HashSet<string> keywordSet = new( typeKeywords, StringComparer.OrdinalIgnoreCase );
+        
         for (int i = 0; i < parts.Length; i++) {
-            // Check if current part matches any type keyword
-            bool matchesType = typeKeywords.Any( keyword => parts[i].Equals( keyword, StringComparison.OrdinalIgnoreCase ) );
-
-            if (matchesType && i + offsetAfterType < parts.Length) {
+            if (keywordSet.Contains( parts[i] ) && i + offsetAfterType < parts.Length) {
                 // Extract ID from the specified offset and remove query parameters
                 string id = parts[i + offsetAfterType].Split( '?' )[0];
                 

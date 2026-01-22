@@ -637,11 +637,6 @@ public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQu
         string stream = match.Groups[1].Value;
         string id = match.Groups[2].Value;
 
-        // Additional validation: stream name should not be empty
-        if (string.IsNullOrWhiteSpace( stream )) {
-            throw new ArgumentException( $"Invalid composite message ID: empty stream name in {compositeId}", nameof( compositeId ) );
-        }
-
         return (stream, id);
     }
 }
