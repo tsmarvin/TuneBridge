@@ -14,8 +14,8 @@ COPY containers/Test-LockFileChanges.ps1 /scripts/Test-LockFileChanges.ps1
 # Handle platform-specific lock file for AppHost
 # The AppHost uses platform-specific Aspire packages (Dashboard.Sdk, Hosting.Orchestration)
 # We need to regenerate the lock file for ARM64 builds and verify only platform packages changed
-RUN TARGETARCH=$(uname -m) && \
-    if [ "$TARGETARCH" = "aarch64" ] || [ "$TARGETARCH" = "arm64" ]; then \
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
         echo "ARM64 build detected - regenerating AppHost lock file for platform-specific packages..."; \
         cp BridgeBeats.AppHost/packages.lock.json BridgeBeats.AppHost/packages.lock.json.backup; \
         dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --force-evaluate; \

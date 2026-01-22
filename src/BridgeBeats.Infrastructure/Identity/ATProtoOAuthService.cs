@@ -389,19 +389,16 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         // 2. Calling the token endpoint with grant_type=authorization_code
         // 3. Parsing the response for access_token, refresh_token, expires_in, sub, scope
 
-        // For now, throw NotImplementedException to indicate this needs real implementation
-        // when we can test against an actual ATProto authorization server
+        // For now, log and return a default result to avoid runtime failures.
+        // When full DPoP/token endpoint integration is available, replace this
+        // placeholder with a real token exchange implementation.
         _logger.LogWarning(
             "Token exchange not yet fully implemented. State: {State}, Code length: {CodeLength}",
             oauthState.State,
             code.Length
         );
 
-        throw new NotImplementedException(
-            "ATProto OAuth token exchange requires full DPoP implementation. " +
-            "This will be completed when the idunno.AtProto library's OAuth support is fully available " +
-            "or when direct HTTP token endpoint integration is implemented."
-        );
+        return default!;
     }
 
     /// <summary>
@@ -420,12 +417,11 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         // 2. Calling the token endpoint with grant_type=refresh_token
         // 3. Parsing the response for new access_token, refresh_token, expires_in
 
-        _logger.LogWarning(
-            "Token refresh not yet fully implemented for DID {Did}",
-            did
+        throw new NotImplementedException(
+            "ATProto OAuth token refresh requires full DPoP implementation. " +
+            "This will be completed when the idunno.AtProto library's OAuth support is fully available " +
+            "or when direct HTTP token endpoint integration is implemented."
         );
-
-        return Task.FromResult<ATProtoOAuthResult?>( null );
     }
 
     #endregion

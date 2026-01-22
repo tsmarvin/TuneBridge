@@ -69,7 +69,7 @@ public interface IATProtoOAuthService {
 /// <summary>
 /// Result of a successful ATProto OAuth authorization.
 /// </summary>
-public class ATProtoOAuthResult {
+public record ATProtoOAuthResult {
     /// <summary>
     /// The user's ATProto DID.
     /// </summary>
