@@ -68,7 +68,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
         if (acquired) {
             _logger.LogDebug(
                 "Acquired processing lock for {RequestKey} (instance: {InstanceId})",
-                requestKey.SanitizeForLogging(),
+                requestKey.SanitizeForLogging( ),
                 _instanceId
             );
 
@@ -86,8 +86,8 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
 
         _logger.LogDebug(
             "Request {RequestKey} already in-flight (held by: {Holder})",
-            requestKey.SanitizeForLogging(),
-            holder.ToString().SanitizeForLogging()
+            requestKey.SanitizeForLogging( ),
+            holder.ToString( ).SanitizeForLogging( )
         );
 
         return new DeduplicationResult(
@@ -116,8 +116,8 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
         if (currentHolder.HasValue && currentHolder.ToString( ) != _instanceId) {
             _logger.LogWarning(
                 "Attempted to release lock for {RequestKey} but held by {Holder}, not {InstanceId}",
-                requestKey.SanitizeForLogging(),
-                currentHolder.ToString().SanitizeForLogging(),
+                requestKey.SanitizeForLogging( ),
+                currentHolder.ToString( ).SanitizeForLogging( ),
                 _instanceId
             );
             return;
@@ -132,7 +132,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
 
         _logger.LogDebug(
             "Released lock for {RequestKey} and published completion (hasResult: {HasResult})",
-            requestKey.SanitizeForLogging(),
+            requestKey.SanitizeForLogging( ),
             !string.IsNullOrEmpty( resultUri )
         );
     }
@@ -167,7 +167,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
                 // Return null to indicate the caller should check cache
                 _logger.LogDebug(
                     "Request {RequestKey} completed before subscription was active",
-                    requestKey.SanitizeForLogging()
+                    requestKey.SanitizeForLogging( )
                 );
                 return null;
             }
@@ -182,7 +182,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
             } catch (OperationCanceledException) {
                 _logger.LogDebug(
                     "Timeout waiting for completion of {RequestKey}",
-                    requestKey.SanitizeForLogging()
+                    requestKey.SanitizeForLogging( )
                 );
                 return null;
             }

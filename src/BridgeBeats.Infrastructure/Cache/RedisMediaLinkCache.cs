@@ -173,9 +173,9 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
             // Add lookup indices to Redis
             await AddInputLinksAsync( recordUri, result );
 
-            _logger.LogInformation( "Cached result with rkey: {Rkey}, recordUri: {RecordUri}", 
-                rkey.SanitizeForLogging(), 
-                recordUri.SanitizeForLogging() );
+            _logger.LogInformation( "Cached result with rkey: {Rkey}, recordUri: {RecordUri}",
+                rkey.SanitizeForLogging( ),
+                recordUri.SanitizeForLogging( ) );
             return recordUri;
         } catch (Exception ex) {
             _logger.LogError( ex, "Error while caching result" );
@@ -273,8 +273,8 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
             _logger.LogInformation(
                 "Created Redis lookup entries for rkey: {Rkey}, cardId: {CardId}, {KeyCount} keys",
-                rkey.SanitizeForLogging(), 
-                cardId.SanitizeForLogging(), 
+                rkey.SanitizeForLogging( ),
+                cardId.SanitizeForLogging( ),
                 allKeys.Count
             );
         } catch (Exception ex) {
@@ -297,9 +297,9 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
             _ = await db.KeyDeleteAsync( keysToDelete );
             _ = await db.KeyDeleteAsync( keysSetKey );
 
-            _logger.LogInformation( "Removed {KeyCount} existing lookup keys for rkey: {Rkey}", 
-                existingKeys.Length, 
-                rkey.SanitizeForLogging() );
+            _logger.LogInformation( "Removed {KeyCount} existing lookup keys for rkey: {Rkey}",
+                existingKeys.Length,
+                rkey.SanitizeForLogging( ) );
         }
     }
 
@@ -322,8 +322,8 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 return CheckRecordFreshness( pdsResult, recordUri );
             }
         } catch (Exception ex) {
-            _logger.LogWarning( ex, "Failed to retrieve result from PDS by external ID: {ExternalId}", 
-                externalId.SanitizeForLogging() );
+            _logger.LogWarning( ex, "Failed to retrieve result from PDS by external ID: {ExternalId}",
+                externalId.SanitizeForLogging( ) );
         }
 
         return null;
@@ -336,14 +336,14 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
         try {
             MediaLinkResult? result = await _atprotoStorage.GetMediaLinkResultAsync( recordUri );
             if (result != null) {
-                _logger.LogInformation( "Cache hit for RecordUri: {RecordUri}", 
-                    recordUri.SanitizeForLogging() );
+                _logger.LogInformation( "Cache hit for RecordUri: {RecordUri}",
+                    recordUri.SanitizeForLogging( ) );
                 return CheckRecordFreshness( result, recordUri );
             }
 
             // Record not found on PDS - remove from Redis
-            _logger.LogWarning( "Record not found on PDS, will be cleaned up on TTL expiry: {RecordUri}", 
-                recordUri.SanitizeForLogging() );
+            _logger.LogWarning( "Record not found on PDS, will be cleaned up on TTL expiry: {RecordUri}",
+                recordUri.SanitizeForLogging( ) );
         } catch (HttpRequestException ex) {
             _logger.LogError( ex, "HTTP error while trying to get cached result, StatusCode: {StatusCode}", ex.StatusCode );
         } catch (Exception ex) {
