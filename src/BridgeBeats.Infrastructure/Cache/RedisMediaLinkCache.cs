@@ -388,6 +388,11 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
     }
 
     // Regex patterns for URL ID extraction (matching LinkParser implementations)
+    private static readonly Regex s_appleMusicSongIdRegex = AppleMusicSongIdRegex( );
+    private static readonly Regex s_appleMusicLinkRegex = AppleMusicLinkRegex( );
+    private static readonly Regex s_spotifyLinkRegex = SpotifyLinkRegex( );
+    private static readonly Regex s_tidalLinkRegex = TidalLinkRegex( );
+
     [GeneratedRegex( @"\?i\=(?<songId>[^&#]*)", RegexOptions.Compiled )]
     private static partial Regex AppleMusicSongIdRegex( );
 
@@ -413,8 +418,7 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
         try {
             // Check for ?i= query parameter (song ID in album URL)
-            Regex songIdRegex = AppleMusicSongIdRegex( );
-            Match songIdMatch = songIdRegex.Match( url );
+            Match songIdMatch = s_appleMusicSongIdRegex.Match( url );
             if (songIdMatch.Success) {
                 string songId = songIdMatch.Groups["songId"].Value;
                 if (!string.IsNullOrWhiteSpace( songId )) {
@@ -423,8 +427,7 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
             }
 
             // Try to parse as regular Apple Music URL
-            Regex linkRegex = AppleMusicLinkRegex( );
-            Match match = linkRegex.Match( url );
+            Match match = s_appleMusicLinkRegex.Match( url );
             if (match.Success) {
                 string? uri = match.Groups["URI"].Value;
                 if (!string.IsNullOrWhiteSpace( uri )) {
@@ -454,8 +457,7 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
         }
 
         try {
-            Regex linkRegex = SpotifyLinkRegex( );
-            Match match = linkRegex.Match( url );
+            Match match = s_spotifyLinkRegex.Match( url );
             if (match.Success) {
                 string id = match.Groups["id"].Value;
                 if (!string.IsNullOrWhiteSpace( id )) {
@@ -481,8 +483,7 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
         }
 
         try {
-            Regex linkRegex = TidalLinkRegex( );
-            Match match = linkRegex.Match( url );
+            Match match = s_tidalLinkRegex.Match( url );
             if (match.Success) {
                 string type = match.Groups["type"].Value;
                 
