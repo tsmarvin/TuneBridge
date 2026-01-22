@@ -19,16 +19,12 @@ namespace BridgeBeats.Infrastructure.Storage;
 /// <remarks>
 /// This service uses the idunno.Bluesky library to interact with ATProto-compatible PDS instances.
 /// MediaLinkResults are stored as custom link.bridgebeats.lookup lexicon records.
+/// Authentication is managed centrally by <see cref="IATProtoSessionManager"/> to reduce PDS API calls.
 /// </remarks>
-/// <remarks>
-/// Initializes a new instance of the <see cref="ATProtoStorageService"/> class.
-/// </remarks>
-/// <param name="identifier">The account identifier (handle or DID).</param>
-/// <param name="password">The app password for authentication.</param>
+/// <param name="sessionManager">The centralized session manager for authentication.</param>
 /// <param name="logger">Logger for diagnostic information.</param>
 public class ATProtoStorageService(
-    string identifier,
-    string password,
+    IATProtoSessionManager sessionManager,
     ILogger<ATProtoStorageService> logger
 ) : IATProtoStorageService {
 
@@ -43,14 +39,10 @@ public class ATProtoStorageService(
     /// </summary>
     private static readonly Lazy<Dictionary<string, SupportedProviders>> s_providerStringToEnum = new( CreateProviderMappings );
 
-    private readonly BlueskyAgent _agent = new( );
-    private readonly SemaphoreSlim _authLock = new( 1, 1 );
-    private volatile bool _isAuthenticated;
-
 
     /// <inheritdoc/>
     public async Task<string> StoreMediaLinkResultAsync( MediaLinkResult result ) {
-        await EnsureAuthenticatedAsync( );
+        BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( );
 
         try {
             // Generate deterministic rkey based on externalId or metadata
@@ -61,7 +53,7 @@ public class ATProtoStorageService(
 
             // Try to update existing record first (upsert logic)
             RecordKey recordKey = new( rkey );
-            AtProtoHttpResult<PutRecordResult> putResult = await _agent.PutRecord(
+            AtProtoHttpResult<PutRecordResult> putResult = await agent.PutRecord(
                 record: record,
                 collection: s_mediaLinkResultCollection,
                 rKey: recordKey,
@@ -74,7 +66,7 @@ public class ATProtoStorageService(
             }
 
             // If update failed, try to create new record
-            AtProtoHttpResult<CreateRecordResult> createResult = await _agent.CreateRecord(
+            AtProtoHttpResult<CreateRecordResult> createResult = await agent.CreateRecord(
                 record: record,
                 collection: s_mediaLinkResultCollection,
                 rKey: recordKey,
@@ -97,14 +89,14 @@ public class ATProtoStorageService(
 
     /// <inheritdoc/>
     public async Task<MediaLinkResult?> GetMediaLinkResultAsync( string recordUri ) {
-        await EnsureAuthenticatedAsync( );
+        BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( );
 
         try {
             // Parse the AT-URI
             AtUri atUri = new( recordUri );
 
             // Get the record from ATProto PDS
-            AtProtoHttpResult<AtProtoRepositoryRecord<MediaLinkResultRecord>> getRecordResult = await _agent.GetRecord<MediaLinkResultRecord>(
+            AtProtoHttpResult<AtProtoRepositoryRecord<MediaLinkResultRecord>> getRecordResult = await agent.GetRecord<MediaLinkResultRecord>(
                 uri: atUri,
                 cid: null
             );
@@ -121,29 +113,6 @@ public class ATProtoStorageService(
         } catch (Exception ex) {
             logger.LogError( ex, "Failed to retrieve MediaLinkResult from ATProto PDS: {uri}", recordUri );
             return null;
-        }
-    }
-
-    /// <summary>
-    /// Ensures the agent is authenticated with ATProto PDS.
-    /// </summary>
-    private async Task EnsureAuthenticatedAsync( ) {
-        if (_isAuthenticated) { return; }
-
-        await _authLock.WaitAsync( );
-        try {
-            if (_isAuthenticated) { return; }
-
-            AtProtoHttpResult<bool> loginResult = await _agent.Login( identifier, password );
-            if (!loginResult.Succeeded) {
-                string errorMsg = loginResult.AtErrorDetail?.Message ?? $"HTTP {loginResult.StatusCode}";
-                throw new InvalidOperationException( $"Failed to authenticate to PDS: {errorMsg}" );
-            }
-
-            _isAuthenticated = true;
-            logger.LogInformation( "Successfully authenticated to PDS" );
-        } finally {
-            _ = _authLock.Release( );
         }
     }
 

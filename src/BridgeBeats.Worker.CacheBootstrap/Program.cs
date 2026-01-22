@@ -30,14 +30,9 @@ if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
     );
 }
 
-// Register ATProto storage service (needed for ListAllRecordsAsync - uses unauthenticated for listing)
-_ = builder.Services.AddSingleton<IATProtoStorageService>( sp =>
-    new ATProtoStorageService(
-        atProtoIdentifier,
-        atProtoPassword,
-        sp.GetRequiredService<ILogger<ATProtoStorageService>>( )
-    )
-);
+// Register ATProto session manager and storage service (centralized authentication)
+_ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
+_ = builder.Services.AddATProtoStorage( );
 
 // Register the cache repository
 _ = builder.Services.AddSingleton<IMediaLinkCacheRepository>( sp =>

@@ -48,7 +48,8 @@ namespace BridgeBeats.Infrastructure {
                                      !string.IsNullOrWhiteSpace( atProtoUserDID );
 
             if (atProtoConfigured) {
-                _ = services.AddATProtoStorage( atProtoIdentifier, atProtoPassword );
+                _ = services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
+                _ = services.AddATProtoStorage( );
                 _ = services.AddRedisMediaLinkCache( cacheDays, atProtoUserDID! );
             }
 
