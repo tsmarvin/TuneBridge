@@ -72,6 +72,41 @@ namespace BridgeBeats.Providers.Tidal {
         private static partial Regex TidalMusicLink( );
 
         /// <summary>
+        /// Extracts the Tidal ID (track or album) from a URL.
+        /// </summary>
+        /// <param name="url">The Tidal URL to parse.</param>
+        /// <returns>The extracted ID, or null if the URL is invalid or cannot be parsed.</returns>
+        /// <remarks>
+        /// Handles both tidal.com and listen.tidal.com URLs. Returns the numeric ID
+        /// for tracks and albums only. Artist IDs are not returned.
+        /// </remarks>
+        public static string? ExtractId( string url ) {
+            if (string.IsNullOrWhiteSpace( url )) {
+                return null;
+            }
+
+            try {
+                if (s_tidalLink.IsMatch( url )) {
+                    Match match = s_tidalLink.Match( url );
+                    string type = match.Groups["type"].Value;
+                    
+                    // Only extract IDs for tracks and albums
+                    if (type.Equals( "track", StringComparison.OrdinalIgnoreCase ) ||
+                        type.Equals( "album", StringComparison.OrdinalIgnoreCase )) {
+                        string id = match.Groups["id"].Value;
+                        if (!string.IsNullOrWhiteSpace( id )) {
+                            return id;
+                        }
+                    }
+                }
+            } catch {
+                // Return null on any parsing error
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Constructs an API URI for searching artists by name.
         /// </summary>
         /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>

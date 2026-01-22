@@ -73,6 +73,47 @@ namespace BridgeBeats.Providers.AppleMusic {
         }
 
         /// <summary>
+        /// Extracts the Apple Music ID (song or album) from a URL.
+        /// </summary>
+        /// <param name="url">The Apple Music URL to parse.</param>
+        /// <returns>The extracted ID, or null if the URL is invalid or cannot be parsed.</returns>
+        /// <remarks>
+        /// Handles both album and song URLs. For album URLs with ?i= query parameter,
+        /// returns the song ID from the query parameter. Otherwise returns the primary ID
+        /// from the URL path.
+        /// </remarks>
+        public static string? ExtractId( string url ) {
+            if (string.IsNullOrWhiteSpace( url )) {
+                return null;
+            }
+
+            try {
+                // Check for ?i= query parameter (song ID in album URL)
+                if (s_albumSongIdRegex.IsMatch( url )) {
+                    string songId = s_albumSongIdRegex.Match( url ).Groups["songId"].Value;
+                    if (!string.IsNullOrWhiteSpace( songId )) {
+                        return songId;
+                    }
+                }
+
+                // Try to parse as regular Apple Music URL
+                if (s_appleLink.IsMatch( url )) {
+                    string? uri = s_appleLink.GetGroupValues( url, "URI" ).FirstOrDefault( );
+                    if (uri != null && (s_validAlbum.IsMatch( uri ) || s_validSong.IsMatch( uri ))) {
+                        string id = GetUriId( uri );
+                        if (!string.IsNullOrWhiteSpace( id )) {
+                            return id;
+                        }
+                    }
+                }
+            } catch {
+                // Return null on any parsing error
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Constructs an API URI for searching songs by ID.
         /// </summary>
         /// <param name="storefront">The market region/storefront.</param>

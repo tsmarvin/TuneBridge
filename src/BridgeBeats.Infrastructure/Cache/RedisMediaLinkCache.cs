@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
@@ -25,7 +26,7 @@ namespace BridgeBeats.Infrastructure.Cache;
 /// - meta:{rkey} → JSON { CreatedAt, LastLookedUpAt, CardId }
 /// - keys:{rkey} → Set of all lookup keys associated with this rkey (for cleanup on refresh)
 /// </remarks>
-public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
+public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly IATProtoStorageService _atprotoStorage;
@@ -386,71 +387,115 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
         }
     }
 
+    // Regex patterns for URL ID extraction (matching LinkParser implementations)
+    [GeneratedRegex( @"\?i\=(?<songId>[^&#]*)", RegexOptions.Compiled )]
+    private static partial Regex AppleMusicSongIdRegex( );
+
+    [GeneratedRegex( @"[Mm][Uu][Ss][Ii][Cc]\.[Aa][Pp][Pp][Ll][Ee]\.[Cc][Oo][Mm]/(?<URI>[_\w\d\/\=\?\.\:\-%&]*)", RegexOptions.Compiled )]
+    private static partial Regex AppleMusicLinkRegex( );
+
+    [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album|prerelease)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+    private static partial Regex SpotifyLinkRegex( );
+
+    [GeneratedRegex( @"(?:(?:listen\.)?tidal\.com/)(?:browse/)?(?<type>track|album)/(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+    private static partial Regex TidalLinkRegex( );
+
     /// <summary>
-    /// Extracts the Apple Music catalog ID from a URL.
+    /// Extracts the Apple Music catalog ID from a URL using regex patterns.
     /// </summary>
+    /// <remarks>
+    /// Matches logic from AppleMusicLinkParser.ExtractId for consistency.
+    /// </remarks>
     private static string? ExtractAppleMusicId( string url ) {
-        // Apple Music has a special query parameter format for track IDs
-        if (url.Contains( "?i=" )) {
-            int queryIndex = url.IndexOf( "?i=" );
-            if (queryIndex > 0) {
-                string trackId = url[ (queryIndex + 3)..].Split( '&' )[0];
-                if (!string.IsNullOrWhiteSpace( trackId )) {
-                    return trackId;
-                }
-            }
+        if (string.IsNullOrWhiteSpace( url )) {
+            return null;
         }
 
-        // Apple Music URLs: .../album/name/id or .../song/name/id (offset +2 after type)
-        return ExtractIdFromUrlPath( url, ["album", "song"], offsetAfterType: 2, validateDigitsOnly: true );
-    }
-
-    /// <summary>
-    /// Extracts the Spotify track or album ID from a URL.
-    /// </summary>
-    private static string? ExtractSpotifyId( string url ) {
-        // Spotify URLs: .../track/id or .../album/id (offset +1 after type)
-        return ExtractIdFromUrlPath( url, ["track", "album"], offsetAfterType: 1, validateDigitsOnly: false );
-    }
-
-    /// <summary>
-    /// Extracts the Tidal track or album ID from a URL.
-    /// </summary>
-    private static string? ExtractTidalId( string url ) {
-        // Tidal URLs: .../track/id or .../album/id (offset +1 after type)
-        return ExtractIdFromUrlPath( url, ["track", "album"], offsetAfterType: 1, validateDigitsOnly: true );
-    }
-
-    /// <summary>
-    /// Helper method to extract an ID from a URL path based on type keywords and offset.
-    /// </summary>
-    /// <param name="url">The URL to parse.</param>
-    /// <param name="typeKeywords">Array of type keywords to search for (e.g., "track", "album").</param>
-    /// <param name="offsetAfterType">Number of segments after the type keyword where the ID is located.</param>
-    /// <param name="validateDigitsOnly">Whether to validate that the extracted ID contains only digits.</param>
-    /// <returns>The extracted ID, or null if not found or invalid.</returns>
-    private static string? ExtractIdFromUrlPath( string url, string[] typeKeywords, int offsetAfterType, bool validateDigitsOnly ) {
-        string[] parts = url.Split( '/' );
-        
-        // Use HashSet for O(1) keyword lookups instead of O(m) linear search
-        HashSet<string> keywordSet = new( typeKeywords, StringComparer.OrdinalIgnoreCase );
-        
-        for (int i = 0; i < parts.Length; i++) {
-            if (keywordSet.Contains( parts[i] ) && i + offsetAfterType < parts.Length) {
-                // Extract ID from the specified offset and remove query parameters
-                string id = parts[i + offsetAfterType].Split( '?' )[0];
-                
-                if (string.IsNullOrWhiteSpace( id )) {
-                    continue;
+        try {
+            // Check for ?i= query parameter (song ID in album URL)
+            Regex songIdRegex = AppleMusicSongIdRegex( );
+            if (songIdRegex.IsMatch( url )) {
+                string songId = songIdRegex.Match( url ).Groups["songId"].Value;
+                if (!string.IsNullOrWhiteSpace( songId )) {
+                    return songId;
                 }
-
-                // Validate digits only if required
-                if (validateDigitsOnly && !id.All( char.IsDigit )) {
-                    continue;
-                }
-
-                return id;
             }
+
+            // Try to parse as regular Apple Music URL
+            Regex linkRegex = AppleMusicLinkRegex( );
+            if (linkRegex.IsMatch( url )) {
+                Match match = linkRegex.Match( url );
+                string? uri = match.Groups["URI"].Value;
+                if (!string.IsNullOrWhiteSpace( uri )) {
+                    // Extract ID from URI (last segment before query params)
+                    string id = uri.Split( '/' ).Last( ).Split( '?' )[0];
+                    if (!string.IsNullOrWhiteSpace( id )) {
+                        return id;
+                    }
+                }
+            }
+        } catch {
+            // Return null on any parsing error
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts the Spotify track or album ID from a URL using regex patterns.
+    /// </summary>
+    /// <remarks>
+    /// Matches logic from SpotifyLinkParser.ExtractId for consistency.
+    /// </remarks>
+    private static string? ExtractSpotifyId( string url ) {
+        if (string.IsNullOrWhiteSpace( url )) {
+            return null;
+        }
+
+        try {
+            Regex linkRegex = SpotifyLinkRegex( );
+            if (linkRegex.IsMatch( url )) {
+                Match match = linkRegex.Match( url );
+                string id = match.Groups["id"].Value;
+                if (!string.IsNullOrWhiteSpace( id )) {
+                    return id;
+                }
+            }
+        } catch {
+            // Return null on any parsing error
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts the Tidal track or album ID from a URL using regex patterns.
+    /// </summary>
+    /// <remarks>
+    /// Matches logic from TidalLinkParser.ExtractId for consistency.
+    /// </remarks>
+    private static string? ExtractTidalId( string url ) {
+        if (string.IsNullOrWhiteSpace( url )) {
+            return null;
+        }
+
+        try {
+            Regex linkRegex = TidalLinkRegex( );
+            if (linkRegex.IsMatch( url )) {
+                Match match = linkRegex.Match( url );
+                string type = match.Groups["type"].Value;
+                
+                // Only extract IDs for tracks and albums
+                if (type.Equals( "track", StringComparison.OrdinalIgnoreCase ) ||
+                    type.Equals( "album", StringComparison.OrdinalIgnoreCase )) {
+                    string id = match.Groups["id"].Value;
+                    if (!string.IsNullOrWhiteSpace( id )) {
+                        return id;
+                    }
+                }
+            }
+        } catch {
+            // Return null on any parsing error
         }
 
         return null;
