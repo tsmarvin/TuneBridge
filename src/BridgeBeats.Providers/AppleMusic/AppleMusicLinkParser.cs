@@ -82,38 +82,8 @@ namespace BridgeBeats.Providers.AppleMusic {
         /// returns the song ID from the query parameter. Otherwise returns the primary ID
         /// from the URL path.
         /// </remarks>
-        public static string? ExtractId( string url ) {
-            if (string.IsNullOrWhiteSpace( url )) {
-                return null;
-            }
-
-            try {
-                // Check for ?i= query parameter (song ID in album URL)
-                Match songIdMatch = s_albumSongIdRegex.Match( url );
-                if (songIdMatch.Success) {
-                    string songId = songIdMatch.Groups["songId"].Value;
-                    if (!string.IsNullOrWhiteSpace( songId )) {
-                        return songId;
-                    }
-                }
-
-                // Try to parse as regular Apple Music URL
-                Match linkMatch = s_appleLink.Match( url );
-                if (linkMatch.Success) {
-                    string? uri = linkMatch.Groups["URI"].Value;
-                    if (!string.IsNullOrWhiteSpace( uri ) && (s_validAlbum.IsMatch( uri ) || s_validSong.IsMatch( uri ))) {
-                        string id = GetUriId( uri );
-                        if (!string.IsNullOrWhiteSpace( id )) {
-                            return id;
-                        }
-                    }
-                }
-            } catch {
-                // Return null on any parsing error
-            }
-
-            return null;
-        }
+        public static string? ExtractId( string url )
+            => Contracts.Utilities.ProviderUrlParser.ExtractAppleMusicId( url );
 
         /// <summary>
         /// Constructs an API URI for searching songs by ID.

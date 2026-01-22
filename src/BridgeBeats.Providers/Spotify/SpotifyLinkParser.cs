@@ -99,25 +99,8 @@ namespace BridgeBeats.Providers.Spotify {
         /// It does not resolve spotify.link short URLs. For full URL resolution including
         /// short links, use <see cref="TryParseUriAsync"/>.
         /// </remarks>
-        public static string? ExtractId( string url ) {
-            if (string.IsNullOrWhiteSpace( url )) {
-                return null;
-            }
-
-            try {
-                Match match = s_spotifyLink.Match( url );
-                if (match.Success) {
-                    string id = match.Groups["id"].Value;
-                    if (!string.IsNullOrWhiteSpace( id )) {
-                        return id;
-                    }
-                }
-            } catch {
-                // Return null on any parsing error
-            }
-
-            return null;
-        }
+        public static string? ExtractId( string url )
+            => Contracts.Utilities.ProviderUrlParser.ExtractSpotifyId( url );
 
         /// <summary>
         /// Constructs an API URI for searching artists by name.
