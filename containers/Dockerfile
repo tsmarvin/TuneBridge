@@ -19,18 +19,25 @@ COPY src/ .
 RUN TARGETARCH=$(uname -m) && \
     if [ "$TARGETARCH" = "aarch64" ] || [ "$TARGETARCH" = "arm64" ]; then \
         echo "ARM64 build detected - regenerating AppHost lock file for platform-specific packages..."; \
-        # Backup original lock file \
         cp BridgeBeats.AppHost/packages.lock.json BridgeBeats.AppHost/packages.lock.json.backup; \
-        # Regenerate lock file for ARM64 \
         dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --force-evaluate; \
-        # Verify only platform-specific packages changed \
-        if ! diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json | \
-             grep -E '^\+|^-' | grep -v '^+++\|^---' | \
-             grep -E '^[\+\-]' | grep -v 'Aspire\.Dashboard\.Sdk|Aspire\.Hosting\.Orchestration' | grep -q .; then \
+        # Extract non-platform-specific changes (if any) \
+        UNEXPECTED_CHANGES=$(diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json | \
+             grep -E '^\+|^-' | grep -v '^+++' | grep -v '^---' | \
+             grep -Ev 'Aspire\.Dashboard\.Sdk|Aspire\.Hosting\.Orchestration' || true); \
+        if [ -z "$UNEXPECTED_CHANGES" ]; then \
             echo "✓ Lock file updated successfully - only platform-specific packages changed"; \
+            echo "Platform package changes:"; \
+            diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json | \
+                grep -E 'Aspire\.Dashboard\.Sdk|Aspire\.Hosting\.Orchestration' || true; \
         else \
             echo "✗ ERROR: Non-platform-specific packages changed in lock file!"; \
             echo "Only Aspire.Dashboard.Sdk.linux-* and Aspire.Hosting.Orchestration.linux-* packages should differ between platforms."; \
+            echo ""; \
+            echo "Unexpected changes detected:"; \
+            echo "$UNEXPECTED_CHANGES"; \
+            echo ""; \
+            echo "Full diff:"; \
             diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json || true; \
             exit 1; \
         fi; \
