@@ -434,13 +434,7 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
         
         for (int i = 0; i < parts.Length; i++) {
             // Check if current part matches any type keyword
-            bool matchesType = false;
-            foreach (string keyword in typeKeywords) {
-                if (parts[i].Equals( keyword, StringComparison.OrdinalIgnoreCase )) {
-                    matchesType = true;
-                    break;
-                }
-            }
+            bool matchesType = typeKeywords.Any( keyword => parts[i].Equals( keyword, StringComparison.OrdinalIgnoreCase ) );
 
             if (matchesType && i + offsetAfterType < parts.Length) {
                 // Extract ID from the specified offset and remove query parameters
