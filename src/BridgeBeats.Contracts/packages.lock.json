@@ -23,6 +23,15 @@
           "idunno.AtProto.Types": "1.4.0"
         }
       },
+      "idunno.Bluesky": {
+        "type": "Direct",
+        "requested": "[1.4.0, )",
+        "resolved": "1.4.0",
+        "contentHash": "oApaK4L5oojupmj94t1fX/jkQ+U0SnB/IRrq81rqZj+OyS3s1aGbSi46PtYjf2rkaLO1s8n5HVxg/CW6JnP2cg==",
+        "dependencies": {
+          "idunno.AtProto": "1.4.0"
+        }
+      },
       "DnsClient": {
         "type": "Transitive",
         "resolved": "1.8.0",

@@ -424,13 +424,9 @@ namespace BridgeBeats.Web.Configuration {
                 return;
             }
 
-            _ = services.AddSingleton<IATProtoStorageService>( s =>
-                new ATProtoStorageService(
-                    settings.ATProtoIdentifier,
-                    settings.ATProtoPassword,
-                    s.GetRequiredService<ILogger<ATProtoStorageService>>( )
-                )
-            );
+            // Register ATProto session manager and storage service (centralized authentication)
+            _ = services.AddATProtoSessionManager( settings.ATProtoIdentifier, settings.ATProtoPassword );
+            _ = services.AddATProtoStorage( );
 
             // Register Redis-based cache service (requires IConnectionMultiplexer from Aspire)
             _ = services.AddSingleton<IMediaLinkCacheRepository>( s => new RedisMediaLinkCache(

@@ -35,14 +35,9 @@ if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
 // Register queue infrastructure services
 _ = builder.Services.AddQueueInfrastructure( );
 
-// Register ATProto storage service
-_ = builder.Services.AddSingleton<IATProtoStorageService>( sp =>
-    new ATProtoStorageService(
-        atProtoIdentifier,
-        atProtoPassword,
-        sp.GetRequiredService<ILogger<ATProtoStorageService>>( )
-    )
-);
+// Register ATProto session manager and storage service (centralized authentication)
+_ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
+_ = builder.Services.AddATProtoStorage( );
 
 // Register the cache repository
 _ = builder.Services.AddSingleton<IMediaLinkCacheRepository>( sp =>
