@@ -57,9 +57,16 @@ IResourceBuilder<RedisResource> redis = builder.AddRedis( "redis" )
 
 // Helper to check if a provider is enabled (has credentials)
 // Uses configuration which merges environment variables, appsettings, user secrets, and command line args
-bool HasSpotifyCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:SpotifyClientId"] );
-bool HasAppleMusicCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:AppleTeamId"] );
-bool HasTidalCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:TidalClientId"] );
+bool HasSpotifyCredentials( ) =>
+    !string.IsNullOrWhiteSpace( config["Parameters:SpotifyClientId"] ) &&
+    !string.IsNullOrWhiteSpace( config["Parameters:SpotifyClientSecret"] );
+bool HasAppleMusicCredentials( ) =>
+    !string.IsNullOrWhiteSpace( config["Parameters:AppleTeamId"] ) &&
+    !string.IsNullOrWhiteSpace( config["Parameters:AppleKeyId"] ) &&
+    !string.IsNullOrWhiteSpace( config["Parameters:AppleKeyPath"] );
+bool HasTidalCredentials( ) =>
+    !string.IsNullOrWhiteSpace( config["Parameters:TidalClientId"] ) &&
+    !string.IsNullOrWhiteSpace( config["Parameters:TidalClientSecret"] );
 bool HasDiscordCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:DiscordToken"] );
 
 // ============================================================================
