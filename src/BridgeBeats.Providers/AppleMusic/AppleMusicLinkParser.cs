@@ -89,17 +89,19 @@ namespace BridgeBeats.Providers.AppleMusic {
 
             try {
                 // Check for ?i= query parameter (song ID in album URL)
-                if (s_albumSongIdRegex.IsMatch( url )) {
-                    string songId = s_albumSongIdRegex.Match( url ).Groups["songId"].Value;
+                Match songIdMatch = s_albumSongIdRegex.Match( url );
+                if (songIdMatch.Success) {
+                    string songId = songIdMatch.Groups["songId"].Value;
                     if (!string.IsNullOrWhiteSpace( songId )) {
                         return songId;
                     }
                 }
 
                 // Try to parse as regular Apple Music URL
-                if (s_appleLink.IsMatch( url )) {
-                    string? uri = s_appleLink.GetGroupValues( url, "URI" ).FirstOrDefault( );
-                    if (uri != null && (s_validAlbum.IsMatch( uri ) || s_validSong.IsMatch( uri ))) {
+                Match linkMatch = s_appleLink.Match( url );
+                if (linkMatch.Success) {
+                    string? uri = linkMatch.Groups["URI"].Value;
+                    if (!string.IsNullOrWhiteSpace( uri ) && (s_validAlbum.IsMatch( uri ) || s_validSong.IsMatch( uri ))) {
                         string id = GetUriId( uri );
                         if (!string.IsNullOrWhiteSpace( id )) {
                             return id;

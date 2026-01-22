@@ -86,8 +86,8 @@ namespace BridgeBeats.Providers.Tidal {
             }
 
             try {
-                if (s_tidalLink.IsMatch( url )) {
-                    Match match = s_tidalLink.Match( url );
+                Match match = s_tidalLink.Match( url );
+                if (match.Success) {
                     string type = match.Groups["type"].Value;
                     
                     // Only extract IDs for tracks and albums
