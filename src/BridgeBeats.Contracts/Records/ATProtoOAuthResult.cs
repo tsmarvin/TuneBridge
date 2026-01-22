@@ -3,7 +3,7 @@ namespace BridgeBeats.Contracts.Records;
 /// <summary>
 /// Result of a successful ATProto OAuth authorization.
 /// </summary>
-public record ATProtoOAuthResult {
+public sealed record ATProtoOAuthResult {
     /// <summary>
     /// The user's ATProto DID.
     /// </summary>
