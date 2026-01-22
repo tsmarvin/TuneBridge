@@ -420,6 +420,90 @@ public class RedisRequestQueueTests {
     }
 
     /// <summary>
+    /// Verifies that consumer IDs are unique across multiple queue instances and follow expected format.
+    /// </summary>
+    [TestMethod]
+    public void ConsumerIds_AreUniqueAndWellFormatted( ) {
+        // Arrange - create multiple queue instances for the same provider
+        Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> logger1 = new( );
+        Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> logger2 = new( );
+        Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> logger3 = new( );
+
+        RedisRequestQueue<QueuedLookupRequest> queue1 = new(
+            s_redis!,
+            logger1.Object,
+            _settings,
+            SupportedProviders.Spotify
+        );
+
+        RedisRequestQueue<QueuedLookupRequest> queue2 = new(
+            s_redis!,
+            logger2.Object,
+            _settings,
+            SupportedProviders.Spotify
+        );
+
+        RedisRequestQueue<QueuedLookupRequest> queue3 = new(
+            s_redis!,
+            logger3.Object,
+            _settings,
+            SupportedProviders.AppleMusic
+        );
+
+        // Act - get consumer IDs using reflection
+        System.Reflection.FieldInfo? consumerIdField = typeof( RedisRequestQueue<QueuedLookupRequest> )
+            .GetField( "_consumerId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance );
+        Assert.IsNotNull( consumerIdField, "Could not find _consumerId field" );
+
+        string? consumerId1 = consumerIdField.GetValue( queue1 ) as string;
+        string? consumerId2 = consumerIdField.GetValue( queue2 ) as string;
+        string? consumerId3 = consumerIdField.GetValue( queue3 ) as string;
+
+        // Assert - consumer IDs should be unique
+        Assert.IsNotNull( consumerId1 );
+        Assert.IsNotNull( consumerId2 );
+        Assert.IsNotNull( consumerId3 );
+
+        Assert.AreNotEqual( consumerId1, consumerId2, "Consumer IDs for same provider should be unique" );
+        Assert.AreNotEqual( consumerId1, consumerId3, "Consumer IDs for different providers should be unique" );
+        Assert.AreNotEqual( consumerId2, consumerId3, "Consumer IDs for different providers should be unique" );
+
+        // Assert - format should be "{provider}-worker-{guid}"
+        // Spotify consumer IDs should start with "spotify-worker-"
+        Assert.IsTrue( consumerId1.StartsWith( "spotify-worker-", StringComparison.OrdinalIgnoreCase ),
+            $"Consumer ID '{consumerId1}' should start with 'spotify-worker-'" );
+        Assert.IsTrue( consumerId2.StartsWith( "spotify-worker-", StringComparison.OrdinalIgnoreCase ),
+            $"Consumer ID '{consumerId2}' should start with 'spotify-worker-'" );
+
+        // Apple Music consumer IDs should start with "applemusic-worker-"
+        Assert.IsTrue( consumerId3.StartsWith( "applemusic-worker-", StringComparison.OrdinalIgnoreCase ),
+            $"Consumer ID '{consumerId3}' should start with 'applemusic-worker-'" );
+
+        // Assert - GUID portion should be 32 characters (format N)
+        string guidPart1 = consumerId1.Substring( "spotify-worker-".Length );
+        string guidPart2 = consumerId2.Substring( "spotify-worker-".Length );
+        string guidPart3 = consumerId3.Substring( "applemusic-worker-".Length );
+
+        Assert.AreEqual( 32, guidPart1.Length, "GUID portion should be 32 characters" );
+        Assert.AreEqual( 32, guidPart2.Length, "GUID portion should be 32 characters" );
+        Assert.AreEqual( 32, guidPart3.Length, "GUID portion should be 32 characters" );
+
+        // Assert - GUID portions should be valid hex strings
+        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart1, "^[0-9a-f]{32}$" ),
+            $"GUID portion '{guidPart1}' should be a valid hex string" );
+        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart2, "^[0-9a-f]{32}$" ),
+            $"GUID portion '{guidPart2}' should be a valid hex string" );
+        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart3, "^[0-9a-f]{32}$" ),
+            $"GUID portion '{guidPart3}' should be a valid hex string" );
+
+        // Assert - total length should be reasonable (provider name + "-worker-" + 32 char GUID)
+        // Longest provider name is "applemusic" (10) + "-worker-" (8) + GUID (32) = 50 chars max
+        Assert.IsLessThanOrEqualTo( 60, consumerId1.Length, "Consumer ID should be reasonably short" );
+        Assert.IsLessThanOrEqualTo( 60, consumerId2.Length, "Consumer ID should be reasonably short" );
+        Assert.IsLessThanOrEqualTo( 60, consumerId3.Length, "Consumer ID should be reasonably short" );
+    }
+
+    /// <summary>
     /// Creates a test <see cref="QueuedLookupRequest"/> with a unique ID for the specified provider.
     /// </summary>
     /// <param name="provider">The music provider for the request. Defaults to Spotify.</param>

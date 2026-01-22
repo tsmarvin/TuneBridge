@@ -115,6 +115,7 @@ public sealed class SqliteToRedisMigrator : IHostedService {
         await foreach (MediaLinkCacheEntry entry in dbContext.CacheEntries
             .Include( c => c.LookupEntries )
             .Include( c => c.ProviderEntries )
+            .AsNoTracking( )
             .AsAsyncEnumerable( )
             .WithCancellation( cancellationToken )) {
             cancellationToken.ThrowIfCancellationRequested( );

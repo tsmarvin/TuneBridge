@@ -76,7 +76,7 @@ public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQu
         _dlqStream = $"queue:{providerName}:dlq";
 
         _consumerGroup = $"{providerName}-workers";
-        _consumerId = $"{providerName}-worker-{Environment.MachineName}-{Guid.NewGuid( ):N}";
+        _consumerId = $"{providerName}-worker-{Guid.NewGuid( ):N}";
 
         _jsonOptions = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
