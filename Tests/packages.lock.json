@@ -104,10 +104,10 @@
           "Testcontainers": "4.10.0"
         }
       },
-      "Aspire.Dashboard.Sdk.win-arm64": {
+      "Aspire.Dashboard.Sdk.linux-x64": {
         "type": "Transitive",
         "resolved": "13.1.0",
-        "contentHash": "IArwFpArCawtIgXAfTkS1Tka35WKWg/WDoMYpkEsSYOuEQUV/Cwn44SiCoZYOc/BiBqgzTWP9cRx81BuV0lPgA=="
+        "contentHash": "gIvMR7NdVGw+mUpK9qZsGuuYfDp4CHvBDLlykSSP9pCh5XGlMgDNR3uOMfvKVlqH1hAsOuecvxEcfQ9kjufrWw=="
       },
       "Aspire.Hosting": {
         "type": "Transitive",
@@ -172,10 +172,10 @@
           "System.IO.Hashing": "9.0.10"
         }
       },
-      "Aspire.Hosting.Orchestration.win-arm64": {
+      "Aspire.Hosting.Orchestration.linux-x64": {
         "type": "Transitive",
         "resolved": "13.1.0",
-        "contentHash": "jOk7x6Zuvb3nKqSnCNSN5TelDIIA/g9EbMiDMcEHWC2FFq/Gx5fiiKg2nYki29ToDLkR0wwdGqhZChlEpj2zuw=="
+        "contentHash": "V8u8ukncoflImciXeHG03x1pWbOiR4z1bIl2lwOKgdy7/JshFrlEaabaNuGmAIZFdWEM/fsc/hVDjecQyHF2aQ=="
       },
       "Aspire.Hosting.Redis": {
         "type": "Transitive",
@@ -1580,9 +1580,9 @@
       "bridgebeats.apphost": {
         "type": "Project",
         "dependencies": {
-          "Aspire.Dashboard.Sdk.win-arm64": "[13.1.0, )",
+          "Aspire.Dashboard.Sdk.linux-x64": "[13.1.0, )",
           "Aspire.Hosting.AppHost": "[13.1.0, )",
-          "Aspire.Hosting.Orchestration.win-arm64": "[13.1.0, )",
+          "Aspire.Hosting.Orchestration.linux-x64": "[13.1.0, )",
           "Aspire.Hosting.Redis": "[13.1.0, )"
         }
       },
