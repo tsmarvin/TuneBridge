@@ -615,6 +615,7 @@ public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQu
 
     /// <summary>
     /// Regex pattern to match Redis stream ID format (timestamp-sequence) at the end of a composite ID.
+    /// Stream name must contain at least one character (pattern matches everything before last colon-delimited Redis ID).
     /// </summary>
     private static readonly Regex s_redisStreamIdPattern = new( @"^(.+):(\d+-\d+)$", RegexOptions.Compiled );
 
