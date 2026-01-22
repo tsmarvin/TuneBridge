@@ -102,19 +102,21 @@ public sealed class SqliteToRedisMigrator : IHostedService {
     private async Task MigrateDataAsync( IDatabase db, CancellationToken cancellationToken ) {
         await using MediaLinkCacheDbContext dbContext = await _dbContextFactory!.CreateDbContextAsync( cancellationToken );
 
-        // Get all cache entries with their lookup entries and provider entries
-        List<MediaLinkCacheEntry> cacheEntries = await dbContext.CacheEntries
-            .Include( c => c.LookupEntries )
-            .Include( c => c.ProviderEntries )
-            .ToListAsync( cancellationToken );
+        // Get total count of cache entries for logging without loading them all into memory
+        int totalCount = await dbContext.CacheEntries.CountAsync( cancellationToken );
 
-        _logger.LogInformation( "SqliteToRedisMigrator: Found {Count} cache entries to migrate.", cacheEntries.Count );
+        _logger.LogInformation( "SqliteToRedisMigrator: Found {Count} cache entries to migrate.", totalCount );
 
         int successCount = 0;
         int failCount = 0;
         TimeSpan expiry = TimeSpan.FromDays( _cacheDays );
 
-        foreach (MediaLinkCacheEntry entry in cacheEntries) {
+        // Stream cache entries to avoid loading all into memory at once
+        await foreach (MediaLinkCacheEntry entry in dbContext.CacheEntries
+            .Include( c => c.LookupEntries )
+            .Include( c => c.ProviderEntries )
+            .AsAsyncEnumerable( )
+            .WithCancellation( cancellationToken )) {
             cancellationToken.ThrowIfCancellationRequested( );
 
             try {

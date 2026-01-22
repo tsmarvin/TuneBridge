@@ -94,7 +94,7 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
         // If not in Redis, try to generate the expected rkey and check PDS directly
         return recordUri.IsNullOrEmpty
-            ? await TryGetFromPdsByExternalIdAsync( isrc.Trim( ), false )
+            ? await TryGetFromPdsByExternalIdAsync( isrc.Trim().ToUpperInvariant( ), false )
             : await GetResultFromPdsAsync( recordUri.ToString( ) );
     }
 
@@ -103,13 +103,13 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
         if (string.IsNullOrWhiteSpace( upc )) { return null; }
 
         IDatabase db = _redis.GetDatabase( );
-        string key = $"{LookupUpcPrefix}{upc.Trim()}";
+        string key = $"{LookupUpcPrefix}{upc.Trim().ToUpperInvariant()}";
 
         RedisValue recordUri = await db.StringGetAsync( key );
 
         // If not in Redis, try to generate the expected rkey and check PDS directly
         return recordUri.IsNullOrEmpty
-            ? await TryGetFromPdsByExternalIdAsync( upc.Trim( ), true )
+            ? await TryGetFromPdsByExternalIdAsync( upc.Trim().ToUpperInvariant( ), true )
             : await GetResultFromPdsAsync( recordUri.ToString( ) );
     }
 
