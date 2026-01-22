@@ -31,9 +31,20 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     /// </summary>
     private static readonly string[] s_requiredScopes = ["atproto", "repo:link.bridgebeats.playlist"];
 
+    /// <summary>
+    /// The relative path to the OAuth callback endpoint.
+    /// </summary>
+    private const string OAuthCallbackPath = "/oauth/callback";
+
+    /// <summary>
+    /// The well-known path for client metadata.
+    /// </summary>
+    private const string ClientMetadataPath = "/.well-known/client-metadata.json";
+
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly ILogger<ATProtoOAuthService> _logger;
     private readonly string _clientId;
+    private readonly string _baseUrl;
     private readonly HttpClient _httpClient;
 
     /// <summary>
@@ -53,6 +64,12 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
         _clientId = clientId ?? throw new ArgumentNullException( nameof( clientId ) );
         _httpClient = httpClient ?? throw new ArgumentNullException( nameof( httpClient ) );
+
+        // Extract base URL from client ID
+        if (!clientId.EndsWith( ClientMetadataPath, StringComparison.OrdinalIgnoreCase )) {
+            throw new ArgumentException( $"Client ID must end with '{ClientMetadataPath}'", nameof( clientId ) );
+        }
+        _baseUrl = clientId[..^ClientMetadataPath.Length];
     }
 
     /// <inheritdoc/>
@@ -415,7 +432,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
             ["client_id"] = _clientId,
-            ["redirect_uri"] = $"{_clientId.Replace( "/.well-known/client-metadata.json", string.Empty )}/oauth/callback",
+            ["redirect_uri"] = $"{_baseUrl}{OAuthCallbackPath}",
             ["code_verifier"] = oauthState.CodeVerifier!
         };
 
