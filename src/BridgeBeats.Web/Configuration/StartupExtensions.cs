@@ -410,11 +410,16 @@ namespace BridgeBeats.Web.Configuration {
             // This allows users to log in with Bluesky for playlist management
             if (!string.IsNullOrWhiteSpace( settings.BaseUrl )) {
                 string clientId = $"{settings.BaseUrl.TrimEnd( '/' )}/.well-known/client-metadata.json";
+                
+                // Register HTTP client for OAuth token endpoint
+                _ = services.AddHttpClient( "ATProtoOAuth" );
+                
                 _ = services.AddScoped<IATProtoOAuthService>( sp =>
                     new ATProtoOAuthService(
                         sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( ),
                         sp.GetRequiredService<ILogger<ATProtoOAuthService>>( ),
-                        clientId
+                        clientId,
+                        sp.GetRequiredService<IHttpClientFactory>( ).CreateClient( "ATProtoOAuth" )
                     )
                 );
             }

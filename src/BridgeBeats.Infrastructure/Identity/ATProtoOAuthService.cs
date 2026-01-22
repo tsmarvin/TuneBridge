@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -7,6 +9,7 @@ using idunno.AtProto;
 using idunno.Bluesky;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 
 namespace BridgeBeats.Infrastructure.Identity;
 
@@ -31,6 +34,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly ILogger<ATProtoOAuthService> _logger;
     private readonly string _clientId;
+    private readonly HttpClient _httpClient;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ATProtoOAuthService"/> class.
@@ -38,14 +42,17 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     /// <param name="dbContextFactory">Factory for creating database contexts.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="clientId">The OAuth client_id URL (must be the client-metadata.json URL).</param>
+    /// <param name="httpClient">HTTP client for token endpoint requests.</param>
     public ATProtoOAuthService(
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
         ILogger<ATProtoOAuthService> logger,
-        string clientId
+        string clientId,
+        HttpClient httpClient
     ) {
         _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException( nameof( dbContextFactory ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
         _clientId = clientId ?? throw new ArgumentNullException( nameof( clientId ) );
+        _httpClient = httpClient ?? throw new ArgumentNullException( nameof( httpClient ) );
     }
 
     /// <inheritdoc/>
@@ -384,22 +391,90 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         string code,
         CancellationToken cancellationToken
     ) {
-        // TODO: Implement actual token exchange with DPoP
-        // This requires:
-        // 1. Constructing a DPoP proof JWT signed with the stored key
-        // 2. Calling the token endpoint with grant_type=authorization_code
-        // 3. Parsing the response for access_token, refresh_token, expires_in, sub, scope
+        ArgumentNullException.ThrowIfNull( oauthState );
+        ArgumentException.ThrowIfNullOrWhiteSpace( code );
 
-        // For now, log and return a default result to avoid runtime failures.
-        // When full DPoP/token endpoint integration is available, replace this
-        // placeholder with a real token exchange implementation.
-        _logger.LogWarning(
-            "Token exchange not yet fully implemented. State: {State}, Code length: {CodeLength}",
-            oauthState.State,
-            code.Length
+        _logger.LogInformation(
+            "Exchanging authorization code for tokens. State: {State}",
+            oauthState.State
         );
 
-        return default!;
+        // Step 1: Build the token endpoint URL
+        Uri tokenEndpoint = new( new Uri( oauthState.AuthorizationServerUri! ), "/oauth/token" );
+
+        // Step 2: Create DPoP proof JWT for the token request
+        string dpopProof = CreateDPoPProof(
+            oauthState.DPoPKeyJwk!,
+            "POST",
+            tokenEndpoint.ToString( ),
+            null
+        );
+
+        // Step 3: Build the token request
+        Dictionary<string, string> formData = new( ) {
+            ["grant_type"] = "authorization_code",
+            ["code"] = code,
+            ["client_id"] = _clientId,
+            ["redirect_uri"] = $"{_clientId.Replace( "/.well-known/client-metadata.json", string.Empty )}/oauth/callback",
+            ["code_verifier"] = oauthState.CodeVerifier!
+        };
+
+        using HttpRequestMessage request = new( HttpMethod.Post, tokenEndpoint ) {
+            Content = new FormUrlEncodedContent( formData )
+        };
+        request.Headers.Add( "DPoP", dpopProof );
+
+        // Step 4: Send the token request
+        using HttpResponseMessage response = await _httpClient.SendAsync( request, cancellationToken );
+
+        if (!response.IsSuccessStatusCode) {
+            string errorContent = await response.Content.ReadAsStringAsync( cancellationToken );
+            _logger.LogError(
+                "Token exchange failed with status {StatusCode}. Response: {Response}",
+                response.StatusCode,
+                errorContent
+            );
+            throw new InvalidOperationException( $"Token exchange failed: {response.StatusCode}" );
+        }
+
+        // Step 5: Parse the token response
+        string responseContent = await response.Content.ReadAsStringAsync( cancellationToken );
+        using JsonDocument doc = JsonDocument.Parse( responseContent );
+        JsonElement root = doc.RootElement;
+
+        string accessToken = root.GetProperty( "access_token" ).GetString( )
+            ?? throw new InvalidOperationException( "access_token missing from token response" );
+        string refreshToken = root.GetProperty( "refresh_token" ).GetString( )
+            ?? throw new InvalidOperationException( "refresh_token missing from token response" );
+        int expiresIn = root.GetProperty( "expires_in" ).GetInt32( );
+        string? scope = root.TryGetProperty( "scope", out JsonElement scopeElem ) ? scopeElem.GetString( ) : null;
+        string? sub = root.TryGetProperty( "sub", out JsonElement subElem ) ? subElem.GetString( ) : null;
+
+        // Step 6: Validate the sub (DID) if present
+        if (!string.IsNullOrWhiteSpace( sub ) && !string.Equals( sub, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
+            _logger.LogWarning(
+                "DID mismatch in token response. Expected: {Expected}, Got: {Actual}",
+                oauthState.Did,
+                sub
+            );
+            throw new InvalidOperationException( "Token response DID does not match expected DID" );
+        }
+
+        _logger.LogInformation(
+            "Successfully exchanged authorization code for tokens. DID: {Did}",
+            oauthState.Did
+        );
+
+        // Step 7: Return the OAuth result
+        return new ATProtoOAuthResult {
+            Did = sub ?? oauthState.Did!,
+            Handle = oauthState.Handle!,
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            DPoPKeyJwk = oauthState.DPoPKeyJwk!,
+            TokenExpiration = DateTime.UtcNow.AddSeconds( expiresIn ),
+            Scope = scope ?? string.Join( " ", s_requiredScopes )
+        };
     }
 
     /// <summary>
@@ -423,6 +498,81 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             "This will be completed when the idunno.AtProto library's OAuth support is fully available " +
             "or when direct HTTP token endpoint integration is implemented."
         );
+    }
+
+    /// <summary>
+    /// Creates a DPoP proof JWT for the given HTTP method and URL.
+    /// </summary>
+    /// <param name="dpoPKeyJwk">The DPoP private key in JWK format.</param>
+    /// <param name="httpMethod">The HTTP method (e.g., "POST", "GET").</param>
+    /// <param name="url">The full URL of the request.</param>
+    /// <param name="accessToken">Optional access token to bind in the proof.</param>
+    /// <returns>The DPoP proof JWT.</returns>
+    private static string CreateDPoPProof( string dpoPKeyJwk, string httpMethod, string url, string? accessToken ) {
+        // Parse the JWK to get the EC key parameters
+        using JsonDocument jwkDoc = JsonDocument.Parse( dpoPKeyJwk );
+        JsonElement jwk = jwkDoc.RootElement;
+
+        string x = jwk.GetProperty( "x" ).GetString( )!;
+        string y = jwk.GetProperty( "y" ).GetString( )!;
+        string d = jwk.GetProperty( "d" ).GetString( )!;
+        string kid = jwk.GetProperty( "kid" ).GetString( )!;
+
+        // Create the ECDsa key from JWK parameters
+        byte[] xBytes = Base64UrlDecode( x );
+        byte[] yBytes = Base64UrlDecode( y );
+        byte[] dBytes = Base64UrlDecode( d );
+
+        using ECDsa ecdsa = ECDsa.Create( new ECParameters {
+            Curve = ECCurve.NamedCurves.nistP256,
+            Q = new ECPoint { X = xBytes, Y = yBytes },
+            D = dBytes
+        } );
+
+        // Create the DPoP JWT
+        JwtSecurityTokenHandler handler = new( );
+        SecurityTokenDescriptor descriptor = new( ) {
+            Claims = new Dictionary<string, object> {
+                ["htm"] = httpMethod,
+                ["htu"] = url,
+                ["jti"] = Guid.NewGuid( ).ToString( "N" ),
+                ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds( )
+            },
+            SigningCredentials = new SigningCredentials(
+                new ECDsaSecurityKey( ecdsa ) { KeyId = kid },
+                SecurityAlgorithms.EcdsaSha256
+            )
+        };
+
+        // Add access token hash if provided
+        if (!string.IsNullOrWhiteSpace( accessToken )) {
+            byte[] hash = SHA256.HashData( Encoding.ASCII.GetBytes( accessToken ) );
+            descriptor.Claims["ath"] = Base64UrlEncode( hash );
+        }
+
+        // Set the token type and algorithm in the header
+        descriptor.AdditionalHeaderClaims = new Dictionary<string, object> {
+            ["typ"] = "dpop+jwt",
+            ["alg"] = "ES256",
+            ["jwk"] = new {
+                kty = "EC",
+                crv = "P-256",
+                x = x,
+                y = y
+            }
+        };
+
+        SecurityToken token = handler.CreateToken( descriptor );
+        return handler.WriteToken( token );
+    }
+
+    /// <summary>
+    /// Base64 URL decodes a string.
+    /// </summary>
+    private static byte[] Base64UrlDecode( string base64Url ) {
+        string padded = base64Url.PadRight( base64Url.Length + (4 - base64Url.Length % 4) % 4, '=' );
+        string base64 = padded.Replace( '-', '+' ).Replace( '_', '/' );
+        return Convert.FromBase64String( base64 );
     }
 
     #endregion
