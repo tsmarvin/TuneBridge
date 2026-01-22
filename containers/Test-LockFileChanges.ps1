@@ -1,0 +1,190 @@
+#!/usr/bin/env pwsh
+<#
+.SYNOPSIS
+    Verifies that only platform-specific packages changed in a NuGet lock file.
+
+.DESCRIPTION
+    Compares a backup lock file against the current lock file and validates that
+    only expected platform-specific Aspire packages differ between them.
+
+    Expected platform-specific packages:
+    - Aspire.Dashboard.Sdk.<platform>
+    - Aspire.Hosting.Orchestration.<platform>
+
+.PARAMETER BackupPath
+    Path to the backup lock file (before regeneration).
+
+.PARAMETER CurrentPath
+    Path to the current lock file (after regeneration).
+
+.PARAMETER FromPlatform
+    The source platform RID (e.g., linux-x64, linux-arm64). Defaults to linux-x64.
+
+.PARAMETER ToPlatform
+    The target platform RID (e.g., linux-x64, linux-arm64). Defaults to linux-arm64.
+
+.EXAMPLE
+    ./Test-LockFileChanges.ps1 -BackupPath packages.lock.json.backup -CurrentPath packages.lock.json
+
+.EXAMPLE
+    ./Test-LockFileChanges.ps1 -BackupPath packages.lock.json.backup -CurrentPath packages.lock.json -FromPlatform linux-arm64 -ToPlatform linux-x64
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)]
+    [string]$BackupPath,
+
+    [Parameter(Mandatory)]
+    [string]$CurrentPath,
+
+    [Parameter()]
+    [string]$FromPlatform = 'linux-x64',
+
+    [Parameter()]
+    [string]$ToPlatform = 'linux-arm64'
+)
+
+$ErrorActionPreference = 'Stop'
+
+# Validate platform format
+$validPlatformPattern = '^(linux|win|osx)-(x64|x86|arm64|arm)$'
+if ($FromPlatform -notmatch $validPlatformPattern) {
+    Write-Error "Invalid FromPlatform: '$FromPlatform'. Expected format: os-arch (e.g., linux-x64, linux-arm64)"
+    exit 1
+}
+if ($ToPlatform -notmatch $validPlatformPattern) {
+    Write-Error "Invalid ToPlatform: '$ToPlatform'. Expected format: os-arch (e.g., linux-x64, linux-arm64)"
+    exit 1
+}
+
+Write-Host "Platform transition: $FromPlatform -> $ToPlatform"
+
+# Platform-specific package patterns that are allowed to differ
+# These packages have platform-specific variants that will change when switching RIDs
+$AllowedPackagePatterns = @(
+    "^Aspire\.Dashboard\.Sdk\.$([regex]::Escape($FromPlatform))$",
+    "^Aspire\.Dashboard\.Sdk\.$([regex]::Escape($ToPlatform))$",
+    "^Aspire\.Hosting\.Orchestration\.$([regex]::Escape($FromPlatform))$",
+    "^Aspire\.Hosting\.Orchestration\.$([regex]::Escape($ToPlatform))$"
+)
+
+function Test-AllowedPackage {
+    param([string]$PackageName)
+    foreach ($pattern in $AllowedPackagePatterns) {
+        if ($PackageName -match $pattern) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# Read and parse both lock files
+$backup = Get-Content $BackupPath -Raw | ConvertFrom-Json -AsHashtable
+$current = Get-Content $CurrentPath -Raw | ConvertFrom-Json -AsHashtable
+
+$unexpectedChanges = @()
+$expectedChanges = @()
+
+# Compare each target framework
+foreach ($framework in $current.dependencies.Keys) {
+    $backupDeps = $backup.dependencies[$framework]
+    $currentDeps = $current.dependencies[$framework]
+
+    if ($null -eq $backupDeps) {
+        $unexpectedChanges += "New framework added: $framework"
+        continue
+    }
+
+    # Find all unique package names across both
+    $allPackages = @($backupDeps.Keys) + @($currentDeps.Keys) | Select-Object -Unique
+
+    foreach ($package in $allPackages) {
+        $inBackup = $backupDeps.ContainsKey($package)
+        $inCurrent = $currentDeps.ContainsKey($package)
+
+        if ($inBackup -and $inCurrent) {
+            # Package exists in both - check if it changed
+            $backupJson = $backupDeps[$package] | ConvertTo-Json -Compress
+            $currentJson = $currentDeps[$package] | ConvertTo-Json -Compress
+
+            if ($backupJson -ne $currentJson) {
+                if (Test-AllowedPackage $package) {
+                    $expectedChanges += [PSCustomObject]@{
+                        Package   = $package
+                        Type      = 'Modified'
+                        Framework = $framework
+                    }
+                } else {
+                    $unexpectedChanges += "Package modified: $package in $framework"
+                }
+            }
+        } elseif ($inBackup -and -not $inCurrent) {
+            # Package removed
+            if (Test-AllowedPackage $package) {
+                $expectedChanges += [PSCustomObject]@{
+                    Package   = $package
+                    Type      = 'Removed'
+                    Framework = $framework
+                }
+            } else {
+                $unexpectedChanges += "Package removed: $package from $framework"
+            }
+        } elseif (-not $inBackup -and $inCurrent) {
+            # Package added
+            if (Test-AllowedPackage $package) {
+                $expectedChanges += [PSCustomObject]@{
+                    Package   = $package
+                    Type      = 'Added'
+                    Framework = $framework
+                }
+            } else {
+                $unexpectedChanges += "Package added: $package to $framework"
+            }
+        }
+    }
+}
+
+# Check for removed frameworks
+foreach ($framework in $backup.dependencies.Keys) {
+    if (-not $current.dependencies.ContainsKey($framework)) {
+        $unexpectedChanges += "Framework removed: $framework"
+    }
+}
+
+# Report results
+if ($expectedChanges.Count -gt 0) {
+    Write-Host 'Platform-specific package changes:'
+    foreach ($change in $expectedChanges) {
+        $versionInfo = ''
+        if ($change.Type -eq 'Modified') {
+            $backupVersion = $backupDeps[$change.Package].resolved
+            $currentVersion = $currentDeps[$change.Package].resolved
+            $versionInfo = " (version: $backupVersion -> $currentVersion)"
+        } elseif ($change.Type -eq 'Removed') {
+            $backupVersion = $backup.dependencies[$change.Framework][$change.Package].resolved
+            $versionInfo = " (version: $backupVersion)"
+        } elseif ($change.Type -eq 'Added') {
+            $currentVersion = $current.dependencies[$change.Framework][$change.Package].resolved
+            $versionInfo = " (version: $currentVersion)"
+        }
+        Write-Host "  [$($change.Type)] $($change.Package)$versionInfo"
+    }
+    Write-Host ''
+}
+
+if ($unexpectedChanges.Count -gt 0) {
+    Write-Error (
+        'ERROR: Non-platform-specific packages changed in lock file! ' +
+        "Only Aspire.Dashboard.Sdk.$FromPlatform/$ToPlatform and Aspire.Hosting.Orchestration.$FromPlatform/$ToPlatform packages should differ between platforms." +
+        "`nUnexpected changes detected:" + ($unexpectedChanges | ForEach-Object { "`n  - $_" })
+    )
+    exit 1
+}
+
+if ($expectedChanges.Count -eq 0) {
+    Write-Host 'No changes detected in lock file'
+} else {
+    Write-Host 'Lock file updated successfully - only platform-specific packages changed'
+}
+
+exit 0

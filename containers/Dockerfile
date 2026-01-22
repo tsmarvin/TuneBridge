@@ -7,11 +7,9 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:25d14b400b75fa4e89d5bd4487a92a604a4e409ab65becb91821e7dc4ac7f81f AS build
 ARG BUILD_CONFIGURATION=Release
 
-# Install Aspire workload for AppHost support
-RUN dotnet workload install aspire
-
 WORKDIR /src
 COPY src/ .
+COPY containers/Test-LockFileChanges.ps1 /scripts/Test-LockFileChanges.ps1
 
 # Handle platform-specific lock file for AppHost
 # The AppHost uses platform-specific Aspire packages (Dashboard.Sdk, Hosting.Orchestration)
@@ -21,31 +19,17 @@ RUN TARGETARCH=$(uname -m) && \
         echo "ARM64 build detected - regenerating AppHost lock file for platform-specific packages..."; \
         cp BridgeBeats.AppHost/packages.lock.json BridgeBeats.AppHost/packages.lock.json.backup; \
         dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --force-evaluate; \
-        # Extract non-platform-specific changes (if any) \
-        UNEXPECTED_CHANGES=$(diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json | \
-             grep -E '^\+|^-' | grep -v '^+++' | grep -v '^---' | \
-             grep -Ev 'Aspire\.Dashboard\.Sdk|Aspire\.Hosting\.Orchestration' || true); \
-        if [ -z "$UNEXPECTED_CHANGES" ]; then \
-            echo "✓ Lock file updated successfully - only platform-specific packages changed"; \
-            echo "Platform package changes:"; \
-            diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json | \
-                grep -E 'Aspire\.Dashboard\.Sdk|Aspire\.Hosting\.Orchestration' || true; \
-        else \
-            echo "✗ ERROR: Non-platform-specific packages changed in lock file!"; \
-            echo "Only Aspire.Dashboard.Sdk.linux-* and Aspire.Hosting.Orchestration.linux-* packages should differ between platforms."; \
-            echo ""; \
-            echo "Unexpected changes detected:"; \
-            echo "$UNEXPECTED_CHANGES"; \
-            echo ""; \
-            echo "Full diff:"; \
-            diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json || true; \
-            exit 1; \
-        fi; \
+        pwsh /scripts/Test-LockFileChanges.ps1 \
+            -BackupPath BridgeBeats.AppHost/packages.lock.json.backup \
+            -CurrentPath BridgeBeats.AppHost/packages.lock.json; \
     fi
 
+
 # Restore all projects needed by the AppHost
-RUN dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --locked-mode
-RUN dotnet build "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN rm /scripts/Test-LockFileChanges.ps1; \
+    dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --locked-mode; \
+    dotnet build "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/build
+
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
