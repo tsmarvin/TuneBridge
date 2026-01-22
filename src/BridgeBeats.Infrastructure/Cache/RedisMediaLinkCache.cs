@@ -2,6 +2,7 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Utilities;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.Infrastructure.Utilities;
 using Microsoft.Extensions.Logging;
@@ -366,91 +367,15 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
     }
 
     /// <summary>
-    /// Extracts the provider-specific ID from a service URL.
+    /// Extracts the provider-specific ID from a service URL using shared parser utility.
     /// </summary>
     private string? ExtractProviderIdFromUrl( SupportedProviders provider, string url ) {
-        if (string.IsNullOrWhiteSpace( url )) {
-            return null;
-        }
-
         try {
-            return provider switch {
-                SupportedProviders.AppleMusic => ExtractAppleMusicId( url ),
-                SupportedProviders.Spotify => ExtractSpotifyId( url ),
-                SupportedProviders.Tidal => ExtractTidalId( url ),
-                _ => null
-            };
+            return ProviderUrlParser.ExtractId( provider, url );
         } catch (Exception ex) {
             _logger.LogWarning( ex, "Failed to extract provider ID from URL for {Provider}.", provider );
             return null;
         }
-    }
-
-    /// <summary>
-    /// Extracts the Apple Music catalog ID from a URL.
-    /// </summary>
-    private static string? ExtractAppleMusicId( string url ) {
-        if (url.Contains( "?i=" )) {
-            int queryIndex = url.IndexOf( "?i=" );
-            if (queryIndex > 0) {
-                string trackId = url[ (queryIndex + 3)..].Split( '&' )[0];
-                if (!string.IsNullOrWhiteSpace( trackId )) {
-                    return trackId;
-                }
-            }
-        }
-
-        string[] parts = url.Split( '/' );
-        for (int i = 0; i < parts.Length; i++) {
-            if ((parts[i].Equals( "album", StringComparison.OrdinalIgnoreCase ) ||
-                 parts[i].Equals( "song", StringComparison.OrdinalIgnoreCase )) &&
-                i + 2 < parts.Length) {
-                string id = parts[i + 2].Split( '?' )[0];
-                if (!string.IsNullOrWhiteSpace( id ) && id.All( char.IsDigit )) {
-                    return id;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Extracts the Spotify track or album ID from a URL.
-    /// </summary>
-    private static string? ExtractSpotifyId( string url ) {
-        string[] parts = url.Split( '/' );
-        for (int i = 0; i < parts.Length; i++) {
-            if ((parts[i].Equals( "track", StringComparison.OrdinalIgnoreCase ) ||
-                 parts[i].Equals( "album", StringComparison.OrdinalIgnoreCase )) &&
-                i + 1 < parts.Length) {
-                string id = parts[i + 1].Split( '?' )[0];
-                if (!string.IsNullOrWhiteSpace( id )) {
-                    return id;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Extracts the Tidal track or album ID from a URL.
-    /// </summary>
-    private static string? ExtractTidalId( string url ) {
-        string[] parts = url.Split( '/' );
-        for (int i = 0; i < parts.Length; i++) {
-            if ((parts[i].Equals( "track", StringComparison.OrdinalIgnoreCase ) ||
-                 parts[i].Equals( "album", StringComparison.OrdinalIgnoreCase )) &&
-                i + 1 < parts.Length) {
-                string id = parts[i + 1].Split( '?' )[0];
-                if (!string.IsNullOrWhiteSpace( id ) && id.All( char.IsDigit )) {
-                    return id;
-                }
-            }
-        }
-
-        return null;
     }
 
     /// <summary>
