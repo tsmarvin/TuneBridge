@@ -498,9 +498,9 @@ public class RedisRequestQueueTests {
 
         // Assert - total length should be reasonable (provider name + "-worker-" + 32 char GUID)
         // Longest provider name is "applemusic" (10) + "-worker-" (8) + GUID (32) = 50 chars max
-        Assert.IsLessThanOrEqualTo( 60, consumerId1.Length, "Consumer ID should be reasonably short" );
-        Assert.IsLessThanOrEqualTo( 60, consumerId2.Length, "Consumer ID should be reasonably short" );
-        Assert.IsLessThanOrEqualTo( 60, consumerId3.Length, "Consumer ID should be reasonably short" );
+        Assert.IsTrue( consumerId1.Length <= 60, $"Consumer ID '{consumerId1}' should be reasonably short (length: {consumerId1.Length})" );
+        Assert.IsTrue( consumerId2.Length <= 60, $"Consumer ID '{consumerId2}' should be reasonably short (length: {consumerId2.Length})" );
+        Assert.IsTrue( consumerId3.Length <= 60, $"Consumer ID '{consumerId3}' should be reasonably short (length: {consumerId3.Length})" );
     }
 
     /// <summary>
