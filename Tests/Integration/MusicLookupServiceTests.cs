@@ -21,8 +21,15 @@ public class MusicLookupServiceTests {
 
     private static CustomWebApplicationFactory? s_factory;
 
+    /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>
+    /// Initializes shared services and test infrastructure for all tests in this class.
+    /// </summary>
+    /// <param name="context">The test context provided by MSTest.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -61,6 +68,9 @@ public class MusicLookupServiceTests {
         await s_factory.InitializeDatabasesAsync( );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="IMediaLinkService"/> is properly registered in the DI container when valid secrets are configured.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - service registration should be instant
     public void ServiceRegistration_WithValidSecrets_ShouldRegisterMediaLinkService( ) {
@@ -71,6 +81,9 @@ public class MusicLookupServiceTests {
         Assert.IsNotNull( mediaLinkService );
     }
 
+    /// <summary>
+    /// Verifies that looking up a well-known ISRC (Bohemian Rhapsody) returns valid results from music providers.
+    /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
     [TestCategory( "Spotify" )]
@@ -103,6 +116,9 @@ public class MusicLookupServiceTests {
         Assert.IsNotNull( firstResult.Artist );
     }
 
+    /// <summary>
+    /// Verifies that looking up a well-known UPC (A Night at the Opera by Queen) returns valid album results.
+    /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
     [TestCategory( "Spotify" )]
@@ -135,6 +151,9 @@ public class MusicLookupServiceTests {
         Assert.IsNotNull( firstResult.Artist );
     }
 
+    /// <summary>
+    /// Verifies that searching by title and artist (Bohemian Rhapsody by Queen) returns matching results.
+    /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
     [TestCategory( "Spotify" )]
@@ -167,6 +186,9 @@ public class MusicLookupServiceTests {
         Assert.IsTrue( firstResult.Title.Contains( "Bohemian", StringComparison.OrdinalIgnoreCase ), "Title should contain Bohemian" );
     }
 
+    /// <summary>
+    /// Verifies that looking up an Apple Music album URL returns valid results.
+    /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for URL lookup
@@ -199,6 +221,9 @@ public class MusicLookupServiceTests {
         Assert.IsNotNull( firstLookup.Artist );
     }
 
+    /// <summary>
+    /// Verifies that looking up a Spotify album URL returns valid results.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Spotify" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for URL lookup
@@ -231,6 +256,9 @@ public class MusicLookupServiceTests {
         Assert.IsNotNull( firstLookup.Artist );
     }
 
+    /// <summary>
+    /// Verifies that looking up an invalid ISRC returns null or empty results gracefully.
+    /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
     [TestCategory( "Spotify" )]
@@ -254,6 +282,9 @@ public class MusicLookupServiceTests {
         Assert.IsTrue( result == null || result.Results.Count == 0 );
     }
 
+    /// <summary>
+    /// Verifies that looking up a Tidal track URL returns valid results.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout for URL lookup
@@ -291,7 +322,7 @@ public class MusicLookupServiceTests {
     /// This test validates the scenario where an Apple Music track link should be found on Spotify.
     /// Apple Music URL: https://music.apple.com/us/album/chiron/1695231829?i=1695231831
     /// Expected ISRC: US25X1087647
-    /// Track: "Chiron" by Shades (Alix Perez & Eprom)
+    /// Track: "Chiron" by Shades (Alix Perez and Eprom)
     /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
@@ -345,6 +376,9 @@ public class MusicLookupServiceTests {
         Assert.IsFalse( string.IsNullOrWhiteSpace( spotifyResult.URL ), "Spotify result should have a URL" );
     }
 
+    /// <summary>
+    /// Cleans up shared resources after all tests in this class have completed.
+    /// </summary>
     [ClassCleanup]
     public static void ClassCleanup( ) {
         s_factory?.Dispose( );

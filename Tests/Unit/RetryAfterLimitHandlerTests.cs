@@ -17,6 +17,9 @@ public class RetryAfterLimitHandlerTests {
     private Mock<ILogger<RetryAfterLimitHandler>> _loggerMock = null!;
     private const int DefaultMaxRetryAfterSeconds = 120;
 
+    /// <summary>
+    /// Initializes test dependencies before each test method.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _loggerMock = new Mock<ILogger<RetryAfterLimitHandler>>( );
@@ -24,6 +27,9 @@ public class RetryAfterLimitHandlerTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance when provided with valid parameters.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidParameters_ShouldCreateInstance( ) {
         // Act
@@ -33,6 +39,10 @@ public class RetryAfterLimitHandlerTests {
         Assert.IsNotNull( handler );
     }
 
+    /// <summary>
+    /// Verifies that the constructor accepts a zero threshold value, which means any Retry-After
+    /// header will exceed the threshold.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithZeroThreshold_ShouldCreateInstance( ) {
         // Act - Zero means any Retry-After will exceed threshold
@@ -46,6 +56,9 @@ public class RetryAfterLimitHandlerTests {
 
     #region SendAsync Tests - Non-429 Responses
 
+    /// <summary>
+    /// Verifies that successful responses pass through the handler without modification.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_WithSuccessResponse_ShouldPassThrough( ) {
         // Arrange
@@ -60,6 +73,9 @@ public class RetryAfterLimitHandlerTests {
         Assert.AreEqual( HttpStatusCode.OK, result.StatusCode );
     }
 
+    /// <summary>
+    /// Verifies that 500 Internal Server Error responses pass through without triggering rate limit logic.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With500Error_ShouldPassThrough( ) {
         // Arrange
@@ -74,6 +90,9 @@ public class RetryAfterLimitHandlerTests {
         Assert.AreEqual( HttpStatusCode.InternalServerError, result.StatusCode );
     }
 
+    /// <summary>
+    /// Verifies that 404 Not Found responses pass through without triggering rate limit logic.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With404Error_ShouldPassThrough( ) {
         // Arrange
@@ -92,6 +111,10 @@ public class RetryAfterLimitHandlerTests {
 
     #region SendAsync Tests - 429 Without Retry-After
 
+    /// <summary>
+    /// Verifies that 429 responses without a Retry-After header pass through without throwing,
+    /// as there is no delay value to evaluate against the threshold.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With429_NoRetryAfterHeader_ShouldPassThrough( ) {
         // Arrange
@@ -111,6 +134,10 @@ public class RetryAfterLimitHandlerTests {
 
     #region SendAsync Tests - 429 With Retry-After Below Threshold
 
+    /// <summary>
+    /// Verifies that 429 responses with a Retry-After value below the threshold pass through
+    /// to allow the standard resilience pipeline to handle the retry.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With429_RetryAfterBelowThreshold_ShouldPassThrough( ) {
         // Arrange
@@ -126,6 +153,10 @@ public class RetryAfterLimitHandlerTests {
         Assert.AreEqual( HttpStatusCode.TooManyRequests, result.StatusCode );
     }
 
+    /// <summary>
+    /// Verifies that 429 responses with a Retry-After value exactly at the threshold pass through,
+    /// as only values exceeding the threshold should trigger the fail-fast behavior.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With429_RetryAfterExactlyAtThreshold_ShouldPassThrough( ) {
         // Arrange
@@ -145,6 +176,10 @@ public class RetryAfterLimitHandlerTests {
 
     #region SendAsync Tests - 429 With Retry-After Exceeding Threshold
 
+    /// <summary>
+    /// Verifies that 429 responses with a Retry-After value exceeding the threshold throw
+    /// <see cref="RetryAfterExceededException"/> with the correct retry value and threshold.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With429_RetryAfterExceedsThreshold_ShouldThrowException( ) {
         // Arrange
@@ -162,6 +197,10 @@ public class RetryAfterLimitHandlerTests {
         Assert.AreEqual( TimeSpan.FromSeconds( DefaultMaxRetryAfterSeconds ), exception.Threshold );
     }
 
+    /// <summary>
+    /// Verifies that 429 responses with a Retry-After value just slightly over the threshold
+    /// still trigger the fail-fast behavior.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With429_RetryAfterSlightlyExceedsThreshold_ShouldThrowException( ) {
         // Arrange
@@ -178,6 +217,10 @@ public class RetryAfterLimitHandlerTests {
         Assert.AreEqual( TimeSpan.FromSeconds( 121 ), exception.RetryAfterValue );
     }
 
+    /// <summary>
+    /// Verifies that very long Retry-After values (e.g., 1 hour) correctly trigger the fail-fast behavior,
+    /// as commonly seen during severe rate limiting scenarios.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With429_VeryLongRetryAfter_ShouldThrowException( ) {
         // Arrange - Simulate 1 hour Retry-After (common for severe rate limiting)
@@ -198,6 +241,10 @@ public class RetryAfterLimitHandlerTests {
 
     #region SendAsync Tests - HTTP-Date Format Retry-After
 
+    /// <summary>
+    /// Verifies that Retry-After headers using HTTP-date format (future date) are correctly
+    /// converted to a duration and evaluated against the threshold.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With429_HttpDateRetryAfterExceedsThreshold_ShouldThrowException( ) {
         // Arrange - Use HTTP-date format (future date)
@@ -217,6 +264,10 @@ public class RetryAfterLimitHandlerTests {
         Assert.IsLessThan( 700, exception.RetryAfterValue.TotalSeconds );
     }
 
+    /// <summary>
+    /// Verifies that Retry-After headers using HTTP-date format with a near-future date
+    /// that is below the threshold pass through without throwing.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_With429_HttpDateRetryAfterBelowThreshold_ShouldPassThrough( ) {
         // Arrange - Use HTTP-date format (near future)
@@ -237,6 +288,10 @@ public class RetryAfterLimitHandlerTests {
 
     #region Provider Detection Tests
 
+    /// <summary>
+    /// Verifies that requests to Spotify API endpoints correctly identify the provider
+    /// in the thrown exception.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_WithSpotifyUri_ShouldIncludeProviderInException( ) {
         // Arrange
@@ -255,6 +310,10 @@ public class RetryAfterLimitHandlerTests {
         Assert.Contains( "spotify", exception.RequestUri.Host );
     }
 
+    /// <summary>
+    /// Verifies that requests to Apple Music API endpoints correctly identify the provider
+    /// in the thrown exception.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_WithAppleMusicUri_ShouldIncludeProviderInException( ) {
         // Arrange
@@ -271,6 +330,10 @@ public class RetryAfterLimitHandlerTests {
         Assert.AreEqual( SupportedProviders.AppleMusic, exception.Provider );
     }
 
+    /// <summary>
+    /// Verifies that requests to Tidal API endpoints correctly identify the provider
+    /// in the thrown exception.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_WithTidalUri_ShouldIncludeProviderInException( ) {
         // Arrange
@@ -287,6 +350,10 @@ public class RetryAfterLimitHandlerTests {
         Assert.AreEqual( SupportedProviders.Tidal, exception.Provider );
     }
 
+    /// <summary>
+    /// Verifies that requests to unrecognized API endpoints result in a null provider
+    /// in the thrown exception.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_WithUnknownUri_ShouldHaveNullProvider( ) {
         // Arrange
@@ -307,6 +374,10 @@ public class RetryAfterLimitHandlerTests {
 
     #region Logging Tests
 
+    /// <summary>
+    /// Verifies that a warning is logged when the handler throws <see cref="RetryAfterExceededException"/>
+    /// due to a rate limit threshold being exceeded.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_WhenThrowingException_ShouldLogWarning( ) {
         // Arrange
@@ -339,6 +410,9 @@ public class RetryAfterLimitHandlerTests {
 
     #region Edge Cases
 
+    /// <summary>
+    /// Verifies that with a zero threshold, any non-zero Retry-After value triggers the fail-fast behavior.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_WithZeroThreshold_AnyRetryAfterShouldThrow( ) {
         // Arrange - Zero threshold means any Retry-After exceeds it
@@ -353,6 +427,10 @@ public class RetryAfterLimitHandlerTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that with a very large threshold (1 hour), typical Retry-After values pass through
+    /// without triggering the fail-fast behavior.
+    /// </summary>
     [TestMethod]
     public async Task SendAsync_WithLargeThreshold_ShouldNotThrow( ) {
         // Arrange - Very large threshold (1 hour)
@@ -372,15 +450,31 @@ public class RetryAfterLimitHandlerTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a <see cref="RetryAfterLimitHandler"/> instance with the specified threshold.
+    /// </summary>
+    /// <param name="maxRetryAfterSeconds">The maximum Retry-After value in seconds before failing fast.</param>
+    /// <returns>A configured <see cref="RetryAfterLimitHandler"/> instance.</returns>
     private RetryAfterLimitHandler CreateHandler( int maxRetryAfterSeconds ) {
         return new RetryAfterLimitHandler( maxRetryAfterSeconds, _loggerMock.Object );
     }
 
+    /// <summary>
+    /// Configures the handler's inner handler to return the specified response.
+    /// </summary>
+    /// <param name="handler">The handler to configure.</param>
+    /// <param name="response">The response the inner handler should return.</param>
     private static void SetupInnerHandler( RetryAfterLimitHandler handler, HttpResponseMessage response ) {
         TestDelegatingHandler innerHandler = new( response );
         handler.InnerHandler = innerHandler;
     }
 
+    /// <summary>
+    /// Sends a test HTTP request through the handler.
+    /// </summary>
+    /// <param name="handler">The handler to send the request through.</param>
+    /// <param name="requestUri">Optional URI for the request. Defaults to a test URL.</param>
+    /// <returns>The HTTP response from the handler.</returns>
     private static async Task<HttpResponseMessage> SendRequestAsync( RetryAfterLimitHandler handler, Uri? requestUri = null ) {
         using HttpMessageInvoker invoker = new( handler );
         HttpRequestMessage request = new( HttpMethod.Get, requestUri ?? new Uri( "https://test.example.com/api" ) );
@@ -388,9 +482,16 @@ public class RetryAfterLimitHandlerTests {
     }
 
     /// <summary>
-    /// Test handler that returns a predefined response.
+    /// Test handler that returns a predefined response for testing purposes.
     /// </summary>
+    /// <param name="response">The response to return when <see cref="SendAsync"/> is called.</param>
     private class TestDelegatingHandler( HttpResponseMessage response ) : HttpMessageHandler {
+        /// <summary>
+        /// Returns the predefined response configured in the constructor.
+        /// </summary>
+        /// <param name="request">The HTTP request message (unused).</param>
+        /// <param name="cancellationToken">The cancellation token (unused).</param>
+        /// <returns>The predefined response.</returns>
         protected override Task<HttpResponseMessage> SendAsync( HttpRequestMessage request, CancellationToken cancellationToken ) {
             return Task.FromResult( response );
         }

@@ -12,6 +12,9 @@ public class RetryAfterExceededExceptionTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the exception constructor correctly sets all properties.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithAllParameters_ShouldSetProperties( ) {
         // Arrange
@@ -30,6 +33,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( provider, exception.Provider );
     }
 
+    /// <summary>
+    /// Verifies that the exception constructor allows null URI and provider values.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullUri_ShouldAllowNull( ) {
         // Arrange
@@ -44,6 +50,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.IsNull( exception.Provider );
     }
 
+    /// <summary>
+    /// Verifies that the exception constructor correctly sets the inner exception.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithInnerException_ShouldSetInnerException( ) {
         // Arrange
@@ -65,6 +74,9 @@ public class RetryAfterExceededExceptionTests {
 
     #region Message Tests
 
+    /// <summary>
+    /// Verifies that the exception message contains the retry-after value.
+    /// </summary>
     [TestMethod]
     public void Message_ShouldContainRetryAfterValue( ) {
         // Arrange
@@ -78,6 +90,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "300", exception.Message );
     }
 
+    /// <summary>
+    /// Verifies that the exception message contains the threshold value.
+    /// </summary>
     [TestMethod]
     public void Message_ShouldContainThreshold( ) {
         // Arrange
@@ -91,6 +106,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "120", exception.Message );
     }
 
+    /// <summary>
+    /// Verifies that the exception message contains the provider name when specified.
+    /// </summary>
     [TestMethod]
     public void Message_ShouldContainProviderName( ) {
         // Arrange
@@ -106,6 +124,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "Spotify", exception.Message );
     }
 
+    /// <summary>
+    /// Verifies that the exception message contains "Unknown" when provider is null.
+    /// </summary>
     [TestMethod]
     public void Message_WithNullProvider_ShouldContainUnknown( ) {
         // Arrange
@@ -119,6 +140,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "Unknown", exception.Message );
     }
 
+    /// <summary>
+    /// Verifies that the exception message contains the request URI when specified.
+    /// </summary>
     [TestMethod]
     public void Message_ShouldContainRequestUri( ) {
         // Arrange
@@ -137,6 +161,9 @@ public class RetryAfterExceededExceptionTests {
 
     #region DetermineProviderFromUri Tests
 
+    /// <summary>
+    /// Verifies that DetermineProviderFromUri returns Spotify for Spotify API URIs.
+    /// </summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithSpotifyUri_ShouldReturnSpotify( ) {
         // Arrange
@@ -149,6 +176,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Spotify, result );
     }
 
+    /// <summary>
+    /// Verifies that DetermineProviderFromUri returns Spotify for Spotify auth URIs.
+    /// </summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithSpotifyAuthUri_ShouldReturnSpotify( ) {
         // Arrange
@@ -161,6 +191,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Spotify, result );
     }
 
+    /// <summary>
+    /// Verifies that DetermineProviderFromUri returns AppleMusic for Apple Music API URIs.
+    /// </summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithAppleMusicUri_ShouldReturnAppleMusic( ) {
         // Arrange
@@ -173,6 +206,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.AppleMusic, result );
     }
 
+    /// <summary>
+    /// Verifies that DetermineProviderFromUri returns Tidal for Tidal API URIs.
+    /// </summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithTidalApiUri_ShouldReturnTidal( ) {
         // Arrange
@@ -185,6 +221,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Tidal, result );
     }
 
+    /// <summary>
+    /// Verifies that DetermineProviderFromUri returns Tidal for Tidal auth URIs.
+    /// </summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithTidalAuthUri_ShouldReturnTidal( ) {
         // Arrange
@@ -197,6 +236,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Tidal, result );
     }
 
+    /// <summary>
+    /// Verifies that DetermineProviderFromUri returns null for unknown URIs.
+    /// </summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithUnknownUri_ShouldReturnNull( ) {
         // Arrange
@@ -209,6 +251,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that DetermineProviderFromUri returns null for null URIs.
+    /// </summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithNullUri_ShouldReturnNull( ) {
         // Act
@@ -218,6 +263,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that DetermineProviderFromUri is case-insensitive for host matching.
+    /// </summary>
     [TestMethod]
     public void DetermineProviderFromUri_IsCaseInsensitive( ) {
         // Arrange
@@ -234,6 +282,9 @@ public class RetryAfterExceededExceptionTests {
 
     #region Exception Behavior Tests
 
+    /// <summary>
+    /// Verifies that the exception can be serialized to string.
+    /// </summary>
     [TestMethod]
     public void Exception_ShouldBeSerializable( ) {
         // Arrange
@@ -249,6 +300,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "RetryAfterExceededException", result );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RetryAfterExceededException"/> inherits from <see cref="Exception"/>.
+    /// </summary>
     [TestMethod]
     public void Exception_ShouldInheritFromException( ) {
         // Arrange
@@ -262,6 +316,9 @@ public class RetryAfterExceededExceptionTests {
         _ = Assert.IsInstanceOfType<Exception>( exception );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RetryAfterExceededException"/> can be caught as base <see cref="Exception"/>.
+    /// </summary>
     [TestMethod]
     public void Exception_CanBeCaughtAsBaseException( ) {
         // Arrange
@@ -280,6 +337,9 @@ public class RetryAfterExceededExceptionTests {
 
     #region Data Preservation Tests (for future re-queue)
 
+    /// <summary>
+    /// Verifies that the exception preserves all data needed for re-queue operations.
+    /// </summary>
     [TestMethod]
     public void Exception_ShouldPreserveAllDataForRequeue( ) {
         // Arrange - Simulate a real Spotify rate limit scenario

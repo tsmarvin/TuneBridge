@@ -102,6 +102,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Worker.SagaCoor
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Worker.CacheBootstrap", "src\BridgeBeats.Worker.CacheBootstrap\BridgeBeats.Worker.CacheBootstrap.csproj", "{6922F61C-9055-4EEA-BD92-7D32E42E600E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeBeats.Worker.Discord", "src\BridgeBeats.Worker.Discord\BridgeBeats.Worker.Discord.csproj", "{0972313F-D858-4DD3-8A3A-5BE46E78E917}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -280,6 +282,18 @@ Global
 		{6922F61C-9055-4EEA-BD92-7D32E42E600E}.Release|x64.Build.0 = Release|Any CPU
 		{6922F61C-9055-4EEA-BD92-7D32E42E600E}.Release|x86.ActiveCfg = Release|Any CPU
 		{6922F61C-9055-4EEA-BD92-7D32E42E600E}.Release|x86.Build.0 = Release|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Debug|x64.Build.0 = Debug|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Debug|x86.Build.0 = Debug|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Release|x64.ActiveCfg = Release|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Release|x64.Build.0 = Release|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Release|x86.ActiveCfg = Release|Any CPU
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -301,6 +315,7 @@ Global
 		{1A29F709-D5F0-49AD-BB12-D0111AFE8F02} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F9743309-01B3-4D24-82F0-599CDE492243} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{6922F61C-9055-4EEA-BD92-7D32E42E600E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{0972313F-D858-4DD3-8A3A-5BE46E78E917} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E3F1E544-83BC-4F4B-8E16-713C98E01F4B}

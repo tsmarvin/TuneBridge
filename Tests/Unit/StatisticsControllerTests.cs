@@ -18,6 +18,9 @@ public class StatisticsControllerTests {
     private Mock<IStatisticsService> _statisticsServiceMock = null!;
     private Mock<ILogger<StatisticsController>> _loggerMock = null!;
 
+    /// <summary>
+    /// Initializes mocks before each test.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _statisticsServiceMock = new Mock<IStatisticsService>( );
@@ -26,6 +29,9 @@ public class StatisticsControllerTests {
 
     #region Index Tests
 
+    /// <summary>
+    /// Verifies that Index returns a view with statistics when service is valid.
+    /// </summary>
     [TestMethod]
     public async Task Index_WithValidService_ShouldReturnViewWithStatistics( ) {
         // Arrange
@@ -45,6 +51,9 @@ public class StatisticsControllerTests {
         Assert.AreEqual( 100, model.TotalRecords );
     }
 
+    /// <summary>
+    /// Verifies that Index returns an error view when service is null.
+    /// </summary>
     [TestMethod]
     public async Task Index_WithNullService_ShouldReturnErrorView( ) {
         // Arrange
@@ -64,6 +73,9 @@ public class StatisticsControllerTests {
         Assert.Contains( "not configured", model.Message );
     }
 
+    /// <summary>
+    /// Verifies that Index returns an error view when service throws an exception.
+    /// </summary>
     [TestMethod]
     public async Task Index_WhenServiceThrows_ShouldReturnErrorView( ) {
         // Arrange
@@ -84,6 +96,9 @@ public class StatisticsControllerTests {
         Assert.Contains( "Unable to retrieve", model.Message );
     }
 
+    /// <summary>
+    /// Verifies that Index throws <see cref="OperationCanceledException"/> when cancelled.
+    /// </summary>
     [TestMethod]
     public async Task Index_WhenCancelled_ShouldThrowOperationCanceledException( ) {
         // Arrange
@@ -106,6 +121,9 @@ public class StatisticsControllerTests {
 
     #region Refresh Tests
 
+    /// <summary>
+    /// Verifies that Refresh calls RefreshStatisticsAsync and redirects to Index.
+    /// </summary>
     [TestMethod]
     public async Task Refresh_WithValidService_ShouldCallRefreshAndRedirect( ) {
         // Arrange
@@ -127,6 +145,9 @@ public class StatisticsControllerTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that Refresh redirects to Index even when service is null.
+    /// </summary>
     [TestMethod]
     public async Task Refresh_WithNullService_ShouldRedirectWithoutError( ) {
         // Arrange
@@ -143,6 +164,9 @@ public class StatisticsControllerTests {
         Assert.AreEqual( "Index", redirectResult.ActionName );
     }
 
+    /// <summary>
+    /// Verifies that Refresh redirects to Index even when service throws an exception.
+    /// </summary>
     [TestMethod]
     public async Task Refresh_WhenServiceThrows_ShouldStillRedirect( ) {
         // Arrange
@@ -164,6 +188,10 @@ public class StatisticsControllerTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a <see cref="StatisticsController"/> instance with the mocked dependencies.
+    /// </summary>
+    /// <returns>A configured <see cref="StatisticsController"/> instance.</returns>
     private StatisticsController CreateController( ) {
         return new StatisticsController(
             _statisticsServiceMock.Object,
@@ -171,6 +199,10 @@ public class StatisticsControllerTests {
         );
     }
 
+    /// <summary>
+    /// Creates a test <see cref="LookupStatistics"/> instance with sample data.
+    /// </summary>
+    /// <returns>A populated <see cref="LookupStatistics"/> instance.</returns>
     private static LookupStatistics CreateTestStatistics( ) {
         return new LookupStatistics {
             TotalRecords = 100,

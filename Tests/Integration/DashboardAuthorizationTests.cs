@@ -24,6 +24,9 @@ public class DashboardAuthorizationTests : IDisposable {
     private const string TestUserEmail = "dashboardtest@example.com";
     private const string TestUserPassword = "TestPassword123!";
 
+    /// <summary>
+    /// Initializes the test factory and HTTP client before each test.
+    /// </summary>
     [TestInitialize]
     [Obsolete]
     public async Task Setup( ) {
@@ -57,11 +60,17 @@ public class DashboardAuthorizationTests : IDisposable {
         await _factory.InitializeDatabasesAsync( );
     }
 
+    /// <summary>
+    /// Disposes of resources after each test.
+    /// </summary>
     [TestCleanup]
     public void Cleanup( ) {
         Dispose( );
     }
 
+    /// <summary>
+    /// Disposes of the HTTP client and factory, cleaning up the in-memory database.
+    /// </summary>
     public void Dispose( ) {
         _client?.Dispose( );
         _client = null;
@@ -192,6 +201,12 @@ public class DashboardAuthorizationTests : IDisposable {
         public DashboardTestWebApplicationFactory( Dictionary<string, string?>? configOverrides )
             : base( configOverrides ) { }
 
+        /// <summary>
+        /// Sets the test user information for authentication simulation.
+        /// </summary>
+        /// <param name="userId">The user ID to use for authentication.</param>
+        /// <param name="email">The email address of the test user.</param>
+        /// <param name="hasRole">Whether the test user has the AspireDashboardAccess role.</param>
         public void SetTestUser( string userId, string email, bool hasRole ) {
             _testUserId = userId;
             _testUserEmail = email;

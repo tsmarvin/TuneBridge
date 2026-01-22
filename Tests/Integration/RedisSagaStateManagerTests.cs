@@ -25,6 +25,10 @@ public class RedisSagaStateManagerTests {
     private IOptions<QueueSettings> _settings = null!;
     private RedisSagaStateManager _sagaManager = null!;
 
+    /// <summary>
+    /// Initializes the Redis connection for all tests in the class.
+    /// </summary>
+    /// <param name="context">The test context provided by the test framework.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -32,6 +36,9 @@ public class RedisSagaStateManagerTests {
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
 
+    /// <summary>
+    /// Closes and disposes the Redis connection after all tests complete.
+    /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
         if (s_redis is not null) {
@@ -40,6 +47,9 @@ public class RedisSagaStateManagerTests {
         }
     }
 
+    /// <summary>
+    /// Clears saga-related Redis keys and initializes the saga manager before each test.
+    /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
         // Clear only saga-related keys before each test
@@ -59,6 +69,10 @@ public class RedisSagaStateManagerTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.GetOrCreateAsync"/> creates a new saga
+    /// with the correct initial state when the saga does not exist.
+    /// </summary>
     [TestMethod]
     public async Task GetOrCreateAsync_CreatesNewSaga( ) {
         // Arrange
@@ -84,6 +98,10 @@ public class RedisSagaStateManagerTests {
         Assert.IsFalse( saga.IsComplete );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.GetOrCreateAsync"/> returns the existing saga
+    /// when called with a saga ID that already exists.
+    /// </summary>
     [TestMethod]
     public async Task GetOrCreateAsync_ReturnsExistingSaga_WhenAlreadyExists( ) {
         // Arrange
@@ -111,6 +129,9 @@ public class RedisSagaStateManagerTests {
         Assert.AreEqual( original.LookupType, second.LookupType );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.GetAsync"/> returns null when the saga does not exist.
+    /// </summary>
     [TestMethod]
     public async Task GetAsync_ReturnsNull_WhenSagaDoesNotExist( ) {
         // Act
@@ -120,6 +141,10 @@ public class RedisSagaStateManagerTests {
         Assert.IsNull( saga );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.UpdateProviderStateAsync"/> stores the provider
+    /// lookup state in Redis and can be retrieved.
+    /// </summary>
     [TestMethod]
     public async Task UpdateProviderStateAsync_StoresProviderState( ) {
         // Arrange
@@ -157,6 +182,10 @@ public class RedisSagaStateManagerTests {
         Assert.AreEqual( """{"trackId": "abc123"}""", retrieved.ResultJson );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.UpdateProviderStateAsync"/> can store
+    /// multiple provider states for the same saga.
+    /// </summary>
     [TestMethod]
     public async Task UpdateProviderStateAsync_UpdatesMultipleProviders( ) {
         // Arrange
@@ -202,6 +231,10 @@ public class RedisSagaStateManagerTests {
         Assert.AreEqual( "Rate limited", saga.ProviderStates[SupportedProviders.AppleMusic].ErrorMessage );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.SetPartialResultUriAsync"/> stores the partial
+    /// result URI without affecting the final result URI.
+    /// </summary>
     [TestMethod]
     public async Task SetPartialResultUriAsync_StoresUri( ) {
         // Arrange
@@ -226,6 +259,10 @@ public class RedisSagaStateManagerTests {
         Assert.IsNull( saga.FinalResultUri );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.SetFinalResultUriAsync"/> stores the final
+    /// result URI in the saga state.
+    /// </summary>
     [TestMethod]
     public async Task SetFinalResultUriAsync_StoresUri( ) {
         // Arrange
@@ -249,6 +286,10 @@ public class RedisSagaStateManagerTests {
         Assert.AreEqual( finalUri, saga.FinalResultUri );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.DeleteAsync"/> removes both the saga state
+    /// and all associated provider states from Redis.
+    /// </summary>
     [TestMethod]
     public async Task DeleteAsync_RemovesSagaAndProviderStates( ) {
         // Arrange
@@ -280,6 +321,10 @@ public class RedisSagaStateManagerTests {
         Assert.IsNull( afterDelete );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.DeleteAsync"/> returns false when attempting
+    /// to delete a saga that does not exist.
+    /// </summary>
     [TestMethod]
     public async Task DeleteAsync_ReturnsFalse_WhenSagaDoesNotExist( ) {
         // Act
@@ -289,6 +334,10 @@ public class RedisSagaStateManagerTests {
         Assert.IsFalse( deleted );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.GenerateSagaId"/> creates deterministic,
+    /// case-insensitive IDs from lookup keys.
+    /// </summary>
     [TestMethod]
     public void GenerateSagaId_CreatesDeterministicId( ) {
         // Arrange
@@ -316,6 +365,10 @@ public class RedisSagaStateManagerTests {
         Assert.IsTrue( id1a.All( c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f') ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="LookupSagaState.IsComplete"/> returns true only when all providers
+    /// have completed their lookups.
+    /// </summary>
     [TestMethod]
     public async Task Saga_IsComplete_WhenAllProvidersComplete( ) {
         // Arrange

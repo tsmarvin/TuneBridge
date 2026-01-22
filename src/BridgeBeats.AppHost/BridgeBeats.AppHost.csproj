@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\BridgeBeats.Web\BridgeBeats.Web.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.Discord\BridgeBeats.Worker.Discord.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.Spotify\BridgeBeats.Worker.Spotify.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.AppleMusic\BridgeBeats.Worker.AppleMusic.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.Tidal\BridgeBeats.Worker.Tidal.csproj" />

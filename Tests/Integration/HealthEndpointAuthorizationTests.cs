@@ -12,6 +12,10 @@ public class HealthEndpointAuthorizationTests {
     private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
 
+    /// <summary>
+    /// Initializes the test factory and HTTP client for all tests in this class.
+    /// </summary>
+    /// <param name="testContext">The test context provided by MSTest.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task Setup( TestContext testContext ) {
@@ -45,6 +49,9 @@ public class HealthEndpointAuthorizationTests {
         await s_factory.InitializeDatabasesAsync( );
     }
 
+    /// <summary>
+    /// Disposes the test factory after all tests in this class have completed.
+    /// </summary>
     [ClassCleanup]
     public static void Cleanup( ) {
         s_factory?.Dispose( );
@@ -93,5 +100,8 @@ public class HealthEndpointAuthorizationTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
     }
 
+    /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
     public TestContext TestContext { get; set; } = null!;
 }

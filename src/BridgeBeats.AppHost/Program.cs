@@ -60,6 +60,7 @@ IResourceBuilder<RedisResource> redis = builder.AddRedis( "redis" )
 bool HasSpotifyCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:SpotifyClientId"] );
 bool HasAppleMusicCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:AppleTeamId"] );
 bool HasTidalCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:TidalClientId"] );
+bool HasDiscordCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:DiscordToken"] );
 
 // ============================================================================
 // Spotify Worker
@@ -105,6 +106,19 @@ if (HasTidalCredentials( )) {
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
         .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
         .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+}
+
+// ============================================================================
+// Discord Worker
+// ============================================================================
+// Handles Discord gateway events, detecting music links and calling the
+// BridgeBeats Web API for lookups and card generation.
+IResourceBuilder<ProjectResource>? discordWorker = null;
+if (HasDiscordCredentials( )) {
+    discordWorker = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" )
+        .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
+        .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
+        .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl );
 }
 
 // ============================================================================
@@ -156,9 +170,6 @@ IResourceBuilder<ProjectResource> bridgebeatsWeb = builder.AddProject<Projects.B
     .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorker is not null ? "true" : "false" )
     .WithEnvironment( "BridgeBeats__Workers__AppleMusicWorkerEnabled", appleMusicWorker is not null ? "true" : "false" )
     .WithEnvironment( "BridgeBeats__Workers__TidalWorkerEnabled", tidalWorker is not null ? "true" : "false" )
-    // Discord
-    .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
-    .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
     // ATProto (Bluesky)
     .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
     .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
@@ -189,6 +200,11 @@ if (appleMusicWorker is not null) {
 }
 if (tidalWorker is not null) {
     _ = bridgebeatsWeb.WithReference( tidalWorker );
+}
+
+// Add reference from Discord worker to web app for API calls
+if (discordWorker is not null) {
+    _ = discordWorker.WithReference( bridgebeatsWeb );
 }
 
 builder.Build( ).Run( );

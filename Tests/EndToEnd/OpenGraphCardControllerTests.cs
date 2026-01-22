@@ -15,6 +15,10 @@ public class WebLookupTests {
     private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
 
+    /// <summary>
+    /// Initializes the test factory and HTTP client for all tests in this class.
+    /// </summary>
+    /// <param name="context">The test context provided by MSTest.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -49,11 +53,17 @@ public class WebLookupTests {
         await s_factory.InitializeDatabasesAsync( );
     }
 
+    /// <summary>
+    /// Disposes the test factory after all tests in this class have completed.
+    /// </summary>
     [ClassCleanup]
     public static void ClassCleanup( ) {
         s_factory?.Dispose( );
     }
 
+    /// <summary>
+    /// Verifies that the web lookup endpoint returns a card URL for a valid Spotify track URL.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "Spotify" )]
@@ -89,6 +99,9 @@ public class WebLookupTests {
         Assert.AreEqual( JsonValueKind.Array, itemsElement.ValueKind );
     }
 
+    /// <summary>
+    /// Verifies that the web lookup endpoint returns multiple cards for multiple music URLs.
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "Spotify" )]
@@ -131,6 +144,9 @@ public class WebLookupTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that the web lookup endpoint returns BadRequest for an empty URI.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task WebLookup_WithEmptyUri_ReturnsBadRequest( ) {
@@ -148,6 +164,9 @@ public class WebLookupTests {
         Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
     }
 
+    /// <summary>
+    /// Verifies that the web lookup endpoint returns no results for an invalid music URL.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task WebLookup_WithInvalidUri_ReturnsNoResults( ) {
@@ -170,5 +189,8 @@ public class WebLookupTests {
         Assert.IsFalse( hasResults, "Should have no results for invalid URL" );
     }
 
+    /// <summary>
+    /// Gets or sets the test context which provides information about the current test run.
+    /// </summary>
     public TestContext TestContext { get; set; } = null!;
 }

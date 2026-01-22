@@ -19,6 +19,10 @@ public class RedisRequestDeduplicatorTests {
     private Mock<ILogger<RedisRequestDeduplicator>> _mockLogger = null!;
     private RedisRequestDeduplicator _deduplicator = null!;
 
+    /// <summary>
+    /// Initializes the Redis connection for all tests in the class.
+    /// </summary>
+    /// <param name="context">The test context provided by the test framework.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -26,6 +30,9 @@ public class RedisRequestDeduplicatorTests {
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
 
+    /// <summary>
+    /// Closes and disposes the Redis connection after all tests complete.
+    /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
         if (s_redis is not null) {
@@ -34,6 +41,9 @@ public class RedisRequestDeduplicatorTests {
         }
     }
 
+    /// <summary>
+    /// Clears inflight-related Redis keys and initializes the deduplicator before each test.
+    /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
         // Clear only inflight-related keys before each test
@@ -51,6 +61,10 @@ public class RedisRequestDeduplicatorTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestDeduplicator.TryAcquireAsync"/> returns Acquired=true
+    /// when no other request is in flight for the same key.
+    /// </summary>
     [TestMethod]
     public async Task TryAcquireAsync_ReturnsAcquired_WhenNotInFlight( ) {
         // Arrange
@@ -68,10 +82,15 @@ public class RedisRequestDeduplicatorTests {
         Assert.AreEqual( requestKey, result.RequestKey );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestDeduplicator.TryAcquireAsync"/> returns AlreadyInFlight=true
+    /// when another instance already holds the lock for the same key.
+    /// </summary>
     [TestMethod]
     public async Task TryAcquireAsync_ReturnsAlreadyInFlight_WhenLockHeld( ) {
         // Arrange
         string requestKey = "isrc:USRC12345678";
+
 
         // First acquisition
         Contracts.Records.DeduplicationResult firstResult = await _deduplicator.TryAcquireAsync(
@@ -95,6 +114,10 @@ public class RedisRequestDeduplicatorTests {
         Assert.IsTrue( secondResult.AlreadyInFlight );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestDeduplicator.ReleaseAsync"/> removes the lock,
+    /// allowing a new acquisition of the same key.
+    /// </summary>
     [TestMethod]
     public async Task ReleaseAsync_RemovesLock( ) {
         // Arrange
@@ -114,6 +137,10 @@ public class RedisRequestDeduplicatorTests {
         Assert.IsTrue( result.Acquired );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestDeduplicator.WaitForCompletionAsync"/> returns null
+    /// when no lock is held (request already completed).
+    /// </summary>
     [TestMethod]
     public async Task WaitForCompletionAsync_ReturnsNull_WhenAlreadyCompleted( ) {
         // Arrange
@@ -131,6 +158,10 @@ public class RedisRequestDeduplicatorTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestDeduplicator.WaitForCompletionAsync"/> returns null
+    /// when the wait times out before the result is published.
+    /// </summary>
     [TestMethod]
     public async Task WaitForCompletionAsync_ReturnsNull_OnTimeout( ) {
         // Arrange
@@ -153,6 +184,10 @@ public class RedisRequestDeduplicatorTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestDeduplicator.WaitForCompletionAsync"/> receives the
+    /// result URI when it is published via <see cref="RedisRequestDeduplicator.ReleaseAsync"/>.
+    /// </summary>
     [TestMethod]
     public async Task WaitForCompletionAsync_ReceivesResult_WhenPublished( ) {
         // Arrange
@@ -182,6 +217,10 @@ public class RedisRequestDeduplicatorTests {
         Assert.AreEqual( expectedUri, result );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="RedisRequestDeduplicator.GenerateRequestKey"/> creates consistent,
+    /// normalized keys regardless of input casing or whitespace.
+    /// </summary>
     [TestMethod]
     public void GenerateRequestKey_CreatesConsistentKey( ) {
         // Act

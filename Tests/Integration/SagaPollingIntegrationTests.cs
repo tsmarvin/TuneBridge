@@ -27,6 +27,10 @@ public class SagaPollingIntegrationTests {
     private IOptions<QueueSettings> _settings = null!;
     private RedisSagaStateManager _sagaManager = null!;
 
+    /// <summary>
+    /// Initializes the Redis connection for all tests in the class.
+    /// </summary>
+    /// <param name="context">The test context provided by the test framework.</param>
     [ClassInitialize]
     [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
@@ -34,6 +38,9 @@ public class SagaPollingIntegrationTests {
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
 
+    /// <summary>
+    /// Closes and disposes the Redis connection after all tests complete.
+    /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
         if (s_redis is not null) {
@@ -42,6 +49,9 @@ public class SagaPollingIntegrationTests {
         }
     }
 
+    /// <summary>
+    /// Clears saga-related Redis keys and initializes the saga manager before each test.
+    /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
         // Clear only saga-related keys before each test
@@ -61,6 +71,10 @@ public class SagaPollingIntegrationTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> returns sagas
+    /// that are complete but have not had their final result URI set.
+    /// </summary>
     [TestMethod]
     public async Task GetCompletedButUnfinalizedAsync_ReturnsCompleteSagasWithNoFinalUri( ) {
         // Arrange - Create a saga that is complete but not finalized
@@ -105,6 +119,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsNull( results[0].FinalResultUri );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> excludes sagas
+    /// that have already had their final result URI set.
+    /// </summary>
     [TestMethod]
     public async Task GetCompletedButUnfinalizedAsync_ExcludesSagasWithFinalUri( ) {
         // Arrange - Create a finalized saga
@@ -135,6 +153,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsEmpty( results );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> excludes sagas
+    /// that have not yet completed all provider lookups.
+    /// </summary>
     [TestMethod]
     public async Task GetCompletedButUnfinalizedAsync_ExcludesIncompleteSagas( ) {
         // Arrange - Create an incomplete saga
@@ -163,6 +185,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsEmpty( results );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> respects the
+    /// minimum age parameter to avoid processing very recently created sagas.
+    /// </summary>
     [TestMethod]
     public async Task GetCompletedButUnfinalizedAsync_RespectsMinimumAge( ) {
         // Arrange - Create a saga that was just created
@@ -190,6 +216,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsEmpty( results );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> respects the
+    /// limit parameter to control the number of results returned.
+    /// </summary>
     [TestMethod]
     public async Task GetCompletedButUnfinalizedAsync_RespectsLimit( ) {
         // Arrange - Create multiple sagas
@@ -227,6 +257,10 @@ public class SagaPollingIntegrationTests {
         Assert.HasCount( 3, results );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> cleans up
+    /// orphaned saga IDs from the pending index when the underlying saga data is missing.
+    /// </summary>
     [TestMethod]
     public async Task GetCompletedButUnfinalizedAsync_CleansUpExpiredSagasFromIndex( ) {
         // Arrange - Add a saga ID to the pending index but don't create the saga itself
@@ -248,6 +282,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsFalse( pendingAfter.Any( v => v.ToString( ) == "expired-saga-id" ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.AddToPendingIndexAsync"/> adds the saga ID
+    /// to the pending index set in Redis.
+    /// </summary>
     [TestMethod]
     public async Task AddToPendingIndexAsync_AddsSagaToSet( ) {
         // Arrange
@@ -262,6 +300,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsTrue( members.Any( m => m.ToString( ) == sagaId ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.RemoveFromPendingIndexAsync"/> removes the saga ID
+    /// from the pending index set in Redis.
+    /// </summary>
     [TestMethod]
     public async Task RemoveFromPendingIndexAsync_RemovesSagaFromSet( ) {
         // Arrange
@@ -277,6 +319,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsFalse( members.Any( m => m.ToString( ) == sagaId ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.GetOrCreateAsync"/> automatically adds newly
+    /// created sagas to the pending index for polling discovery.
+    /// </summary>
     [TestMethod]
     public async Task GetOrCreateAsync_AutomaticallyAddsToPendingIndex( ) {
         // Arrange
@@ -297,6 +343,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsTrue( members.Any( m => m.ToString( ) == sagaId ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.SetFinalResultUriAsync"/> removes the saga
+    /// from the pending index since it no longer needs polling.
+    /// </summary>
     [TestMethod]
     public async Task SetFinalResultUriAsync_RemovesFromPendingIndex( ) {
         // Arrange
@@ -323,6 +373,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsFalse( membersAfter.Any( m => m.ToString( ) == sagaId ) );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="ISagaStateManager.DeleteAsync"/> removes the saga from the pending
+    /// index when deleting the saga state.
+    /// </summary>
     [TestMethod]
     public async Task DeleteAsync_RemovesFromPendingIndex( ) {
         // Arrange

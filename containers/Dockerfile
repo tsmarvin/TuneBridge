@@ -1,5 +1,5 @@
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:a048afe4a3660a15a82d2917c6fc1b23f2f131b0cd38a50caa01fde48e3bb7c2 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1aacc8154bc3071349907dae26849df301188be1a2e1f4560b903fb6275e481a AS base
 USER $APP_UID
 WORKDIR /app
 
@@ -7,14 +7,29 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:25d14b400b75fa4e89d5bd4487a92a604a4e409ab65becb91821e7dc4ac7f81f AS build
 ARG BUILD_CONFIGURATION=Release
 
-# Install Aspire workload for AppHost support
-RUN dotnet workload install aspire
-
 WORKDIR /src
 COPY src/ .
+COPY containers/Test-LockFileChanges.ps1 /scripts/Test-LockFileChanges.ps1
+
+# Handle platform-specific lock file for AppHost
+# The AppHost uses platform-specific Aspire packages (Dashboard.Sdk, Hosting.Orchestration)
+# We need to regenerate the lock file for ARM64 builds and verify only platform packages changed
+RUN TARGETARCH=$(uname -m) && \
+    if [ "$TARGETARCH" = "aarch64" ] || [ "$TARGETARCH" = "arm64" ]; then \
+        echo "ARM64 build detected - regenerating AppHost lock file for platform-specific packages..."; \
+        cp BridgeBeats.AppHost/packages.lock.json BridgeBeats.AppHost/packages.lock.json.backup; \
+        dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --force-evaluate; \
+        pwsh /scripts/Test-LockFileChanges.ps1 \
+            -BackupPath BridgeBeats.AppHost/packages.lock.json.backup \
+            -CurrentPath BridgeBeats.AppHost/packages.lock.json; \
+    fi
+
+
 # Restore all projects needed by the AppHost
-RUN dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --locked-mode
-RUN dotnet build "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN rm /scripts/Test-LockFileChanges.ps1; \
+    dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --locked-mode; \
+    dotnet build "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/build
+
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish

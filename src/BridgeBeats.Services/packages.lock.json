@@ -2,12 +2,6 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
-      "NetCord": {
-        "type": "Direct",
-        "requested": "[1.0.0-alpha.455, )",
-        "resolved": "1.0.0-alpha.455",
-        "contentHash": "RHV5OdZ8O5CtDBMjIVS3Aq4JcRtiwSnTtYWbuPUllJUK0nQ+MSSBK2OWnc1iQ/7nu1VWMseh2WgExl5nXMDHLw=="
-      },
       "Aspire.StackExchange.Redis": {
         "type": "Transitive",
         "resolved": "13.1.0",

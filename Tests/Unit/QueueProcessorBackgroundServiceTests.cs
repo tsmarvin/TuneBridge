@@ -32,6 +32,9 @@ public class QueueProcessorBackgroundServiceTests {
         WriteIndented = false
     };
 
+    /// <summary>
+    /// Initializes mocks before each test.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _redisMock = new Mock<IConnectionMultiplexer>( );
@@ -47,6 +50,9 @@ public class QueueProcessorBackgroundServiceTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance with valid dependencies.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -56,6 +62,9 @@ public class QueueProcessorBackgroundServiceTests {
         Assert.IsNotNull( service );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when Redis is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullRedis_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -72,6 +81,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the queue is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullQueue_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -88,6 +100,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the rate limit tracker is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullRateLimitTracker_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -104,6 +119,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the saga manager is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullSagaManager_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -120,6 +138,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the lookup service is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullLookupService_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -136,6 +157,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the logger is null.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -156,6 +180,9 @@ public class QueueProcessorBackgroundServiceTests {
 
     #region Message Processing Tests
 
+    /// <summary>
+    /// Verifies that the lookup service is called when the endpoint is not rate limited.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenEndpointNotRateLimited_ShouldCallLookupService( ) {
         // Arrange
@@ -186,6 +213,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that messages are requeued with delay when the endpoint is rate limited.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenEndpointRateLimited_ShouldRequeueWithDelay( ) {
         // Arrange
@@ -219,6 +249,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that saga state is updated after a successful lookup.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WithSuccessfulLookup_ShouldUpdateSagaState( ) {
         // Arrange
@@ -256,6 +289,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that messages are acknowledged after a successful lookup.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WithSuccessfulLookup_ShouldAcknowledgeMessage( ) {
         // Arrange
@@ -285,6 +321,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that a completion event is published when the saga completes.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenSagaCompletes_ShouldPublishCompletionEvent( ) {
         // Arrange
@@ -322,6 +361,9 @@ public class QueueProcessorBackgroundServiceTests {
 
     #region Lookup Type Routing Tests
 
+    /// <summary>
+    /// Verifies that URI lookups call GetInfoAsync with the correct URI.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WithUriLookup_ShouldCallGetInfoAsyncWithUri( ) {
         // Arrange
@@ -350,6 +392,9 @@ public class QueueProcessorBackgroundServiceTests {
         _lookupServiceMock.Verify( l => l.GetInfoAsync( testUrl ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that UPC lookups call GetInfoByUPCAsync with the correct UPC.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WithUpcLookup_ShouldCallGetInfoByUPCAsync( ) {
         // Arrange
@@ -378,6 +423,9 @@ public class QueueProcessorBackgroundServiceTests {
         _lookupServiceMock.Verify( l => l.GetInfoByUPCAsync( testUpc ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that song ID lookups call GetInfoByIDAsync with the correct ID.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WithSongIdLookup_ShouldCallGetInfoByIDAsync( ) {
         // Arrange
@@ -406,6 +454,9 @@ public class QueueProcessorBackgroundServiceTests {
         _lookupServiceMock.Verify( l => l.GetInfoByIDAsync( testId, false ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that AlbumIdLookup calls GetInfoByIDAsync with isAlbum set to true.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WithAlbumIdLookup_ShouldCallGetInfoByIDAsyncWithIsAlbumTrue( ) {
         // Arrange
@@ -434,6 +485,9 @@ public class QueueProcessorBackgroundServiceTests {
         _lookupServiceMock.Verify( l => l.GetInfoByIDAsync( testId, true ), Times.Once );
     }
 
+    /// <summary>
+    /// Verifies that SongLookup calls GetInfoAsync with the title and artist from the request.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WithSongLookup_ShouldCallGetInfoAsyncWithTitleArtist( ) {
         // Arrange
@@ -468,6 +522,9 @@ public class QueueProcessorBackgroundServiceTests {
 
     #region Rate Limit Exception Handling Tests
 
+    /// <summary>
+    /// Verifies that rate limit exceptions are recorded in the rate limit tracker.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldRecordRateLimit( ) {
         // Arrange
@@ -508,6 +565,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that rate-limited messages are acknowledged and re-enqueued with incremented attempt count.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldRequeueMessage( ) {
         // Arrange
@@ -556,6 +616,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that rate limit exceptions cause the saga to be marked as partial.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldMarkSagaAsPartial( ) {
         // Arrange
@@ -591,6 +654,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that rate limit information is recorded in the saga state.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldRecordRateLimitInfoInSaga( ) {
         // Arrange
@@ -634,6 +700,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that rate limit exceptions trigger lookup completion publication for partial result handling.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldPublishLookupCompletion( ) {
         // Arrange
@@ -678,6 +747,9 @@ public class QueueProcessorBackgroundServiceTests {
 
     #region General Exception Handling Tests
 
+    /// <summary>
+    /// Verifies that general exceptions update the saga with error state when below max retries.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenExceptionThrown_BelowMaxRetries_ShouldUpdateSagaWithError( ) {
         // Arrange
@@ -719,6 +791,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that messages are acknowledged after handling errors below max retries.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenExceptionThrown_BelowMaxRetries_ShouldAcknowledgeMessage( ) {
         // Arrange
@@ -751,6 +826,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that messages are moved to DLQ when max retries is reached.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenExceptionThrown_AtMaxRetries_ShouldMoveToDlq( ) {
         // Arrange
@@ -783,6 +861,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that messages are not acknowledged when moving to DLQ.
+    /// </summary>
     [TestMethod]
     public async Task ProcessMessage_WhenExceptionThrown_AtMaxRetries_ShouldNotAcknowledge( ) {
         // Arrange
@@ -819,6 +900,9 @@ public class QueueProcessorBackgroundServiceTests {
 
     #region No Message Handling Tests
 
+    /// <summary>
+    /// Verifies that the service continues polling when no messages are available.
+    /// </summary>
     [TestMethod]
     public async Task ExecuteAsync_WhenNoMessages_ShouldContinuePolling( ) {
         // Arrange
@@ -846,6 +930,10 @@ public class QueueProcessorBackgroundServiceTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a new <see cref="QueueProcessorBackgroundService"/> instance with the configured mocks.
+    /// </summary>
+    /// <returns>A new <see cref="QueueProcessorBackgroundService"/> instance.</returns>
     private QueueProcessorBackgroundService CreateService( ) =>
         new(
             _redisMock.Object,
@@ -857,6 +945,12 @@ public class QueueProcessorBackgroundServiceTests {
             _loggerMock.Object
         );
 
+    /// <summary>
+    /// Creates a test <see cref="QueuedLookupRequest"/> with the specified lookup type and value.
+    /// </summary>
+    /// <param name="lookupType">The type of lookup request.</param>
+    /// <param name="lookupValue">The value to look up.</param>
+    /// <returns>A new <see cref="QueuedLookupRequest"/> instance.</returns>
     private static QueuedLookupRequest CreateRequest( LookupRequestType lookupType, string lookupValue ) =>
         new( ) {
             RequestId = $"req-{Guid.NewGuid( ):N}",
@@ -867,9 +961,18 @@ public class QueueProcessorBackgroundServiceTests {
             CreatedAt = DateTimeOffset.UtcNow
         };
 
+    /// <summary>
+    /// Creates a test <see cref="QueuedMessage{T}"/> wrapping the specified request.
+    /// </summary>
+    /// <param name="request">The request to wrap in a message.</param>
+    /// <returns>A new <see cref="QueuedMessage{T}"/> instance.</returns>
     private static QueuedMessage<QueuedLookupRequest> CreateMessage( QueuedLookupRequest request ) =>
         new( $"msg-{Guid.NewGuid( ):N}", request, DateTimeOffset.UtcNow );
 
+    /// <summary>
+    /// Creates a test <see cref="MusicLookupResult"/> with sample data.
+    /// </summary>
+    /// <returns>A new <see cref="MusicLookupResult"/> instance.</returns>
     private static MusicLookupResult CreateLookupResult( ) => new( ) {
         ExternalId = "USRC12345678",
         Artist = "Test Artist",
@@ -880,6 +983,9 @@ public class QueueProcessorBackgroundServiceTests {
         MarketRegion = "us"
     };
 
+    /// <summary>
+    /// Configures the rate limit tracker mock to return a non-rate-limited state.
+    /// </summary>
     private void SetupNotRateLimited( ) {
         _ = _rateLimitTrackerMock.Setup( r => r.GetStateAsync(
                 It.IsAny<SupportedProviders>( ),
@@ -889,6 +995,10 @@ public class QueueProcessorBackgroundServiceTests {
             .ReturnsAsync( new RateLimitState( false, null, null ) );
     }
 
+    /// <summary>
+    /// Configures the rate limit tracker mock to return a rate-limited state with the specified remaining time.
+    /// </summary>
+    /// <param name="timeRemaining">The time remaining until the rate limit expires.</param>
     private void SetupRateLimited( TimeSpan timeRemaining ) {
         DateTimeOffset retryAfter = DateTimeOffset.UtcNow.Add( timeRemaining );
         _ = _rateLimitTrackerMock.Setup( r => r.GetStateAsync(
@@ -899,6 +1009,10 @@ public class QueueProcessorBackgroundServiceTests {
             .ReturnsAsync( new RateLimitState( true, retryAfter, timeRemaining ) );
     }
 
+    /// <summary>
+    /// Configures the lookup service mock to return a successful result for all lookup methods.
+    /// </summary>
+    /// <param name="request">The request used to determine the lookup context.</param>
     private void SetupLookupSuccess( QueuedLookupRequest request ) {
         MusicLookupResult result = CreateLookupResult( );
 
@@ -915,6 +1029,10 @@ public class QueueProcessorBackgroundServiceTests {
             .ReturnsAsync( result );
     }
 
+    /// <summary>
+    /// Configures the saga manager mock to return an incomplete saga with only one provider complete.
+    /// </summary>
+    /// <param name="sagaId">The saga ID to configure.</param>
     private void SetupSagaNotComplete( string sagaId ) {
         LookupSagaState saga = new( ) {
             SagaId = sagaId,
@@ -937,6 +1055,10 @@ public class QueueProcessorBackgroundServiceTests {
             .ReturnsAsync( saga );
     }
 
+    /// <summary>
+    /// Configures the saga manager mock to return a complete saga with all providers finished.
+    /// </summary>
+    /// <param name="sagaId">The saga ID to configure.</param>
     private void SetupSagaComplete( string sagaId ) {
         LookupSagaState saga = new( ) {
             SagaId = sagaId,

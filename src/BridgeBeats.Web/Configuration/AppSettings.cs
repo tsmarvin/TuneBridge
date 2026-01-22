@@ -23,10 +23,6 @@ namespace BridgeBeats.Web.Configuration {
     /// </summary>
     internal class AppSettings {
         /// <summary>
-        /// The node number for this instance (used for discord shard identification).
-        /// </summary>
-        public int NodeNumber { get; set; }
-        /// <summary>
         /// The Apple Developer Team ID for Apple Music API authentication.
         /// </summary>
         public string AppleTeamId { get; set; } = string.Empty;
@@ -60,11 +56,6 @@ namespace BridgeBeats.Web.Configuration {
         /// The Tidal API client secret.
         /// </summary>
         public string TidalClientSecret { get; set; } = string.Empty;
-
-        /// <summary>
-        /// The Discord bot token.
-        /// </summary>
-        public string DiscordToken { get; set; } = string.Empty;
 
         /// <summary>
         /// The database connection string for the identity database (SQLite).

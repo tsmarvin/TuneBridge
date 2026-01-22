@@ -151,17 +151,27 @@ BridgeBeats is stateless (except for the optional SQLite cache) and can be horiz
 
 ### Discord Bot Sharding
 
-For large Discord deployments, use the `NODE_NUMBER` environment variable:
+The Discord integration runs as a separate worker service (`BridgeBeats.Worker.Discord`). For large Discord deployments, run multiple instances with different node numbers:
 
 ```bash
-# Instance 1
--e NODE_NUMBER=0
+# Instance 1 - shard 0
+docker run -p 10001:10000 \
+  -e BridgeBeats__DiscordToken=your_token \
+  -e BridgeBeats__NodeNumber=0 \
+  -e BridgeBeats__BaseUrl=https://bridgebeats.link \
+  tsmarvin/bridgebeats-discord:latest
 
-# Instance 2
--e NODE_NUMBER=1
+# Instance 2 - shard 1
+docker run -p 10002:10000 \
+  -e BridgeBeats__DiscordToken=your_token \
+  -e BridgeBeats__NodeNumber=1 \
+  -e BridgeBeats__BaseUrl=https://bridgebeats.link \
+  tsmarvin/bridgebeats-discord:latest
 ```
 
-Note: If you do not increment this integer you could have multiple instances replying to the same events.
+**Important**: Each shard must have a unique `NODE_NUMBER`. Running multiple instances with the same node number will cause duplicate responses to the same messages.
+
+The Discord worker calls the main BridgeBeats Web API for music lookups, so ensure `BridgeBeats__BaseUrl` points to a running BridgeBeats Web instance.
 
 
 ## Security Considerations

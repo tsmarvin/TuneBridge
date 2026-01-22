@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Infrastructure.Queue;
 
 namespace BridgeBeats.Tests.Unit;
@@ -12,13 +13,21 @@ public class QueueMetricsTests {
 
     #region Meter Tests
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.Meter"/> has the expected name "BridgeBeats.Queue".
+    /// </summary>
     [TestMethod]
     public void Meter_HasCorrectName( ) {
+        // Arrange
+        const string expectedName = "BridgeBeats.Queue";
+
         // Assert
-        Assert.AreEqual( "BridgeBeats.Queue", QueueMetrics.MeterName );
-        Assert.AreEqual( QueueMetrics.MeterName, QueueMetrics.Meter.Name );
+        Assert.AreEqual( expectedName, QueueMetrics.Meter.Name );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.Meter"/> has the expected version "1.0.0".
+    /// </summary>
     [TestMethod]
     public void Meter_HasCorrectVersion( ) {
         // Assert
@@ -29,72 +38,108 @@ public class QueueMetricsTests {
 
     #region Counter Tests
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.EnqueuedTotal"/> counter is properly initialized.
+    /// </summary>
     [TestMethod]
     public void EnqueuedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.EnqueuedTotal );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.EnqueuedTotal"/> counter has the expected metric name.
+    /// </summary>
     [TestMethod]
     public void EnqueuedTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.enqueued.total", QueueMetrics.EnqueuedTotal.Name );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.DequeuedTotal"/> counter is properly initialized.
+    /// </summary>
     [TestMethod]
     public void DequeuedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.DequeuedTotal );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.DequeuedTotal"/> counter has the expected metric name.
+    /// </summary>
     [TestMethod]
     public void DequeuedTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.dequeued.total", QueueMetrics.DequeuedTotal.Name );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.AcknowledgedTotal"/> counter is properly initialized.
+    /// </summary>
     [TestMethod]
     public void AcknowledgedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.AcknowledgedTotal );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.AcknowledgedTotal"/> counter has the expected metric name.
+    /// </summary>
     [TestMethod]
     public void AcknowledgedTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.acknowledged.total", QueueMetrics.AcknowledgedTotal.Name );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.RequeuedTotal"/> counter is properly initialized.
+    /// </summary>
     [TestMethod]
     public void RequeuedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.RequeuedTotal );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.RequeuedTotal"/> counter has the expected metric name.
+    /// </summary>
     [TestMethod]
     public void RequeuedTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.requeued.total", QueueMetrics.RequeuedTotal.Name );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.RateLimitEventsTotal"/> counter is properly initialized.
+    /// </summary>
     [TestMethod]
     public void RateLimitEventsTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.RateLimitEventsTotal );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.RateLimitEventsTotal"/> counter has the expected metric name.
+    /// </summary>
     [TestMethod]
     public void RateLimitEventsTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.ratelimit.events.total", QueueMetrics.RateLimitEventsTotal.Name );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.DeduplicatedTotal"/> counter is properly initialized.
+    /// </summary>
     [TestMethod]
     public void DeduplicatedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.DeduplicatedTotal );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.DeduplicatedTotal"/> counter has the expected metric name.
+    /// </summary>
     [TestMethod]
     public void DeduplicatedTotal_HasCorrectName( ) {
         // Assert
@@ -105,36 +150,54 @@ public class QueueMetricsTests {
 
     #region Histogram Tests
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.ProcessingDuration"/> histogram is properly initialized.
+    /// </summary>
     [TestMethod]
     public void ProcessingDuration_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.ProcessingDuration );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.ProcessingDuration"/> histogram has the expected metric name.
+    /// </summary>
     [TestMethod]
     public void ProcessingDuration_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.processing.duration", QueueMetrics.ProcessingDuration.Name );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.ProcessingDuration"/> histogram uses seconds as the unit.
+    /// </summary>
     [TestMethod]
     public void ProcessingDuration_HasCorrectUnit( ) {
         // Assert
         Assert.AreEqual( "s", QueueMetrics.ProcessingDuration.Unit );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.RateLimitDuration"/> histogram is properly initialized.
+    /// </summary>
     [TestMethod]
     public void RateLimitDuration_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.RateLimitDuration );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.RateLimitDuration"/> histogram has the expected metric name.
+    /// </summary>
     [TestMethod]
     public void RateLimitDuration_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.ratelimit.duration", QueueMetrics.RateLimitDuration.Name );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="QueueMetrics.RateLimitDuration"/> histogram uses seconds as the unit.
+    /// </summary>
     [TestMethod]
     public void RateLimitDuration_HasCorrectUnit( ) {
         // Assert
@@ -145,142 +208,129 @@ public class QueueMetricsTests {
 
     #region Counter Recording Tests
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.EnqueuedTotal"/> can record values with provider and priority tags without throwing.
+    /// </summary>
     [TestMethod]
     public void EnqueuedTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.EnqueuedTotal.Add( 1,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Priority, "interactive" )
-        );
+        try {
+            QueueMetrics.EnqueuedTotal.Add( 1,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Priority, "interactive" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.EnqueuedTotal );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.DequeuedTotal"/> can record values with provider and priority tags without throwing.
+    /// </summary>
     [TestMethod]
     public void DequeuedTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.DequeuedTotal.Add( 1,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "applemusic" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Priority, "background" )
-        );
+        try {
+            QueueMetrics.DequeuedTotal.Add( 1,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "applemusic" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Priority, "background" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.DequeuedTotal );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RateLimitEventsTotal"/> can record values with provider and endpoint tags without throwing.
+    /// </summary>
     [TestMethod]
     public void RateLimitEventsTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.RateLimitEventsTotal.Add( 1,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "tidal" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, "/v1/tracks" )
-        );
+        try {
+            QueueMetrics.RateLimitEventsTotal.Add( 1,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "tidal" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, "/v1/tracks" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.RateLimitEventsTotal );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.DeduplicatedTotal"/> can record values without tags.
+    /// </summary>
     [TestMethod]
     public void DeduplicatedTotal_CanRecordWithoutTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.DeduplicatedTotal.Add( 1 );
+        try {
+            QueueMetrics.DeduplicatedTotal.Add( 1 );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.DeduplicatedTotal );
     }
 
     #endregion
 
     #region Histogram Recording Tests
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.ProcessingDuration"/> can record values with provider, lookup type, and status tags without throwing.
+    /// </summary>
     [TestMethod]
     public void ProcessingDuration_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.ProcessingDuration.Record( 1.5,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.LookupType, "IsrcLookup" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Status, "success" )
-        );
+        try {
+            QueueMetrics.ProcessingDuration.Record( 1.5,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.LookupType, "IsrcLookup" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Status, "success" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
+        Assert.IsNotNull( QueueMetrics.ProcessingDuration );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RateLimitDuration"/> can record values with provider and endpoint tags without throwing.
+    /// </summary>
     [TestMethod]
     public void RateLimitDuration_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
-        QueueMetrics.RateLimitDuration.Record( 60.0,
-            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
-            new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, "/v1/albums" )
-        );
+        try {
+            QueueMetrics.RateLimitDuration.Record( 60.0,
+                new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
+                new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, "/v1/albums" )
+            );
+        } catch (Exception ex) {
+            Assert.Fail( $"Recording metric should not throw exception: {ex.Message}" );
+        }
 
         // Assert - No exception thrown means success
-        Assert.IsTrue( true );
-    }
-
-    #endregion
-
-    #region QueueMetricTags Tests
-
-    [TestMethod]
-    public void QueueMetricTags_Provider_HasCorrectValue( ) {
-        // Assert
-        Assert.AreEqual( "provider", QueueMetricTags.Provider );
-    }
-
-    [TestMethod]
-    public void QueueMetricTags_Priority_HasCorrectValue( ) {
-        // Assert
-        Assert.AreEqual( "priority", QueueMetricTags.Priority );
-    }
-
-    [TestMethod]
-    public void QueueMetricTags_Endpoint_HasCorrectValue( ) {
-        // Assert
-        Assert.AreEqual( "endpoint", QueueMetricTags.Endpoint );
-    }
-
-    [TestMethod]
-    public void QueueMetricTags_LookupType_HasCorrectValue( ) {
-        // Assert
-        Assert.AreEqual( "lookup_type", QueueMetricTags.LookupType );
-    }
-
-    [TestMethod]
-    public void QueueMetricTags_Status_HasCorrectValue( ) {
-        // Assert
-        Assert.AreEqual( "status", QueueMetricTags.Status );
-    }
-
-    [TestMethod]
-    public void QueueMetricTags_StatusCode_HasCorrectValue( ) {
-        // Assert
-        Assert.AreEqual( "status_code", QueueMetricTags.StatusCode );
-    }
-
-    [TestMethod]
-    public void QueueMetricTags_Method_HasCorrectValue( ) {
-        // Assert
-        Assert.AreEqual( "method", QueueMetricTags.Method );
-    }
-
-    [TestMethod]
-    public void QueueMetricTags_AllTagsAreNonNullAndNonEmpty( ) {
-        // Assert - Validate all tag constants are usable
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Provider ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Priority ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Endpoint ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.LookupType ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Status ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.StatusCode ) );
-        Assert.IsFalse( string.IsNullOrEmpty( QueueMetricTags.Method ) );
+        Assert.IsNotNull( QueueMetrics.RateLimitDuration );
     }
 
     #endregion
 
     #region MeterListener Verification Tests
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.EnqueuedTotal"/> correctly records values and tags using a MeterListener.
+    /// </summary>
     [TestMethod]
     public void EnqueuedTotal_RecordsCorrectValueWithListener( ) {
         // Arrange
@@ -320,6 +370,9 @@ public class QueueMetricsTests {
         Assert.AreEqual( "interactive", recordedPriority );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.ProcessingDuration"/> correctly records duration values and status tags using a MeterListener.
+    /// </summary>
     [TestMethod]
     public void ProcessingDuration_RecordsCorrectValueWithListener( ) {
         // Arrange
@@ -353,6 +406,346 @@ public class QueueMetricsTests {
 
         // Assert
         Assert.AreEqual( 2.5, recordedValue, 0.001 );
+        Assert.AreEqual( "success", recordedStatus );
+    }
+
+    #endregion
+
+    #region Counter Unit Tests
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.EnqueuedTotal"/> uses the correct unit "{requests}".
+    /// </summary>
+    [TestMethod]
+    public void EnqueuedTotal_HasCorrectUnit( ) {
+        Assert.AreEqual( "{requests}", QueueMetrics.EnqueuedTotal.Unit );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.DequeuedTotal"/> uses the correct unit "{requests}".
+    /// </summary>
+    [TestMethod]
+    public void DequeuedTotal_HasCorrectUnit( ) {
+        Assert.AreEqual( "{requests}", QueueMetrics.DequeuedTotal.Unit );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.AcknowledgedTotal"/> uses the correct unit "{requests}".
+    /// </summary>
+    [TestMethod]
+    public void AcknowledgedTotal_HasCorrectUnit( ) {
+        Assert.AreEqual( "{requests}", QueueMetrics.AcknowledgedTotal.Unit );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RequeuedTotal"/> uses the correct unit "{requests}".
+    /// </summary>
+    [TestMethod]
+    public void RequeuedTotal_HasCorrectUnit( ) {
+        Assert.AreEqual( "{requests}", QueueMetrics.RequeuedTotal.Unit );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RateLimitEventsTotal"/> uses the correct unit "{events}".
+    /// </summary>
+    [TestMethod]
+    public void RateLimitEventsTotal_HasCorrectUnit( ) {
+        Assert.AreEqual( "{events}", QueueMetrics.RateLimitEventsTotal.Unit );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.DeduplicatedTotal"/> uses the correct unit "{requests}".
+    /// </summary>
+    [TestMethod]
+    public void DeduplicatedTotal_HasCorrectUnit( ) {
+        Assert.AreEqual( "{requests}", QueueMetrics.DeduplicatedTotal.Unit );
+    }
+
+    #endregion
+
+    #region Helper Method Tests
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RecordEnqueue"/> records with lowercase provider and priority tag values.
+    /// </summary>
+    [TestMethod]
+    public void RecordEnqueue_RecordsWithLowercaseProviderAndPriority( ) {
+        // Arrange
+        long recordedValue = 0;
+        string? recordedProvider = null;
+        string? recordedPriority = null;
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName && instrument.Name == "bridgebeats.queue.enqueued.total") {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.SetMeasurementEventCallback<long>( ( instrument, measurement, tags, state ) => {
+            recordedValue = measurement;
+            foreach (KeyValuePair<string, object?> tag in tags) {
+                if (tag.Key == QueueMetricTags.Provider) {
+                    recordedProvider = tag.Value?.ToString( );
+                } else if (tag.Key == QueueMetricTags.Priority) {
+                    recordedPriority = tag.Value?.ToString( );
+                }
+            }
+        } );
+
+        listener.Start( );
+
+        // Act
+        QueueMetrics.RecordEnqueue( SupportedProviders.Spotify, QueuePriority.Interactive );
+
+        // Assert
+        Assert.AreEqual( 1, recordedValue );
+        Assert.AreEqual( "spotify", recordedProvider );
+        Assert.AreEqual( "interactive", recordedPriority );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RecordDequeue"/> records with lowercase provider and priority tag values.
+    /// </summary>
+    [TestMethod]
+    public void RecordDequeue_RecordsWithLowercaseProviderAndPriority( ) {
+        // Arrange
+        long recordedValue = 0;
+        string? recordedProvider = null;
+        string? recordedPriority = null;
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName && instrument.Name == "bridgebeats.queue.dequeued.total") {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.SetMeasurementEventCallback<long>( ( instrument, measurement, tags, state ) => {
+            recordedValue = measurement;
+            foreach (KeyValuePair<string, object?> tag in tags) {
+                if (tag.Key == QueueMetricTags.Provider) {
+                    recordedProvider = tag.Value?.ToString( );
+                } else if (tag.Key == QueueMetricTags.Priority) {
+                    recordedPriority = tag.Value?.ToString( );
+                }
+            }
+        } );
+
+        listener.Start( );
+
+        // Act
+        QueueMetrics.RecordDequeue( SupportedProviders.AppleMusic, QueuePriority.Background );
+
+        // Assert
+        Assert.AreEqual( 1, recordedValue );
+        Assert.AreEqual( "applemusic", recordedProvider );
+        Assert.AreEqual( "background", recordedPriority );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RecordAcknowledge"/> records with lowercase provider tag value.
+    /// </summary>
+    [TestMethod]
+    public void RecordAcknowledge_RecordsWithLowercaseProvider( ) {
+        // Arrange
+        long recordedValue = 0;
+        string? recordedProvider = null;
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName && instrument.Name == "bridgebeats.queue.acknowledged.total") {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.SetMeasurementEventCallback<long>( ( instrument, measurement, tags, state ) => {
+            recordedValue = measurement;
+            foreach (KeyValuePair<string, object?> tag in tags) {
+                if (tag.Key == QueueMetricTags.Provider) {
+                    recordedProvider = tag.Value?.ToString( );
+                }
+            }
+        } );
+
+        listener.Start( );
+
+        // Act
+        QueueMetrics.RecordAcknowledge( SupportedProviders.Tidal );
+
+        // Assert
+        Assert.AreEqual( 1, recordedValue );
+        Assert.AreEqual( "tidal", recordedProvider );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RecordRequeue"/> records with lowercase provider tag value.
+    /// </summary>
+    [TestMethod]
+    public void RecordRequeue_RecordsWithLowercaseProvider( ) {
+        // Arrange
+        long recordedValue = 0;
+        string? recordedProvider = null;
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName && instrument.Name == "bridgebeats.queue.requeued.total") {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.SetMeasurementEventCallback<long>( ( instrument, measurement, tags, state ) => {
+            recordedValue = measurement;
+            foreach (KeyValuePair<string, object?> tag in tags) {
+                if (tag.Key == QueueMetricTags.Provider) {
+                    recordedProvider = tag.Value?.ToString( );
+                }
+            }
+        } );
+
+        listener.Start( );
+
+        // Act
+        QueueMetrics.RecordRequeue( SupportedProviders.Spotify );
+
+        // Assert
+        Assert.AreEqual( 1, recordedValue );
+        Assert.AreEqual( "spotify", recordedProvider );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RecordRateLimitEvent"/> records both the counter and histogram metrics with correct tag values.
+    /// </summary>
+    [TestMethod]
+    public void RecordRateLimitEvent_RecordsCounterAndHistogram( ) {
+        // Arrange
+        long counterValue = 0;
+        double histogramValue = 0;
+        string? counterProvider = null;
+        string? counterEndpoint = null;
+        string? histogramProvider = null;
+        string? histogramEndpoint = null;
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName &&
+                (instrument.Name == "bridgebeats.ratelimit.events.total" ||
+                 instrument.Name == "bridgebeats.ratelimit.duration")) {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.SetMeasurementEventCallback<long>( ( instrument, measurement, tags, state ) => {
+            counterValue = measurement;
+            foreach (KeyValuePair<string, object?> tag in tags) {
+                if (tag.Key == QueueMetricTags.Provider) {
+                    counterProvider = tag.Value?.ToString( );
+                } else if (tag.Key == QueueMetricTags.Endpoint) {
+                    counterEndpoint = tag.Value?.ToString( );
+                }
+            }
+        } );
+
+        listener.SetMeasurementEventCallback<double>( ( instrument, measurement, tags, state ) => {
+            histogramValue = measurement;
+            foreach (KeyValuePair<string, object?> tag in tags) {
+                if (tag.Key == QueueMetricTags.Provider) {
+                    histogramProvider = tag.Value?.ToString( );
+                } else if (tag.Key == QueueMetricTags.Endpoint) {
+                    histogramEndpoint = tag.Value?.ToString( );
+                }
+            }
+        } );
+
+        listener.Start( );
+
+        // Act
+        QueueMetrics.RecordRateLimitEvent( SupportedProviders.AppleMusic, "/v1/catalog/us/songs", 120.5 );
+
+        // Assert - Counter
+        Assert.AreEqual( 1, counterValue );
+        Assert.AreEqual( "applemusic", counterProvider );
+        Assert.AreEqual( "/v1/catalog/us/songs", counterEndpoint );
+
+        // Assert - Histogram
+        Assert.AreEqual( 120.5, histogramValue, 0.001 );
+        Assert.AreEqual( "applemusic", histogramProvider );
+        Assert.AreEqual( "/v1/catalog/us/songs", histogramEndpoint );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RecordDeduplicated"/> records the counter correctly.
+    /// </summary>
+    [TestMethod]
+    public void RecordDeduplicated_RecordsCounter( ) {
+        // Arrange
+        long recordedValue = 0;
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName && instrument.Name == "bridgebeats.dedup.prevented.total") {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.SetMeasurementEventCallback<long>( ( instrument, measurement, tags, state ) => {
+            recordedValue = measurement;
+        } );
+
+        listener.Start( );
+
+        // Act
+        QueueMetrics.RecordDeduplicated( );
+
+        // Assert
+        Assert.AreEqual( 1, recordedValue );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RecordProcessingDuration"/> records with correct provider, lookup type, and status tag values.
+    /// </summary>
+    [TestMethod]
+    public void RecordProcessingDuration_RecordsWithCorrectTags( ) {
+        // Arrange
+        double recordedValue = 0;
+        string? recordedProvider = null;
+        string? recordedLookupType = null;
+        string? recordedStatus = null;
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName && instrument.Name == "bridgebeats.queue.processing.duration") {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.SetMeasurementEventCallback<double>( ( instrument, measurement, tags, state ) => {
+            recordedValue = measurement;
+            foreach (KeyValuePair<string, object?> tag in tags) {
+                if (tag.Key == QueueMetricTags.Provider) {
+                    recordedProvider = tag.Value?.ToString( );
+                } else if (tag.Key == QueueMetricTags.LookupType) {
+                    recordedLookupType = tag.Value?.ToString( );
+                } else if (tag.Key == QueueMetricTags.Status) {
+                    recordedStatus = tag.Value?.ToString( );
+                }
+            }
+        } );
+
+        listener.Start( );
+
+        // Act
+        QueueMetrics.RecordProcessingDuration(
+            SupportedProviders.Tidal,
+            LookupRequestType.IsrcLookup,
+            "success",
+            3.75
+        );
+
+        // Assert
+        Assert.AreEqual( 3.75, recordedValue, 0.001 );
+        Assert.AreEqual( "tidal", recordedProvider );
+        Assert.AreEqual( "IsrcLookup", recordedLookupType );
         Assert.AreEqual( "success", recordedStatus );
     }
 

@@ -11,6 +11,9 @@ namespace BridgeBeats.Tests.Unit;
 /// </summary>
 [TestClass]
 public class ConfigurationValidationTests {
+    /// <summary>
+    /// Verifies that AddBridgeBeatsServices throws <see cref="FileNotFoundException"/> when Apple key file is missing.
+    /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithMissingAppleKeyFile_ShouldThrowFileNotFoundException( ) {
         // Arrange - provide ALL Apple credentials (TeamId, KeyId, AND KeyPath) with missing key file
@@ -40,6 +43,9 @@ public class ConfigurationValidationTests {
         Assert.Contains( ".p8", ex.Message );
     }
 
+    /// <summary>
+    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidDataException"/> when Apple key file is empty.
+    /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithEmptyAppleKeyFile_ShouldThrowInvalidDataException( ) {
         // Arrange - create empty temp key file
@@ -75,6 +81,9 @@ public class ConfigurationValidationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when no providers are configured.
+    /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithNoProviders_ShouldThrowInvalidOperationException( ) {
         // Arrange - no Apple, Spotify, or Tidal credentials
@@ -104,6 +113,9 @@ public class ConfigurationValidationTests {
         Assert.Contains( "Required settings are missing", ex.Message );
     }
 
+    /// <summary>
+    /// Verifies that AddBridgeBeatsServices succeeds when only Spotify credentials are configured.
+    /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithOnlySpotifyCredentials_ShouldSucceed( ) {
         // Arrange - minimal Spotify config
@@ -136,6 +148,9 @@ public class ConfigurationValidationTests {
         Assert.IsNotNull( mediaService, "IMediaLinkService should be registered with Spotify credentials" );
     }
 
+    /// <summary>
+    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when card cache expiration hours is zero.
+    /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithZeroCardCacheExpirationHours_ShouldThrowInvalidOperationException( ) {
         // Arrange - valid Spotify credentials but invalid card cache expiration
@@ -158,6 +173,9 @@ public class ConfigurationValidationTests {
         Assert.Contains( "CardCacheExpirationHours must be greater than zero", ex.Message );
     }
 
+    /// <summary>
+    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when card cache expiration hours is negative.
+    /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithNegativeCardCacheExpirationHours_ShouldThrowInvalidOperationException( ) {
         // Arrange - valid Spotify credentials but invalid card cache expiration
@@ -180,6 +198,9 @@ public class ConfigurationValidationTests {
         Assert.Contains( "CardCacheExpirationHours must be greater than zero", ex.Message );
     }
 
+    /// <summary>
+    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when card cache cleanup interval is zero.
+    /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithZeroCardCacheCleanupInterval_ShouldThrowInvalidOperationException( ) {
         // Arrange - valid Spotify credentials but invalid cleanup interval
@@ -202,6 +223,9 @@ public class ConfigurationValidationTests {
         Assert.Contains( "CardCacheCleanupInterval must be greater than zero", ex.Message );
     }
 
+    /// <summary>
+    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when card cache cleanup interval is negative.
+    /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithNegativeCardCacheCleanupInterval_ShouldThrowInvalidOperationException( ) {
         // Arrange - valid Spotify credentials but invalid cleanup interval

@@ -22,6 +22,9 @@ public class CacheBootstrapBackgroundServiceTests {
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
     private const string TestUserDid = "did:plc:testuser123";
 
+    /// <summary>
+    /// Initializes test dependencies before each test method.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _atProtoStorageMock = new Mock<IATProtoStorageService>( );
@@ -36,6 +39,9 @@ public class CacheBootstrapBackgroundServiceTests {
 
     #region Constructor Tests
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance when provided with valid dependencies.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -49,6 +55,10 @@ public class CacheBootstrapBackgroundServiceTests {
 
     #region ExecuteAsync Tests
 
+    /// <summary>
+    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> bootstraps the cache by loading
+    /// records from ATProto storage and populating the cache repository on startup.
+    /// </summary>
     [TestMethod]
     public async Task ExecuteAsync_OnStartup_ShouldBootstrapCache( ) {
         // Arrange
@@ -74,6 +84,10 @@ public class CacheBootstrapBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> completes successfully when
+    /// the ATProto storage contains no records to bootstrap.
+    /// </summary>
     [TestMethod]
     public async Task ExecuteAsync_WithEmptyCollection_ShouldCompleteWithoutErrors( ) {
         // Arrange
@@ -94,6 +108,10 @@ public class CacheBootstrapBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> continues processing remaining
+    /// records when individual record caching fails, ensuring fault tolerance.
+    /// </summary>
     [TestMethod]
     public async Task ExecuteAsync_WhenRecordFails_ShouldContinueWithOtherRecords( ) {
         // Arrange
@@ -128,6 +146,10 @@ public class CacheBootstrapBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> stops gracefully when
+    /// the cancellation token is cancelled.
+    /// </summary>
     [TestMethod]
     public async Task ExecuteAsync_WhenCancelled_ShouldStopGracefully( ) {
         // Arrange
@@ -143,6 +165,10 @@ public class CacheBootstrapBackgroundServiceTests {
         await executeTask;
     }
 
+    /// <summary>
+    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> passes the correct PDS URI
+    /// and user DID from settings when listing records from ATProto storage.
+    /// </summary>
     [TestMethod]
     public async Task ExecuteAsync_ShouldPassCorrectParametersToListAllRecords( ) {
         // Arrange
@@ -167,6 +193,10 @@ public class CacheBootstrapBackgroundServiceTests {
 
     #region Settings Tests
 
+    /// <summary>
+    /// Verifies that <see cref="CacheBootstrapSettings"/> correctly stores all configuration values
+    /// including PDS URI, user DID, and bootstrap interval.
+    /// </summary>
     [TestMethod]
     public void CacheBootstrapSettings_ShouldStoreValues( ) {
         // Arrange
@@ -187,6 +217,10 @@ public class CacheBootstrapBackgroundServiceTests {
 
     #region Helper Methods
 
+    /// <summary>
+    /// Creates a <see cref="CacheBootstrapBackgroundService"/> instance with the mocked dependencies.
+    /// </summary>
+    /// <returns>A configured <see cref="CacheBootstrapBackgroundService"/> instance.</returns>
     private CacheBootstrapBackgroundService CreateService( ) {
         return new CacheBootstrapBackgroundService(
             _atProtoStorageMock.Object,
@@ -196,18 +230,30 @@ public class CacheBootstrapBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// Configures the ATProto storage mock to return an empty list of records.
+    /// </summary>
     private void SetupEmptyRecordList( ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
     }
 
+    /// <summary>
+    /// Configures the ATProto storage mock to return the specified list of records.
+    /// </summary>
+    /// <param name="records">The records to return from the mock.</param>
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( records.ToAsyncEnumerable( ) );
     }
 
+    /// <summary>
+    /// Creates a test record with the specified AT URI for testing.
+    /// </summary>
+    /// <param name="atUri">The ATProto URI for the record.</param>
+    /// <returns>A tuple containing the AT URI and the <see cref="MediaLinkResult"/>.</returns>
     private static (string AtUri, MediaLinkResult Result) CreateTestRecord( string atUri ) {
         MediaLinkResult result = new( ) {
             LookedUpAt = DateTime.UtcNow

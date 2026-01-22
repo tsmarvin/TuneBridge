@@ -14,6 +14,9 @@ public class AppleJwtHandlerTests {
     private const string TestTeamId = "TEST123456";
     private const string TestKeyId = "KEY1234567";
 
+    /// <summary>
+    /// Initializes test resources including generating a valid ES256 key for testing.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         // Generate a valid ES256 (P-256) private key for testing
@@ -39,6 +42,9 @@ public class AppleJwtHandlerTests {
         File.WriteAllText( _testKeyPath, _testKeyContents );
     }
 
+    /// <summary>
+    /// Verifies that the constructor creates a valid instance with valid parameters.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithValidParameters_ShouldCreateInstance( ) {
         // Act & Assert
@@ -46,6 +52,9 @@ public class AppleJwtHandlerTests {
         Assert.IsNotNull( handler );
     }
 
+    /// <summary>
+    /// Verifies that the constructor throws an exception for invalid key content.
+    /// </summary>
     [TestMethod]
     public void Constructor_WithInvalidKey_ShouldThrowException( ) {
         // Arrange
@@ -56,6 +65,9 @@ public class AppleJwtHandlerTests {
             new AppleJwtHandler( TestTeamId, TestKeyId, invalidKeyContents ) );
     }
 
+    /// <summary>
+    /// Verifies that GetAuthHeader returns a valid Bearer token.
+    /// </summary>
     [TestMethod]
     public void GetAuthHeader_ShouldReturnBearerToken( ) {
         // Arrange
@@ -71,6 +83,9 @@ public class AppleJwtHandlerTests {
         Assert.IsGreaterThan( 0, authHeader.Parameter.Length );
     }
 
+    /// <summary>
+    /// Verifies that GetAuthHeader returns a token with valid JWT structure (3 parts).
+    /// </summary>
     [TestMethod]
     public void GetAuthHeader_ShouldReturnValidJwtStructure( ) {
         // Arrange
@@ -91,6 +106,9 @@ public class AppleJwtHandlerTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that GetAuthHeader returns different tokens on successive calls due to timestamps.
+    /// </summary>
     [TestMethod]
     public void GetAuthHeader_CalledMultipleTimes_ShouldReturnDifferentTokens( ) {
         // Arrange
@@ -105,6 +123,9 @@ public class AppleJwtHandlerTests {
         Assert.AreNotEqual( token1, token2 );
     }
 
+    /// <summary>
+    /// Cleans up test resources by deleting the temporary key file.
+    /// </summary>
     [TestCleanup]
     public void Cleanup( ) {
         if (File.Exists( _testKeyPath )) {
