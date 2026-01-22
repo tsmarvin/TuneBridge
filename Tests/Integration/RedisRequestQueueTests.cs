@@ -479,21 +479,24 @@ public class RedisRequestQueueTests {
         Assert.IsTrue( consumerId3.StartsWith( "applemusic-worker-", StringComparison.OrdinalIgnoreCase ),
             $"Consumer ID '{consumerId3}' should start with 'applemusic-worker-'" );
 
-        // Assert - GUID portion should be 32 characters (format N)
-        string guidPart1 = consumerId1.Substring( "spotify-worker-".Length );
-        string guidPart2 = consumerId2.Substring( "spotify-worker-".Length );
-        string guidPart3 = consumerId3.Substring( "applemusic-worker-".Length );
+        // Assert - GUID portion should be 32 characters (format N) and be valid hex strings
+        const string GuidHexPattern = "^[0-9a-f]{32}$";
+        const string SpotifyPrefix = "spotify-worker-";
+        const string AppleMusicPrefix = "applemusic-worker-";
+
+        string guidPart1 = consumerId1.Substring( SpotifyPrefix.Length );
+        string guidPart2 = consumerId2.Substring( SpotifyPrefix.Length );
+        string guidPart3 = consumerId3.Substring( AppleMusicPrefix.Length );
 
         Assert.AreEqual( 32, guidPart1.Length, "GUID portion should be 32 characters" );
         Assert.AreEqual( 32, guidPart2.Length, "GUID portion should be 32 characters" );
         Assert.AreEqual( 32, guidPart3.Length, "GUID portion should be 32 characters" );
 
-        // Assert - GUID portions should be valid hex strings
-        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart1, "^[0-9a-f]{32}$" ),
+        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart1, GuidHexPattern ),
             $"GUID portion '{guidPart1}' should be a valid hex string" );
-        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart2, "^[0-9a-f]{32}$" ),
+        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart2, GuidHexPattern ),
             $"GUID portion '{guidPart2}' should be a valid hex string" );
-        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart3, "^[0-9a-f]{32}$" ),
+        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart3, GuidHexPattern ),
             $"GUID portion '{guidPart3}' should be a valid hex string" );
 
         // Assert - total length should be reasonable (provider name + "-worker-" + 32 char GUID)
