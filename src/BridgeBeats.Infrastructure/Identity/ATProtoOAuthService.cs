@@ -467,10 +467,10 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         } catch (JsonException ex) {
             _logger.LogError(
                 ex,
-                "Failed to parse token response JSON or missing required properties. Content: {ResponseContent}",
+                "Failed to parse token response. Content: {ResponseContent}",
                 responseContent
             );
-            throw new InvalidOperationException( "Token response had invalid JSON or missing required properties.", ex );
+            throw new InvalidOperationException( "Token response had invalid format or missing required properties.", ex );
         } catch (KeyNotFoundException ex) {
             _logger.LogError(
                 ex,
