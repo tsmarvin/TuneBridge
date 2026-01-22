@@ -15,16 +15,16 @@ public static partial class ProviderUrlParser {
     private static readonly Regex s_spotifyLinkRegex = SpotifyLinkRegex( );
     private static readonly Regex s_tidalLinkRegex = TidalLinkRegex( );
 
-    [GeneratedRegex( @"\?i\=(?<songId>[^&#]*)", RegexOptions.Compiled )]
+    [GeneratedRegex( @"\?i\=(?<songId>[^&#]*)" )]
     private static partial Regex AppleMusicSongIdRegex( );
 
-    [GeneratedRegex( @"[Mm][Uu][Ss][Ii][Cc]\.[Aa][Pp][Pp][Ll][Ee]\.[Cc][Oo][Mm]/(?<URI>[_\w\d\/\=\?\.\:\-%&]*)", RegexOptions.Compiled )]
+    [GeneratedRegex( @"[Mm][Uu][Ss][Ii][Cc]\.[Aa][Pp][Pp][Ll][Ee]\.[Cc][Oo][Mm]/(?<URI>[_\w\d\/\=\?\.\:\-%&]*)" )]
     private static partial Regex AppleMusicLinkRegex( );
 
-    [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album|prerelease)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+    [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album|prerelease)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase )]
     private static partial Regex SpotifyLinkRegex( );
 
-    [GeneratedRegex( @"(?:(?:listen\.)?tidal\.com/)(?:browse/)?(?<type>track|album)/(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+    [GeneratedRegex( @"(?:(?:listen\.)?tidal\.com/)(?:browse/)?(?<type>track|album)/(?<id>\d+)", RegexOptions.IgnoreCase )]
     private static partial Regex TidalLinkRegex( );
 
     /// <summary>

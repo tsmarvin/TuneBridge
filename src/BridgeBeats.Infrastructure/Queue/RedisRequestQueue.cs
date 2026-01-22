@@ -619,7 +619,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     /// </summary>
     private static readonly Regex s_redisStreamIdPattern = RedisStreamIdPattern( );
 
-    [GeneratedRegex( @"^(.+):(\d+-\d+)$", RegexOptions.Compiled )]
+    [GeneratedRegex( @"^(.+):(\d+-\d+)$" )]
     private static partial Regex RedisStreamIdPattern( );
 
     private static (string stream, string id) ParseMessageId( string compositeId ) {
