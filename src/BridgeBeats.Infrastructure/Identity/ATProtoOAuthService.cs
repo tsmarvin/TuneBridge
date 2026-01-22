@@ -467,10 +467,10 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         } catch (JsonException ex) {
             _logger.LogError(
                 ex,
-                "Failed to parse token response JSON. Content: {ResponseContent}",
+                "Failed to parse token response JSON or missing required properties. Content: {ResponseContent}",
                 responseContent
             );
-            throw new InvalidOperationException( "Token response had invalid JSON or unexpected schema.", ex );
+            throw new InvalidOperationException( "Token response had invalid JSON or missing required properties.", ex );
         } catch (KeyNotFoundException ex) {
             _logger.LogError(
                 ex,
@@ -576,7 +576,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
                 ["htu"] = url,
                 ["jti"] = Guid.NewGuid( ).ToString( "N" ),
                 ["iat"] = now,
-                ["nbf"] = now
+                ["nbf"] = now - 5  // 5 seconds before to account for clock skew
             },
             SigningCredentials = new SigningCredentials(
                 new ECDsaSecurityKey( ecdsa ) { KeyId = kid },
