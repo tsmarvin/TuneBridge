@@ -52,6 +52,9 @@ namespace BridgeBeats.Infrastructure {
                 _ = services.AddRedisMediaLinkCache( cacheDays, atProtoUserDID! );
             }
 
+            // Register genre cache (always available when Redis is configured)
+            _ = services.AddGenreCache( );
+
             // Register queue infrastructure (shared services)
             _ = services.AddQueueInfrastructure( );
 

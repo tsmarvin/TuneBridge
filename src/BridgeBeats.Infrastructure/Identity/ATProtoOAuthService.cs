@@ -1,0 +1,432 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using BridgeBeats.Contracts.Interfaces;
+using idunno.AtProto;
+using idunno.Bluesky;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace BridgeBeats.Infrastructure.Identity;
+
+/// <summary>
+/// Service for managing ATProto OAuth authentication flows.
+/// Implements the ATProto OAuth profile with PAR, PKCE, and DPoP.
+/// </summary>
+public class ATProtoOAuthService : IATProtoOAuthService {
+
+    /// <summary>
+    /// Safety margin before token expiration to trigger refresh (30 seconds).
+    /// </summary>
+    private static readonly TimeSpan s_tokenExpirationMargin = TimeSpan.FromSeconds( 30 );
+
+    /// <summary>
+    /// OAuth scopes required for playlist operations.
+    /// - atproto: Required for all ATProto OAuth
+    /// - repo:link.bridgebeats.playlist: Granular permission for playlist record CRUD only
+    /// </summary>
+    private static readonly string[] s_requiredScopes = ["atproto", "repo:link.bridgebeats.playlist"];
+
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly ILogger<ATProtoOAuthService> _logger;
+    private readonly string _clientId;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ATProtoOAuthService"/> class.
+    /// </summary>
+    /// <param name="dbContextFactory">Factory for creating database contexts.</param>
+    /// <param name="logger">Logger for diagnostic information.</param>
+    /// <param name="clientId">The OAuth client_id URL (must be the client-metadata.json URL).</param>
+    public ATProtoOAuthService(
+        IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        ILogger<ATProtoOAuthService> logger,
+        string clientId
+    ) {
+        _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException( nameof( dbContextFactory ) );
+        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
+        _clientId = clientId ?? throw new ArgumentNullException( nameof( clientId ) );
+    }
+
+    /// <inheritdoc/>
+    public async Task<(Uri AuthorizationUrl, string State)> StartAuthorizationAsync(
+        string handle,
+        Uri redirectUri,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( handle );
+        ArgumentNullException.ThrowIfNull( redirectUri );
+
+        // Normalize handle (remove @ prefix if present)
+        handle = handle.TrimStart( '@' ).Trim( );
+
+        _logger.LogInformation( "Starting ATProto OAuth flow for handle: {Handle}", handle );
+
+        // Create an agent to resolve the handle and build the OAuth URL
+        using BlueskyAgent agent = new( );
+
+        // Step 1: Resolve handle to DID
+        Did? did = await agent.ResolveHandle( handle, cancellationToken );
+        if (did is null) {
+            throw new InvalidOperationException( $"Failed to resolve handle '{handle}' to a DID" );
+        }
+
+        _logger.LogDebug( "Resolved handle {Handle} to DID {Did}", handle, did );
+
+        // Step 2: Resolve PDS URI
+        Uri? pdsUri = await agent.ResolvePds( did, cancellationToken );
+        if (pdsUri is null) {
+            throw new InvalidOperationException( $"Failed to resolve PDS for DID '{did}'" );
+        }
+
+        _logger.LogDebug( "Resolved DID {Did} to PDS {PdsUri}", did, pdsUri );
+
+        // Step 3: Resolve authorization server
+        Uri? authorizationServer = await agent.ResolveAuthorizationServer( pdsUri, cancellationToken );
+        if (authorizationServer is null) {
+            throw new InvalidOperationException( $"Failed to resolve authorization server for PDS '{pdsUri}'" );
+        }
+
+        _logger.LogDebug( "Resolved PDS {PdsUri} to authorization server {AuthServer}", pdsUri, authorizationServer );
+
+        // Step 4: Generate PKCE code verifier and challenge
+        string codeVerifier = GenerateCodeVerifier( );
+        string codeChallenge = GenerateCodeChallenge( codeVerifier );
+
+        // Step 5: Generate state parameter
+        string state = GenerateState( );
+
+        // Step 6: Generate DPoP key pair
+        string dpoPKeyJwk = GenerateDPoPKey( );
+
+        // Step 7: Store the OAuth state for later verification
+        await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
+        AtProtoOAuthState oauthState = new( ) {
+            State = state,
+            CodeVerifier = codeVerifier,
+            Handle = handle,
+            Did = did.ToString( ),
+            PdsUri = pdsUri.ToString( ),
+            AuthorizationServerUri = authorizationServer.ToString( ),
+            DPoPKeyJwk = dpoPKeyJwk,
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes( 5 )
+        };
+
+        _ = dbContext.AtProtoOAuthStates.Add( oauthState );
+        _ = await dbContext.SaveChangesAsync( cancellationToken );
+
+        // Step 8: Build the authorization URL
+        // Note: This is a simplified version. The full ATProto OAuth requires PAR (Pushed Authorization Request)
+        // For now, we'll construct a basic authorization URL - this will need enhancement
+        // when the idunno library's OAuth support is fully available
+        Uri authorizationUrl = BuildAuthorizationUrl(
+            authorizationServer,
+            _clientId,
+            redirectUri,
+            state,
+            codeChallenge,
+            handle
+        );
+
+        _logger.LogInformation(
+            "OAuth authorization started for handle {Handle}, state {State}",
+            handle,
+            state
+        );
+
+        return (authorizationUrl, state);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ATProtoOAuthResult> CompleteAuthorizationAsync(
+        string state,
+        string code,
+        string iss,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( state );
+        ArgumentException.ThrowIfNullOrWhiteSpace( code );
+        ArgumentException.ThrowIfNullOrWhiteSpace( iss );
+
+        _logger.LogInformation( "Completing ATProto OAuth flow for state: {State}", state );
+
+        // Step 1: Look up the OAuth state
+        await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
+        AtProtoOAuthState? oauthState = await dbContext.AtProtoOAuthStates
+            .FirstOrDefaultAsync( s => s.State == state, cancellationToken );
+
+        if (oauthState is null) {
+            throw new InvalidOperationException( "OAuth state not found. The authorization flow may have expired." );
+        }
+
+        if (oauthState.ExpiresAt < DateTime.UtcNow) {
+            // Clean up expired state
+            _ = dbContext.AtProtoOAuthStates.Remove( oauthState );
+            _ = await dbContext.SaveChangesAsync( cancellationToken );
+            throw new InvalidOperationException( "OAuth state has expired. Please try logging in again." );
+        }
+
+        // Step 2: Verify the issuer matches the expected authorization server
+        if (!string.Equals( oauthState.AuthorizationServerUri?.TrimEnd( '/' ), iss.TrimEnd( '/' ), StringComparison.OrdinalIgnoreCase )) {
+            _logger.LogWarning(
+                "Issuer mismatch. Expected: {Expected}, Got: {Actual}",
+                oauthState.AuthorizationServerUri,
+                iss
+            );
+            throw new InvalidOperationException( "Authorization server issuer does not match. Possible security issue." );
+        }
+
+        // Step 3: Exchange the authorization code for tokens
+        // Note: This requires calling the token endpoint with PKCE verifier and DPoP
+        // For now, this is a placeholder - the actual implementation will use the idunno library
+        // or direct HTTP calls to the token endpoint
+        ATProtoOAuthResult result = await ExchangeCodeForTokensAsync(
+            oauthState,
+            code,
+            cancellationToken
+        );
+
+        // Step 4: Verify the returned DID matches the expected DID
+        if (!string.Equals( result.Did, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
+            _logger.LogWarning(
+                "DID mismatch in token response. Expected: {Expected}, Got: {Actual}",
+                oauthState.Did,
+                result.Did
+            );
+            throw new InvalidOperationException( "Account DID does not match. Possible security issue." );
+        }
+
+        // Step 5: Clean up the OAuth state (single-use)
+        _ = dbContext.AtProtoOAuthStates.Remove( oauthState );
+        _ = await dbContext.SaveChangesAsync( cancellationToken );
+
+        _logger.LogInformation(
+            "OAuth authorization completed for DID {Did}, handle {Handle}",
+            result.Did,
+            result.Handle
+        );
+
+        return result;
+    }
+
+    /// <inheritdoc/>
+    public async Task<ATProtoOAuthResult?> RefreshTokensAsync(
+        string did,
+        string refreshToken,
+        string dpoPKeyJwk,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( did );
+        ArgumentException.ThrowIfNullOrWhiteSpace( refreshToken );
+        ArgumentException.ThrowIfNullOrWhiteSpace( dpoPKeyJwk );
+
+        _logger.LogDebug( "Refreshing ATProto tokens for DID: {Did}", did );
+
+        try {
+            // Resolve the user's PDS to find the token endpoint
+            using BlueskyAgent agent = new( );
+            Uri? pdsUri = await agent.ResolvePds( new Did( did ), cancellationToken );
+            if (pdsUri is null) {
+                _logger.LogWarning( "Failed to resolve PDS for DID {Did} during token refresh", did );
+                return null;
+            }
+
+            Uri? authServer = await agent.ResolveAuthorizationServer( pdsUri, cancellationToken );
+            if (authServer is null) {
+                _logger.LogWarning( "Failed to resolve auth server for DID {Did} during token refresh", did );
+                return null;
+            }
+
+            // Call the token endpoint with refresh_token grant
+            // Note: This is a placeholder - actual implementation needs DPoP-signed request
+            ATProtoOAuthResult? result = await RefreshTokensFromServerAsync(
+                authServer,
+                refreshToken,
+                dpoPKeyJwk,
+                did,
+                cancellationToken
+            );
+
+            if (result is not null) {
+                _logger.LogInformation( "Successfully refreshed ATProto tokens for DID {Did}", did );
+            }
+
+            return result;
+        } catch (Exception ex) {
+            _logger.LogError( ex, "Failed to refresh ATProto tokens for DID {Did}", did );
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool IsTokenValid( DateTime? tokenExpiration ) {
+        return tokenExpiration is not null && tokenExpiration.Value > DateTime.UtcNow.Add( s_tokenExpirationMargin );
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> CleanupExpiredStatesAsync( CancellationToken cancellationToken = default ) {
+        await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
+
+        DateTime cutoff = DateTime.UtcNow;
+        int deleted = await dbContext.AtProtoOAuthStates
+            .Where( s => s.ExpiresAt < cutoff )
+            .ExecuteDeleteAsync( cancellationToken );
+
+        if (deleted > 0) {
+            _logger.LogInformation( "Cleaned up {Count} expired ATProto OAuth states", deleted );
+        }
+
+        return deleted;
+    }
+
+    #region Private Helper Methods
+
+    /// <summary>
+    /// Generates a cryptographically random PKCE code verifier.
+    /// </summary>
+    private static string GenerateCodeVerifier( ) {
+        byte[] bytes = new byte[32];
+        RandomNumberGenerator.Fill( bytes );
+        return Base64UrlEncode( bytes );
+    }
+
+    /// <summary>
+    /// Generates a PKCE code challenge from the verifier using S256 method.
+    /// </summary>
+    private static string GenerateCodeChallenge( string codeVerifier ) {
+        byte[] bytes = SHA256.HashData( Encoding.ASCII.GetBytes( codeVerifier ) );
+        return Base64UrlEncode( bytes );
+    }
+
+    /// <summary>
+    /// Generates a cryptographically random state parameter.
+    /// </summary>
+    private static string GenerateState( ) {
+        byte[] bytes = new byte[32];
+        RandomNumberGenerator.Fill( bytes );
+        return Base64UrlEncode( bytes );
+    }
+
+    /// <summary>
+    /// Generates a new EC P-256 DPoP key pair and returns the private key as JWK.
+    /// </summary>
+    private static string GenerateDPoPKey( ) {
+        using ECDsa ecdsa = ECDsa.Create( ECCurve.NamedCurves.nistP256 );
+        ECParameters parameters = ecdsa.ExportParameters( includePrivateParameters: true );
+
+        var jwk = new {
+            kty = "EC",
+            crv = "P-256",
+            x = Base64UrlEncode( parameters.Q.X! ),
+            y = Base64UrlEncode( parameters.Q.Y! ),
+            d = Base64UrlEncode( parameters.D! ),
+            kid = Guid.NewGuid( ).ToString( "N" )
+        };
+
+        return JsonSerializer.Serialize( jwk );
+    }
+
+    /// <summary>
+    /// Base64 URL encodes the given bytes.
+    /// </summary>
+    private static string Base64UrlEncode( byte[] bytes ) {
+        return Convert.ToBase64String( bytes )
+            .TrimEnd( '=' )
+            .Replace( '+', '-' )
+            .Replace( '/', '_' );
+    }
+
+    /// <summary>
+    /// Builds the OAuth authorization URL.
+    /// Note: ATProto requires PAR, so this is a simplified placeholder.
+    /// </summary>
+    private static Uri BuildAuthorizationUrl(
+        Uri authorizationServer,
+        string clientId,
+        Uri redirectUri,
+        string state,
+        string codeChallenge,
+        string loginHint
+    ) {
+        // Note: This is a placeholder. Full ATProto OAuth requires:
+        // 1. PAR request to pushed_authorization_request_endpoint
+        // 2. Get request_uri from PAR response
+        // 3. Redirect to authorization_endpoint with request_uri
+        // For now, we build a direct authorization URL which may work with some servers
+
+        UriBuilder builder = new( authorizationServer ) {
+            Path = "/oauth/authorize"
+        };
+
+        string scope = string.Join( " ", s_requiredScopes );
+
+        System.Collections.Specialized.NameValueCollection query = System.Web.HttpUtility.ParseQueryString( string.Empty );
+        query["client_id"] = clientId;
+        query["response_type"] = "code";
+        query["redirect_uri"] = redirectUri.ToString( );
+        query["state"] = state;
+        query["scope"] = scope;
+        query["code_challenge"] = codeChallenge;
+        query["code_challenge_method"] = "S256";
+        query["login_hint"] = loginHint;
+
+        builder.Query = query.ToString( );
+
+        return builder.Uri;
+    }
+
+    /// <summary>
+    /// Exchanges the authorization code for tokens.
+    /// </summary>
+    private async Task<ATProtoOAuthResult> ExchangeCodeForTokensAsync(
+        AtProtoOAuthState oauthState,
+        string code,
+        CancellationToken cancellationToken
+    ) {
+        // TODO: Implement actual token exchange with DPoP
+        // This requires:
+        // 1. Constructing a DPoP proof JWT signed with the stored key
+        // 2. Calling the token endpoint with grant_type=authorization_code
+        // 3. Parsing the response for access_token, refresh_token, expires_in, sub, scope
+
+        // For now, throw NotImplementedException to indicate this needs real implementation
+        // when we can test against an actual ATProto authorization server
+        _logger.LogWarning(
+            "Token exchange not yet fully implemented. State: {State}, Code length: {CodeLength}",
+            oauthState.State,
+            code.Length
+        );
+
+        throw new NotImplementedException(
+            "ATProto OAuth token exchange requires full DPoP implementation. " +
+            "This will be completed when the idunno.AtProto library's OAuth support is fully available " +
+            "or when direct HTTP token endpoint integration is implemented."
+        );
+    }
+
+    /// <summary>
+    /// Refreshes tokens from the authorization server.
+    /// </summary>
+    private Task<ATProtoOAuthResult?> RefreshTokensFromServerAsync(
+        Uri authorizationServer,
+        string refreshToken,
+        string dpoPKeyJwk,
+        string did,
+        CancellationToken cancellationToken
+    ) {
+        // TODO: Implement actual token refresh with DPoP
+        // This requires:
+        // 1. Constructing a DPoP proof JWT signed with the stored key
+        // 2. Calling the token endpoint with grant_type=refresh_token
+        // 3. Parsing the response for new access_token, refresh_token, expires_in
+
+        _logger.LogWarning(
+            "Token refresh not yet fully implemented for DID {Did}",
+            did
+        );
+
+        return Task.FromResult<ATProtoOAuthResult?>( null );
+    }
+
+    #endregion
+}

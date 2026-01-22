@@ -15,7 +15,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{02EA
 		.github\CODE_OF_CONDUCT.md = .github\CODE_OF_CONDUCT.md
 		.github\CONTRIBUTING.md = .github\CONTRIBUTING.md
 		.github\copilot-instructions.md = .github\copilot-instructions.md
-		.github\dependabot.yml = .github\dependabot.yml
 		.github\PULL_REQUEST_TEMPLATE.md = .github\PULL_REQUEST_TEMPLATE.md
 		.github\SECURITY.md = .github\SECURITY.md
 	EndProjectSection
@@ -60,6 +59,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "containers", "containers", 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{DA4FC95F-B638-4F11-8AD2-C83FE858DAD4}"
 	ProjectSection(SolutionItems) = preProject
+		.github\dependabot.yml = .github\dependabot.yml
 		.github\workflows\docker-publish.yml = .github\workflows\docker-publish.yml
 		.github\workflows\docs.yml = .github\workflows\docs.yml
 		.github\workflows\publish-caddy-cloudflare.yml = .github\workflows\publish-caddy-cloudflare.yml

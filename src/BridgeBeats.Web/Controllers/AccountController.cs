@@ -5,6 +5,7 @@ using BridgeBeats.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace BridgeBeats.Web.Controllers;
 
@@ -327,4 +328,169 @@ public class AccountController : Controller {
             message = "Account deleted successfully. All your personal data has been removed."
         } );
     }
+
+    #region ATProto OAuth
+
+    /// <summary>Request to start ATProto OAuth login.</summary>
+    /// <param name="Handle">The ATProto handle (e.g., user.bsky.social).</param>
+    public record AtProtoLoginRequest( string Handle );
+
+    /// <summary>
+    /// Starts the ATProto OAuth login flow.
+    /// Redirects the user to their authorization server for authentication.
+    /// </summary>
+    /// <param name="request">The login request containing the ATProto handle.</param>
+    /// <param name="atProtoOAuth">The ATProto OAuth service.</param>
+    /// <returns>Redirect to authorization server or error.</returns>
+    [HttpPost]
+    [Route( "account/login-atproto" )]
+    public async Task<IActionResult> LoginWithAtProto(
+        [FromBody] AtProtoLoginRequest request,
+        [FromServices] IATProtoOAuthService? atProtoOAuth
+    ) {
+        if (atProtoOAuth is null) {
+            return BadRequest( new { message = "ATProto OAuth is not configured on this server." } );
+        }
+
+        if (string.IsNullOrWhiteSpace( request.Handle )) {
+            return BadRequest( new { message = "Please enter your Bluesky handle." } );
+        }
+
+        try {
+            // Build the callback URL
+            Uri callbackUri = new(
+                $"{Request.Scheme}://{Request.Host}/account/atproto-callback"
+            );
+
+            (Uri authUrl, string state) = await atProtoOAuth.StartAuthorizationAsync(
+                request.Handle,
+                callbackUri
+            );
+
+            _logger.LogInformation(
+                "Started ATProto OAuth for handle {Handle}, redirecting to {AuthUrl}",
+                request.Handle,
+                authUrl.Host
+            );
+
+            // Return the authorization URL for the client to redirect to
+            return Ok( new {
+                authorizationUrl = authUrl.ToString( ),
+                state = state
+            } );
+        } catch (Exception ex) {
+            _logger.LogError( ex, "Failed to start ATProto OAuth for handle {Handle}", request.Handle );
+            return BadRequest( new {
+                message = $"Failed to start login: {ex.Message}"
+            } );
+        }
+    }
+
+    /// <summary>
+    /// Handles the OAuth callback from the ATProto authorization server.
+    /// </summary>
+    /// <param name="code">The authorization code.</param>
+    /// <param name="state">The state parameter for verification.</param>
+    /// <param name="iss">The issuer (authorization server) URL.</param>
+    /// <param name="error">Error code if authorization failed.</param>
+    /// <param name="error_description">Error description if authorization failed.</param>
+    /// <param name="atProtoOAuth">The ATProto OAuth service.</param>
+    /// <returns>Redirect to home page on success, or error page on failure.</returns>
+    [HttpGet]
+    [Route( "account/atproto-callback" )]
+    public async Task<IActionResult> AtProtoCallback(
+        [FromQuery] string? code,
+        [FromQuery] string? state,
+        [FromQuery] string? iss,
+        [FromQuery] string? error,
+        [FromQuery] string? error_description,
+        [FromServices] IATProtoOAuthService? atProtoOAuth
+    ) {
+        // Handle authorization errors
+        if (!string.IsNullOrEmpty( error )) {
+            _logger.LogWarning( "ATProto OAuth error: {Error} - {Description}", error, error_description );
+            return RedirectToAction( nameof( LoginPage ), new {
+                error = error_description ?? error
+            } );
+        }
+
+        if (atProtoOAuth is null) {
+            return RedirectToAction( nameof( LoginPage ), new {
+                error = "ATProto OAuth is not configured on this server."
+            } );
+        }
+
+        if (string.IsNullOrEmpty( code ) || string.IsNullOrEmpty( state ) || string.IsNullOrEmpty( iss )) {
+            return RedirectToAction( nameof( LoginPage ), new {
+                error = "Invalid OAuth callback parameters."
+            } );
+        }
+
+        try {
+            // Complete the OAuth flow
+            ATProtoOAuthResult result = await atProtoOAuth.CompleteAuthorizationAsync( state, code, iss );
+
+            // Find or create the user
+            ApplicationUser? user = await _userManager.Users
+                .FirstOrDefaultAsync( u => u.AtProtoDid == result.Did );
+
+            if (user is null) {
+                // Create a new user for this ATProto account
+                user = new ApplicationUser {
+                    UserName = result.Handle,
+                    AtProtoDid = result.Did,
+                    AtProtoHandle = result.Handle,
+                    AtProtoAccessToken = result.AccessToken,
+                    AtProtoRefreshToken = result.RefreshToken,
+                    AtProtoDPoPKey = result.DPoPKeyJwk,
+                    AtProtoTokenExpiration = result.TokenExpiration,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                IdentityResult createResult = await _userManager.CreateAsync( user );
+                if (!createResult.Succeeded) {
+                    string errors = string.Join( ", ", createResult.Errors.Select( e => e.Description ) );
+                    _logger.LogError( "Failed to create ATProto user: {Errors}", errors );
+                    return RedirectToAction( nameof( LoginPage ), new {
+                        error = "Failed to create account. Please try again."
+                    } );
+                }
+
+                _logger.LogInformation(
+                    "Created new user for ATProto DID {Did}, handle {Handle}",
+                    result.Did,
+                    result.Handle
+                );
+            } else {
+                // Update tokens for existing user
+                user.AtProtoHandle = result.Handle;
+                user.AtProtoAccessToken = result.AccessToken;
+                user.AtProtoRefreshToken = result.RefreshToken;
+                user.AtProtoDPoPKey = result.DPoPKeyJwk;
+                user.AtProtoTokenExpiration = result.TokenExpiration;
+
+                _ = await _userManager.UpdateAsync( user );
+
+                _logger.LogInformation(
+                    "Updated tokens for ATProto user DID {Did}, handle {Handle}",
+                    result.Did,
+                    result.Handle
+                );
+            }
+
+            // Sign in the user
+            await _signInManager.SignInAsync( user, isPersistent: false );
+
+            _logger.LogInformation( "ATProto user logged in: {UserId}", user.Id );
+
+            return Redirect( "/" );
+        } catch (Exception ex) {
+            _logger.LogError( ex, "Failed to complete ATProto OAuth callback" );
+            return RedirectToAction( nameof( LoginPage ), new {
+                error = $"Login failed: {ex.Message}"
+            } );
+        }
+    }
+
+    #endregion
 }

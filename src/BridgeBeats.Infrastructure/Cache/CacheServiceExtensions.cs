@@ -12,6 +12,21 @@ namespace BridgeBeats.Infrastructure.Cache {
     public static class CacheServiceExtensions {
 
         /// <summary>
+        /// Adds the Redis-based genre cache service.
+        /// Redis connection must be available via <see cref="IConnectionMultiplexer"/>.
+        /// </summary>
+        /// <param name="services">The service collection to configure.</param>
+        /// <returns>The configured service collection.</returns>
+        public static IServiceCollection AddGenreCache( this IServiceCollection services ) {
+            _ = services.AddSingleton<IGenreCacheService>( s => new RedisGenreCache(
+                s.GetRequiredService<IConnectionMultiplexer>( ),
+                s.GetRequiredService<ILogger<RedisGenreCache>>( )
+            ) );
+
+            return services;
+        }
+
+        /// <summary>
         /// Adds the Redis-based media link cache repository.
         /// This method should only be called when ATProto storage is configured.
         /// Redis connection must be available via <see cref="IConnectionMultiplexer"/>.

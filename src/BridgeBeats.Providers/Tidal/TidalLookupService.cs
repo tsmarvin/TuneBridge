@@ -16,11 +16,13 @@ namespace BridgeBeats.Providers.Tidal {
     /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service.</param>
     /// <param name="logger">The logger used to record errors.</param>
     /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging.</param>
+    /// <param name="genreCache">Optional genre cache service for caching genre data.</param>
     public sealed partial class TidalLookupService(
         TidalTokenHandler handler,
         IHttpClientFactory factory,
         ILogger<TidalLookupService> logger,
-        JsonSerializerOptions serializerOptions
+        JsonSerializerOptions serializerOptions,
+        IGenreCacheService? genreCache = null
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
 
         /// <summary>
@@ -255,6 +257,9 @@ namespace BridgeBeats.Providers.Tidal {
 
                 result.ArtUrl = await GetAlbumArtUrl( included, isAlbum );
 
+                // Cache genres if available (fire and forget - don't block the response)
+                CacheGenresFromIncluded( data, included );
+
                 return result;
             } catch (Exception ex) {
                 Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from tidal.", lookupKey );
@@ -359,6 +364,54 @@ namespace BridgeBeats.Providers.Tidal {
                 Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Caches genre data from the included array for a track/album.
+        /// Looks for genre resources in the included array and matches them to the data resource via relationships.
+        /// </summary>
+        /// <param name="data">The main track/album resource.</param>
+        /// <param name="included">The included resources array from the JSON:API response.</param>
+        private void CacheGenresFromIncluded( TidalResource data, List<TidalResource> included ) {
+            if (genreCache == null || string.IsNullOrWhiteSpace( data.Id )) {
+                return;
+            }
+
+            // Get genre IDs from relationships
+            HashSet<string> genreIds = [];
+            if (data.Relationships?.Genres?.Data != null) {
+                foreach (TidalResourceIdentifier genreRef in data.Relationships.Genres.Data) {
+                    if (genreRef.Type == "genres" && !string.IsNullOrWhiteSpace( genreRef.Id )) {
+                        _ = genreIds.Add( genreRef.Id );
+                    }
+                }
+            }
+
+            if (genreIds.Count == 0) { return; }
+
+            // Find matching genre names in included array
+            List<string> genreNames = [];
+            foreach (TidalResource item in included) {
+                if (item.Type == "genres"
+                    && !string.IsNullOrWhiteSpace( item.Id )
+                    && genreIds.Contains( item.Id )
+                    && item.Attributes != null
+                    && !string.IsNullOrWhiteSpace( item.Attributes.Name )
+                ) {
+                    genreNames.Add( item.Attributes.Name );
+                }
+            }
+
+            if (genreNames.Count == 0) { return; }
+
+            // Fire and forget - don't block the response
+            _ = Task.Run( async ( ) => {
+                try {
+                    await genreCache.SetGenresAsync( SupportedProviders.Tidal, data.Id, genreNames );
+                } catch (Exception ex) {
+                    Logger.LogWarning( ex, "Failed to cache genres for Tidal resource {ResourceId}", data.Id );
+                }
+            } );
         }
 
     }

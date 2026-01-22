@@ -2,6 +2,7 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.DTOs.WorkerApi;
 using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Infrastructure.Cache;
 using BridgeBeats.Providers.Spotify;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Services.Queue;
@@ -34,12 +35,18 @@ _ = builder.Services.AddSpotifyServices( clientId, clientSecret, enabledProvider
 // Register JSON serializer options (required by SpotifyLookupService)
 _ = builder.Services.AddSingleton( new JsonSerializerOptions { WriteIndented = true } );
 
+// Register genre cache for artist genre processing
+_ = builder.Services.AddGenreCache( );
+
 // Register queue processor background service for consuming from Redis streams
 _ = builder.Services.AddQueueProcessor<SpotifyLookupService>( SupportedProviders.Spotify );
 
 // Register Spotify-specific batch queue helper and bulk processor service
 _ = builder.Services.AddSingleton<SpotifyBatchQueueHelper>( );
 _ = builder.Services.AddHostedService<SpotifyBulkProcessorService>( );
+
+// Register Spotify artist genre service for scheduled genre fetching
+_ = builder.Services.AddHostedService<SpotifyArtistGenreService>( );
 
 WebApplication app = builder.Build( );
 

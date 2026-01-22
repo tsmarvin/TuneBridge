@@ -175,6 +175,19 @@ namespace BridgeBeats.Providers.Spotify {
         public static string GetBulkAlbumsUri( IEnumerable<string> albumIds )
             => BulkAlbumsURI.Replace( "{ids}", string.Join( ",", albumIds ) );
 
+        /// <summary>
+        /// Constructs an API URI for bulk artist lookup by IDs.
+        /// </summary>
+        /// <param name="artistIds">The collection of Spotify artist IDs (max 50).</param>
+        /// <returns>The API URI for bulk artist lookup.</returns>
+        /// <remarks>
+        /// Endpoint: GET /artists?ids={comma-separated-ids}
+        /// Maximum: 50 artist IDs per request
+        /// Documentation: https://developer.spotify.com/documentation/web-api/reference/get-multiple-artists
+        /// </remarks>
+        public static string GetBulkArtistsUri( IEnumerable<string> artistIds )
+            => BulkArtistsURI.Replace( "{ids}", string.Join( ",", artistIds ) );
+
 
         private const string TracksIsrcURI = "search?q=isrc:{isrc}&type=track";
         private const string AlbumsUpcURI = "search?q=upc:{upc}&type=album";
@@ -185,6 +198,7 @@ namespace BridgeBeats.Providers.Spotify {
         private const string TracksURI = "tracks/{id}";
         private const string BulkTracksURI = "tracks?ids={ids}";
         private const string BulkAlbumsURI = "albums?ids={ids}";
+        private const string BulkArtistsURI = "artists?ids={ids}";
 
     }
 }

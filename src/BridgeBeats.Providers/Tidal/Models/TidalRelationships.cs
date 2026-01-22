@@ -22,6 +22,12 @@ namespace BridgeBeats.Providers.Tidal.Models {
         /// </summary>
         [JsonPropertyName( "albums" )]
         public TidalRelationshipData? Albums { get; set; }
+
+        /// <summary>
+        /// Relationship to genre resources.
+        /// </summary>
+        [JsonPropertyName( "genres" )]
+        public TidalRelationshipData? Genres { get; set; }
     }
 
 }

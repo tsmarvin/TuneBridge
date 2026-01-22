@@ -16,11 +16,13 @@ namespace BridgeBeats.Providers.Spotify {
     /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service.</param>
     /// <param name="logger">The logger used to record errors.</param>
     /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging.</param>
+    /// <param name="genreCache">Optional genre cache service for caching artist-track mappings.</param>
     public sealed partial class SpotifyLookupService(
         SpotifyTokenHandler handler,
         IHttpClientFactory factory,
         ILogger<SpotifyLookupService> logger,
-        JsonSerializerOptions serializerOptions
+        JsonSerializerOptions serializerOptions,
+        IGenreCacheService? genreCache = null
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
 
         /// <inheritdoc/>
@@ -179,6 +181,9 @@ namespace BridgeBeats.Providers.Spotify {
                             IsAlbum = false,
                             IsPrimary = true
                         };
+
+                        // Cache track→artist mapping for genre resolution
+                        CacheTrackArtistMapping( track.Id, track.Artists );
                     }
                 }
             } catch (Exception ex) {
@@ -254,6 +259,70 @@ namespace BridgeBeats.Providers.Spotify {
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "An error occurred while parsing bulk albums response from Spotify." );
+                Logger.LogTrace( "{ResponseBody}", body );
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Performs a bulk lookup of artists by their Spotify IDs to retrieve genre information.
+        /// </summary>
+        /// <param name="artistIds">The collection of Spotify artist IDs to look up (max 50).</param>
+        /// <returns>
+        /// A dictionary mapping artist ID to their genres.
+        /// Null values indicate the artist was not found.
+        /// Empty list indicates artist has no genres classified.
+        /// </returns>
+        /// <remarks>
+        /// Uses a separate rate limit endpoint key (<see cref="SpotifyConstants.BulkArtistsEndpoint"/>)
+        /// from other lookups to allow independent rate limit tracking.
+        /// </remarks>
+        /// <exception cref="ArgumentException">Thrown when more than 50 artist IDs are provided.</exception>
+        public async Task<Dictionary<string, List<string>?>> GetArtistsByIdsAsync( IEnumerable<string> artistIds ) {
+            List<string> idList = artistIds.ToList( );
+
+            if (idList.Count == 0) {
+                return [];
+            }
+
+            if (idList.Count > SpotifyConstants.MaxArtistsPerBatchLookup) {
+                throw new ArgumentException(
+                    $"Cannot request more than {SpotifyConstants.MaxArtistsPerBatchLookup} artists at once. Received {idList.Count}.",
+                    nameof( artistIds )
+                );
+            }
+
+            string requestUri = SpotifyLinkParser.GetBulkArtistsUri( idList );
+            string? body = await NewBulkMusicApiRequest( requestUri, SpotifyConstants.BulkArtistsEndpoint );
+
+            Dictionary<string, List<string>?> results = [];
+
+            if (string.IsNullOrWhiteSpace( body )) {
+                // Request failed - return empty dictionary (caller should requeue)
+                return results;
+            }
+
+            try {
+                SpotifyArtistsResponse? response = JsonSerializer.Deserialize<SpotifyArtistsResponse>( body, SerializerOptions );
+
+                if (response?.Artists == null) {
+                    Logger.LogError( "Failed to deserialize bulk artists response from Spotify." );
+                    return results;
+                }
+
+                // Map results back to IDs - position in response matches position in request
+                for (int i = 0; i < idList.Count && i < response.Artists.Count; i++) {
+                    SpotifyArtist? artist = response.Artists[i];
+                    if (artist == null) {
+                        // Artist not found - null indicates not found
+                        results[idList[i]] = null;
+                    } else {
+                        results[idList[i]] = artist.Genres;
+                    }
+                }
+            } catch (Exception ex) {
+                Logger.LogError( ex, "An error occurred while parsing bulk artists response from Spotify." );
                 Logger.LogTrace( "{ResponseBody}", body );
             }
 
@@ -396,6 +465,11 @@ namespace BridgeBeats.Providers.Spotify {
                         result.ArtUrl = trackData.Album?.Images != null && trackData.Album.Images.Count > 0
                                         ? trackData.Album.Images[0].Url
                                         : string.Empty;
+
+                        // Cache track→artist mapping for genre resolution (fire and forget)
+                        if (trackData.Artists != null) {
+                            CacheTrackArtistMapping( trackData.Id, trackData.Artists );
+                        }
                         break;
                 }
 
@@ -513,6 +587,35 @@ namespace BridgeBeats.Providers.Spotify {
             } while (body != null);
 
             return null;
+        }
+
+        /// <summary>
+        /// Caches the track→artist mapping for later genre resolution via batch worker.
+        /// Fires and forgets to avoid blocking the main response.
+        /// </summary>
+        /// <param name="trackId">The Spotify track ID.</param>
+        /// <param name="artists">The list of artists on the track.</param>
+        private void CacheTrackArtistMapping( string trackId, List<SpotifyArtistSimplified> artists ) {
+            if (genreCache == null || string.IsNullOrWhiteSpace( trackId ) || artists.Count == 0) {
+                return;
+            }
+
+            List<string> artistIds = artists
+                .Where( a => !string.IsNullOrWhiteSpace( a.Id ) )
+                .Select( a => a.Id )
+                .ToList( );
+
+            if (artistIds.Count == 0) { return; }
+
+            // Fire and forget - don't block the response
+            _ = Task.Run( async ( ) => {
+                try {
+                    await genreCache.SetTrackArtistMappingAsync( SupportedProviders.Spotify, trackId, artistIds );
+                    await genreCache.EnqueueArtistsForRefreshAsync( SupportedProviders.Spotify, artistIds );
+                } catch (Exception ex) {
+                    Logger.LogWarning( ex, "Failed to cache track→artist mapping for Spotify track {TrackId}", trackId );
+                }
+            } );
         }
 
     }

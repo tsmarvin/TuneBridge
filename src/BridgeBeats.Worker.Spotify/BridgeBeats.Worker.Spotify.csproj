@@ -18,6 +18,7 @@
     <ProjectReference Include="..\BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj" />
     <ProjectReference Include="..\BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
     <ProjectReference Include="..\BridgeBeats.Services\BridgeBeats.Services.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

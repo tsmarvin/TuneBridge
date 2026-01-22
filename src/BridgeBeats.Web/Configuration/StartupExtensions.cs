@@ -406,6 +406,19 @@ namespace BridgeBeats.Web.Configuration {
         }
 
         private static void ConfigureATProtoIfEnabled( IServiceCollection services, AppSettings settings ) {
+            // Register ATProto OAuth service (available even without server ATProto credentials)
+            // This allows users to log in with Bluesky for playlist management
+            if (!string.IsNullOrWhiteSpace( settings.BaseUrl )) {
+                string clientId = $"{settings.BaseUrl.TrimEnd( '/' )}/.well-known/client-metadata.json";
+                _ = services.AddScoped<IATProtoOAuthService>( sp =>
+                    new ATProtoOAuthService(
+                        sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( ),
+                        sp.GetRequiredService<ILogger<ATProtoOAuthService>>( ),
+                        clientId
+                    )
+                );
+            }
+
             if (string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) ||
                 string.IsNullOrWhiteSpace( settings.ATProtoPassword )) {
                 return;
