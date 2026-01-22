@@ -73,6 +73,19 @@ namespace BridgeBeats.Providers.AppleMusic {
         }
 
         /// <summary>
+        /// Extracts the Apple Music ID (song or album) from a URL.
+        /// </summary>
+        /// <param name="url">The Apple Music URL to parse.</param>
+        /// <returns>The extracted ID, or null if the URL is invalid or cannot be parsed.</returns>
+        /// <remarks>
+        /// Handles both album and song URLs. For album URLs with ?i= query parameter,
+        /// returns the song ID from the query parameter. Otherwise returns the primary ID
+        /// from the URL path.
+        /// </remarks>
+        public static string? ExtractId( string url )
+            => Contracts.Utilities.ProviderUrlParser.ExtractAppleMusicId( url );
+
+        /// <summary>
         /// Constructs an API URI for searching songs by ID.
         /// </summary>
         /// <param name="storefront">The market region/storefront.</param>

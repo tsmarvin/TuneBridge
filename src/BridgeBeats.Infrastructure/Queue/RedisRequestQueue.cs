@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
@@ -28,7 +29,7 @@ namespace BridgeBeats.Infrastructure.Queue;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type of request to queue.</typeparam>
-public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQueueableRequest {
+public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQueueableRequest {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisRequestQueue<T>> _logger;
@@ -612,39 +613,32 @@ public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQu
         }
     }
 
+    /// <summary>
+    /// Regex pattern to match Redis stream ID format (timestamp-sequence) at the end of a composite ID.
+    /// Stream name must contain at least one character (pattern matches everything before last colon-delimited Redis ID).
+    /// </summary>
+    private static readonly Regex s_redisStreamIdPattern = RedisStreamIdPattern( );
+
+    [GeneratedRegex( @"^(.+):(\d+-\d+)$" )]
+    private static partial Regex RedisStreamIdPattern( );
+
     private static (string stream, string id) ParseMessageId( string compositeId ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( compositeId );
 
         // Redis stream IDs are in format "timestamp-sequence" (e.g., "1234567890123-0")
         // Our composite format is "stream:timestamp-sequence"
-        // We need to find the last occurrence of a pattern that looks like a Redis stream ID
+        // Use regex to parse: everything before the last colon is the stream name,
+        // and the last part should match the Redis ID pattern (digits-digits)
 
-        // Find the last dash which should be part of the Redis stream ID
-        int lastDash = compositeId.LastIndexOf( '-' );
-        if (lastDash <= 0) {
-            throw new ArgumentException( $"Invalid composite message ID (no dash found): {compositeId}", nameof( compositeId ) );
+        Match match = s_redisStreamIdPattern.Match( compositeId );
+        if (!match.Success) {
+            throw new ArgumentException( 
+                $"Invalid composite message ID format. Expected 'stream:timestamp-sequence', got: {compositeId}", 
+                nameof( compositeId ) );
         }
 
-        // Find the last colon before the timestamp part of the stream ID
-        // Work backwards from the dash to find where timestamp begins
-        int searchStart = lastDash - 1;
-        while (searchStart > 0 && char.IsDigit( compositeId[searchStart] )) {
-            searchStart--;
-        }
-
-        // Validate we found a proper separator and have a complete timestamp
-        if (searchStart < 0 || compositeId[searchStart] != ':') {
-            throw new ArgumentException( $"Invalid composite message ID format: {compositeId}", nameof( compositeId ) );
-        }
-
-        // Verify we have at least one digit in the timestamp portion
-        if (searchStart >= lastDash - 1) {
-            throw new ArgumentException( $"Invalid composite message ID: no timestamp digits found: {compositeId}", nameof( compositeId ) );
-        }
-
-        // Split at this colon: everything before is stream, everything after is the Redis ID
-        string stream = compositeId[..searchStart];
-        string id = compositeId[(searchStart + 1)..];
+        string stream = match.Groups[1].Value;
+        string id = match.Groups[2].Value;
 
         return (stream, id);
     }
