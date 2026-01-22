@@ -90,6 +90,19 @@ namespace BridgeBeats.Providers.Spotify {
         private static partial Regex SpotifyShortLinkPattern( );
 
         /// <summary>
+        /// Extracts the Spotify ID (track or album) from a URL.
+        /// </summary>
+        /// <param name="url">The Spotify URL to parse.</param>
+        /// <returns>The extracted ID, or null if the URL is invalid or cannot be parsed.</returns>
+        /// <remarks>
+        /// This is a synchronous method that only handles direct open.spotify.com URLs.
+        /// It does not resolve spotify.link short URLs. For full URL resolution including
+        /// short links, use <see cref="TryParseUriAsync"/>.
+        /// </remarks>
+        public static string? ExtractId( string url )
+            => Contracts.Utilities.ProviderUrlParser.ExtractSpotifyId( url );
+
+        /// <summary>
         /// Constructs an API URI for searching artists by name.
         /// </summary>
         /// <param name="artist">The artist name to search for.</param>
