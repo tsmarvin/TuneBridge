@@ -12,6 +12,30 @@ RUN dotnet workload install aspire
 
 WORKDIR /src
 COPY src/ .
+
+# Handle platform-specific lock file for AppHost
+# The AppHost uses Aspire.Dashboard.Sdk which has platform-specific variants (linux-x64, linux-arm64)
+# We need to regenerate the lock file for ARM64 builds and verify only platform packages changed
+RUN TARGETARCH=$(uname -m) && \
+    if [ "$TARGETARCH" = "aarch64" ] || [ "$TARGETARCH" = "arm64" ]; then \
+        echo "ARM64 build detected - regenerating AppHost lock file for platform-specific packages..."; \
+        # Backup original lock file \
+        cp BridgeBeats.AppHost/packages.lock.json BridgeBeats.AppHost/packages.lock.json.backup; \
+        # Regenerate lock file for ARM64 \
+        dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --force-evaluate; \
+        # Verify only platform-specific packages changed \
+        if ! diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json | \
+             grep -E '^\+|^-' | grep -v '^+++\|^---' | \
+             grep -E '^[\+\-]' | grep -v 'Aspire.Dashboard.Sdk' | grep -q .; then \
+            echo "✓ Lock file updated successfully - only platform-specific packages changed"; \
+        else \
+            echo "✗ ERROR: Non-platform-specific packages changed in lock file!"; \
+            echo "Only Aspire.Dashboard.Sdk.linux-* packages should differ between platforms."; \
+            diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json || true; \
+            exit 1; \
+        fi; \
+    fi
+
 # Restore all projects needed by the AppHost
 RUN dotnet restore "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" --locked-mode
 RUN dotnet build "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/build
