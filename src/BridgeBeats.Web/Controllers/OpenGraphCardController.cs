@@ -11,9 +11,10 @@ namespace BridgeBeats.Web.Controllers;
 /// Controller for serving OpenGraph embeddable cards for music links.
 /// </summary>
 [Route( "card" )]
-public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaLinkCacheRepository? cacheRepository = null, ILogger<OpenGraphCardController>? logger = null ) : Controller {
+public class OpenGraphCardController( IOpenGraphCardService cardService, IQrCodeService qrCodeService, IMediaLinkCacheRepository? cacheRepository = null, ILogger<OpenGraphCardController>? logger = null ) : Controller {
 
     private readonly IOpenGraphCardService _cardService = cardService;
+    private readonly IQrCodeService _qrCodeService = qrCodeService;
     private readonly IMediaLinkCacheRepository? _cacheRepository = cacheRepository;
     private readonly ILogger<OpenGraphCardController>? _logger = logger;
 
@@ -55,9 +56,10 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaL
     /// This endpoint is designed for iframe embedding and shows the music lookup card style.
     /// </summary>
     /// <param name="id">The unique identifier of the stored result.</param>
+    /// <param name="qr">When true, replaces the artwork image with a QR code linking to the embed URL.</param>
     /// <returns>A minimal HTML page with just the card suitable for iframe embedding.</returns>
     [HttpGet( "{id}/embed" )]
-    public async Task<IActionResult> Embed( string id ) {
+    public async Task<IActionResult> Embed( string id, [FromQuery] bool qr = false ) {
         MediaLinkResult? result = _cardService.GetResult( id );
 
         // Fallback to persistent cache if not in memory
@@ -85,13 +87,24 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IMediaL
         // Try to get ATProto URI from cache
         string? atProtoUri = await GetATProtoUriFromCache( result );
 
+        string cardUrl = $"https://{_cardService.BaseUrl}/card/{id}";
+
+        // Generate QR code data URI if requested
+        string? qrCodeDataUri = null;
+        if (qr) {
+            // Use embed URL for QR code - this is the URL users will scan
+            string embedUrl = $"https://{_cardService.BaseUrl}/card/{id}/embed";
+            qrCodeDataUri = _qrCodeService.GenerateQrCodeDataUri( embedUrl );
+        }
+
         // Create a view model for the embed view
         var viewModel = new {
             Result = result,
             PrimaryProvider = primaryProvider,
             PrimaryResult = primaryResult,
-            CardUrl = $"https://{_cardService.BaseUrl}/card/{id}",
-            ATProtoUri = atProtoUri
+            CardUrl = cardUrl,
+            ATProtoUri = atProtoUri,
+            QrCodeDataUri = qrCodeDataUri
         };
 
         return View( viewModel );

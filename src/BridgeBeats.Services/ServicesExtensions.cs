@@ -1,4 +1,5 @@
 using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BridgeBeats.Services {
@@ -28,6 +29,18 @@ namespace BridgeBeats.Services {
         ) {
             _ = services.AddMediaLinkResolver( enabledProviders, useCaching );
             _ = services.AddCardServices( baseUrl, cardCacheExpirationHours, cardCacheCleanupInterval );
+            _ = services.AddQrCodeService( );
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers the QR code generation service.
+        /// </summary>
+        /// <param name="services">The service collection.</param>
+        /// <returns>The service collection for chaining.</returns>
+        public static IServiceCollection AddQrCodeService( this IServiceCollection services ) {
+            _ = services.AddSingleton<IQrCodeService, QrCodeService>( );
 
             return services;
         }

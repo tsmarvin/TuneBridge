@@ -11,11 +11,12 @@ namespace BridgeBeats.Web.Controllers;
 /// Controller for managing and displaying playlists of music cards.
 /// </summary>
 [Route( "playlist" )]
-public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCardService? cardService, IMediaLinkService? mediaLinkService, ILogger<PlaylistController>? logger = null ) : Controller {
+public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCardService? cardService, IMediaLinkService? mediaLinkService, IQrCodeService qrCodeService, ILogger<PlaylistController>? logger = null ) : Controller {
 
     private readonly IPlaylistService? _playlistService = playlistService;
     private readonly IOpenGraphCardService? _cardService = cardService;
     private readonly IMediaLinkService? _mediaLinkService = mediaLinkService;
+    private readonly IQrCodeService _qrCodeService = qrCodeService;
     private readonly ILogger<PlaylistController>? _logger = logger;
 
     /// <summary>
@@ -168,9 +169,10 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
     /// This endpoint is designed for iframe embedding.
     /// </summary>
     /// <param name="id">The unique identifier of the playlist.</param>
+    /// <param name="qr">When true, replaces artwork images with a QR code linking to the embed URL.</param>
     /// <returns>A minimal HTML page with the playlist suitable for iframe embedding.</returns>
     [HttpGet( "{id}/embed" )]
-    public async Task<IActionResult> Embed( string id ) {
+    public async Task<IActionResult> Embed( string id, [FromQuery] bool qr = false ) {
         if (_playlistService?.IsEnabled != true) {
             return NotFound( "Playlist service not available" );
         }
@@ -237,12 +239,20 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             }
         }
 
+        // Generate QR code data URI if requested
+        string? qrCodeDataUri = null;
+        if (qr) {
+            string embedUrl = $"https://{_playlistService.BaseUrl}/playlist/{id}/embed";
+            qrCodeDataUri = _qrCodeService.GenerateQrCodeDataUri( embedUrl );
+        }
+
         PlaylistViewModel viewModel = new( ) {
             PlaylistId = playlist.PlaylistId,
             Title = playlist.Title ?? "BridgeBeats Playlist",
             Description = playlist.Description,
             Items = items,
-            BaseUrl = _playlistService.BaseUrl
+            BaseUrl = _playlistService.BaseUrl,
+            QrCodeDataUri = qrCodeDataUri
         };
 
         return View( viewModel );

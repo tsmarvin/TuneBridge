@@ -36,7 +36,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="BridgeBeats" />
     <InternalsVisibleTo Include="BridgeBeats.Services" />
     <InternalsVisibleTo Include="BridgeBeats.Tests" />
   </ItemGroup>

@@ -484,9 +484,9 @@ public class RedisRequestQueueTests {
         const string SpotifyPrefix = "spotify-worker-";
         const string AppleMusicPrefix = "applemusic-worker-";
 
-        string guidPart1 = consumerId1.Substring( SpotifyPrefix.Length );
-        string guidPart2 = consumerId2.Substring( SpotifyPrefix.Length );
-        string guidPart3 = consumerId3.Substring( AppleMusicPrefix.Length );
+        string guidPart1 = consumerId1[ SpotifyPrefix.Length..];
+        string guidPart2 = consumerId2[ SpotifyPrefix.Length..];
+        string guidPart3 = consumerId3[ AppleMusicPrefix.Length..];
 
         Assert.AreEqual( 32, guidPart1.Length, "GUID portion should be 32 characters" );
         Assert.AreEqual( 32, guidPart2.Length, "GUID portion should be 32 characters" );
@@ -501,9 +501,9 @@ public class RedisRequestQueueTests {
 
         // Assert - total length should be reasonable (provider name + "-worker-" + 32 char GUID)
         // Longest provider name is "applemusic" (10) + "-worker-" (8) + GUID (32) = 50 chars max
-        Assert.IsTrue( consumerId1.Length <= 60, $"Consumer ID '{consumerId1}' should be reasonably short (length: {consumerId1.Length})" );
-        Assert.IsTrue( consumerId2.Length <= 60, $"Consumer ID '{consumerId2}' should be reasonably short (length: {consumerId2.Length})" );
-        Assert.IsTrue( consumerId3.Length <= 60, $"Consumer ID '{consumerId3}' should be reasonably short (length: {consumerId3.Length})" );
+        Assert.IsLessThanOrEqualTo( 60, consumerId1.Length, $"Consumer ID '{consumerId1}' should be reasonably short (length: {consumerId1.Length})" );
+        Assert.IsLessThanOrEqualTo( 60, consumerId2.Length, $"Consumer ID '{consumerId2}' should be reasonably short (length: {consumerId2.Length})" );
+        Assert.IsLessThanOrEqualTo( 60, consumerId3.Length, $"Consumer ID '{consumerId3}' should be reasonably short (length: {consumerId3.Length})" );
     }
 
     /// <summary>

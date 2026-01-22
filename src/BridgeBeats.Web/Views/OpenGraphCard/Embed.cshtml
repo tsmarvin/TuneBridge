@@ -8,7 +8,11 @@
     var primaryResult = Model.PrimaryResult as BridgeBeats.Contracts.DTOs.MusicLookupResult;
     var cardUrl = Model.CardUrl as string;
     var atProtoUri = Model.ATProtoUri as string;
+    var qrCodeDataUri = Model.QrCodeDataUri as string;
     var providerClass = $"provider-{primaryProvider.ToString().ToLowerInvariant()}";
+
+    // Use QR code data URI if provided, otherwise use artwork URL
+    var imageUrl = !string.IsNullOrWhiteSpace(qrCodeDataUri) ? qrCodeDataUri : primaryResult?.ArtUrl;
 
     // Get CSP nonce from HttpContext
     var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
@@ -60,13 +64,13 @@
             </div>
         </div>
         <div class="embed-header">
-            @if (!string.IsNullOrWhiteSpace(primaryResult?.ArtUrl)) {
+            @if (!string.IsNullOrWhiteSpace(imageUrl)) {
                 @if (!string.IsNullOrWhiteSpace(cardUrl)) {
                     <a href="@cardUrl" target="_blank" rel="noopener noreferrer">
-                        <img src="@primaryResult.ArtUrl" alt="@primaryResult.Title artwork" class="embed-image" />
+                        <img src="@imageUrl" alt="@primaryResult?.Title artwork" class="embed-image" />
                     </a>
                 } else {
-                    <img src="@primaryResult.ArtUrl" alt="@primaryResult.Title artwork" class="embed-image" />
+                    <img src="@imageUrl" alt="@primaryResult?.Title artwork" class="embed-image" />
                 }
             }
             <div class="embed-content">

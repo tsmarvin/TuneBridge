@@ -3,7 +3,7 @@
 @using BridgeBeats.Contracts.Enums
 @{
     Layout = null;
-    
+
     // Get CSP nonce from HttpContext
     var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 }
@@ -334,10 +334,11 @@
         </div>
         <div class="embed-items">
             @foreach (var item in Model.Items) {
+                var imageUrl = !string.IsNullOrWhiteSpace(Model.QrCodeDataUri) ? Model.QrCodeDataUri : item.ArtUrl;
                 <div class="embed-item">
-                    @if (!string.IsNullOrWhiteSpace(item.ArtUrl)) {
+                    @if (!string.IsNullOrWhiteSpace(imageUrl)) {
                         <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer">
-                            <img src="@item.ArtUrl" alt="@item.Title artwork" class="item-artwork-small" />
+                            <img src="@imageUrl" alt="@item.Title artwork" class="item-artwork-small" />
                         </a>
                     }
                     <div class="item-info-compact">

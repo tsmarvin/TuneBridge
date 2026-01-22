@@ -31,6 +31,11 @@ namespace BridgeBeats.Web.Models {
         /// The base URL for the application.
         /// </summary>
         public string BaseUrl { get; set; } = string.Empty;
+
+        /// <summary>
+        /// QR code data URI to display instead of artwork when set.
+        /// </summary>
+        public string? QrCodeDataUri { get; set; }
     }
 
     /// <summary>

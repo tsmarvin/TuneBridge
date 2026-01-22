@@ -20,4 +20,7 @@
     <InternalsVisibleTo Include="BridgeBeats.Tests" />
     <InternalsVisibleTo Include="BridgeBeats.Web" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+  </ItemGroup>
 </Project>
