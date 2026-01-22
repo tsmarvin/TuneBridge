@@ -29,7 +29,7 @@ namespace BridgeBeats.Infrastructure.Queue;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type of request to queue.</typeparam>
-public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQueueableRequest {
+public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQueueableRequest {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisRequestQueue<T>> _logger;
@@ -617,7 +617,10 @@ public sealed class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQu
     /// Regex pattern to match Redis stream ID format (timestamp-sequence) at the end of a composite ID.
     /// Stream name must contain at least one character (pattern matches everything before last colon-delimited Redis ID).
     /// </summary>
-    private static readonly Regex s_redisStreamIdPattern = new( @"^(.+):(\d+-\d+)$", RegexOptions.Compiled );
+    private static readonly Regex s_redisStreamIdPattern = RedisStreamIdPattern( );
+
+    [GeneratedRegex( @"^(.+):(\d+-\d+)$", RegexOptions.Compiled )]
+    private static partial Regex RedisStreamIdPattern( );
 
     private static (string stream, string id) ParseMessageId( string compositeId ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( compositeId );
