@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
 using idunno.AtProto;
 using idunno.Bluesky;
 using Microsoft.EntityFrameworkCore;
