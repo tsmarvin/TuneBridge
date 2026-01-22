@@ -1,5 +1,4 @@
 using System.IdentityModel.Tokens.Jwt;
-using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -211,17 +210,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             cancellationToken
         );
 
-        // Step 4: Verify the returned DID matches the expected DID
-        if (!string.Equals( result.Did, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
-            _logger.LogWarning(
-                "DID mismatch in token response. Expected: {Expected}, Got: {Actual}",
-                oauthState.Did,
-                result.Did
-            );
-            throw new InvalidOperationException( "Account DID does not match. Possible security issue." );
-        }
-
-        // Step 5: Clean up the OAuth state (single-use)
+        // Step 4: Clean up the OAuth state (single-use)
         _ = dbContext.AtProtoOAuthStates.Remove( oauthState );
         _ = await dbContext.SaveChangesAsync( cancellationToken );
 
@@ -482,10 +471,25 @@ public class ATProtoOAuthService : IATProtoOAuthService {
                 responseContent
             );
             throw new InvalidOperationException( "Token response had invalid JSON or unexpected schema.", ex );
+        } catch (KeyNotFoundException ex) {
+            _logger.LogError(
+                ex,
+                "Token response missing required properties. Content: {ResponseContent}",
+                responseContent
+            );
+            throw new InvalidOperationException( "Token response missing required properties.", ex );
         }
 
-        // Step 6: Validate the sub (DID) if present
-        if (!string.IsNullOrWhiteSpace( sub ) && !string.Equals( sub, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
+        // Step 6: Validate the sub (DID) - fail if missing or doesn't match
+        if (string.IsNullOrWhiteSpace( sub )) {
+            _logger.LogError(
+                "Token response missing 'sub' (DID) claim. Content: {ResponseContent}",
+                responseContent
+            );
+            throw new InvalidOperationException( "Token response missing 'sub' (DID) claim" );
+        }
+        
+        if (!string.Equals( sub, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
             _logger.LogWarning(
                 "DID mismatch in token response. Expected: {Expected}, Got: {Actual}",
                 oauthState.Did,
@@ -496,12 +500,12 @@ public class ATProtoOAuthService : IATProtoOAuthService {
 
         _logger.LogInformation(
             "Successfully exchanged authorization code for tokens. DID: {Did}",
-            oauthState.Did
+            sub
         );
 
         // Step 7: Return the OAuth result
         return new ATProtoOAuthResult {
-            Did = sub ?? oauthState.Did!,
+            Did = sub,
             Handle = oauthState.Handle!,
             AccessToken = accessToken,
             RefreshToken = refreshToken,
@@ -565,12 +569,14 @@ public class ATProtoOAuthService : IATProtoOAuthService {
 
         // Create the DPoP JWT
         JwtSecurityTokenHandler handler = new( );
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds( );
         SecurityTokenDescriptor descriptor = new( ) {
             Claims = new Dictionary<string, object> {
                 ["htm"] = httpMethod,
                 ["htu"] = url,
                 ["jti"] = Guid.NewGuid( ).ToString( "N" ),
-                ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds( )
+                ["iat"] = now,
+                ["nbf"] = now
             },
             SigningCredentials = new SigningCredentials(
                 new ECDsaSecurityKey( ecdsa ) { KeyId = kid },
