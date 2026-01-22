@@ -14,7 +14,7 @@ WORKDIR /src
 COPY src/ .
 
 # Handle platform-specific lock file for AppHost
-# The AppHost uses Aspire.Dashboard.Sdk which has platform-specific variants (linux-x64, linux-arm64)
+# The AppHost uses platform-specific Aspire packages (Dashboard.Sdk, Hosting.Orchestration)
 # We need to regenerate the lock file for ARM64 builds and verify only platform packages changed
 RUN TARGETARCH=$(uname -m) && \
     if [ "$TARGETARCH" = "aarch64" ] || [ "$TARGETARCH" = "arm64" ]; then \
@@ -26,11 +26,11 @@ RUN TARGETARCH=$(uname -m) && \
         # Verify only platform-specific packages changed \
         if ! diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json | \
              grep -E '^\+|^-' | grep -v '^+++\|^---' | \
-             grep -E '^[\+\-]' | grep -v 'Aspire.Dashboard.Sdk' | grep -q .; then \
+             grep -E '^[\+\-]' | grep -v 'Aspire\.Dashboard\.Sdk|Aspire\.Hosting\.Orchestration' | grep -q .; then \
             echo "✓ Lock file updated successfully - only platform-specific packages changed"; \
         else \
             echo "✗ ERROR: Non-platform-specific packages changed in lock file!"; \
-            echo "Only Aspire.Dashboard.Sdk.linux-* packages should differ between platforms."; \
+            echo "Only Aspire.Dashboard.Sdk.linux-* and Aspire.Hosting.Orchestration.linux-* packages should differ between platforms."; \
             diff -u BridgeBeats.AppHost/packages.lock.json.backup BridgeBeats.AppHost/packages.lock.json || true; \
             exit 1; \
         fi; \
