@@ -105,8 +105,8 @@ namespace BridgeBeats.Providers.Spotify {
             }
 
             try {
-                if (s_spotifyLink.IsMatch( url )) {
-                    Match match = s_spotifyLink.Match( url );
+                Match match = s_spotifyLink.Match( url );
+                if (match.Success) {
                     string id = match.Groups["id"].Value;
                     if (!string.IsNullOrWhiteSpace( id )) {
                         return id;

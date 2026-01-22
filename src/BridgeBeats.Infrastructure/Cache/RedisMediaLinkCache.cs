@@ -414,8 +414,9 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
         try {
             // Check for ?i= query parameter (song ID in album URL)
             Regex songIdRegex = AppleMusicSongIdRegex( );
-            if (songIdRegex.IsMatch( url )) {
-                string songId = songIdRegex.Match( url ).Groups["songId"].Value;
+            Match songIdMatch = songIdRegex.Match( url );
+            if (songIdMatch.Success) {
+                string songId = songIdMatch.Groups["songId"].Value;
                 if (!string.IsNullOrWhiteSpace( songId )) {
                     return songId;
                 }
@@ -423,8 +424,8 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
             // Try to parse as regular Apple Music URL
             Regex linkRegex = AppleMusicLinkRegex( );
-            if (linkRegex.IsMatch( url )) {
-                Match match = linkRegex.Match( url );
+            Match match = linkRegex.Match( url );
+            if (match.Success) {
                 string? uri = match.Groups["URI"].Value;
                 if (!string.IsNullOrWhiteSpace( uri )) {
                     // Extract ID from URI (last segment before query params)
@@ -454,8 +455,8 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
         try {
             Regex linkRegex = SpotifyLinkRegex( );
-            if (linkRegex.IsMatch( url )) {
-                Match match = linkRegex.Match( url );
+            Match match = linkRegex.Match( url );
+            if (match.Success) {
                 string id = match.Groups["id"].Value;
                 if (!string.IsNullOrWhiteSpace( id )) {
                     return id;
@@ -481,8 +482,8 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
         try {
             Regex linkRegex = TidalLinkRegex( );
-            if (linkRegex.IsMatch( url )) {
-                Match match = linkRegex.Match( url );
+            Match match = linkRegex.Match( url );
+            if (match.Success) {
                 string type = match.Groups["type"].Value;
                 
                 // Only extract IDs for tracks and albums
