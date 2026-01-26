@@ -410,8 +410,9 @@ namespace BridgeBeats.Web.Configuration {
             if (!string.IsNullOrWhiteSpace( settings.BaseUrl )) {
                 string clientId = $"{settings.BaseUrl.TrimEnd( '/' )}/.well-known/client-metadata.json";
 
-                // Register HTTP client for OAuth token endpoint
-                _ = services.AddHttpClient( "ATProtoOAuth" );
+                // Register HTTP client for OAuth token endpoint with standard resilience
+                _ = services.AddHttpClient( "ATProtoOAuth" )
+                    .AddStandardResilienceHandler( );
 
                 _ = services.AddScoped<IATProtoOAuthService>( sp =>
                     new ATProtoOAuthService(

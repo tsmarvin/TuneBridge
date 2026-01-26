@@ -396,6 +396,9 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         );
 
         // Step 1: Build the token endpoint URL
+        // TODO: Implement authorization server metadata discovery per ATProto OAuth spec
+        // instead of hardcoding "/oauth/token". The token endpoint should be retrieved
+        // from the authorization server's .well-known/oauth-authorization-server metadata.
         Uri tokenEndpoint = new( new Uri( oauthState.AuthorizationServerUri! ), "/oauth/token" );
 
         // Step 2: Create DPoP proof JWT for the token request
@@ -448,6 +451,9 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             using JsonDocument doc = JsonDocument.Parse( responseContent );
             JsonElement root = doc.RootElement;
 
+            // GetProperty() throws KeyNotFoundException if property doesn't exist
+            // GetString() returns null if property exists but is null/empty
+            // The null coalescing operator (??) then throws InvalidOperationException
             accessToken = root.GetProperty( "access_token" ).GetString( )
                 ?? throw new InvalidOperationException( "access_token missing from token response" );
             refreshToken = root.GetProperty( "refresh_token" ).GetString( )
@@ -463,6 +469,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             );
             throw new InvalidOperationException( "Token response had invalid format or missing required properties.", ex );
         } catch (KeyNotFoundException ex) {
+            // This catches missing properties from GetProperty() calls above
             _logger.LogError(
                 ex,
                 "Token response missing required property. Content: {ResponseContent}",
