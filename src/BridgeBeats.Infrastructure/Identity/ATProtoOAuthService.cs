@@ -447,13 +447,13 @@ public class ATProtoOAuthService : IATProtoOAuthService {
 
         // Step 5: Parse the token response
         string responseContent = await response.Content.ReadAsStringAsync( cancellationToken );
-        
+
         string accessToken;
         string refreshToken;
         int expiresIn;
         string? scope;
         string? sub;
-        
+
         try {
             using JsonDocument doc = JsonDocument.Parse( responseContent );
             JsonElement root = doc.RootElement;
@@ -482,7 +482,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             );
             throw new InvalidOperationException( "Token response missing 'sub' (DID) claim" );
         }
-        
+
         if (!string.Equals( sub, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
             _logger.LogWarning(
                 "DID mismatch in token response. Expected: {Expected}, Got: {Actual}",
@@ -620,7 +620,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     /// Base64 URL decodes a string.
     /// </summary>
     private static byte[] Base64UrlDecode( string base64Url ) {
-        string padded = base64Url.PadRight( base64Url.Length + (4 - base64Url.Length % 4) % 4, '=' );
+        string padded = base64Url.PadRight( base64Url.Length + ((4 - (base64Url.Length % 4)) % 4), '=' );
         string base64 = padded.Replace( '-', '+' ).Replace( '_', '/' );
         return Convert.FromBase64String( base64 );
     }

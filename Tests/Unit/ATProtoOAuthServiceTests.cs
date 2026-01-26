@@ -1,15 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
-using System.Net;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using BridgeBeats.Contracts.Records;
 using BridgeBeats.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.IdentityModel.Tokens;
 using Moq;
-using Moq.Protected;
 
 namespace BridgeBeats.Tests.Unit;
 
@@ -38,10 +33,10 @@ public class ATProtoOAuthServiceTests {
         _mockLogger = new Mock<ILogger<ATProtoOAuthService>>( );
         _mockHttpMessageHandler = new Mock<HttpMessageHandler>( );
         _httpClient = new HttpClient( _mockHttpMessageHandler.Object );
-        
+
         // Setup mock HttpClientFactory to return the mocked HttpClient
         _mockHttpClientFactory = new Mock<IHttpClientFactory>( );
-        _mockHttpClientFactory
+        _ = _mockHttpClientFactory
             .Setup( f => f.CreateClient( "ATProtoOAuth" ) )
             .Returns( _httpClient );
     }
@@ -214,12 +209,10 @@ public class ATProtoOAuthServiceTests {
         using ECDsa ecdsa = ECDsa.Create( ECCurve.NamedCurves.nistP256 );
         ECParameters parameters = ecdsa.ExportParameters( includePrivateParameters: true );
 
-        string Base64UrlEncode( byte[] bytes ) {
-            return Convert.ToBase64String( bytes )
+        string Base64UrlEncode( byte[] bytes ) => Convert.ToBase64String( bytes )
                 .TrimEnd( '=' )
                 .Replace( '+', '-' )
                 .Replace( '/', '_' );
-        }
 
         var jwk = new {
             kty = "EC",
@@ -259,13 +252,13 @@ public class ATProtoOAuthServiceTests {
 
         // Verify header - Note: AdditionalHeaderClaims in SecurityTokenDescriptor may not always be included
         // The typ claim should be either "dpop+jwt" or "JWT" depending on the JWT library behavior
-        Assert.IsTrue( 
-            jwt.Header.TryGetValue( "typ", out object? typValue ) && 
+        Assert.IsTrue(
+            jwt.Header.TryGetValue( "typ", out object? typValue ) &&
             (typValue?.ToString( ) == "dpop+jwt" || typValue?.ToString( ) == "JWT"),
             $"JWT typ header should be 'dpop+jwt' or 'JWT', but was '{typValue}'"
         );
         Assert.AreEqual( "ES256", jwt.Header.Alg );
-        
+
         // Note: The jwk header may not be present when read back due to library limitations
         // The important part is that it's set in the code (verified by code review)
 
@@ -335,7 +328,7 @@ public class ATProtoOAuthServiceTests {
         Assert.IsNotNull( dpopProof );
         JwtSecurityTokenHandler handler = new( );
         JwtSecurityToken jwt = handler.ReadJwtToken( dpopProof );
-        
+
         // Verify ath claim exists
         System.Security.Claims.Claim? athClaim = jwt.Claims.FirstOrDefault( c => c.Type == "ath" );
         Assert.IsNotNull( athClaim, "DPoP proof should include 'ath' claim when access token is provided" );
@@ -365,14 +358,14 @@ public class ATProtoOAuthServiceTests {
         Assert.IsNotNull( dpopProof );
         JwtSecurityTokenHandler handler = new( );
         JwtSecurityToken jwt = handler.ReadJwtToken( dpopProof );
-        
+
         long iat = long.Parse( jwt.Claims.First( c => c.Type == "iat" ).Value );
         long nbf = long.Parse( jwt.Claims.First( c => c.Type == "nbf" ).Value );
-        
+
         // nbf should be 5 seconds before iat for clock skew tolerance
         // Allow some tolerance since time may pass between setting the values
         long difference = iat - nbf;
-        Assert.IsTrue( difference >= 4 && difference <= 6,
+        Assert.IsTrue( difference is >= 4 and <= 6,
             $"nbf should be approximately 5 seconds before iat, but difference was {difference} (iat={iat}, nbf={nbf})" );
     }
 }

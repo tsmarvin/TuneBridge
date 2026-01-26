@@ -347,7 +347,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
         string json = JsonSerializer.Serialize( persistedCredentials, _jsonOptions );
 
         IDatabase db = _redis.GetDatabase( );
-        await db.StringSetAsync( _sessionKey, json );
+        _ = await db.StringSetAsync( _sessionKey, json );
 
         _logger.LogDebug( "Persisted credentials to Redis for {Identifier}", _identifier );
     }
