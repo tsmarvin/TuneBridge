@@ -1,13 +1,19 @@
+using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
 using BridgeBeats.Infrastructure.Cache;
 using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Services.Queue;
 using BridgeBeats.Worker.SagaCoordinator;
+using Serilog;
 using StackExchange.Redis;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder( args );
+
+// Configure file logging
+_ = builder.ConfigureFileLogging( "SagaCoordinator" );
 
 // Add Aspire service defaults (health checks, telemetry, resilience)
 _ = builder.AddServiceDefaults( );
@@ -32,8 +38,30 @@ if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
 
 // Queue settings use defaults from the record definition
 
+// Determine which providers are enabled based on configuration
+HashSet<SupportedProviders> enabledProviders = [];
+if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientId"] ) &&
+    !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientSecret"] )) {
+    _ = enabledProviders.Add( SupportedProviders.Spotify );
+}
+if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleTeamId"] ) &&
+    !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyId"] ) &&
+    !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyPath"] )) {
+    _ = enabledProviders.Add( SupportedProviders.AppleMusic );
+}
+if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:TidalClientId"] ) &&
+    !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:TidalClientSecret"] )) {
+    _ = enabledProviders.Add( SupportedProviders.Tidal );
+}
+
+// Register enabled providers as a singleton
+_ = builder.Services.AddSingleton( enabledProviders );
+
 // Register queue infrastructure services
 _ = builder.Services.AddQueueInfrastructure( );
+
+// Register all provider queues for secondary lookups
+_ = builder.Services.AddAllProviderQueues<QueuedLookupRequest>( );
 
 // Register ATProto session manager and storage service (centralized authentication)
 _ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
@@ -61,6 +89,8 @@ _ = builder.Services.AddHostedService( sp => new SagaCoordinatorBackgroundServic
     sp.GetRequiredService<IMediaLinkCacheRepository>( ),
     sp.GetRequiredService<IRequestDeduplicator>( ),
     sp.GetRequiredService<SagaResultCombiner>( ),
+    sp.GetRequiredService<IProviderQueueResolver<QueuedLookupRequest>>( ),
+    sp.GetRequiredService<HashSet<SupportedProviders>>( ),
     sp.GetRequiredService<ILogger<SagaCoordinatorBackgroundService>>( )
 ) );
 
@@ -76,4 +106,8 @@ app.MapGet( "/status", ( ) => new {
     Timestamp = DateTimeOffset.UtcNow
 } );
 
-app.Run( );
+try {
+    app.Run( );
+} finally {
+    Log.CloseAndFlush( );
+}

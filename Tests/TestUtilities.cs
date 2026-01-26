@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
+using StackExchange.Redis;
 using Testcontainers.Redis;
 
 namespace BridgeBeats.Tests;
@@ -119,7 +120,7 @@ public static class SharedTestInfrastructure {
 /// Ensures test configuration completely overrides any file-based configuration (like appsettings.json).
 /// Uses file-based SQLite databases with unique names per factory instance to ensure test isolation.
 /// </summary>
-public class CustomWebApplicationFactory : WebApplicationFactory<BridgeBeats.Web.Program> {
+public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     private readonly Dictionary<string, string?> _configData;
     private readonly string _identityDbPath;
     private readonly string _linkCacheDbPath;
@@ -217,12 +218,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<BridgeBeats.Web
             // CRITICAL: Replace the Aspire Redis client registration with a direct connection
             // The Aspire AddRedisClient doesn't work properly with WebApplicationFactory because
             // it captures configuration before ConfigureAppConfiguration runs.
-            _ = services.RemoveAll<StackExchange.Redis.IConnectionMultiplexer>( );
-            _ = services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>( _ => {
+            _ = services.RemoveAll<IConnectionMultiplexer>( );
+            _ = services.AddSingleton<IConnectionMultiplexer>( _ => {
                 string connStr = _configData.TryGetValue( "ConnectionStrings:redis", out string? cs ) && !string.IsNullOrEmpty(cs)
                     ? cs
                     : SharedTestInfrastructure.RedisConnectionString;
-                return StackExchange.Redis.ConnectionMultiplexer.Connect( connStr );
+                return ConnectionMultiplexer.Connect( connStr );
             } );
 
             // Get the connection strings from our config (they may have been overridden)

@@ -7,8 +7,12 @@ using BridgeBeats.Providers.Spotify;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Services.Queue;
 using BridgeBeats.Worker.Spotify;
+using Serilog;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder( args );
+
+// Configure file logging
+_ = builder.ConfigureFileLogging( "Spotify" );
 
 // Add Aspire service defaults (health checks, telemetry, resilience)
 _ = builder.AddServiceDefaults( );
@@ -123,4 +127,8 @@ app.MapPost( "/lookup/from-result", async ( LookupFromResultRequest request ) =>
     }
 } );
 
-app.Run( );
+try {
+    app.Run( );
+} finally {
+    Log.CloseAndFlush( );
+}

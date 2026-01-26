@@ -7,7 +7,10 @@ namespace BridgeBeats.Services.Cards {
     /// <summary>
     /// Background service that periodically cleans up expired anonymous playlists.
     /// </summary>
-    public class PlaylistCleanupService( IPlaylistService playlistService, ILogger<PlaylistCleanupService> logger ) : BackgroundService {
+    public class PlaylistCleanupService(
+        IPlaylistService playlistService,
+        ILogger<PlaylistCleanupService> logger
+    ) : BackgroundService {
 
         private readonly IPlaylistService _playlistService = playlistService;
         private readonly ILogger<PlaylistCleanupService> _logger = logger;

@@ -257,8 +257,12 @@ public sealed partial class LookupOrchestrator : ILookupOrchestrator {
         // Create saga
         _ = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, lookupValue );
 
-        // Initialize provider states for all enabled providers
-        await _sagaManager.InitializeProviderStatesAsync( sagaId, _enabledProviders );
+        // Determine which provider to queue first
+        SupportedProviders firstProvider = initialProvider ?? _enabledProviders.First();
+
+        // Initialize provider state only for the first provider being queued
+        // Secondary provider lookups will create their own separate sagas
+        await _sagaManager.InitializeProviderStatesAsync( sagaId, [firstProvider] );
 
         // If we have an initial provider (from URL lookup), set it
         if (initialProvider.HasValue) {
@@ -266,9 +270,6 @@ public sealed partial class LookupOrchestrator : ILookupOrchestrator {
         }
 
         // Queue the initial provider lookup at Interactive priority
-        // For URL lookups, queue only the initial provider first
-        // For ISRC/UPC lookups, queue all providers at once
-        SupportedProviders firstProvider = initialProvider ?? _enabledProviders.First( );
 
         QueuedLookupRequest request = new( ) {
             RequestId = Guid.NewGuid( ).ToString( "N" ),

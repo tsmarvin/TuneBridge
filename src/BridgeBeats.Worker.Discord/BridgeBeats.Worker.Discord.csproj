@@ -15,7 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.455" />
+    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.457" />
   </ItemGroup>
 
   <ItemGroup>

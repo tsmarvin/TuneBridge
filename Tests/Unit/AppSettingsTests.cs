@@ -31,7 +31,7 @@ public class AppSettingsTests {
             ["BridgeBeats:CacheDays"] = "7",
             ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=bridgebeats.db",
             ["BridgeBeats:BaseUrl"] = "localhost",
-            ["BridgeBeats:LogFilePath"] = "./logs/bridgebeats-.log",
+            ["BridgeBeats:LogDirPath"] = "./logs",
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -59,7 +59,7 @@ public class AppSettingsTests {
         Assert.AreEqual( 7, settings.CacheDays );
         Assert.AreEqual( "Data Source=bridgebeats.db", settings.LinkCacheConnectionString );
         Assert.AreEqual( "localhost", settings.BaseUrl );
-        Assert.AreEqual( "./logs/bridgebeats-.log", settings.LogFilePath );
+        Assert.AreEqual( "./logs", settings.LogDirPath );
     }
 
     /// <summary>

@@ -3,8 +3,12 @@ using BridgeBeats.Worker.Discord;
 using BridgeBeats.Worker.Discord.Services;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
+using Serilog;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder( args );
+
+// Configure file logging
+_ = builder.ConfigureFileLogging( "Discord" );
 
 // Add Aspire service defaults (health checks, telemetry, resilience)
 _ = builder.AddServiceDefaults( );
@@ -54,4 +58,8 @@ WebApplication app = builder.Build( );
 // Map Aspire health check endpoints
 _ = app.MapDefaultEndpoints( );
 
-app.Run( );
+try {
+    app.Run( );
+} finally {
+    Log.CloseAndFlush( );
+}

@@ -154,7 +154,8 @@ public class ATProtoStorageService(
     /// Converts a MediaLinkResultRecord from storage back to a MediaLinkResult DTO.
     /// Note: Input links are not stored in PDS records, only provider results.
     /// </summary>
-    private static MediaLinkResult ConvertFromRecord( MediaLinkResultRecord record ) {
+    /// <returns>A MediaLinkResult with parsed providers, or null if no valid providers were found.</returns>
+    private static MediaLinkResult? ConvertFromRecord( MediaLinkResultRecord record ) {
         MediaLinkResult result = new( ) {
             LookedUpAt = record.LookedUpAt.UtcDateTime
         };
@@ -174,6 +175,11 @@ public class ATProtoStorageService(
                 MarketRegion = providerResult.MarketRegion,
                 IsAlbum = providerResult.IsAlbum
             } );
+        }
+
+        // Return null if no valid providers were parsed - prevents downstream errors
+        if (result.Results.Count == 0) {
+            return null;
         }
 
         // Input links are tracked only in SQLite, not in PDS records
@@ -238,6 +244,21 @@ public class ATProtoStorageService(
             && s_providerStringToEnum.Value.TryGetValue( providerString, out provider );
     }
 
+    /// <summary>
+    /// Normalizes a DID string to ensure it has the proper "did:plc:" prefix.
+    /// </summary>
+    /// <param name="userDid">The DID string which may or may not have the prefix.</param>
+    /// <returns>A properly formatted DID string with the "did:plc:" prefix.</returns>
+    private static string NormalizeDid( string userDid ) {
+        const string DIDPlcPrefix = "did:plc:";
+        return string.IsNullOrWhiteSpace( userDid )
+            ? userDid
+            : (userDid.StartsWith( DIDPlcPrefix, StringComparison.OrdinalIgnoreCase ) ||
+               userDid.StartsWith( "did:web:", StringComparison.OrdinalIgnoreCase ))
+                ? userDid
+                : $"{DIDPlcPrefix}{userDid}";
+    }
+
     /// <inheritdoc/>
     public async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ListAllRecordsAsync(
         Uri pdsUri,
@@ -246,7 +267,7 @@ public class ATProtoStorageService(
     ) {
         // Use unauthenticated agent for public record access
         BlueskyAgent unauthenticatedAgent = new( );
-        Did repo = new( userDid );
+        Did repo = new( NormalizeDid( userDid ) );
         string? cursor = null;
 
         do {

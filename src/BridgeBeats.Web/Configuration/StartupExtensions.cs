@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using AspNetCore.Authentication.ApiKey;
-using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
@@ -10,6 +9,7 @@ using BridgeBeats.Infrastructure.Identity;
 using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.Providers;
+using BridgeBeats.Providers.AppleMusic;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Services;
 using BridgeBeats.Services.Statistics;
@@ -19,7 +19,6 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi;
-using Serilog;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Web.Configuration {
@@ -45,7 +44,7 @@ namespace BridgeBeats.Web.Configuration {
 
             // Configure logging only in non-Testing environments
             if (builder.Environment.EnvironmentName != "Testing") {
-                ConfigureSerilog( builder );
+                _ = builder.ConfigureFileLogging( "Web" );
             }
 
             _ = builder.AddServiceDefaults( );
@@ -473,6 +472,15 @@ namespace BridgeBeats.Web.Configuration {
             // When UseWorkerServices is true, register HTTP clients that call worker services
             // instead of direct provider implementations
             if (settings.Workers.UseWorkerServices) {
+                // Still need AppleJwtHandler for MusicKit JS (AppleMusicController generates developer tokens)
+                // and musickit-api HTTP client for user library access, even when using workers for lookups
+                _ = services.AddAppleMusicJwtHandler(
+                    settings.AppleTeamId,
+                    settings.AppleKeyId,
+                    settings.AppleKeyPath,
+                    settings.Resilience.MaxRetryAfterSeconds
+                );
+
                 return services.AddMusicProviderHttpClients(
                     settings.Workers.SpotifyWorkerEnabled,
                     settings.Workers.AppleMusicWorkerEnabled,
@@ -491,90 +499,6 @@ namespace BridgeBeats.Web.Configuration {
                 settings.TidalClientSecret,
                 settings.Resilience.MaxRetryAfterSeconds
             );
-        }
-
-        /// <summary>
-        /// Configures Serilog for file logging with rotation and retention.
-        /// </summary>
-        /// <param name="builder">The web application builder to configure.</param>
-        private static void ConfigureSerilog( WebApplicationBuilder builder ) {
-            string logPath = builder.Configuration["BridgeBeats:LogFilePath"] ?? "./logs/bridgebeats-.log";
-
-            try {
-                string? logDir = Path.GetDirectoryName( logPath );
-                if (!string.IsNullOrEmpty( logDir ) && !Directory.Exists( logDir )) {
-                    _ = Directory.CreateDirectory( logDir );
-                }
-            } catch (IOException ex) {
-                Console.WriteLine( $"Warning: Failed to validate/create log directory: {ex.Message}" );
-                // Fall back to not configuring file logging
-                return;
-            } catch (UnauthorizedAccessException ex) {
-                Console.WriteLine( $"Warning: Failed to validate/create log directory due to insufficient permissions: {ex.Message}" );
-                // Fall back to not configuring file logging
-                return;
-            }
-
-            Log.Logger = new LoggerConfiguration( )
-                .ReadFrom.Configuration( builder.Configuration )
-                .Filter.ByExcluding( logEvent => {
-                    // Exclude successful health check requests from logs (but keep failures)
-                    // This filters out Information level logs for /health endpoint
-                    if (logEvent.Level != Serilog.Events.LogEventLevel.Information) {
-                        return false; // Don't exclude warnings, errors, etc. (allows failures and higher log levels to pass through)
-                    }
-
-                    // Check if this is a log event related to health endpoint
-                    // This covers both HTTP request logs from Serilog.AspNetCore and MVC action execution logs
-                    string? sourceContext = logEvent.Properties.TryGetValue( "SourceContext", out Serilog.Events.LogEventPropertyValue? sourceValue )
-                        ? sourceValue.ToString( ).Trim( '"' )
-                        : null;
-
-                    // Filter MVC controller action execution logs for health endpoint
-                    // Check if this is an MVC/Routing infrastructure log
-                    if (sourceContext != null &&
-                        (sourceContext.Contains( "Microsoft.AspNetCore.Mvc" ) ||
-                         sourceContext.Contains( "Microsoft.AspNetCore.Routing" ))) {
-
-                        // Check ActionName property first (most reliable indicator)
-                        if (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue )) {
-                            string actionName = actionValue.ToString( );
-                            if (actionName.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
-                                return true; // Exclude health check related MVC logs
-                            }
-                        }
-
-                        // Also check message text for "Health" keyword as fallback
-                        // This catches logs like "Route matched with {action = "Health", controller = "Home"}"
-                        string messageText = logEvent.RenderMessage( );
-                        if (messageText.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
-                            return true; // Exclude health check related MVC logs
-                        }
-                    }
-
-                    // Filter HTTP request completion logs from Serilog.AspNetCore for successful health checks
-                    if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
-                        (pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) ||
-                         pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Alive, StringComparison.OrdinalIgnoreCase )) &&
-                        logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
-                        statusValue.ToString( ) == "200") {
-                        return true; // Exclude successful health check HTTP logs
-                    }
-
-                    return false;
-                } )
-                .WriteTo.Console( )
-                .WriteTo.File(
-                    path: logPath,
-                    rollingInterval: RollingInterval.Day,
-                    fileSizeLimitBytes: 10 * 1024 * 1024, // 10MB
-                    retainedFileCountLimit: 5,
-                    rollOnFileSizeLimit: true,
-                    shared: false
-                )
-                .CreateLogger( );
-
-            _ = builder.Host.UseSerilog( );
         }
 
     }

@@ -1,6 +1,8 @@
 using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.Services.Queue;
 using StackExchange.Redis;
 
@@ -23,6 +25,8 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
     private readonly IMediaLinkCacheRepository _cacheRepository;
     private readonly IRequestDeduplicator _deduplicator;
     private readonly SagaResultCombiner _resultCombiner;
+    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver;
+    private readonly HashSet<SupportedProviders> _enabledProviders;
     private readonly ILogger<SagaCoordinatorBackgroundService> _logger;
 
     private const string SagaCompletedChannel = "saga:completed";
@@ -40,6 +44,8 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
     /// <param name="cacheRepository">Cache repository for updating the cache.</param>
     /// <param name="deduplicator">Request deduplicator for releasing locks.</param>
     /// <param name="resultCombiner">Result combiner for assembling final results.</param>
+    /// <param name="queueResolver">Queue resolver for queuing secondary provider lookups.</param>
+    /// <param name="enabledProviders">Set of enabled providers for secondary lookups.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
     public SagaCoordinatorBackgroundService(
         IConnectionMultiplexer redis,
@@ -48,6 +54,8 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
         IMediaLinkCacheRepository cacheRepository,
         IRequestDeduplicator deduplicator,
         SagaResultCombiner resultCombiner,
+        IProviderQueueResolver<QueuedLookupRequest> queueResolver,
+        HashSet<SupportedProviders> enabledProviders,
         ILogger<SagaCoordinatorBackgroundService> logger
     ) {
         _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
@@ -56,12 +64,18 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
         _cacheRepository = cacheRepository ?? throw new ArgumentNullException( nameof( cacheRepository ) );
         _deduplicator = deduplicator ?? throw new ArgumentNullException( nameof( deduplicator ) );
         _resultCombiner = resultCombiner ?? throw new ArgumentNullException( nameof( resultCombiner ) );
+        _queueResolver = queueResolver ?? throw new ArgumentNullException( nameof( queueResolver ) );
+        _enabledProviders = enabledProviders ?? throw new ArgumentNullException( nameof( enabledProviders ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
     }
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
-        _logger.LogInformation( "Saga coordinator starting" );
+        _logger.LogInformation(
+            "Saga coordinator starting with polling interval {PollingInterval}s and minimum saga age {MinSagaAge}s",
+            s_pollingInterval.TotalSeconds,
+            s_minimumSagaAge.TotalSeconds
+        );
 
         // Subscribe to saga completion events
         ISubscriber subscriber = _redis.GetSubscriber( );
@@ -71,6 +85,11 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
             ( channel, message ) => {
                 // Use channel to avoid analyzer warning
                 if (message.HasValue && !channel.IsNullOrEmpty) {
+                    _logger.LogInformation(
+                        "Received saga completion event on channel {Channel}: {Message}",
+                        channel,
+                        message
+                    );
                     // Fire-and-forget with exception handling since SubscribeAsync expects a void delegate
                     _ = Task.Run( async ( ) => {
                         try {
@@ -94,7 +113,9 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
             async ( channel, _ ) => {
                 // Extract lookup key from channel (format: complete:{lookupKey})
                 string channelStr = channel.ToString( );
+                _logger.LogDebug( "Received lookup completion event on channel {Channel}", channelStr );
                 if (!channelStr.StartsWith( "complete:", StringComparison.Ordinal )) {
+                    _logger.LogDebug( "Ignoring channel {Channel} - does not match expected pattern", channelStr );
                     return;
                 }
 
@@ -113,16 +134,27 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
             LookupCompleteChannelPattern
         );
 
+        _logger.LogInformation( "Saga coordinator fully initialized, entering polling loop" );
+
         // Also poll periodically for any missed completions
+        int pollCycleCount = 0;
         while (!stoppingToken.IsCancellationRequested) {
+            pollCycleCount++;
+            _logger.LogDebug( "Starting polling cycle #{CycleCount}", pollCycleCount );
+
             try {
                 await PollForCompletedSagasAsync( stoppingToken );
             } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
                 break;
             } catch (Exception ex) {
-                _logger.LogError( ex, "Error during saga completion polling" );
+                _logger.LogError( ex, "Error during saga completion polling in cycle #{CycleCount}", pollCycleCount );
             }
 
+            _logger.LogDebug(
+                "Completed polling cycle #{CycleCount}, sleeping for {Interval}s",
+                pollCycleCount,
+                s_pollingInterval.TotalSeconds
+            );
             await Task.Delay( s_pollingInterval, stoppingToken );
         }
 
@@ -135,7 +167,7 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
 
     private async Task ProcessSagaCompletionAsync( string sagaId, CancellationToken ct ) {
         try {
-            _logger.LogDebug( "Processing saga completion event for {SagaId}", sagaId );
+            _logger.LogInformation( "Processing saga completion event for {SagaId}", sagaId );
 
             LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, ct );
 
@@ -144,13 +176,21 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
                 return;
             }
 
+            _logger.LogInformation(
+                "Saga {SagaId} state: IsComplete={IsComplete}, FinalResultUri={FinalResultUri}, ProviderCount={ProviderCount}",
+                sagaId,
+                saga.IsComplete,
+                saga.FinalResultUri ?? "(none)",
+                saga.ProviderStates.Count
+            );
+
             if (!saga.IsComplete) {
-                _logger.LogDebug( "Saga {SagaId} is not yet complete, skipping", sagaId );
+                _logger.LogInformation( "Saga {SagaId} is not yet complete, skipping finalization", sagaId );
                 return;
             }
 
             if (!string.IsNullOrEmpty( saga.FinalResultUri )) {
-                _logger.LogDebug( "Saga {SagaId} already has final result, skipping", sagaId );
+                _logger.LogInformation( "Saga {SagaId} already has final result at {Uri}, skipping", sagaId, saga.FinalResultUri );
                 return;
             }
 
@@ -162,7 +202,7 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
 
     private async Task ProcessLookupCompletionAsync( string sagaId, CancellationToken ct ) {
         try {
-            _logger.LogDebug( "Processing lookup completion for saga {SagaId}", sagaId );
+            _logger.LogInformation( "Processing lookup completion for saga {SagaId}", sagaId );
 
             LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, ct );
 
@@ -171,8 +211,24 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
                 return;
             }
 
-            // If saga is complete, handle final result
+            _logger.LogDebug(
+                "Saga {SagaId} state for lookup completion: IsComplete={IsComplete}, IsPartial={IsPartial}, PartialResultUri={PartialResultUri}",
+                sagaId,
+                saga.IsComplete,
+                saga.IsPartial,
+                saga.PartialResultUri ?? "(none)"
+            );
+
+            // If saga is complete, check cache and queue secondary lookups, then write final result
             if (saga.IsComplete) {
+                // Extract the result from the saga to check for external ID
+                MediaLinkResult? result = _resultCombiner.CombineResults(saga);
+
+                if (result is not null) {
+                    // Check cache for related data and queue secondary lookups for missing providers
+                    await CheckCacheAndQueueSecondaryLookupsAsync( result, saga, ct );
+                }
+
                 if (string.IsNullOrEmpty( saga.FinalResultUri )) {
                     await WriteFinalResultAsync( saga, ct );
                 }
@@ -192,7 +248,11 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
         // Check for cancellation
         ct.ThrowIfCancellationRequested( );
 
-        _logger.LogTrace( "Polling for completed sagas" );
+        _logger.LogDebug(
+            "Polling for completed but unfinalized sagas (minimum age: {MinAge}s, batch limit: {Limit})",
+            s_minimumSagaAge.TotalSeconds,
+            PollingBatchLimit
+        );
 
         try {
             // Query for completed but unfinalized sagas using the pending index
@@ -203,6 +263,7 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
             );
 
             if (unfinalizedSagas.Count == 0) {
+                _logger.LogDebug( "No unfinalized sagas found during polling" );
                 return;
             }
 
@@ -381,5 +442,135 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
     public static async Task PublishSagaCompletedAsync( IConnectionMultiplexer redis, string sagaId ) {
         ISubscriber subscriber = redis.GetSubscriber( );
         _ = await subscriber.PublishAsync( RedisChannel.Literal( SagaCompletedChannel ), sagaId );
+    }
+
+    /// <summary>
+    /// Checks the cache for related data using ISRC/UPC and queues secondary lookups for missing providers.
+    /// </summary>
+    /// <remarks>
+    /// After an initial lookup completes successfully, this method:
+    /// <list type="bullet">
+    ///   <item>Extracts the ISRC (tracks) or UPC (albums) from the result</item>
+    ///   <item>Checks the cache for existing data from other providers</item>
+    ///   <item>For providers not in cache, queues new lookup requests using the external ID</item>
+    /// </list>
+    /// Each secondary provider lookup creates its own separate saga.
+    /// </remarks>
+    private async Task CheckCacheAndQueueSecondaryLookupsAsync(
+        MediaLinkResult result,
+        LookupSagaState originalSaga,
+        CancellationToken ct
+    ) {
+        // Get the first result to extract external ID
+        MusicLookupResult? firstResult = result.Results.Values.FirstOrDefault();
+        if (firstResult is null || string.IsNullOrWhiteSpace( firstResult.ExternalId )) {
+            _logger.LogDebug(
+                "No external ID in result for saga {SagaId}, skipping secondary lookups",
+                originalSaga.SagaId
+            );
+            return;
+        }
+
+        string externalId = firstResult.ExternalId;
+        bool isAlbum = firstResult.IsAlbum ?? false;
+        SupportedProviders initialProvider = result.Results.Keys.First();
+
+        // Determine which providers still need lookups (not the initial provider)
+        IEnumerable<SupportedProviders> otherProviders = _enabledProviders
+            .Where(p => p != initialProvider && !result.Results.ContainsKey(p));
+
+        if (!otherProviders.Any( )) {
+            _logger.LogDebug(
+                "No other enabled providers for saga {SagaId}, skipping secondary lookups",
+                originalSaga.SagaId
+            );
+            return;
+        }
+
+        // Check cache for existing data using ISRC/UPC
+        LookupRequestType lookupType = isAlbum ? LookupRequestType.UpcLookup : LookupRequestType.IsrcLookup;
+        (MediaLinkResult cachedResult, string recordUri, bool isStale)? cached = isAlbum
+            ? await _cacheRepository.TryGetCachedResultByUPCAsync(externalId)
+            : await _cacheRepository.TryGetCachedResultByISRCAsync(externalId);
+
+        // Determine which providers we already have data for
+        HashSet<SupportedProviders> providersWithData = [initialProvider];
+        if (cached.HasValue && !cached.Value.isStale) {
+            foreach (SupportedProviders provider in cached.Value.cachedResult.Results.Keys) {
+                _ = providersWithData.Add( provider );
+            }
+
+            _logger.LogDebug(
+                "Cache hit for {ExternalId}, found data for providers: {Providers}",
+                externalId,
+                string.Join( ", ", providersWithData )
+            );
+        }
+
+        // Queue lookups for providers we don't have data for
+        foreach (SupportedProviders provider in otherProviders) {
+            if (providersWithData.Contains( provider )) {
+                _logger.LogDebug(
+                    "Skipping {Provider} lookup for {ExternalId} - data already in cache",
+                    provider,
+                    externalId
+                );
+                continue;
+            }
+
+            // Generate a unique lookup key for this secondary lookup
+            string lookupKey = $"{lookupType}:{externalId}:{provider}";
+            string sagaId = ISagaStateManager.GenerateSagaId(lookupKey);
+
+            // Check if there's already a saga for this lookup
+            LookupSagaState? existingSaga = await _sagaManager.GetAsync(sagaId, ct);
+            if (existingSaga is not null) {
+                _logger.LogDebug(
+                    "Saga {SagaId} already exists for {Provider} lookup of {ExternalId}, skipping",
+                    sagaId,
+                    provider,
+                    externalId
+                );
+                continue;
+            }
+
+            try {
+                // Create a new saga for this secondary lookup
+                _ = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, externalId );
+                await _sagaManager.InitializeProviderStatesAsync( sagaId, [provider] );
+
+                // Create and queue the lookup request
+                QueuedLookupRequest secondaryRequest = new()
+                {
+                    RequestId = Guid.NewGuid().ToString("N"),
+                    Provider = provider,
+                    LookupType = lookupType,
+                    LookupValue = externalId,
+                    SagaId = sagaId,
+                    IsAlbum = isAlbum,
+                    Title = firstResult.Title,
+                    Artist = firstResult.Artist
+                };
+
+                IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue(provider);
+                await queue.EnqueueAsync( secondaryRequest, QueuePriority.Background, ct );
+
+                _logger.LogInformation(
+                    "Queued secondary {LookupType} lookup for {Provider} with external ID {ExternalId} (saga {SagaId})",
+                    lookupType,
+                    provider,
+                    externalId,
+                    sagaId
+                );
+            } catch (Exception ex) {
+                _logger.LogError(
+                    ex,
+                    "Failed to queue secondary lookup for {Provider} with external ID {ExternalId}",
+                    provider,
+                    externalId
+                );
+                // Continue with other providers - don't fail the entire operation
+            }
+        }
     }
 }

@@ -49,7 +49,12 @@ public class RateLimitingMiddleware {
     /// <param name="dbContext">Database context for tracking request counts.</param>
     /// <param name="cache">Memory cache for storing rate limit data.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task InvokeAsync( HttpContext context, UserManager<ApplicationUser> userManager, ApplicationDbContext dbContext, IMemoryCache cache ) {
+    public async Task InvokeAsync(
+        HttpContext context,
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext dbContext,
+        IMemoryCache cache
+    ) {
         string path = context.Request.Path.Value ?? string.Empty;
 
         // Only enforce rate limiting on specific protected search endpoints and only for POST requests

@@ -39,7 +39,7 @@ IResourceBuilder<ParameterResource> baseUrl = builder.AddParameter( "BaseUrl" );
 IResourceBuilder<ParameterResource> rateLimitRequestsPerHour = builder.AddParameter( "RateLimitRequestsPerHour" );
 IResourceBuilder<ParameterResource> cacheDays = builder.AddParameter( "CacheDays" );
 IResourceBuilder<ParameterResource> identityConnectionString = builder.AddParameter( "IdentityConnectionString" );
-IResourceBuilder<ParameterResource> logFilePath = builder.AddParameter( "LogFilePath" );
+IResourceBuilder<ParameterResource> logDirPath = builder.AddParameter("LogDirPath");
 IResourceBuilder<ParameterResource> cardCacheExpirationHours = builder.AddParameter( "CardCacheExpirationHours" );
 IResourceBuilder<ParameterResource> cardCacheCleanupInterval = builder.AddParameter( "CardCacheCleanupInterval" );
 
@@ -52,8 +52,9 @@ IResourceBuilder<ParameterResource> resilienceAttemptTimeoutSeconds = builder.Ad
 // ============================================================================
 // Redis Cache
 // ============================================================================
-IResourceBuilder<RedisResource> redis = builder.AddRedis( "redis" )
-    .WithPersistence( interval: TimeSpan.FromDays( 1 ) );  // Daily snapshots + AOF persistence
+// Use external Redis container (start manually: docker run -d -p 6379:6379 redis)
+// Connection string configured in user secrets or appsettings: ConnectionStrings:redis
+IResourceBuilder<IResourceWithConnectionString> redis = builder.AddConnectionString("redis");
 
 // Helper to check if a provider is enabled (has credentials)
 // Uses configuration which merges environment variables, appsettings, user secrets, and command line args
@@ -76,6 +77,7 @@ IResourceBuilder<ProjectResource>? spotifyWorker = null;
 if (HasSpotifyCredentials( )) {
     spotifyWorker = builder.AddProject<Projects.BridgeBeats_Worker_Spotify>( "spotify-worker" )
         .WithReference( redis )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
         .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
@@ -91,6 +93,7 @@ IResourceBuilder<ProjectResource>? appleMusicWorker = null;
 if (HasAppleMusicCredentials( )) {
     appleMusicWorker = builder.AddProject<Projects.BridgeBeats_Worker_AppleMusic>( "applemusic-worker" )
         .WithReference( redis )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
         .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
         .WithEnvironment( "BridgeBeats__AppleKeyPath", appleKeyPath )
@@ -107,6 +110,7 @@ IResourceBuilder<ProjectResource>? tidalWorker = null;
 if (HasTidalCredentials( )) {
     tidalWorker = builder.AddProject<Projects.BridgeBeats_Worker_Tidal>( "tidal-worker" )
         .WithReference( redis )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
         .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret )
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
@@ -123,6 +127,7 @@ if (HasTidalCredentials( )) {
 IResourceBuilder<ProjectResource>? discordWorker = null;
 if (HasDiscordCredentials( )) {
     discordWorker = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
         .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
         .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl );
@@ -136,6 +141,7 @@ if (HasDiscordCredentials( )) {
 // coordination and polling as a fallback.
 _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" )
     .WithReference( redis )
+    .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
     // ATProto (Bluesky) - required for writing final results
     .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
     .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
@@ -149,7 +155,8 @@ _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coord
 // Monitors Bluesky Jetstream for music links and submits them to provider
 // queues at bulk priority. Fire-and-forget: no credentials needed.
 _ = builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" )
-    .WithReference( redis );
+    .WithReference( redis )
+    .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
 
 // ============================================================================
 // Cache Bootstrap Worker
@@ -158,6 +165,7 @@ _ = builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream
 // (default: every 6 hours). Uses unauthenticated access for public records.
 _ = builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" )
     .WithReference( redis )
+    .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
     // ATProto credentials for authenticated storage operations
     .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
     .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
@@ -170,7 +178,7 @@ _ = builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-boots
 // Main Web Application
 // ============================================================================
 IResourceBuilder<ProjectResource> bridgebeatsWeb = builder.AddProject<Projects.BridgeBeats_Web>( "bridgebeats" )
-    .WithHttpEndpoint( port: 10000, name: "http" )
+    .WithHttpEndpoint(port: 10000, name: "bridgebeats-http")
     .WithReference( redis )
     // Worker Configuration - Enable worker mode and specify which workers are available
     .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
@@ -189,7 +197,7 @@ IResourceBuilder<ProjectResource> bridgebeatsWeb = builder.AddProject<Projects.B
     .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
     .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
     .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
-    .WithEnvironment( "BridgeBeats__LogFilePath", logFilePath )
+    .WithEnvironment("BridgeBeats__LogDirPath", logDirPath)
     .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
     .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
     // Resilience Configuration

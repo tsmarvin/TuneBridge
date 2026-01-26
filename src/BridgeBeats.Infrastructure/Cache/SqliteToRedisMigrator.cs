@@ -1,5 +1,4 @@
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Infrastructure.Cache.Entities;
 using BridgeBeats.Infrastructure.Utilities;
 using Microsoft.EntityFrameworkCore;
@@ -18,10 +17,8 @@ public sealed class SqliteToRedisMigrator : IHostedService {
 
     private readonly IDbContextFactory<MediaLinkCacheDbContext>? _dbContextFactory;
     private readonly IConnectionMultiplexer _redis;
-    private readonly IATProtoStorageService _atprotoStorage;
     private readonly ILogger<SqliteToRedisMigrator> _logger;
     private readonly int _cacheDays;
-    private readonly string _userDID;
 
     private const string MigrationCompleteKey = "migration:sqlite:complete";
     private const string LookupIsrcPrefix = "lookup:isrc:";
@@ -36,24 +33,18 @@ public sealed class SqliteToRedisMigrator : IHostedService {
     /// </summary>
     /// <param name="dbContextFactory">Factory for creating SQLite database contexts. Can be null if SQLite is not configured.</param>
     /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="atprotoStorage">Service for retrieving results from ATProto PDS.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="cacheDays">Number of days to consider cache entries fresh.</param>
-    /// <param name="userDID">The user DID for ATProto storage.</param>
     public SqliteToRedisMigrator(
         IDbContextFactory<MediaLinkCacheDbContext>? dbContextFactory,
         IConnectionMultiplexer redis,
-        IATProtoStorageService atprotoStorage,
         ILogger<SqliteToRedisMigrator> logger,
-        int cacheDays,
-        string userDID
+        int cacheDays
     ) {
         _dbContextFactory = dbContextFactory;
         _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
-        _atprotoStorage = atprotoStorage ?? throw new ArgumentNullException( nameof( atprotoStorage ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
         _cacheDays = cacheDays;
-        _userDID = userDID ?? throw new ArgumentNullException( nameof( userDID ) );
     }
 
     /// <inheritdoc/>
@@ -130,17 +121,23 @@ public sealed class SqliteToRedisMigrator : IHostedService {
         }
 
         _logger.LogInformation(
-            "SqliteToRedisMigrator: Migration complete. Migrated: {SuccessCount}, Failed: {FailCount}",
+            "SqliteToRedisMigrator: Migration complete. Processed: {SuccessCount}, Failed: {FailCount}",
             successCount, failCount
         );
     }
 
     private async Task MigrateCacheEntryAsync( IDatabase db, MediaLinkCacheEntry entry, TimeSpan expiry ) {
         string recordUri = entry.RecordUri;
+        int keysAdded = 0;
+        int keysSkipped = 0;
 
-        // Migrate card ID lookup
+        // Migrate card ID lookup (only if not already present or different)
         string cardKey = $"{LookupCardPrefix}{entry.CardId}";
-        _ = await db.StringSetAsync( cardKey, recordUri, expiry );
+        if (await SetIfNewOrDifferentAsync( db, cardKey, recordUri, expiry )) {
+            keysAdded++;
+        } else {
+            keysSkipped++;
+        }
 
         // Migrate lookup entries
         foreach (MediaLookupEntry lookup in entry.LookupEntries) {
@@ -154,19 +151,51 @@ public sealed class SqliteToRedisMigrator : IHostedService {
             };
 
             if (key != null) {
-                _ = await db.StringSetAsync( key, recordUri, expiry );
+                if (await SetIfNewOrDifferentAsync( db, key, recordUri, expiry )) {
+                    keysAdded++;
+                } else {
+                    keysSkipped++;
+                }
             }
         }
 
         // Migrate provider entries
         foreach (MediaProviderEntry provider in entry.ProviderEntries) {
             string providerKey = $"{LookupProviderPrefix}{provider.Provider}:{provider.ProviderId}";
-            _ = await db.StringSetAsync( providerKey, recordUri, expiry );
+            if (await SetIfNewOrDifferentAsync( db, providerKey, recordUri, expiry )) {
+                keysAdded++;
+            } else {
+                keysSkipped++;
+            }
         }
 
         _logger.LogDebug(
-            "SqliteToRedisMigrator: Migrated entry with rkey: {Rkey}, {LookupCount} lookups, {ProviderCount} providers",
-            entry.Rkey, entry.LookupEntries.Count, entry.ProviderEntries.Count
+            "SqliteToRedisMigrator: Processed entry with rkey: {Rkey}, added: {KeysAdded}, skipped: {KeysSkipped}",
+            entry.Rkey, keysAdded, keysSkipped
         );
+    }
+
+    /// <summary>
+    /// Sets a key in Redis only if it doesn't exist or has a different value.
+    /// Returns true if the key was set (new or updated), false if skipped (already exists with same value).
+    /// </summary>
+    private static async Task<bool> SetIfNewOrDifferentAsync( IDatabase db, string key, string value, TimeSpan expiry ) {
+        string? existingValue = await db.StringGetAsync( key );
+
+        // Key doesn't exist - set it
+        if (existingValue is null) {
+            _ = await db.StringSetAsync( key, value, expiry );
+            return true;
+        }
+
+        // Key exists with same value - skip (but refresh TTL)
+        if (existingValue == value) {
+            _ = await db.KeyExpireAsync( key, expiry );
+            return false;
+        }
+
+        // Key exists with different value - update it
+        _ = await db.StringSetAsync( key, value, expiry );
+        return true;
     }
 }

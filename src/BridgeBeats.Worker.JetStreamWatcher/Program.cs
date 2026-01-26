@@ -2,8 +2,12 @@ using BridgeBeats.Contracts.Records;
 using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Worker.JetStreamWatcher;
+using Serilog;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder( args );
+
+// Configure file logging
+_ = builder.ConfigureFileLogging( "JetStreamWatcher" );
 
 // Add Aspire service defaults (health checks, telemetry, resilience)
 _ = builder.AddServiceDefaults( );
@@ -23,4 +27,8 @@ WebApplication app = builder.Build( );
 // Map Aspire health check endpoints
 _ = app.MapDefaultEndpoints( );
 
-app.Run( );
+try {
+    app.Run( );
+} finally {
+    Log.CloseAndFlush( );
+}

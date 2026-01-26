@@ -3,9 +3,13 @@ using BridgeBeats.Infrastructure.Cache;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Worker.CacheBootstrap;
+using Serilog;
 using StackExchange.Redis;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder( args );
+
+// Configure file logging
+_ = builder.ConfigureFileLogging( "CacheBootstrap" );
 
 // Add Aspire service defaults (health checks, telemetry, resilience)
 _ = builder.AddServiceDefaults( );
@@ -55,6 +59,41 @@ _ = builder.Services.AddHostedService<CacheBootstrapBackgroundService>( );
 
 WebApplication app = builder.Build( );
 
+// Validate Redis connection on startup
+IConnectionMultiplexer redis = app.Services.GetRequiredService<IConnectionMultiplexer>();
+ILogger<Program> logger = app.Services.GetRequiredService<ILogger<Program>>();
+
+// Log Redis connection details
+logger.LogInformation(
+    "Redis connection: {Configuration}, IsConnected: {IsConnected}, Database: {Database}",
+    redis.Configuration,
+    redis.IsConnected,
+    redis.GetDatabase( ).Database
+);
+
+// Verify we can actually write to Redis
+IDatabase db = redis.GetDatabase();
+string testKey = "cache-bootstrap:startup-test";
+bool setResult = await db.StringSetAsync(testKey, DateTimeOffset.UtcNow.ToString(), TimeSpan.FromMinutes(1));
+string? getValue = await db.StringGetAsync(testKey);
+logger.LogInformation(
+    "Redis write test - SetResult: {SetResult}, ReadBack: {ReadBack}",
+    setResult,
+    getValue
+);
+
+if (!setResult || string.IsNullOrEmpty( getValue )) {
+    logger.LogError( "Redis write verification failed! SetResult: {SetResult}, ReadBack: {ReadBack}", setResult, getValue );
+}
+
+// Log current key count for debugging
+long keyCount = 0;
+foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
+    IServer server = redis.GetServer(endpoint);
+    keyCount = server.DatabaseSize( );
+    logger.LogInformation( "Redis server {Endpoint} has {KeyCount} keys", endpoint, keyCount );
+}
+
 // Map Aspire health check endpoints
 _ = app.MapDefaultEndpoints( );
 
@@ -65,4 +104,8 @@ app.MapGet( "/status", ( ) => new {
     Timestamp = DateTimeOffset.UtcNow
 } );
 
-app.Run( );
+try {
+    app.Run( );
+} finally {
+    Log.CloseAndFlush( );
+}

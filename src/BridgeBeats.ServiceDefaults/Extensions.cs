@@ -1,4 +1,5 @@
 using System.Reflection;
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Exceptions;
 using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry;
@@ -8,6 +9,7 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Polly;
 using Polly.Retry;
+using Serilog;
 
 namespace BridgeBeats.ServiceDefaults;
 
@@ -56,7 +58,7 @@ public static class Extensions {
             } );
 
             _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {
-                ILogger logger = sp.GetRequiredService<ILoggerFactory>( ).CreateLogger( "HttpResilience" );
+                Microsoft.Extensions.Logging.ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("HttpResilience");
                 options.Retry.OnRetry = args => {
                     TimeSpan? retryAfter = args.Outcome.Result?.Headers.RetryAfter?.Delta;
                     double retryAfterSeconds = retryAfter?.TotalSeconds ?? 0;
@@ -189,5 +191,90 @@ public static class Extensions {
     private static string GetServiceVersion( ) {
         Assembly? assembly = Assembly.GetEntryAssembly( );
         return assembly?.GetName( ).Version?.ToString( ) ?? "0.0.1";
+    }
+
+    /// <summary>
+    /// Configures Serilog for file logging with rotation and retention.
+    /// Writes logs to logs/{projectName}-.log relative to the application directory.
+    /// </summary>
+    /// <param name="builder">The web application builder to configure.</param>
+    /// <param name="projectName">The name of the project (used for the log file name).</param>
+    /// <returns>The configured builder.</returns>
+    public static WebApplicationBuilder ConfigureFileLogging( this WebApplicationBuilder builder, string projectName ) {
+        // Use LogDirPath from configuration or default to ./logs
+        string logDir = builder.Configuration["BridgeBeats:LogDirPath"] ?? "./logs";
+        string logPath = Path.Combine(logDir, $"{projectName}-.log");
+
+        try {
+            if (!string.IsNullOrEmpty( logDir ) && !Directory.Exists( logDir )) {
+                _ = Directory.CreateDirectory( logDir );
+            }
+        } catch (IOException ex) {
+            Console.WriteLine( $"Warning: Failed to validate/create log directory: {ex.Message}" );
+            // Fall back to not configuring file logging
+            return builder;
+        } catch (UnauthorizedAccessException ex) {
+            Console.WriteLine( $"Warning: Failed to validate/create log directory due to insufficient permissions: {ex.Message}" );
+            // Fall back to not configuring file logging
+            return builder;
+        }
+
+        Log.Logger = new LoggerConfiguration( )
+            .ReadFrom.Configuration( builder.Configuration )
+            .Filter.ByExcluding( logEvent => {
+                // Exclude successful health check requests from logs (but keep failures)
+                // This filters out Information level logs for /health endpoint
+                if (logEvent.Level != Serilog.Events.LogEventLevel.Information) {
+                    return false; // Don't exclude warnings, errors, etc.
+                }
+
+                // Check if this is a log event related to health endpoint
+                string? sourceContext = logEvent.Properties.TryGetValue("SourceContext", out Serilog.Events.LogEventPropertyValue? sourceValue)
+                    ? sourceValue.ToString().Trim('"')
+                    : null;
+
+                // Filter MVC controller action execution logs for health endpoint
+                if (sourceContext != null &&
+                    (sourceContext.Contains( "Microsoft.AspNetCore.Mvc" ) ||
+                     sourceContext.Contains( "Microsoft.AspNetCore.Routing" ))) {
+
+                    if (logEvent.Properties.TryGetValue( "ActionName", out Serilog.Events.LogEventPropertyValue? actionValue )) {
+                        string actionName = actionValue.ToString();
+                        if (actionName.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
+                            return true; // Exclude health check related MVC logs
+                        }
+                    }
+
+                    string messageText = logEvent.RenderMessage();
+                    if (messageText.Contains( "Health", StringComparison.OrdinalIgnoreCase )) {
+                        return true; // Exclude health check related MVC logs
+                    }
+                }
+
+                // Filter HTTP request completion logs for successful health checks
+                if (logEvent.Properties.TryGetValue( "RequestPath", out Serilog.Events.LogEventPropertyValue? pathValue ) &&
+                    (pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Health, StringComparison.OrdinalIgnoreCase ) ||
+                     pathValue.ToString( ).Trim( '"' ).Equals( EndpointPaths.Alive, StringComparison.OrdinalIgnoreCase )) &&
+                    logEvent.Properties.TryGetValue( "StatusCode", out Serilog.Events.LogEventPropertyValue? statusValue ) &&
+                    statusValue.ToString( ) == "200") {
+                    return true; // Exclude successful health check HTTP logs
+                }
+
+                return false;
+            } )
+            .WriteTo.Console( )
+            .WriteTo.File(
+                path: logPath,
+                rollingInterval: RollingInterval.Day,
+                fileSizeLimitBytes: 50 * 1024 * 1024, // 50MB
+                retainedFileCountLimit: 5, // 5 days retention
+                rollOnFileSizeLimit: true,
+                shared: false
+            )
+            .CreateLogger( );
+
+        _ = builder.Host.UseSerilog( );
+
+        return builder;
     }
 }

@@ -41,9 +41,7 @@ public class QueueContractsTests {
         QueuePriority[] values = Enum.GetValues<QueuePriority>( );
 
         // Assert
-#pragma warning disable MSTEST0037 // Use 'Assert.HasCount' - not available in current MSTest version
-        Assert.AreEqual( 3, values.Length );
-#pragma warning restore MSTEST0037
+        Assert.HasCount( 3, values );
     }
 
     #endregion
@@ -152,11 +150,9 @@ public class QueueContractsTests {
         string json = JsonSerializer.Serialize( request, s_jsonOptions );
 
         // Assert - null optional fields should be omitted
-#pragma warning disable MSTEST0037 // Use 'Assert.DoesNotContain' - not available in current MSTest version
-        Assert.IsFalse( json.Contains( "\"artist\"" ), "JSON should not contain 'artist' field" );
-        Assert.IsFalse( json.Contains( "\"title\"" ), "JSON should not contain 'title' field" );
-        Assert.IsFalse( json.Contains( "\"rateLimitedEndpoint\"" ), "JSON should not contain 'rateLimitedEndpoint' field" );
-#pragma warning restore MSTEST0037
+        Assert.DoesNotContain( "\"artist\"", json, "JSON should not contain 'artist' field" );
+        Assert.DoesNotContain( "\"title\"", json, "JSON should not contain 'title' field" );
+        Assert.DoesNotContain( "\"rateLimitedEndpoint\"", json, "JSON should not contain 'rateLimitedEndpoint' field" );
     }
 
     #endregion
@@ -315,10 +311,8 @@ public class QueueContractsTests {
         string json = JsonSerializer.Serialize( notLimited, s_jsonOptions );
 
         // Assert
-#pragma warning disable MSTEST0037 // Use 'Assert.DoesNotContain' - not available in current MSTest version
-        Assert.IsFalse( json.Contains( "\"retryAfter\"" ), "JSON should not contain 'retryAfter' field" );
-        Assert.IsFalse( json.Contains( "\"timeRemaining\"" ), "JSON should not contain 'timeRemaining' field" );
-#pragma warning restore MSTEST0037
+        Assert.DoesNotContain( "\"retryAfter\"", json, "JSON should not contain 'retryAfter' field" );
+        Assert.DoesNotContain( "\"timeRemaining\"", json, "JSON should not contain 'timeRemaining' field" );
     }
 
     #endregion
@@ -423,9 +417,7 @@ public class QueueContractsTests {
         Assert.AreEqual( original.LookupType, deserialized.LookupType );
         Assert.AreEqual( original.LookupValue, deserialized.LookupValue );
         Assert.AreEqual( original.PartialResultUri, deserialized.PartialResultUri );
-#pragma warning disable MSTEST0037 // Use 'Assert.HasCount' - not available in current MSTest version
-        Assert.AreEqual( 2, deserialized.ProviderStates.Count );
-#pragma warning restore MSTEST0037
+        Assert.HasCount( 2, deserialized.ProviderStates );
     }
 
     /// <summary>

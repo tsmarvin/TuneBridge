@@ -1,4 +1,5 @@
 @model BridgeBeats.Contracts.DTOs.LookupStatistics
+@using BridgeBeats.Contracts.Constants
 @{
     ViewData["Title"] = "Statistics";
 }
@@ -6,12 +7,15 @@
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="mb-0">Collection Statistics</h1>
-        <form asp-action="Refresh" method="post" class="d-inline">
-            @Html.AntiForgeryToken()
-            <button type="submit" class="btn btn-outline-secondary btn-sm" title="Refresh statistics">
-                <i class="bi bi-arrow-clockwise"></i> Refresh
-            </button>
-        </form>
+        @if (User.IsInRole( Roles.AspireDashboardAccess ))
+        {
+            <form asp-action="Refresh" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-secondary btn-sm" title="Refresh statistics">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </form>
+        }
     </div>
 
     <p class="text-muted mb-4">

@@ -1110,8 +1110,8 @@
       },
       "Microsoft.OpenApi": {
         "type": "Transitive",
-        "resolved": "3.3.0",
-        "contentHash": "Rs/LwqBvEt4TQweBfsG4ppaJE4T0gLBLSGgpor6EulYYlJSBiGKubwfoQnT2Hm2ebLL/opeZdsELzwsYTY2bHw=="
+        "resolved": "3.3.1",
+        "contentHash": "8Xo42prPRLeQpcSv9sjajQQ0o+gL7rZ4HMUsNNI47iqK+bxDrIwLOGlN9fLAlTpJk0iyXRNR51zupMt5IdhU/w=="
       },
       "Microsoft.Testing.Extensions.Telemetry": {
         "type": "Transitive",
@@ -1620,7 +1620,9 @@
           "OpenTelemetry.Extensions.Hosting": "[1.15.0, )",
           "OpenTelemetry.Instrumentation.AspNetCore": "[1.15.0, )",
           "OpenTelemetry.Instrumentation.Http": "[1.15.0, )",
-          "OpenTelemetry.Instrumentation.Runtime": "[1.15.0, )"
+          "OpenTelemetry.Instrumentation.Runtime": "[1.15.0, )",
+          "Serilog.AspNetCore": "[10.0.0, )",
+          "Serilog.Sinks.File": "[7.0.0, )"
         }
       },
       "bridgebeats.services": {
@@ -1640,7 +1642,7 @@
           "BridgeBeats.Providers": "[1.0.0, )",
           "BridgeBeats.ServiceDefaults": "[1.0.0, )",
           "BridgeBeats.Services": "[1.0.0, )",
-          "Microsoft.OpenApi": "[3.3.0, )",
+          "Microsoft.OpenApi": "[3.3.1, )",
           "Serilog.AspNetCore": "[10.0.0, )",
           "Serilog.Sinks.File": "[7.0.0, )",
           "Swashbuckle.AspNetCore": "[10.1.0, )"

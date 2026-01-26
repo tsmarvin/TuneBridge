@@ -272,9 +272,7 @@ public class ATProtoOAuthServiceTests {
         // Verify nbf is before or equal to iat (accounting for clock skew)
         long iat = long.Parse( jwt.Claims.First( c => c.Type == "iat" ).Value );
         long nbf = long.Parse( jwt.Claims.First( c => c.Type == "nbf" ).Value );
-#pragma warning disable MSTEST0037 // Using Assert.IsTrue here to provide a clear and specific failure message for this comparison
-        Assert.IsTrue( nbf <= iat, $"nbf ({nbf}) should be less than or equal to iat ({iat})" );
-#pragma warning restore MSTEST0037
+        Assert.IsLessThanOrEqualTo( iat, nbf, $"nbf ({nbf}) should be less than or equal to iat ({iat})" );
     }
 
     /// <summary>

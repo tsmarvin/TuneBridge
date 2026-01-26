@@ -191,12 +191,37 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
             throw new ArgumentException( "Record URI cannot be null or empty", nameof( recordUri ) );
         }
 
+        if (result.Results.Count == 0) {
+            throw new ArgumentException( "MediaLinkResult must contain at least one provider result", nameof( result ) );
+        }
+
         try {
             IDatabase db = _redis.GetDatabase( );
             string rkey = RecordKeyGenerator.GenerateRkey( result );
             string cardId = RecordKeyGenerator.GenerateCardId( rkey );
             TimeSpan expiry = TimeSpan.FromDays( _cacheDays );
             bool isAlbum = result.Results.Values.First( ).IsAlbum ?? false;
+
+            // Check if this record already exists in cache with the same RecordUri
+            // If so, just refresh TTL on existing keys and skip the full write
+            string metaKey = $"{MetaPrefix}{rkey}";
+            RedisValue existingMetaJson = await db.StringGetAsync( metaKey );
+            if (!existingMetaJson.IsNullOrEmpty) {
+                CacheEntryMetadata? existingMeta = JsonSerializer.Deserialize<CacheEntryMetadata>(
+                    existingMetaJson.ToString( ),
+                    _jsonOptions
+                );
+
+                if (existingMeta?.RecordUri == recordUri) {
+                    // Record already cached with same URI - just refresh TTL on all keys
+                    await RefreshTtlForRkeyAsync( db, rkey, expiry );
+                    _logger.LogDebug(
+                        "Cache entry already exists for rkey: {Rkey}, refreshed TTL",
+                        rkey.SanitizeForLogging( )
+                    );
+                    return;
+                }
+            }
 
             // Track all keys we create for this rkey (for cleanup on refresh)
             List<string> allKeys = [];
@@ -209,7 +234,6 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 CreatedAt = DateTime.UtcNow,
                 LastLookedUpAt = DateTime.UtcNow
             };
-            string metaKey = $"{MetaPrefix}{rkey}";
             _ = await db.StringSetAsync( metaKey, JsonSerializer.Serialize( metadata, _jsonOptions ), expiry );
             allKeys.Add( metaKey );
 
@@ -272,6 +296,15 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 _ = await db.KeyExpireAsync( keysSetKey, expiry );
             }
 
+            // Verify the meta key was actually written (spot check)
+            RedisValue verifyValue = await db.StringGetAsync( metaKey );
+            if (verifyValue.IsNullOrEmpty) {
+                _logger.LogError(
+                    "Redis write verification FAILED for rkey: {Rkey} - meta key not found after write!",
+                    rkey.SanitizeForLogging( )
+                );
+            }
+
             _logger.LogInformation(
                 "Created Redis lookup entries for rkey: {Rkey}, cardId: {CardId}, {KeyCount} keys",
                 rkey.SanitizeForLogging( ),
@@ -302,6 +335,27 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 existingKeys.Length,
                 rkey.SanitizeForLogging( ) );
         }
+    }
+
+    /// <summary>
+    /// Refreshes the TTL for all lookup keys associated with an rkey.
+    /// This is used during bootstrap to extend TTL for records that already exist with the same RecordUri.
+    /// </summary>
+    private static async Task RefreshTtlForRkeyAsync( IDatabase db, string rkey, TimeSpan expiry ) {
+        string keysSetKey = $"{KeysPrefix}{rkey}";
+        RedisValue[] existingKeys = await db.SetMembersAsync( keysSetKey );
+
+        if (existingKeys.Length == 0) {
+            return;
+        }
+
+        // Refresh TTL on all keys associated with this rkey
+        foreach (RedisValue key in existingKeys) {
+            _ = await db.KeyExpireAsync( key.ToString( ), expiry );
+        }
+
+        // Also refresh TTL on the keys set itself
+        _ = await db.KeyExpireAsync( keysSetKey, expiry );
     }
 
     /// <summary>
