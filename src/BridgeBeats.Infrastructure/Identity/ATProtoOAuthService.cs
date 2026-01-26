@@ -570,14 +570,15 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         // Create the DPoP JWT
         JwtSecurityTokenHandler handler = new( );
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds( );
+        DateTime notBefore = DateTimeOffset.FromUnixTimeSeconds( now - 5 ).UtcDateTime;
         SecurityTokenDescriptor descriptor = new( ) {
             Claims = new Dictionary<string, object> {
                 ["htm"] = httpMethod,
                 ["htu"] = url,
                 ["jti"] = Guid.NewGuid( ).ToString( "N" ),
-                ["iat"] = now,
-                ["nbf"] = now - 5  // 5 seconds before to account for clock skew
+                ["iat"] = now
             },
+            NotBefore = notBefore,
             SigningCredentials = new SigningCredentials(
                 new ECDsaSecurityKey( ecdsa ) { KeyId = kid },
                 SecurityAlgorithms.EcdsaSha256
