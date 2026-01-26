@@ -22,6 +22,7 @@ public class ATProtoOAuthServiceTests {
     private Mock<IDbContextFactory<ApplicationDbContext>> _mockDbContextFactory = null!;
     private Mock<ILogger<ATProtoOAuthService>> _mockLogger = null!;
     private Mock<HttpMessageHandler> _mockHttpMessageHandler = null!;
+    private Mock<IHttpClientFactory> _mockHttpClientFactory = null!;
     private HttpClient _httpClient = null!;
     private const string TestClientId = "https://example.com/.well-known/client-metadata.json";
     private const string TestBaseUrl = "https://example.com";
@@ -37,6 +38,12 @@ public class ATProtoOAuthServiceTests {
         _mockLogger = new Mock<ILogger<ATProtoOAuthService>>( );
         _mockHttpMessageHandler = new Mock<HttpMessageHandler>( );
         _httpClient = new HttpClient( _mockHttpMessageHandler.Object );
+        
+        // Setup mock HttpClientFactory to return the mocked HttpClient
+        _mockHttpClientFactory = new Mock<IHttpClientFactory>( );
+        _mockHttpClientFactory
+            .Setup( f => f.CreateClient( "ATProtoOAuth" ) )
+            .Returns( _httpClient );
     }
 
     /// <summary>
@@ -57,7 +64,7 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _httpClient
+            _mockHttpClientFactory.Object
         );
 
         // Assert
@@ -71,7 +78,7 @@ public class ATProtoOAuthServiceTests {
     public void Constructor_WithNullDbContextFactory_ShouldThrowArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
-            new ATProtoOAuthService( null!, _mockLogger.Object, TestClientId, _httpClient ) );
+            new ATProtoOAuthService( null!, _mockLogger.Object, TestClientId, _mockHttpClientFactory.Object ) );
     }
 
     /// <summary>
@@ -81,7 +88,7 @@ public class ATProtoOAuthServiceTests {
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
-            new ATProtoOAuthService( _mockDbContextFactory.Object, null!, TestClientId, _httpClient ) );
+            new ATProtoOAuthService( _mockDbContextFactory.Object, null!, TestClientId, _mockHttpClientFactory.Object ) );
     }
 
     /// <summary>
@@ -91,11 +98,11 @@ public class ATProtoOAuthServiceTests {
     public void Constructor_WithNullClientId_ShouldThrowArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
-            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, null!, _httpClient ) );
+            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, null!, _mockHttpClientFactory.Object ) );
     }
 
     /// <summary>
-    /// Verifies that the constructor throws ArgumentNullException for null httpClient.
+    /// Verifies that the constructor throws ArgumentNullException for null httpClientFactory.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullHttpClient_ShouldThrowArgumentNullException( ) {
@@ -114,7 +121,7 @@ public class ATProtoOAuthServiceTests {
 
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentException>( ( ) =>
-            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, invalidClientId, _httpClient ) );
+            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, invalidClientId, _mockHttpClientFactory.Object ) );
     }
 
     /// <summary>
@@ -127,7 +134,7 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _httpClient
+            _mockHttpClientFactory.Object
         );
         DateTime expiredTime = DateTime.UtcNow.AddMinutes( -5 );
 
@@ -148,7 +155,7 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _httpClient
+            _mockHttpClientFactory.Object
         );
         DateTime expiringTime = DateTime.UtcNow.AddSeconds( 15 ); // Within 30 second margin
 
@@ -169,7 +176,7 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _httpClient
+            _mockHttpClientFactory.Object
         );
         DateTime validTime = DateTime.UtcNow.AddHours( 1 );
 
@@ -190,7 +197,7 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _httpClient
+            _mockHttpClientFactory.Object
         );
 
         // Act
@@ -272,7 +279,7 @@ public class ATProtoOAuthServiceTests {
         // Verify nbf is before or equal to iat (accounting for clock skew)
         long iat = long.Parse( jwt.Claims.First( c => c.Type == "iat" ).Value );
         long nbf = long.Parse( jwt.Claims.First( c => c.Type == "nbf" ).Value );
-#pragma warning disable MSTEST0037 // Using Assert.IsTrue for clarity since IsLessThanOrEqualTo parameter order is confusing
+#pragma warning disable MSTEST0037 // Using Assert.IsTrue here to provide a clear and specific failure message for this comparison
         Assert.IsTrue( nbf <= iat, $"nbf ({nbf}) should be less than or equal to iat ({iat})" );
 #pragma warning restore MSTEST0037
     }
@@ -284,13 +291,6 @@ public class ATProtoOAuthServiceTests {
     [TestMethod]
     public void CreateDPoPProof_ShouldIncludeRequiredClaims( ) {
         // Arrange
-        ATProtoOAuthService service = new(
-            _mockDbContextFactory.Object,
-            _mockLogger.Object,
-            TestClientId,
-            _httpClient
-        );
-
         string dpoPKeyJwk = CreateTestDPoPKey( );
         string httpMethod = "POST";
         string url = "https://auth.example.com/oauth/token";
@@ -316,13 +316,6 @@ public class ATProtoOAuthServiceTests {
     [TestMethod]
     public void CreateDPoPProof_WithAccessToken_ShouldIncludeAthClaim( ) {
         // Arrange
-        ATProtoOAuthService service = new(
-            _mockDbContextFactory.Object,
-            _mockLogger.Object,
-            TestClientId,
-            _httpClient
-        );
-
         string dpoPKeyJwk = CreateTestDPoPKey( );
         string httpMethod = "GET";
         string url = "https://api.example.com/resource";

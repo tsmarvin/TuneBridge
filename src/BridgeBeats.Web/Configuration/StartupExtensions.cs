@@ -419,7 +419,7 @@ namespace BridgeBeats.Web.Configuration {
                         sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( ),
                         sp.GetRequiredService<ILogger<ATProtoOAuthService>>( ),
                         clientId,
-                        sp.GetRequiredService<IHttpClientFactory>( ).CreateClient( "ATProtoOAuth" )
+                        sp.GetRequiredService<IHttpClientFactory>( )
                     )
                 );
             }

@@ -44,7 +44,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     private readonly ILogger<ATProtoOAuthService> _logger;
     private readonly string _clientId;
     private readonly string _baseUrl;
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ATProtoOAuthService"/> class.
@@ -52,17 +52,17 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     /// <param name="dbContextFactory">Factory for creating database contexts.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="clientId">The OAuth client_id URL (must be the client-metadata.json URL).</param>
-    /// <param name="httpClient">HTTP client for token endpoint requests.</param>
+    /// <param name="httpClientFactory">HTTP client factory for creating clients for token endpoint requests.</param>
     public ATProtoOAuthService(
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
         ILogger<ATProtoOAuthService> logger,
         string clientId,
-        HttpClient httpClient
+        IHttpClientFactory httpClientFactory
     ) {
         _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException( nameof( dbContextFactory ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
         _clientId = clientId ?? throw new ArgumentNullException( nameof( clientId ) );
-        _httpClient = httpClient ?? throw new ArgumentNullException( nameof( httpClient ) );
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException( nameof( httpClientFactory ) );
 
         // Extract base URL from client ID
         if (!clientId.EndsWith( ClientMetadataPath, StringComparison.OrdinalIgnoreCase )) {
@@ -431,7 +431,8 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         request.Headers.Add( "DPoP", dpopProof );
 
         // Step 4: Send the token request
-        using HttpResponseMessage response = await _httpClient.SendAsync( request, cancellationToken );
+        HttpClient httpClient = _httpClientFactory.CreateClient( "ATProtoOAuth" );
+        using HttpResponseMessage response = await httpClient.SendAsync( request, cancellationToken );
 
         if (!response.IsSuccessStatusCode) {
             string errorContent = await response.Content.ReadAsStringAsync( cancellationToken );
@@ -471,13 +472,6 @@ public class ATProtoOAuthService : IATProtoOAuthService {
                 responseContent
             );
             throw new InvalidOperationException( "Token response had invalid format or missing required properties.", ex );
-        } catch (KeyNotFoundException ex) {
-            _logger.LogError(
-                ex,
-                "Token response missing required properties. Content: {ResponseContent}",
-                responseContent
-            );
-            throw new InvalidOperationException( "Token response missing required properties.", ex );
         }
 
         // Step 6: Validate the sub (DID) - fail if missing or doesn't match
@@ -551,10 +545,24 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         using JsonDocument jwkDoc = JsonDocument.Parse( dpoPKeyJwk );
         JsonElement jwk = jwkDoc.RootElement;
 
-        string x = jwk.GetProperty( "x" ).GetString( )!;
-        string y = jwk.GetProperty( "y" ).GetString( )!;
-        string d = jwk.GetProperty( "d" ).GetString( )!;
-        string kid = jwk.GetProperty( "kid" ).GetString( )!;
+        // Validate required JWK parameters
+        if (!jwk.TryGetProperty( "x", out JsonElement xProp ) || string.IsNullOrWhiteSpace( xProp.GetString( ) )) {
+            throw new ArgumentException( "DPoP key JWK does not contain required parameter 'x'.", nameof( dpoPKeyJwk ) );
+        }
+        if (!jwk.TryGetProperty( "y", out JsonElement yProp ) || string.IsNullOrWhiteSpace( yProp.GetString( ) )) {
+            throw new ArgumentException( "DPoP key JWK does not contain required parameter 'y'.", nameof( dpoPKeyJwk ) );
+        }
+        if (!jwk.TryGetProperty( "d", out JsonElement dProp ) || string.IsNullOrWhiteSpace( dProp.GetString( ) )) {
+            throw new ArgumentException( "DPoP key JWK does not contain required private key parameter 'd'.", nameof( dpoPKeyJwk ) );
+        }
+        if (!jwk.TryGetProperty( "kid", out JsonElement kidProp ) || string.IsNullOrWhiteSpace( kidProp.GetString( ) )) {
+            throw new ArgumentException( "DPoP key JWK does not contain required parameter 'kid'.", nameof( dpoPKeyJwk ) );
+        }
+
+        string x = xProp.GetString( )!;
+        string y = yProp.GetString( )!;
+        string d = dProp.GetString( )!;
+        string kid = kidProp.GetString( )!;
 
         // Create the ECDsa key from JWK parameters
         byte[] xBytes = Base64UrlDecode( x );
