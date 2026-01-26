@@ -341,16 +341,6 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     }
 
     /// <summary>
-    /// Base64 URL encodes the given bytes.
-    /// </summary>
-    private static string Base64UrlEncode( byte[] bytes ) {
-        return Convert.ToBase64String( bytes )
-            .TrimEnd( '=' )
-            .Replace( '+', '-' )
-            .Replace( '/', '_' );
-    }
-
-    /// <summary>
     /// Builds the OAuth authorization URL.
     /// Note: ATProto requires PAR, so this is a simplified placeholder.
     /// </summary>
@@ -472,6 +462,13 @@ public class ATProtoOAuthService : IATProtoOAuthService {
                 responseContent
             );
             throw new InvalidOperationException( "Token response had invalid format or missing required properties.", ex );
+        } catch (KeyNotFoundException ex) {
+            _logger.LogError(
+                ex,
+                "Token response missing required property. Content: {ResponseContent}",
+                responseContent
+            );
+            throw new InvalidOperationException( "Token response missing required property.", ex );
         }
 
         // Step 6: Validate the sub (DID) - fail if missing or doesn't match
@@ -546,6 +543,12 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         JsonElement jwk = jwkDoc.RootElement;
 
         // Validate required JWK parameters
+        if (!jwk.TryGetProperty( "kty", out JsonElement ktyProp ) || ktyProp.GetString( ) != "EC") {
+            throw new ArgumentException( "DPoP key JWK must have 'kty' set to 'EC'.", nameof( dpoPKeyJwk ) );
+        }
+        if (!jwk.TryGetProperty( "crv", out JsonElement crvProp ) || crvProp.GetString( ) != "P-256") {
+            throw new ArgumentException( "DPoP key JWK must have 'crv' set to 'P-256'.", nameof( dpoPKeyJwk ) );
+        }
         if (!jwk.TryGetProperty( "x", out JsonElement xProp ) || string.IsNullOrWhiteSpace( xProp.GetString( ) )) {
             throw new ArgumentException( "DPoP key JWK does not contain required parameter 'x'.", nameof( dpoPKeyJwk ) );
         }
@@ -623,6 +626,16 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         string padded = base64Url.PadRight( base64Url.Length + ((4 - (base64Url.Length % 4)) % 4), '=' );
         string base64 = padded.Replace( '-', '+' ).Replace( '_', '/' );
         return Convert.FromBase64String( base64 );
+    }
+
+    /// <summary>
+    /// Base64 URL encodes the given bytes.
+    /// </summary>
+    private static string Base64UrlEncode( byte[] bytes ) {
+        return Convert.ToBase64String( bytes )
+            .TrimEnd( '=' )
+            .Replace( '+', '-' )
+            .Replace( '/', '_' );
     }
 
     #endregion
