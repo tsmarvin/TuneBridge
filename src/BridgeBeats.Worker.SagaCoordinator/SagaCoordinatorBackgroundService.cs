@@ -536,8 +536,9 @@ public sealed class SagaCoordinatorBackgroundService : BackgroundService {
 
             try {
                 // Create a new saga for this secondary lookup
-                // Use lookupKey as the lookupValue to maintain consistency with saga identification
-                _ = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, lookupKey );
+                // Note: lookupKey (with provider suffix) is used for saga identification/deduplication
+                // but externalId (bare ISRC/UPC) is the actual lookup value used in requests
+                _ = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, externalId );
                 await _sagaManager.InitializeProviderStatesAsync( sagaId, [provider] );
 
                 // Create and queue the lookup request
