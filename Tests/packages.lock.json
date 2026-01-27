@@ -1655,6 +1655,13 @@
           "BridgeBeats.ServiceDefaults": "[1.0.0, )"
         }
       },
+      "bridgebeats.worker.common": {
+        "type": "Project",
+        "dependencies": {
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "BridgeBeats.ServiceDefaults": "[1.0.0, )"
+        }
+      },
       "bridgebeats.worker.sagacoordinator": {
         "type": "Project",
         "dependencies": {
@@ -1669,7 +1676,8 @@
           "BridgeBeats.Infrastructure": "[1.0.0, )",
           "BridgeBeats.Providers": "[1.0.0, )",
           "BridgeBeats.ServiceDefaults": "[1.0.0, )",
-          "BridgeBeats.Services": "[1.0.0, )"
+          "BridgeBeats.Services": "[1.0.0, )",
+          "BridgeBeats.Worker.Common": "[1.0.0, )"
         }
       }
     }

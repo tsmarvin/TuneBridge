@@ -1,65 +1,105 @@
 using BridgeBeats.ServiceDefaults;
-using BridgeBeats.Worker.Discord;
 using BridgeBeats.Worker.Discord.Services;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using Serilog;
 
-WebApplicationBuilder builder = WebApplication.CreateBuilder( args );
+namespace BridgeBeats.Worker.Discord;
 
-// Configure file logging
-_ = builder.ConfigureFileLogging( "Discord" );
+/// <summary>
+/// Entry point for the Discord worker service.
+/// </summary>
+public static class Program {
 
-// Add Aspire service defaults (health checks, telemetry, resilience)
-_ = builder.AddServiceDefaults( );
+    /// <summary>
+    /// The main entry point for the Discord worker application.
+    /// </summary>
+    /// <param name="args">Command line arguments.</param>
+    public static void Main( string[] args ) {
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Read Discord configuration
-string? discordToken = builder.Configuration["BridgeBeats:DiscordToken"];
-int nodeNumber = builder.Configuration.GetValue( "BridgeBeats:NodeNumber", 0 );
-string baseUrl = builder.Configuration["BridgeBeats:BaseUrl"] ?? string.Empty;
+        ConfigureServices( builder );
 
-// Validate Discord token at startup
-if (string.IsNullOrWhiteSpace( discordToken )) {
-    throw new InvalidOperationException(
-        "Discord token is required. Set BridgeBeats:DiscordToken."
-    );
-}
+        WebApplication app = builder.Build();
 
-// Register Discord node configuration
-_ = builder.Services.AddSingleton( new DiscordNodeConfig( nodeNumber ) );
+        ConfigureEndpoints( app );
 
-// Configure HTTP client for BridgeBeats Web API
-// Uses Aspire service discovery to resolve "bridgebeats" service
-_ = builder.Services.AddHttpClient<BridgeBeatsApiClient>( client => {
-    // The base address will be set via Aspire service discovery
-    client.BaseAddress = new Uri( "http://bridgebeats" );
-    client.DefaultRequestHeaders.Add( "User-Agent", "BridgeBeats-Discord-Worker/1.0" );
-} ).AddStandardResilienceHandler( );
+        try {
+            app.Run( );
+        } finally {
+            Log.CloseAndFlush( );
+        }
+    }
 
-// Register BridgeBeatsApiClient with base URL for card generation
-_ = builder.Services.AddSingleton( sp => {
-    IHttpClientFactory factory = sp.GetRequiredService<IHttpClientFactory>( );
-    HttpClient httpClient = factory.CreateClient( nameof( BridgeBeatsApiClient ) );
-    ILogger<BridgeBeatsApiClient> logger = sp.GetRequiredService<ILogger<BridgeBeatsApiClient>>( );
-    return new BridgeBeatsApiClient( httpClient, logger, baseUrl );
-} );
+    /// <summary>
+    /// Configures the services for the Discord worker application.
+    /// </summary>
+    /// <param name="builder">The web application builder.</param>
+    private static void ConfigureServices( WebApplicationBuilder builder ) {
+        // Configure file logging
+        _ = builder.ConfigureFileLogging( "Discord" );
 
-// Configure Discord gateway
-_ = builder.Services.AddDiscordShardedGateway( options => {
-    options.Token = discordToken;
-    options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
-} );
+        // Add Aspire service defaults (health checks, telemetry, resilience)
+        _ = builder.AddServiceDefaults( );
 
-// Register gateway handlers from this assembly
-_ = builder.Services.AddShardedGatewayHandlers( typeof( MessageCreateGatewayHandler ).Assembly );
+        // Read and validate configuration
+        (string discordToken, int nodeNumber, string baseUrl) = ValidateConfiguration( builder );
 
-WebApplication app = builder.Build( );
+        // Register Discord node configuration
+        _ = builder.Services.AddSingleton( new DiscordNodeConfig( nodeNumber ) );
 
-// Map Aspire health check endpoints
-_ = app.MapDefaultEndpoints( );
+        // Configure HTTP client for BridgeBeats Web API
+        // Uses Aspire service discovery to resolve "bridgebeats" service
+        _ = builder.Services.AddHttpClient<BridgeBeatsApiClient>( client => {
+            // The base address will be set via Aspire service discovery
+            client.BaseAddress = new Uri( "http://bridgebeats" );
+            client.DefaultRequestHeaders.Add( "User-Agent", "BridgeBeats-Discord-Worker/1.0" );
+        } ).AddStandardResilienceHandler( );
 
-try {
-    app.Run( );
-} finally {
-    Log.CloseAndFlush( );
+        // Register BridgeBeatsApiClient with base URL for card generation
+        _ = builder.Services.AddSingleton( sp => {
+            IHttpClientFactory factory = sp.GetRequiredService<IHttpClientFactory>();
+            HttpClient httpClient = factory.CreateClient(nameof(BridgeBeatsApiClient));
+            ILogger<BridgeBeatsApiClient> logger = sp.GetRequiredService<ILogger<BridgeBeatsApiClient>>();
+            return new BridgeBeatsApiClient( httpClient, logger, baseUrl );
+        } );
+
+        // Configure Discord gateway
+        _ = builder.Services.AddDiscordShardedGateway( options => {
+            options.Token = discordToken;
+            options.Intents = GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
+        } );
+
+        // Register gateway handlers from this assembly
+        _ = builder.Services.AddShardedGatewayHandlers( typeof( MessageCreateGatewayHandler ).Assembly );
+    }
+
+    /// <summary>
+    /// Validates the required configuration for the Discord worker.
+    /// </summary>
+    /// <param name="builder">The web application builder.</param>
+    /// <returns>A tuple containing the validated Discord configuration.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
+    private static (string DiscordToken, int NodeNumber, string BaseUrl) ValidateConfiguration(
+        WebApplicationBuilder builder
+    ) {
+        string? discordToken = builder.Configuration["BridgeBeats:DiscordToken"];
+        int nodeNumber = builder.Configuration.GetValue("BridgeBeats:NodeNumber", 0);
+        string baseUrl = builder.Configuration["BridgeBeats:BaseUrl"] ?? string.Empty;
+
+        return string.IsNullOrWhiteSpace( discordToken )
+            ? throw new InvalidOperationException(
+                "Discord token is required. Set BridgeBeats:DiscordToken."
+            )
+            : ((string DiscordToken, int NodeNumber, string BaseUrl))(discordToken, nodeNumber, baseUrl);
+    }
+
+    /// <summary>
+    /// Configures the endpoints for the Discord worker application.
+    /// </summary>
+    /// <param name="app">The web application.</param>
+    private static void ConfigureEndpoints( WebApplication app ) {
+        // Map Aspire health check endpoints
+        _ = app.MapDefaultEndpoints( );
+    }
 }

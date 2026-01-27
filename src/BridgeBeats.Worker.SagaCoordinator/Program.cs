@@ -6,108 +6,161 @@ using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.ServiceDefaults;
 using BridgeBeats.Services.Queue;
-using BridgeBeats.Worker.SagaCoordinator;
 using Serilog;
 using StackExchange.Redis;
 
-WebApplicationBuilder builder = WebApplication.CreateBuilder( args );
+namespace BridgeBeats.Worker.SagaCoordinator;
 
-// Configure file logging
-_ = builder.ConfigureFileLogging( "SagaCoordinator" );
+/// <summary>
+/// Entry point for the SagaCoordinator worker service.
+/// </summary>
+public static class Program {
 
-// Add Aspire service defaults (health checks, telemetry, resilience)
-_ = builder.AddServiceDefaults( );
+    /// <summary>
+    /// The main entry point for the SagaCoordinator worker application.
+    /// </summary>
+    /// <param name="args">Command line arguments.</param>
+    public static void Main( string[] args ) {
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Add Redis client from Aspire
-builder.AddRedisClient( "redis" );
+        ConfigureServices( builder );
 
-// Read ATProto credentials from configuration
-string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
-string? atProtoPassword = builder.Configuration["BridgeBeats:ATProtoPassword"];
-string? atProtoUserDID = builder.Configuration["BridgeBeats:ATProtoUserDID"];
-int cacheDays = builder.Configuration.GetValue( "BridgeBeats:CacheDays", 30 );
+        WebApplication app = builder.Build();
 
-// Validate ATProto credentials
-if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
-    string.IsNullOrWhiteSpace( atProtoPassword ) ||
-    string.IsNullOrWhiteSpace( atProtoUserDID )) {
-    throw new InvalidOperationException(
-        "ATProto credentials are required. Set BridgeBeats:ATProtoIdentifier, BridgeBeats:ATProtoPassword, and BridgeBeats:ATProtoUserDID."
-    );
-}
+        ConfigureEndpoints( app );
 
-// Queue settings use defaults from the record definition
+        try {
+            app.Run( );
+        } finally {
+            Log.CloseAndFlush( );
+        }
+    }
 
-// Determine which providers are enabled based on configuration
-HashSet<SupportedProviders> enabledProviders = [];
-if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientId"] ) &&
-    !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientSecret"] )) {
-    _ = enabledProviders.Add( SupportedProviders.Spotify );
-}
-if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleTeamId"] ) &&
-    !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyId"] ) &&
-    !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyPath"] )) {
-    _ = enabledProviders.Add( SupportedProviders.AppleMusic );
-}
-if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:TidalClientId"] ) &&
-    !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:TidalClientSecret"] )) {
-    _ = enabledProviders.Add( SupportedProviders.Tidal );
-}
+    /// <summary>
+    /// Configures the services for the SagaCoordinator worker application.
+    /// </summary>
+    /// <param name="builder">The web application builder.</param>
+    private static void ConfigureServices( WebApplicationBuilder builder ) {
+        // Configure file logging
+        _ = builder.ConfigureFileLogging( "SagaCoordinator" );
 
-// Register enabled providers as a singleton
-_ = builder.Services.AddSingleton( enabledProviders );
+        // Add Aspire service defaults (health checks, telemetry, resilience)
+        _ = builder.AddServiceDefaults( );
 
-// Register queue infrastructure services
-_ = builder.Services.AddQueueInfrastructure( );
+        // Add Redis client from Aspire
+        builder.AddRedisClient( "redis" );
 
-// Register all provider queues for secondary lookups
-_ = builder.Services.AddAllProviderQueues<QueuedLookupRequest>( );
+        // Read and validate credentials
+        (string atProtoIdentifier, string atProtoPassword, string atProtoUserDID, int cacheDays) =
+            ValidateConfiguration( builder );
 
-// Register ATProto session manager and storage service (centralized authentication)
-_ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
-_ = builder.Services.AddATProtoStorage( );
+        // Determine which providers are enabled based on configuration
+        HashSet<SupportedProviders> enabledProviders = DetectEnabledProviders(builder);
 
-// Register the cache repository
-_ = builder.Services.AddSingleton<IMediaLinkCacheRepository>( sp =>
-    new RedisMediaLinkCache(
-        sp.GetRequiredService<IConnectionMultiplexer>( ),
-        sp.GetRequiredService<IATProtoStorageService>( ),
-        sp.GetRequiredService<ILogger<RedisMediaLinkCache>>( ),
-        cacheDays,
-        atProtoUserDID
-    )
-);
+        // Register enabled providers as a singleton
+        _ = builder.Services.AddSingleton( enabledProviders );
 
-// Register the result combiner
-_ = builder.Services.AddSingleton<SagaResultCombiner>( );
+        // Register queue infrastructure services
+        _ = builder.Services.AddQueueInfrastructure( );
 
-// Register the coordinator background service
-_ = builder.Services.AddHostedService( sp => new SagaCoordinatorBackgroundService(
-    sp.GetRequiredService<IConnectionMultiplexer>( ),
-    sp.GetRequiredService<ISagaStateManager>( ),
-    sp.GetRequiredService<IATProtoStorageService>( ),
-    sp.GetRequiredService<IMediaLinkCacheRepository>( ),
-    sp.GetRequiredService<IRequestDeduplicator>( ),
-    sp.GetRequiredService<SagaResultCombiner>( ),
-    sp.GetRequiredService<IProviderQueueResolver<QueuedLookupRequest>>( ),
-    sp.GetRequiredService<HashSet<SupportedProviders>>( ),
-    sp.GetRequiredService<ILogger<SagaCoordinatorBackgroundService>>( )
-) );
+        // Register all provider queues for secondary lookups
+        _ = builder.Services.AddAllProviderQueues<QueuedLookupRequest>( );
 
-WebApplication app = builder.Build( );
+        // Register ATProto session manager and storage service (centralized authentication)
+        _ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
+        _ = builder.Services.AddATProtoStorage( );
 
-// Map Aspire health check endpoints
-_ = app.MapDefaultEndpoints( );
+        // Register the cache repository
+        _ = builder.Services.AddSingleton<IMediaLinkCacheRepository>( sp =>
+            new RedisMediaLinkCache(
+                sp.GetRequiredService<IConnectionMultiplexer>( ),
+                sp.GetRequiredService<IATProtoStorageService>( ),
+                sp.GetRequiredService<ILogger<RedisMediaLinkCache>>( ),
+                cacheDays,
+                atProtoUserDID
+            )
+        );
 
-// Simple status endpoint
-app.MapGet( "/status", ( ) => new {
-    Service = "SagaCoordinator",
-    Status = "Running",
-    Timestamp = DateTimeOffset.UtcNow
-} );
+        // Register the result combiner
+        _ = builder.Services.AddSingleton<SagaResultCombiner>( );
 
-try {
-    app.Run( );
-} finally {
-    Log.CloseAndFlush( );
+        // Register the coordinator background service
+        _ = builder.Services.AddHostedService( sp => new SagaCoordinatorBackgroundService(
+            sp.GetRequiredService<IConnectionMultiplexer>( ),
+            sp.GetRequiredService<ISagaStateManager>( ),
+            sp.GetRequiredService<IATProtoStorageService>( ),
+            sp.GetRequiredService<IMediaLinkCacheRepository>( ),
+            sp.GetRequiredService<IRequestDeduplicator>( ),
+            sp.GetRequiredService<SagaResultCombiner>( ),
+            sp.GetRequiredService<IProviderQueueResolver<QueuedLookupRequest>>( ),
+            sp.GetRequiredService<HashSet<SupportedProviders>>( ),
+            sp.GetRequiredService<ILogger<SagaCoordinatorBackgroundService>>( )
+        ) );
+    }
+
+    /// <summary>
+    /// Validates the required configuration for the SagaCoordinator worker.
+    /// </summary>
+    /// <param name="builder">The web application builder.</param>
+    /// <returns>A tuple containing the validated ATProto credentials and cache settings.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
+    private static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID, int CacheDays)
+        ValidateConfiguration( WebApplicationBuilder builder ) {
+        string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
+        string? atProtoPassword = builder.Configuration["BridgeBeats:ATProtoPassword"];
+        string? atProtoUserDID = builder.Configuration["BridgeBeats:ATProtoUserDID"];
+        int cacheDays = builder.Configuration.GetValue("BridgeBeats:CacheDays", 30);
+
+        return string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
+            string.IsNullOrWhiteSpace( atProtoPassword ) ||
+            string.IsNullOrWhiteSpace( atProtoUserDID )
+            ? throw new InvalidOperationException(
+                "ATProto credentials are required. Set BridgeBeats:ATProtoIdentifier, " +
+                "BridgeBeats:ATProtoPassword, and BridgeBeats:ATProtoUserDID."
+            )
+            : ((string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID, int CacheDays))(atProtoIdentifier, atProtoPassword, atProtoUserDID, cacheDays);
+    }
+
+    /// <summary>
+    /// Detects which music providers are enabled based on configuration.
+    /// </summary>
+    /// <param name="builder">The web application builder.</param>
+    /// <returns>A set of enabled providers.</returns>
+    private static HashSet<SupportedProviders> DetectEnabledProviders( WebApplicationBuilder builder ) {
+        HashSet<SupportedProviders> enabledProviders = [];
+
+        if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientId"] ) &&
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientSecret"] )) {
+            _ = enabledProviders.Add( SupportedProviders.Spotify );
+        }
+
+        if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleTeamId"] ) &&
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyId"] ) &&
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyPath"] )) {
+            _ = enabledProviders.Add( SupportedProviders.AppleMusic );
+        }
+
+        if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:TidalClientId"] ) &&
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:TidalClientSecret"] )) {
+            _ = enabledProviders.Add( SupportedProviders.Tidal );
+        }
+
+        return enabledProviders;
+    }
+
+    /// <summary>
+    /// Configures the endpoints for the SagaCoordinator worker application.
+    /// </summary>
+    /// <param name="app">The web application.</param>
+    private static void ConfigureEndpoints( WebApplication app ) {
+        // Map Aspire health check endpoints
+        _ = app.MapDefaultEndpoints( );
+
+        // Simple status endpoint
+        _ = app.MapGet( "/status", ( ) => new {
+            Service = "SagaCoordinator",
+            Status = "Running",
+            Timestamp = DateTimeOffset.UtcNow
+        } );
+    }
 }

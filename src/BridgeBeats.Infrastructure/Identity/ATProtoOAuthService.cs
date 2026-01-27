@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -24,6 +26,11 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     private static readonly TimeSpan s_tokenExpirationMargin = TimeSpan.FromSeconds( 30 );
 
     /// <summary>
+    /// How long to cache authorization server metadata (1 hour).
+    /// </summary>
+    private static readonly TimeSpan s_metadataCacheDuration = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// OAuth scopes required for playlist operations.
     /// - atproto: Required for all ATProto OAuth
     /// - repo:link.bridgebeats.playlist: Granular permission for playlist record CRUD only
@@ -39,6 +46,22 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     /// The well-known path for client metadata.
     /// </summary>
     private const string ClientMetadataPath = "/.well-known/client-metadata.json";
+
+    /// <summary>
+    /// The well-known path for authorization server metadata.
+    /// </summary>
+    private const string AuthServerMetadataPath = "/.well-known/oauth-authorization-server";
+
+    /// <summary>
+    /// Maximum number of retry attempts for DPoP nonce errors.
+    /// </summary>
+    private const int MaxDPoPNonceRetries = 2;
+
+    /// <summary>
+    /// Cache for authorization server metadata to avoid repeated discovery requests.
+    /// Key: Authorization server URI (normalized), Value: (metadata, expiration time).
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, (AuthorizationServerMetadata Metadata, DateTime ExpiresAt)> s_metadataCache = new();
 
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly ILogger<ATProtoOAuthService> _logger;
@@ -112,17 +135,29 @@ public class ATProtoOAuthService : IATProtoOAuthService {
 
         _logger.LogDebug( "Resolved PDS {PdsUri} to authorization server {AuthServer}", pdsUri, authorizationServer );
 
-        // Step 4: Generate PKCE code verifier and challenge
+        // Step 4: Fetch authorization server metadata
+        AuthorizationServerMetadata metadata = await GetAuthorizationServerMetadataAsync(
+            authorizationServer,
+            cancellationToken
+        );
+
+        _logger.LogDebug(
+            "Fetched auth server metadata. Token endpoint: {TokenEndpoint}, PAR endpoint: {ParEndpoint}",
+            metadata.TokenEndpoint,
+            metadata.PushedAuthorizationRequestEndpoint
+        );
+
+        // Step 5: Generate PKCE code verifier and challenge
         string codeVerifier = GenerateCodeVerifier( );
         string codeChallenge = GenerateCodeChallenge( codeVerifier );
 
-        // Step 5: Generate state parameter
+        // Step 6: Generate state parameter
         string state = GenerateState( );
 
-        // Step 6: Generate DPoP key pair
+        // Step 7: Generate DPoP key pair
         string dpoPKeyJwk = GenerateDPoPKey( );
 
-        // Step 7: Store the OAuth state for later verification
+        // Step 8: Store the OAuth state for later verification
         await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
         AtProtoOAuthState oauthState = new( ) {
             State = state,
@@ -139,18 +174,33 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         _ = dbContext.AtProtoOAuthStates.Add( oauthState );
         _ = await dbContext.SaveChangesAsync( cancellationToken );
 
-        // Step 8: Build the authorization URL
-        // Note: This is a simplified version. The full ATProto OAuth requires PAR (Pushed Authorization Request)
-        // For now, we'll construct a basic authorization URL - this will need enhancement
-        // when the idunno library's OAuth support is fully available
-        Uri authorizationUrl = BuildAuthorizationUrl(
-            authorizationServer,
-            _clientId,
-            redirectUri,
-            state,
-            codeChallenge,
-            handle
-        );
+        // Step 9: Use PAR (Pushed Authorization Request) if available (required by ATProto spec)
+        Uri authorizationUrl;
+        if (metadata.PushedAuthorizationRequestEndpoint is not null) {
+            authorizationUrl = await PerformPushedAuthorizationRequestAsync(
+                metadata,
+                dpoPKeyJwk,
+                redirectUri,
+                state,
+                codeChallenge,
+                handle,
+                cancellationToken
+            );
+        } else {
+            // Fallback to direct authorization URL (may not work with all ATProto servers)
+            _logger.LogWarning(
+                "Authorization server {AuthServer} does not support PAR. Using direct authorization URL.",
+                authorizationServer
+            );
+            authorizationUrl = BuildDirectAuthorizationUrl(
+                metadata.AuthorizationEndpoint!,
+                authorizationServer,
+                redirectUri,
+                state,
+                codeChallenge,
+                handle
+            );
+        }
 
         _logger.LogInformation(
             "OAuth authorization started for handle {Handle}, state {State}",
@@ -341,31 +391,169 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     }
 
     /// <summary>
-    /// Builds the OAuth authorization URL.
-    /// Note: ATProto requires PAR, so this is a simplified placeholder.
+    /// Fetches and caches the authorization server metadata from the well-known endpoint.
     /// </summary>
-    private static Uri BuildAuthorizationUrl(
+    /// <param name="authorizationServer">The authorization server base URI.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The authorization server metadata.</returns>
+    private async Task<AuthorizationServerMetadata> GetAuthorizationServerMetadataAsync(
         Uri authorizationServer,
-        string clientId,
+        CancellationToken cancellationToken
+    ) {
+        string cacheKey = authorizationServer.ToString().TrimEnd('/').ToLowerInvariant();
+
+        // Check cache first
+        if (s_metadataCache.TryGetValue( cacheKey, out (AuthorizationServerMetadata Metadata, DateTime ExpiresAt) cached ) && cached.ExpiresAt > DateTime.UtcNow) {
+            _logger.LogDebug( "Using cached authorization server metadata for {AuthServer}", authorizationServer );
+            return cached.Metadata;
+        }
+
+        // Fetch metadata from well-known endpoint
+        Uri metadataUrl = new(authorizationServer, AuthServerMetadataPath);
+        _logger.LogDebug( "Fetching authorization server metadata from {MetadataUrl}", metadataUrl );
+
+        HttpClient httpClient = _httpClientFactory.CreateClient("ATProtoOAuth");
+        using HttpResponseMessage response = await httpClient.GetAsync(metadataUrl, cancellationToken);
+
+        if (!response.IsSuccessStatusCode) {
+            string errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Failed to fetch authorization server metadata from {MetadataUrl}. Status: {StatusCode}. Response: {Response}",
+                metadataUrl,
+                response.StatusCode,
+                errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent
+            );
+            throw new InvalidOperationException( $"Failed to fetch authorization server metadata: {response.StatusCode}" );
+        }
+
+        string responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        AuthorizationServerMetadata metadata;
+
+        try {
+            using JsonDocument doc = JsonDocument.Parse(responseContent);
+            JsonElement root = doc.RootElement;
+
+            metadata = new AuthorizationServerMetadata {
+                Issuer = root.TryGetProperty( "issuer", out JsonElement issuerElem ) ? issuerElem.GetString( ) : null,
+                AuthorizationEndpoint = root.TryGetProperty( "authorization_endpoint", out JsonElement authEndpointElem )
+                    ? new Uri( authEndpointElem.GetString( )! )
+                    : null,
+                TokenEndpoint = root.TryGetProperty( "token_endpoint", out JsonElement tokenEndpointElem )
+                    ? new Uri( tokenEndpointElem.GetString( )! )
+                    : null,
+                PushedAuthorizationRequestEndpoint = root.TryGetProperty( "pushed_authorization_request_endpoint", out JsonElement parEndpointElem )
+                    ? new Uri( parEndpointElem.GetString( )! )
+                    : null,
+                RequiresPushedAuthorizationRequests = root.TryGetProperty( "require_pushed_authorization_requests", out JsonElement requireParElem )
+                    && requireParElem.GetBoolean( ),
+                DPoPSigningAlgValuesSupported = root.TryGetProperty( "dpop_signing_alg_values_supported", out JsonElement dpopAlgsElem )
+                    ? dpopAlgsElem.EnumerateArray( ).Select( e => e.GetString( )! ).ToArray( )
+                    : []
+            };
+        } catch (JsonException ex) {
+            _logger.LogError( ex, "Failed to parse authorization server metadata from {MetadataUrl}", metadataUrl );
+            throw new InvalidOperationException( "Failed to parse authorization server metadata", ex );
+        }
+
+        // Cache the metadata
+        s_metadataCache[cacheKey] = (metadata, DateTime.UtcNow.Add( s_metadataCacheDuration ));
+
+        _logger.LogDebug(
+            "Cached authorization server metadata for {AuthServer}. PAR required: {ParRequired}",
+            authorizationServer,
+            metadata.RequiresPushedAuthorizationRequests
+        );
+
+        return metadata;
+    }
+
+    /// <summary>
+    /// Performs a Pushed Authorization Request (PAR) and returns the authorization URL.
+    /// </summary>
+    private async Task<Uri> PerformPushedAuthorizationRequestAsync(
+        AuthorizationServerMetadata metadata,
+        string dpoPKeyJwk,
+        Uri redirectUri,
+        string state,
+        string codeChallenge,
+        string loginHint,
+        CancellationToken cancellationToken
+    ) {
+        if (metadata.PushedAuthorizationRequestEndpoint is null) {
+            throw new InvalidOperationException( "Authorization server does not have a PAR endpoint" );
+        }
+
+        if (metadata.AuthorizationEndpoint is null) {
+            throw new InvalidOperationException( "Authorization server metadata missing authorization_endpoint" );
+        }
+
+        string scope = string.Join(" ", s_requiredScopes);
+
+        // Build PAR request parameters
+        Dictionary<string, string> parFormData = new()
+        {
+            ["client_id"] = _clientId,
+            ["response_type"] = "code",
+            ["redirect_uri"] = redirectUri.ToString(),
+            ["state"] = state,
+            ["scope"] = scope,
+            ["code_challenge"] = codeChallenge,
+            ["code_challenge_method"] = "S256",
+            ["login_hint"] = loginHint
+        };
+
+        // Execute PAR request with DPoP
+        (string responseContent, _) = await ExecuteTokenRequestWithDPoPRetryAsync(
+            metadata.PushedAuthorizationRequestEndpoint,
+            parFormData,
+            dpoPKeyJwk,
+            accessToken: null,
+            cancellationToken
+        );
+
+        // Parse PAR response
+        string requestUri;
+        try {
+            using JsonDocument doc = JsonDocument.Parse(responseContent);
+            JsonElement root = doc.RootElement;
+
+            requestUri = root.GetProperty( "request_uri" ).GetString( )
+                ?? throw new InvalidOperationException( "PAR response missing request_uri" );
+        } catch (JsonException ex) {
+            _logger.LogError( ex, "Failed to parse PAR response" );
+            throw new InvalidOperationException( "Failed to parse PAR response", ex );
+        }
+
+        _logger.LogDebug( "PAR successful. Request URI: {RequestUri}", requestUri );
+
+        // Build authorization URL with request_uri
+        UriBuilder builder = new(metadata.AuthorizationEndpoint);
+        System.Collections.Specialized.NameValueCollection query = System.Web.HttpUtility.ParseQueryString(string.Empty);
+        query["client_id"] = _clientId;
+        query["request_uri"] = requestUri;
+        builder.Query = query.ToString( );
+
+        return builder.Uri;
+    }
+
+    /// <summary>
+    /// Builds a direct OAuth authorization URL (fallback when PAR is not available).
+    /// Includes the issuer parameter to prevent mix-up attacks per ATProto spec.
+    /// </summary>
+    private Uri BuildDirectAuthorizationUrl(
+        Uri authorizationEndpoint,
+        Uri authorizationServer,
         Uri redirectUri,
         string state,
         string codeChallenge,
         string loginHint
     ) {
-        // Note: This is a placeholder. Full ATProto OAuth requires:
-        // 1. PAR request to pushed_authorization_request_endpoint
-        // 2. Get request_uri from PAR response
-        // 3. Redirect to authorization_endpoint with request_uri
-        // For now, we build a direct authorization URL which may work with some servers
-
-        UriBuilder builder = new( authorizationServer ) {
-            Path = "/oauth/authorize"
-        };
+        UriBuilder builder = new(authorizationEndpoint);
 
         string scope = string.Join( " ", s_requiredScopes );
 
         System.Collections.Specialized.NameValueCollection query = System.Web.HttpUtility.ParseQueryString( string.Empty );
-        query["client_id"] = clientId;
+        query["client_id"] = _clientId;
         query["response_type"] = "code";
         query["redirect_uri"] = redirectUri.ToString( );
         query["state"] = state;
@@ -373,10 +561,98 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         query["code_challenge"] = codeChallenge;
         query["code_challenge_method"] = "S256";
         query["login_hint"] = loginHint;
+        // Include issuer to prevent OAuth mix-up attacks (per ATProto spec recommendation)
+        query["iss"] = authorizationServer.ToString( ).TrimEnd( '/' );
 
         builder.Query = query.ToString( );
 
         return builder.Uri;
+    }
+
+    /// <summary>
+    /// Executes a token endpoint request with DPoP and automatic nonce retry logic.
+    /// </summary>
+    /// <param name="endpoint">The token endpoint URI.</param>
+    /// <param name="formData">The form data to send.</param>
+    /// <param name="dpoPKeyJwk">The DPoP private key in JWK format.</param>
+    /// <param name="accessToken">Optional access token for DPoP binding.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The response content and the last DPoP nonce received (if any).</returns>
+    private async Task<(string ResponseContent, string? DPoPNonce)> ExecuteTokenRequestWithDPoPRetryAsync(
+        Uri endpoint,
+        Dictionary<string, string> formData,
+        string dpoPKeyJwk,
+        string? accessToken,
+        CancellationToken cancellationToken
+    ) {
+        HttpClient httpClient = _httpClientFactory.CreateClient("ATProtoOAuth");
+        string? currentNonce = null;
+
+        for (int attempt = 0; attempt <= MaxDPoPNonceRetries; attempt++) {
+            // Create DPoP proof with current nonce (null on first attempt)
+            string dpopProof = CreateDPoPProof(
+                dpoPKeyJwk,
+                "POST",
+                endpoint.ToString(),
+                accessToken,
+                currentNonce
+            );
+
+            using HttpRequestMessage request = new(HttpMethod.Post, endpoint)
+            {
+                Content = new FormUrlEncodedContent(formData)
+            };
+            request.Headers.Add( "DPoP", dpopProof );
+
+            using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+
+            // Check for DPoP nonce requirement
+            if (response.StatusCode == HttpStatusCode.BadRequest) {
+                string errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                // Check if this is a use_dpop_nonce error
+                if (errorContent.Contains( "use_dpop_nonce", StringComparison.OrdinalIgnoreCase ) &&
+                    response.Headers.TryGetValues( "DPoP-Nonce", out IEnumerable<string>? nonceValues )) {
+                    currentNonce = nonceValues.FirstOrDefault( );
+                    if (!string.IsNullOrWhiteSpace( currentNonce ) && attempt < MaxDPoPNonceRetries) {
+                        _logger.LogDebug(
+                            "Received use_dpop_nonce error, retrying with nonce. Attempt {Attempt}/{MaxRetries}",
+                            attempt + 1,
+                            MaxDPoPNonceRetries
+                        );
+                        continue;
+                    }
+                }
+
+                // Not a nonce error or max retries exceeded
+                _logger.LogError(
+                    "Token request failed with status {StatusCode}. Response: {Response}",
+                    response.StatusCode,
+                    errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent
+                );
+                throw new InvalidOperationException( $"Token request failed: {response.StatusCode}. Response: {errorContent}" );
+            }
+
+            if (!response.IsSuccessStatusCode) {
+                string errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError(
+                    "Token request failed with status {StatusCode}. Response: {Response}",
+                    response.StatusCode,
+                    errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent
+                );
+                throw new InvalidOperationException( $"Token request failed: {response.StatusCode}" );
+            }
+
+            // Success - extract nonce from response headers if present for future use
+            if (response.Headers.TryGetValues( "DPoP-Nonce", out IEnumerable<string>? respNonceValues )) {
+                currentNonce = respNonceValues.FirstOrDefault( );
+            }
+
+            string responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            return (responseContent, currentNonce);
+        }
+
+        throw new InvalidOperationException( "Token request failed after maximum DPoP nonce retries" );
     }
 
     /// <summary>
@@ -395,21 +671,18 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             oauthState.State
         );
 
-        // Step 1: Build the token endpoint URL
-        // TODO: Implement authorization server metadata discovery per ATProto OAuth spec
-        // instead of hardcoding "/oauth/token". The token endpoint should be retrieved
-        // from the authorization server's .well-known/oauth-authorization-server metadata.
-        Uri tokenEndpoint = new( new Uri( oauthState.AuthorizationServerUri! ), "/oauth/token" );
-
-        // Step 2: Create DPoP proof JWT for the token request
-        string dpopProof = CreateDPoPProof(
-            oauthState.DPoPKeyJwk!,
-            "POST",
-            tokenEndpoint.ToString( ),
-            null
+        // Step 1: Fetch authorization server metadata to get the token endpoint
+        Uri authServer = new(oauthState.AuthorizationServerUri!);
+        AuthorizationServerMetadata metadata = await GetAuthorizationServerMetadataAsync(
+            authServer,
+            cancellationToken
         );
 
-        // Step 3: Build the token request
+        if (metadata.TokenEndpoint is null) {
+            throw new InvalidOperationException( "Authorization server metadata missing token_endpoint" );
+        }
+
+        // Step 2: Build the token request parameters
         Dictionary<string, string> formData = new( ) {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
@@ -418,28 +691,14 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             ["code_verifier"] = oauthState.CodeVerifier!
         };
 
-        using HttpRequestMessage request = new( HttpMethod.Post, tokenEndpoint ) {
-            Content = new FormUrlEncodedContent( formData )
-        };
-        request.Headers.Add( "DPoP", dpopProof );
-
-        // Step 4: Send the token request
-        HttpClient httpClient = _httpClientFactory.CreateClient( "ATProtoOAuth" );
-        using HttpResponseMessage response = await httpClient.SendAsync( request, cancellationToken );
-
-        if (!response.IsSuccessStatusCode) {
-            string errorContent = await response.Content.ReadAsStringAsync( cancellationToken );
-            _logger.LogError(
-                "Token exchange failed with status {StatusCode}. Response: {Response}",
-                response.StatusCode,
-                errorContent
-            );
-            string errorSummary = errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent;
-            throw new InvalidOperationException( $"Token exchange failed: {response.StatusCode}. Response: {errorSummary}" );
-        }
-
-        // Step 5: Parse the token response
-        string responseContent = await response.Content.ReadAsStringAsync( cancellationToken );
+        // Step 3: Execute token request with DPoP nonce retry logic
+        (string responseContent, _) = await ExecuteTokenRequestWithDPoPRetryAsync(
+            metadata.TokenEndpoint,
+            formData,
+            oauthState.DPoPKeyJwk!,
+            accessToken: null,
+            cancellationToken
+        );
 
         string accessToken;
         string refreshToken;
@@ -516,24 +775,86 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     /// <summary>
     /// Refreshes tokens from the authorization server.
     /// </summary>
-    private Task<ATProtoOAuthResult?> RefreshTokensFromServerAsync(
+    private async Task<ATProtoOAuthResult?> RefreshTokensFromServerAsync(
         Uri authorizationServer,
         string refreshToken,
         string dpoPKeyJwk,
         string did,
         CancellationToken cancellationToken
     ) {
-        // TODO: Implement actual token refresh with DPoP
-        // This requires:
-        // 1. Constructing a DPoP proof JWT signed with the stored key
-        // 2. Calling the token endpoint with grant_type=refresh_token
-        // 3. Parsing the response for new access_token, refresh_token, expires_in
-
-        throw new NotImplementedException(
-            "ATProto OAuth token refresh requires full DPoP implementation. " +
-            "This will be completed when the idunno.AtProto library's OAuth support is fully available " +
-            "or when direct HTTP token endpoint integration is implemented."
+        // Step 1: Fetch authorization server metadata to get the token endpoint
+        AuthorizationServerMetadata metadata = await GetAuthorizationServerMetadataAsync(
+            authorizationServer,
+            cancellationToken
         );
+
+        if (metadata.TokenEndpoint is null) {
+            _logger.LogWarning( "Authorization server metadata missing token_endpoint for DID {Did}", did );
+            return null;
+        }
+
+        // Step 2: Build the refresh token request parameters
+        Dictionary<string, string> formData = new()
+        {
+            ["grant_type"] = "refresh_token",
+            ["refresh_token"] = refreshToken,
+            ["client_id"] = _clientId
+        };
+
+        // Step 3: Execute token request with DPoP nonce retry logic
+        (string responseContent, _) = await ExecuteTokenRequestWithDPoPRetryAsync(
+            metadata.TokenEndpoint,
+            formData,
+            dpoPKeyJwk,
+            accessToken: null,
+            cancellationToken
+        );
+
+        // Step 4: Parse the token response
+        string accessTokenResult;
+        string refreshTokenResult;
+        int expiresIn;
+        string? scope;
+        string? sub;
+
+        try {
+            using JsonDocument doc = JsonDocument.Parse(responseContent);
+            JsonElement root = doc.RootElement;
+
+            accessTokenResult = root.GetProperty( "access_token" ).GetString( )
+                ?? throw new InvalidOperationException( "access_token missing from refresh response" );
+            refreshTokenResult = root.GetProperty( "refresh_token" ).GetString( )
+                ?? throw new InvalidOperationException( "refresh_token missing from refresh response" );
+            expiresIn = root.GetProperty( "expires_in" ).GetInt32( );
+            scope = root.TryGetProperty( "scope", out JsonElement scopeElem ) ? scopeElem.GetString( ) : null;
+            sub = root.TryGetProperty( "sub", out JsonElement subElem ) ? subElem.GetString( ) : null;
+        } catch (Exception ex) when (ex is JsonException or KeyNotFoundException) {
+            _logger.LogError( ex, "Failed to parse token refresh response for DID {Did}", did );
+            return null;
+        }
+
+        // Step 5: Validate the sub (DID) matches if present
+        if (!string.IsNullOrWhiteSpace( sub ) && !string.Equals( sub, did, StringComparison.OrdinalIgnoreCase )) {
+            _logger.LogWarning(
+                "DID mismatch in token refresh response. Expected: {Expected}, Got: {Actual}",
+                did,
+                sub
+            );
+            return null;
+        }
+
+        _logger.LogInformation( "Successfully refreshed ATProto tokens for DID {Did}", did );
+
+        // Step 6: Return the refreshed OAuth result
+        return new ATProtoOAuthResult {
+            Did = did,
+            Handle = string.Empty, // Handle not returned in refresh response
+            AccessToken = accessTokenResult,
+            RefreshToken = refreshTokenResult,
+            DPoPKeyJwk = dpoPKeyJwk,
+            TokenExpiration = DateTime.UtcNow.AddSeconds( expiresIn ),
+            Scope = scope ?? string.Join( " ", s_requiredScopes )
+        };
     }
 
     /// <summary>
@@ -543,8 +864,9 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     /// <param name="httpMethod">The HTTP method (e.g., "POST", "GET").</param>
     /// <param name="url">The full URL of the request.</param>
     /// <param name="accessToken">Optional access token to bind in the proof.</param>
+    /// <param name="nonce">Optional server-provided nonce for DPoP nonce binding.</param>
     /// <returns>The DPoP proof JWT.</returns>
-    private static string CreateDPoPProof( string dpoPKeyJwk, string httpMethod, string url, string? accessToken ) {
+    private static string CreateDPoPProof( string dpoPKeyJwk, string httpMethod, string url, string? accessToken, string? nonce = null ) {
         // Parse the JWK to get the EC key parameters
         using JsonDocument jwkDoc = JsonDocument.Parse( dpoPKeyJwk );
         JsonElement jwk = jwkDoc.RootElement;
@@ -609,6 +931,11 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             descriptor.Claims["ath"] = Base64UrlEncode( hash );
         }
 
+        // Add nonce if provided (required for DPoP nonce binding per RFC 9449)
+        if (!string.IsNullOrWhiteSpace( nonce )) {
+            descriptor.Claims["nonce"] = nonce;
+        }
+
         // Set the token type and algorithm in the header
         descriptor.AdditionalHeaderClaims = new Dictionary<string, object> {
             ["typ"] = "dpop+jwt",
@@ -646,4 +973,39 @@ public class ATProtoOAuthService : IATProtoOAuthService {
     }
 
     #endregion
+}
+
+/// <summary>
+/// Represents the metadata from an OAuth 2.0 authorization server's well-known endpoint.
+/// </summary>
+internal sealed record AuthorizationServerMetadata {
+    /// <summary>
+    /// The authorization server's issuer identifier.
+    /// </summary>
+    public string? Issuer { get; init; }
+
+    /// <summary>
+    /// The authorization endpoint URL.
+    /// </summary>
+    public Uri? AuthorizationEndpoint { get; init; }
+
+    /// <summary>
+    /// The token endpoint URL.
+    /// </summary>
+    public Uri? TokenEndpoint { get; init; }
+
+    /// <summary>
+    /// The pushed authorization request endpoint URL (PAR).
+    /// </summary>
+    public Uri? PushedAuthorizationRequestEndpoint { get; init; }
+
+    /// <summary>
+    /// Whether the server requires pushed authorization requests.
+    /// </summary>
+    public bool RequiresPushedAuthorizationRequests { get; init; }
+
+    /// <summary>
+    /// Supported DPoP signing algorithms.
+    /// </summary>
+    public string[] DPoPSigningAlgValuesSupported { get; init; } = [];
 }

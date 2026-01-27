@@ -2,110 +2,167 @@ using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Infrastructure.Cache;
 using BridgeBeats.Infrastructure.Storage;
 using BridgeBeats.ServiceDefaults;
-using BridgeBeats.Worker.CacheBootstrap;
 using Serilog;
 using StackExchange.Redis;
 
-WebApplicationBuilder builder = WebApplication.CreateBuilder( args );
+namespace BridgeBeats.Worker.CacheBootstrap;
 
-// Configure file logging
-_ = builder.ConfigureFileLogging( "CacheBootstrap" );
+/// <summary>
+/// Entry point for the CacheBootstrap worker service.
+/// </summary>
+public static class Program {
 
-// Add Aspire service defaults (health checks, telemetry, resilience)
-_ = builder.AddServiceDefaults( );
+    /// <summary>
+    /// The main entry point for the CacheBootstrap worker application.
+    /// </summary>
+    /// <param name="args">Command line arguments.</param>
+    public static async Task Main( string[] args ) {
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Add Redis client from Aspire
-builder.AddRedisClient( "redis" );
+        ConfigureServices( builder );
 
-// Read ATProto credentials from configuration
-string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
-string? atProtoPassword = builder.Configuration["BridgeBeats:ATProtoPassword"];
-string? atProtoUserDID = builder.Configuration["BridgeBeats:ATProtoUserDID"];
-string? atProtoPdsUri = builder.Configuration["BridgeBeats:ATProtoPdsUri"] ?? "https://pds.bridgebeats.link";
-int cacheDays = builder.Configuration.GetValue( "BridgeBeats:CacheDays", 30 );
-int bootstrapIntervalHours = builder.Configuration.GetValue( "BridgeBeats:BootstrapIntervalHours", 6 );
+        WebApplication app = builder.Build();
 
-// Validate ATProto credentials
-if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
-    string.IsNullOrWhiteSpace( atProtoPassword ) ||
-    string.IsNullOrWhiteSpace( atProtoUserDID )) {
-    throw new InvalidOperationException(
-        "ATProto credentials are required. Set BridgeBeats:ATProtoIdentifier, BridgeBeats:ATProtoPassword, and BridgeBeats:ATProtoUserDID."
-    );
-}
+        await ValidateRedisConnectionAsync( app );
 
-// Register ATProto session manager and storage service (centralized authentication)
-_ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
-_ = builder.Services.AddATProtoStorage( );
+        ConfigureEndpoints( app );
 
-// Register the cache repository
-_ = builder.Services.AddSingleton<IMediaLinkCacheRepository>( sp =>
-    new RedisMediaLinkCache(
-        sp.GetRequiredService<IConnectionMultiplexer>( ),
-        sp.GetRequiredService<IATProtoStorageService>( ),
-        sp.GetRequiredService<ILogger<RedisMediaLinkCache>>( ),
-        cacheDays,
-        atProtoUserDID
-    )
-);
+        try {
+            app.Run( );
+        } finally {
+            Log.CloseAndFlush( );
+        }
+    }
 
-// Register the cache bootstrap background service with configuration
-_ = builder.Services.AddSingleton( new CacheBootstrapSettings(
-    new Uri( atProtoPdsUri ),
-    atProtoUserDID,
-    TimeSpan.FromHours( bootstrapIntervalHours )
-) );
-_ = builder.Services.AddHostedService<CacheBootstrapBackgroundService>( );
+    /// <summary>
+    /// Configures the services for the CacheBootstrap worker application.
+    /// </summary>
+    /// <param name="builder">The web application builder.</param>
+    private static void ConfigureServices( WebApplicationBuilder builder ) {
+        // Configure file logging
+        _ = builder.ConfigureFileLogging( "CacheBootstrap" );
 
-WebApplication app = builder.Build( );
+        // Add Aspire service defaults (health checks, telemetry, resilience)
+        _ = builder.AddServiceDefaults( );
 
-// Validate Redis connection on startup
-IConnectionMultiplexer redis = app.Services.GetRequiredService<IConnectionMultiplexer>();
-ILogger<Program> logger = app.Services.GetRequiredService<ILogger<Program>>();
+        // Add Redis client from Aspire
+        builder.AddRedisClient( "redis" );
 
-// Log Redis connection details
-logger.LogInformation(
-    "Redis connection: {Configuration}, IsConnected: {IsConnected}, Database: {Database}",
-    redis.Configuration,
-    redis.IsConnected,
-    redis.GetDatabase( ).Database
-);
+        // Read and validate credentials
+        (string atProtoIdentifier, string atProtoPassword, string atProtoUserDID,
+            string atProtoPdsUri, int cacheDays, int bootstrapIntervalHours) =
+                ValidateConfiguration( builder );
 
-// Verify we can actually write to Redis
-IDatabase db = redis.GetDatabase();
-string testKey = "cache-bootstrap:startup-test";
-bool setResult = await db.StringSetAsync(testKey, DateTimeOffset.UtcNow.ToString(), TimeSpan.FromMinutes(1));
-string? getValue = await db.StringGetAsync(testKey);
-logger.LogInformation(
-    "Redis write test - SetResult: {SetResult}, ReadBack: {ReadBack}",
-    setResult,
-    getValue
-);
+        // Register ATProto session manager and storage service (centralized authentication)
+        _ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
+        _ = builder.Services.AddATProtoStorage( );
 
-if (!setResult || string.IsNullOrEmpty( getValue )) {
-    logger.LogError( "Redis write verification failed! SetResult: {SetResult}, ReadBack: {ReadBack}", setResult, getValue );
-}
+        // Register the cache repository
+        _ = builder.Services.AddSingleton<IMediaLinkCacheRepository>( sp =>
+            new RedisMediaLinkCache(
+                sp.GetRequiredService<IConnectionMultiplexer>( ),
+                sp.GetRequiredService<IATProtoStorageService>( ),
+                sp.GetRequiredService<ILogger<RedisMediaLinkCache>>( ),
+                cacheDays,
+                atProtoUserDID
+            )
+        );
 
-// Log current key count for debugging
-long keyCount = 0;
-foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
-    IServer server = redis.GetServer(endpoint);
-    keyCount = server.DatabaseSize( );
-    logger.LogInformation( "Redis server {Endpoint} has {KeyCount} keys", endpoint, keyCount );
-}
+        // Register the cache bootstrap background service with configuration
+        _ = builder.Services.AddSingleton( new CacheBootstrapSettings(
+            new Uri( atProtoPdsUri ),
+            atProtoUserDID,
+            TimeSpan.FromHours( bootstrapIntervalHours )
+        ) );
+        _ = builder.Services.AddHostedService<CacheBootstrapBackgroundService>( );
+    }
 
-// Map Aspire health check endpoints
-_ = app.MapDefaultEndpoints( );
+    /// <summary>
+    /// Validates the required configuration for the CacheBootstrap worker.
+    /// </summary>
+    /// <param name="builder">The web application builder.</param>
+    /// <returns>A tuple containing the validated ATProto credentials and settings.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
+    private static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID,
+        string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours) ValidateConfiguration(
+            WebApplicationBuilder builder
+    ) {
+        string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
+        string? atProtoPassword = builder.Configuration["BridgeBeats:ATProtoPassword"];
+        string? atProtoUserDID = builder.Configuration["BridgeBeats:ATProtoUserDID"];
+        string atProtoPdsUri = builder.Configuration["BridgeBeats:ATProtoPdsUri"]
+            ?? "https://pds.bridgebeats.link";
+        int cacheDays = builder.Configuration.GetValue("BridgeBeats:CacheDays", 30);
+        int bootstrapIntervalHours = builder.Configuration.GetValue("BridgeBeats:BootstrapIntervalHours", 6);
 
-// Simple status endpoint
-app.MapGet( "/status", ( ) => new {
-    Service = "CacheBootstrap",
-    Status = "Running",
-    Timestamp = DateTimeOffset.UtcNow
-} );
+        return string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
+            string.IsNullOrWhiteSpace( atProtoPassword ) ||
+            string.IsNullOrWhiteSpace( atProtoUserDID )
+            ? throw new InvalidOperationException(
+                "ATProto credentials are required. Set BridgeBeats:ATProtoIdentifier, " +
+                "BridgeBeats:ATProtoPassword, and BridgeBeats:ATProtoUserDID."
+            )
+            : ((string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID, string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours))(atProtoIdentifier, atProtoPassword, atProtoUserDID,
+            atProtoPdsUri, cacheDays, bootstrapIntervalHours);
+    }
 
-try {
-    app.Run( );
-} finally {
-    Log.CloseAndFlush( );
+    /// <summary>
+    /// Validates the Redis connection on startup by performing test read/write operations.
+    /// </summary>
+    /// <param name="app">The web application.</param>
+    private static async Task ValidateRedisConnectionAsync( WebApplication app ) {
+        IConnectionMultiplexer redis = app.Services.GetRequiredService<IConnectionMultiplexer>();
+        ILoggerFactory loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
+        Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger("CacheBootstrap.Startup");
+
+        // Log Redis connection details
+        logger.LogInformation(
+            "Redis connection: {Configuration}, IsConnected: {IsConnected}, Database: {Database}",
+            redis.Configuration,
+            redis.IsConnected,
+            redis.GetDatabase( ).Database
+        );
+
+        // Verify we can actually write to Redis
+        IDatabase db = redis.GetDatabase();
+        string testKey = "cache-bootstrap:startup-test";
+        bool setResult = await db.StringSetAsync(testKey, DateTimeOffset.UtcNow.ToString(), TimeSpan.FromMinutes(1));
+        string? getValue = await db.StringGetAsync(testKey);
+        logger.LogInformation(
+            "Redis write test - SetResult: {SetResult}, ReadBack: {ReadBack}",
+            setResult,
+            getValue
+        );
+
+        if (!setResult || string.IsNullOrEmpty( getValue )) {
+            logger.LogError(
+                "Redis write verification failed! SetResult: {SetResult}, ReadBack: {ReadBack}",
+                setResult,
+                getValue
+            );
+        }
+
+        // Log current key count for debugging
+        foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
+            IServer server = redis.GetServer(endpoint);
+            long keyCount = server.DatabaseSize();
+            logger.LogInformation( "Redis server {Endpoint} has {KeyCount} keys", endpoint, keyCount );
+        }
+    }
+
+    /// <summary>
+    /// Configures the endpoints for the CacheBootstrap worker application.
+    /// </summary>
+    /// <param name="app">The web application.</param>
+    private static void ConfigureEndpoints( WebApplication app ) {
+        // Map Aspire health check endpoints
+        _ = app.MapDefaultEndpoints( );
+
+        // Simple status endpoint
+        _ = app.MapGet( "/status", ( ) => new {
+            Service = "CacheBootstrap",
+            Status = "Running",
+            Timestamp = DateTimeOffset.UtcNow
+        } );
+    }
 }

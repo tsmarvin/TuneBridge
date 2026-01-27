@@ -293,8 +293,8 @@ public class ATProtoOAuthServiceTests {
         );
         Assert.IsNotNull( method, "CreateDPoPProof method should exist" );
 
-        // Act
-        string? dpopProof = method.Invoke( null, [dpoPKeyJwk, httpMethod, url, null] ) as string;
+        // Act (pass null for accessToken and nonce)
+        string? dpopProof = method.Invoke(null, [dpoPKeyJwk, httpMethod, url, null, null]) as string;
 
         // Assert
         Assert.IsNotNull( dpopProof );
@@ -319,8 +319,8 @@ public class ATProtoOAuthServiceTests {
         );
         Assert.IsNotNull( method );
 
-        // Act
-        string? dpopProof = method.Invoke( null, [dpoPKeyJwk, httpMethod, url, accessToken] ) as string;
+        // Act (pass accessToken, nonce is null)
+        string? dpopProof = method.Invoke(null, [dpoPKeyJwk, httpMethod, url, accessToken, null]) as string;
 
         // Assert
         Assert.IsNotNull( dpopProof );
@@ -349,8 +349,8 @@ public class ATProtoOAuthServiceTests {
         );
         Assert.IsNotNull( method );
 
-        // Act
-        string? dpopProof = method.Invoke( null, [dpoPKeyJwk, httpMethod, url, null] ) as string;
+        // Act (pass null for accessToken and nonce)
+        string? dpopProof = method.Invoke(null, [dpoPKeyJwk, httpMethod, url, null, null]) as string;
 
         // Assert
         Assert.IsNotNull( dpopProof );
@@ -365,5 +365,72 @@ public class ATProtoOAuthServiceTests {
         long difference = iat - nbf;
         Assert.IsTrue( difference is >= 4 and <= 6,
             $"nbf should be approximately 5 seconds before iat, but difference was {difference} (iat={iat}, nbf={nbf})" );
+    }
+
+    /// <summary>
+    /// Verifies that DPoP proof includes nonce when provided (per RFC 9449).
+    /// </summary>
+    [TestMethod]
+    public void CreateDPoPProof_WithNonce_ShouldIncludeNonceClaim( ) {
+        // Arrange
+        string dpoPKeyJwk = CreateTestDPoPKey();
+        string httpMethod = "POST";
+        string url = "https://auth.example.com/oauth/token";
+        string nonce = "server-provided-nonce-12345";
+
+        // Use reflection to call the private CreateDPoPProof method
+        System.Reflection.MethodInfo? method = typeof(ATProtoOAuthService).GetMethod(
+            "CreateDPoPProof",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static
+        );
+        Assert.IsNotNull( method );
+
+        // Act (pass null for accessToken, provide nonce)
+        string? dpopProof = method.Invoke(null, [dpoPKeyJwk, httpMethod, url, null, nonce]) as string;
+
+        // Assert
+        Assert.IsNotNull( dpopProof );
+        JwtSecurityTokenHandler handler = new();
+        JwtSecurityToken jwt = handler.ReadJwtToken(dpopProof);
+
+        // Verify nonce claim exists and has correct value
+        System.Security.Claims.Claim? nonceClaim = jwt.Claims.FirstOrDefault(c => c.Type == "nonce");
+        Assert.IsNotNull( nonceClaim, "DPoP proof should include 'nonce' claim when nonce is provided" );
+        Assert.AreEqual( nonce, nonceClaim.Value, "Nonce claim value should match provided nonce" );
+    }
+
+    /// <summary>
+    /// Verifies that DPoP proof includes both ath and nonce when both are provided.
+    /// </summary>
+    [TestMethod]
+    public void CreateDPoPProof_WithAccessTokenAndNonce_ShouldIncludeBothClaims( ) {
+        // Arrange
+        string dpoPKeyJwk = CreateTestDPoPKey();
+        string httpMethod = "GET";
+        string url = "https://api.example.com/resource";
+        string accessToken = "test_access_token";
+        string nonce = "server-nonce-abc123";
+
+        // Use reflection to call the private CreateDPoPProof method
+        System.Reflection.MethodInfo? method = typeof(ATProtoOAuthService).GetMethod(
+            "CreateDPoPProof",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static
+        );
+        Assert.IsNotNull( method );
+
+        // Act
+        string? dpopProof = method.Invoke(null, [dpoPKeyJwk, httpMethod, url, accessToken, nonce]) as string;
+
+        // Assert
+        Assert.IsNotNull( dpopProof );
+        JwtSecurityTokenHandler handler = new();
+        JwtSecurityToken jwt = handler.ReadJwtToken(dpopProof);
+
+        // Verify both claims exist
+        System.Security.Claims.Claim? athClaim = jwt.Claims.FirstOrDefault(c => c.Type == "ath");
+        System.Security.Claims.Claim? nonceClaim = jwt.Claims.FirstOrDefault(c => c.Type == "nonce");
+        Assert.IsNotNull( athClaim, "DPoP proof should include 'ath' claim when access token is provided" );
+        Assert.IsNotNull( nonceClaim, "DPoP proof should include 'nonce' claim when nonce is provided" );
+        Assert.AreEqual( nonce, nonceClaim.Value );
     }
 }

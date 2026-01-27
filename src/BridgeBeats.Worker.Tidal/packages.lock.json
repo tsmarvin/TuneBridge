@@ -567,6 +567,13 @@
           "BridgeBeats.Providers": "[1.0.0, )",
           "QRCoder": "[1.7.0, )"
         }
+      },
+      "bridgebeats.worker.common": {
+        "type": "Project",
+        "dependencies": {
+          "BridgeBeats.Contracts": "[1.0.0, )",
+          "BridgeBeats.ServiceDefaults": "[1.0.0, )"
+        }
       }
     }
   }
