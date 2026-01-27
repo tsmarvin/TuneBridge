@@ -35,24 +35,34 @@ public static class WorkerEndpointExtensions {
     public static IEndpointRouteBuilder MapProviderLookupEndpoints<TService>(
         this IEndpointRouteBuilder app
     ) where TService : class, IMusicLookupService {
-        TService service = app.ServiceProvider.GetRequiredService<TService>( );
+        // Resolve service per-request instead of at startup to avoid lifecycle issues
+        _ = app.MapPost( "/lookup/url", async ( LookupByUrlRequest request, HttpContext context ) => {
+            TService service = context.RequestServices.GetRequiredService<TService>( );
+            return await ExecuteLookupAsync( ( ) => service.GetInfoAsync( request.Url ) );
+        } );
 
-        _ = app.MapPost( "/lookup/url", async ( LookupByUrlRequest request ) =>
-            await ExecuteLookupAsync( ( ) => service.GetInfoAsync( request.Url ) ) );
+        _ = app.MapPost( "/lookup/isrc", async ( LookupByIsrcRequest request, HttpContext context ) => {
+            TService service = context.RequestServices.GetRequiredService<TService>( );
+            return await ExecuteLookupAsync( ( ) => service.GetInfoByISRCAsync( request.Isrc ) );
+        } );
 
-        _ = app.MapPost( "/lookup/isrc", async ( LookupByIsrcRequest request ) =>
-            await ExecuteLookupAsync( ( ) => service.GetInfoByISRCAsync( request.Isrc ) ) );
+        _ = app.MapPost( "/lookup/upc", async ( LookupByUpcRequest request, HttpContext context ) => {
+            TService service = context.RequestServices.GetRequiredService<TService>( );
+            return await ExecuteLookupAsync( ( ) => service.GetInfoByUPCAsync( request.Upc ) );
+        } );
 
-        _ = app.MapPost( "/lookup/upc", async ( LookupByUpcRequest request ) =>
-            await ExecuteLookupAsync( ( ) => service.GetInfoByUPCAsync( request.Upc ) ) );
+        _ = app.MapPost( "/lookup/id", async ( LookupByIdRequest request, HttpContext context ) => {
+            TService service = context.RequestServices.GetRequiredService<TService>( );
+            return await ExecuteLookupAsync( ( ) => service.GetInfoByIDAsync( request.ProviderId, request.IsAlbum ) );
+        } );
 
-        _ = app.MapPost( "/lookup/id", async ( LookupByIdRequest request ) =>
-            await ExecuteLookupAsync( ( ) => service.GetInfoByIDAsync( request.ProviderId, request.IsAlbum ) ) );
+        _ = app.MapPost( "/lookup/metadata", async ( LookupByMetadataRequest request, HttpContext context ) => {
+            TService service = context.RequestServices.GetRequiredService<TService>( );
+            return await ExecuteLookupAsync( ( ) => service.GetInfoAsync( request.Title, request.Artist ) );
+        } );
 
-        _ = app.MapPost( "/lookup/metadata", async ( LookupByMetadataRequest request ) =>
-            await ExecuteLookupAsync( ( ) => service.GetInfoAsync( request.Title, request.Artist ) ) );
-
-        _ = app.MapPost( "/lookup/from-result", async ( LookupFromResultRequest request ) => {
+        _ = app.MapPost( "/lookup/from-result", async ( LookupFromResultRequest request, HttpContext context ) => {
+            TService service = context.RequestServices.GetRequiredService<TService>( );
             MusicLookupResult lookup = new( ) {
                 Artist = request.Artist,
                 Title = request.Title,

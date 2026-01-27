@@ -260,9 +260,14 @@ public sealed partial class LookupOrchestrator : ILookupOrchestrator {
         // Determine which provider to queue first
         SupportedProviders firstProvider = initialProvider ?? _enabledProviders.First();
 
-        // Initialize provider state only for the first provider being queued
+        // For direct lookups (ISRC/UPC without initialProvider), initialize all enabled providers
+        // For URL lookups (with initialProvider), only initialize the first provider
         // Secondary provider lookups will create their own separate sagas
-        await _sagaManager.InitializeProviderStatesAsync( sagaId, [firstProvider] );
+        List<SupportedProviders> providersToInitialize = initialProvider.HasValue
+            ? [firstProvider]
+            : [.. _enabledProviders];
+        
+        await _sagaManager.InitializeProviderStatesAsync( sagaId, providersToInitialize );
 
         // If we have an initial provider (from URL lookup), set it
         if (initialProvider.HasValue) {
