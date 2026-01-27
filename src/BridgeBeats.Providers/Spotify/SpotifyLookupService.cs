@@ -314,12 +314,8 @@ namespace BridgeBeats.Providers.Spotify {
                 // Map results back to IDs - position in response matches position in request
                 for (int i = 0; i < idList.Count && i < response.Artists.Count; i++) {
                     SpotifyArtist? artist = response.Artists[i];
-                    if (artist == null) {
-                        // Artist not found - null indicates not found
-                        results[idList[i]] = null;
-                    } else {
-                        results[idList[i]] = artist.Genres;
-                    }
+                    // Artist not found - null indicates not found
+                    results[idList[i]] = artist?.Genres;
                 }
             } catch (Exception ex) {
                 Logger.LogError( ex, "An error occurred while parsing bulk artists response from Spotify." );
