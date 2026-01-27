@@ -63,7 +63,16 @@ public class ApplicationUser : IdentityUser {
     /// ATProto DPoP (Demonstration of Proof-of-Possession) private key in JWK format.
     /// Used to sign requests and prove ownership of OAuth tokens.
     /// </summary>
+    [Obsolete( "Use EncryptedAtProtoDPoPKey instead. This property is kept for migration purposes only." )]
     public string? AtProtoDPoPKey { get; set; }
+
+    /// <summary>
+    /// Encrypted ATProto DPoP (Demonstration of Proof-of-Possession) private key in JWK format.
+    /// The key is encrypted at rest using ASP.NET Core Data Protection API.
+    /// Used to sign requests and prove ownership of OAuth tokens.
+    /// </summary>
+    [ProtectedPersonalData]
+    public string? EncryptedAtProtoDPoPKey { get; set; }
 
     /// <summary>
     /// Expiration time of the ATProto OAuth access token.

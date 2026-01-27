@@ -6,6 +6,7 @@ WORKDIR /app
 # This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:25d14b400b75fa4e89d5bd4487a92a604a4e409ab65becb91821e7dc4ac7f81f AS build
 ARG BUILD_CONFIGURATION=Release
+ARG TARGETARCH
 
 WORKDIR /src
 COPY src/ .
@@ -14,7 +15,6 @@ COPY containers/Test-LockFileChanges.ps1 /scripts/Test-LockFileChanges.ps1
 # Handle platform-specific lock file for AppHost
 # The AppHost uses platform-specific Aspire packages (Dashboard.Sdk, Hosting.Orchestration)
 # We need to regenerate the lock file for ARM64 builds and verify only platform packages changed
-ARG TARGETARCH
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
         echo "ARM64 build detected - regenerating AppHost lock file for platform-specific packages..."; \
         cp BridgeBeats.AppHost/packages.lock.json BridgeBeats.AppHost/packages.lock.json.backup; \

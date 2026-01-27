@@ -316,7 +316,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
         // Check if user has OAuth tokens
         if (string.IsNullOrEmpty( user.AtProtoAccessToken ) ||
             string.IsNullOrEmpty( user.AtProtoRefreshToken ) ||
-            string.IsNullOrEmpty( user.AtProtoDPoPKey )) {
+            string.IsNullOrEmpty( user.EncryptedAtProtoDPoPKey )) {
             throw new InvalidOperationException(
                 $"User '{userDid}' does not have valid ATProto OAuth tokens. Please log in with Bluesky."
             );
@@ -329,7 +329,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
             ATProtoOAuthResult? refreshResult = await _oauthService.RefreshTokensAsync(
                 user.AtProtoDid!,
                 user.AtProtoRefreshToken,
-                user.AtProtoDPoPKey,
+                user.EncryptedAtProtoDPoPKey,
                 cancellationToken
             );
 
@@ -337,7 +337,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
                 // Update the stored tokens
                 user.AtProtoAccessToken = refreshResult.AccessToken;
                 user.AtProtoRefreshToken = refreshResult.RefreshToken;
-                user.AtProtoDPoPKey = refreshResult.DPoPKeyJwk;
+                user.EncryptedAtProtoDPoPKey = refreshResult.DPoPKeyJwk;
                 user.AtProtoTokenExpiration = refreshResult.TokenExpiration;
                 _ = await dbContext.SaveChangesAsync( cancellationToken );
 
@@ -361,7 +361,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
         );
 
         // TODO: When idunno.Bluesky supports OAuth session restoration, update this to:
-        // 1. Deserialize the DPoP key from user.AtProtoDPoPKey
+        // 1. Deserialize the DPoP key from user.EncryptedAtProtoDPoPKey (decrypted automatically by Data Protection)
         // 2. Create an agent with the stored session (access token, refresh token, DPoP key)
         // 3. The agent should then be able to make authenticated requests
 

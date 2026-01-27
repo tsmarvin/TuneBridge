@@ -2,7 +2,7 @@
 
 using Microsoft.EntityFrameworkCore.Migrations;
 
-namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
+namespace BridgeBeats.Infrastructure.Migrations {
     /// <inheritdoc />
     public partial class InitialCreate : Migration {
         /// <inheritdoc />

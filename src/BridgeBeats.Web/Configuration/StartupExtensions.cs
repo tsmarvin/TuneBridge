@@ -422,6 +422,9 @@ namespace BridgeBeats.Web.Configuration {
                         sp.GetRequiredService<IHttpClientFactory>( )
                     )
                 );
+
+                // Register background service for cleaning up expired OAuth states
+                _ = services.AddHostedService<OAuthStateCleanupService>( );
             }
 
             if (string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) ||

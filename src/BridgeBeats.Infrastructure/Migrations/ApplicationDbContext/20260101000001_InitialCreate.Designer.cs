@@ -8,8 +8,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
-    [DbContext( typeof( ApplicationDbContext ) )]
+namespace BridgeBeats.Infrastructure.Migrations {
+    [DbContext( typeof( Identity.ApplicationDbContext ) )]
     [Migration( "20260101000001_InitialCreate" )]
     partial class InitialCreate {
         /// <inheritdoc />

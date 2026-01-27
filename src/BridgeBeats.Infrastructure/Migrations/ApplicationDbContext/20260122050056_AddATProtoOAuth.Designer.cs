@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 #nullable disable
 
 namespace BridgeBeats.Infrastructure.Migrations {
-    [DbContext( typeof( ApplicationDbContext ) )]
+    [DbContext( typeof( Identity.ApplicationDbContext ) )]
     [Migration( "20260122050056_AddATProtoOAuth" )]
     partial class AddATProtoOAuth {
         /// <inheritdoc />

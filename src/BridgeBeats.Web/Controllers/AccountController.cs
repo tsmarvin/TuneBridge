@@ -443,7 +443,7 @@ public class AccountController : Controller {
                     AtProtoHandle = result.Handle,
                     AtProtoAccessToken = result.AccessToken,
                     AtProtoRefreshToken = result.RefreshToken,
-                    AtProtoDPoPKey = result.DPoPKeyJwk,
+                    EncryptedAtProtoDPoPKey = result.DPoPKeyJwk,
                     AtProtoTokenExpiration = result.TokenExpiration,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -467,7 +467,7 @@ public class AccountController : Controller {
                 user.AtProtoHandle = result.Handle;
                 user.AtProtoAccessToken = result.AccessToken;
                 user.AtProtoRefreshToken = result.RefreshToken;
-                user.AtProtoDPoPKey = result.DPoPKeyJwk;
+                user.EncryptedAtProtoDPoPKey = result.DPoPKeyJwk;
                 user.AtProtoTokenExpiration = result.TokenExpiration;
 
                 _ = await _userManager.UpdateAsync( user );
