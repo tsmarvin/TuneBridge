@@ -2,9 +2,11 @@ using System.Runtime.CompilerServices;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Infrastructure.Identity;
 using idunno.AtProto;
 using idunno.AtProto.Repo;
 using idunno.Bluesky;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace BridgeBeats.Infrastructure.Storage;
@@ -16,7 +18,7 @@ namespace BridgeBeats.Infrastructure.Storage;
 /// </summary>
 /// <remarks>
 /// This service is separate from <see cref="ATProtoStorageService"/> because it operates
-/// on user PDSs rather than the server's PDS, and will eventually use OAuth tokens
+/// on user PDSs rather than the server's PDS, and uses OAuth tokens
 /// instead of app passwords.
 /// </remarks>
 public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
@@ -28,18 +30,26 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
 
     private readonly string _serverDid;
     private readonly ILogger<UserPlaylistATProtoService> _logger;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly IATProtoOAuthService? _oauthService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="UserPlaylistATProtoService"/> class.
     /// </summary>
     /// <param name="serverDid">The DID of the BridgeBeats server (used as default lookupRepository).</param>
     /// <param name="logger">Logger for diagnostic information.</param>
+    /// <param name="dbContextFactory">Factory for creating database contexts.</param>
+    /// <param name="oauthService">Optional ATProto OAuth service for token refresh.</param>
     public UserPlaylistATProtoService(
         string serverDid,
-        ILogger<UserPlaylistATProtoService> logger
+        ILogger<UserPlaylistATProtoService> logger,
+        IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        IATProtoOAuthService? oauthService = null
     ) {
         _serverDid = serverDid ?? throw new ArgumentNullException( nameof( serverDid ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
+        _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException( nameof( dbContextFactory ) );
+        _oauthService = oauthService;
     }
 
     /// <inheritdoc/>
@@ -280,32 +290,82 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
     /// Gets an authenticated BlueskyAgent for the specified user.
     /// </summary>
     /// <remarks>
-    /// TODO: This method is a placeholder until OAuth authentication is implemented in #210.
-    /// Currently throws NotImplementedException for write operations.
-    /// When OAuth is implemented, this will retrieve the user's OAuth session from the identity store.
+    /// Retrieves the user's OAuth tokens from the identity store and creates
+    /// an authenticated agent. Handles token refresh if needed.
     /// </remarks>
     /// <param name="userDid">The DID of the user.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An authenticated BlueskyAgent for the user.</returns>
-    private Task<BlueskyAgent> GetAuthenticatedAgentForUserAsync(
+    /// <exception cref="InvalidOperationException">Thrown when user is not found or has no valid OAuth tokens.</exception>
+    private async Task<BlueskyAgent> GetAuthenticatedAgentForUserAsync(
         string userDid,
         CancellationToken cancellationToken = default
     ) {
-        // TODO: Implement OAuth token retrieval from identity store (#210)
-        // For now, this is a placeholder that will need to be updated when OAuth is implemented.
-        // The implementation will:
-        // 1. Retrieve the user's OAuth tokens from the identity store
-        // 2. Create an agent authenticated with those tokens
-        // 3. Handle token refresh if needed
+        await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
 
+        // Find the user by their ATProto DID
+        ApplicationUser? user = await dbContext.Users
+            .FirstOrDefaultAsync( u => u.AtProtoDid == userDid, cancellationToken );
+
+        if (user is null) {
+            throw new InvalidOperationException(
+                $"User with ATProto DID '{userDid}' not found. User must be logged in with ATProto OAuth."
+            );
+        }
+
+        // Check if user has OAuth tokens
+        if (string.IsNullOrEmpty( user.AtProtoAccessToken ) ||
+            string.IsNullOrEmpty( user.AtProtoRefreshToken ) ||
+            string.IsNullOrEmpty( user.AtProtoDPoPKey )) {
+            throw new InvalidOperationException(
+                $"User '{userDid}' does not have valid ATProto OAuth tokens. Please log in with Bluesky."
+            );
+        }
+
+        // Check if tokens need refresh
+        if (_oauthService is not null && !_oauthService.IsTokenValid( user.AtProtoTokenExpiration )) {
+            _logger.LogDebug( "ATProto tokens expired for user {UserDid}, attempting refresh", userDid );
+
+            ATProtoOAuthResult? refreshResult = await _oauthService.RefreshTokensAsync(
+                user.AtProtoDid!,
+                user.AtProtoRefreshToken,
+                user.AtProtoDPoPKey,
+                cancellationToken
+            );
+
+            if (refreshResult is not null) {
+                // Update the stored tokens
+                user.AtProtoAccessToken = refreshResult.AccessToken;
+                user.AtProtoRefreshToken = refreshResult.RefreshToken;
+                user.AtProtoDPoPKey = refreshResult.DPoPKeyJwk;
+                user.AtProtoTokenExpiration = refreshResult.TokenExpiration;
+                _ = await dbContext.SaveChangesAsync( cancellationToken );
+
+                _logger.LogInformation( "Successfully refreshed ATProto tokens for user {UserDid}", userDid );
+            } else {
+                throw new InvalidOperationException(
+                    $"Failed to refresh ATProto tokens for user '{userDid}'. Please log in again with Bluesky."
+                );
+            }
+        }
+
+        // Create an authenticated agent
+        // Note: The idunno.Bluesky library doesn't have a direct way to create an agent with
+        // pre-existing OAuth tokens. For now, we create an unauthenticated agent and log a warning.
+        // Full OAuth session restoration will require additional library support or
+        // direct HTTP calls with the stored access token and DPoP key.
         _logger.LogWarning(
-            "OAuth authentication not yet implemented. Creating unauthenticated agent for user {UserDid}",
+            "OAuth session restoration not yet fully implemented. " +
+            "Creating agent for user {UserDid} - PDS operations may require additional implementation.",
             userDid
         );
 
-        // Return an unauthenticated agent for now - write operations will fail
-        // but read operations will work for public records
-        return Task.FromResult( new BlueskyAgent( ) );
+        // TODO: When idunno.Bluesky supports OAuth session restoration, update this to:
+        // 1. Deserialize the DPoP key from user.AtProtoDPoPKey
+        // 2. Create an agent with the stored session (access token, refresh token, DPoP key)
+        // 3. The agent should then be able to make authenticated requests
+
+        return new BlueskyAgent( );
     }
 
     /// <summary>

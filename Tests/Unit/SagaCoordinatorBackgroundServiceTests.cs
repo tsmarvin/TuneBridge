@@ -2,6 +2,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.Services.Queue;
 using BridgeBeats.Worker.SagaCoordinator;
 using Microsoft.Extensions.Logging;
@@ -24,6 +25,8 @@ public class SagaCoordinatorBackgroundServiceTests {
     private Mock<IRequestDeduplicator> _deduplicatorMock = null!;
     private Mock<ILogger<SagaResultCombiner>> _combinerLoggerMock = null!;
     private SagaResultCombiner _resultCombiner = null!;
+    private Mock<IProviderQueueResolver<QueuedLookupRequest>> _queueResolverMock = null!;
+    private HashSet<SupportedProviders> _enabledProviders = null!;
     private Mock<ILogger<SagaCoordinatorBackgroundService>> _loggerMock = null!;
 
     private const string TestSagaId = "test-saga-id-12345678";
@@ -43,6 +46,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _deduplicatorMock = new Mock<IRequestDeduplicator>( );
         _combinerLoggerMock = new Mock<ILogger<SagaResultCombiner>>( );
         _resultCombiner = new SagaResultCombiner( _combinerLoggerMock.Object );
+        _queueResolverMock = new Mock<IProviderQueueResolver<QueuedLookupRequest>>( );
+        _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic, SupportedProviders.Tidal];
         _loggerMock = new Mock<ILogger<SagaCoordinatorBackgroundService>>( );
 
         _ = _redisMock.Setup( r => r.GetSubscriber( It.IsAny<object>( ) ) ).Returns( _subscriberMock.Object );
@@ -76,6 +81,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
+                _queueResolverMock.Object,
+                _enabledProviders,
                 _loggerMock.Object
             )
         );
@@ -95,6 +102,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
+                _queueResolverMock.Object,
+                _enabledProviders,
                 _loggerMock.Object
             )
         );
@@ -114,6 +123,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
+                _queueResolverMock.Object,
+                _enabledProviders,
                 _loggerMock.Object
             )
         );
@@ -133,6 +144,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 null!,
                 _deduplicatorMock.Object,
                 _resultCombiner,
+                _queueResolverMock.Object,
+                _enabledProviders,
                 _loggerMock.Object
             )
         );
@@ -152,6 +165,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 null!,
                 _resultCombiner,
+                _queueResolverMock.Object,
+                _enabledProviders,
                 _loggerMock.Object
             )
         );
@@ -171,6 +186,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 null!,
+                _queueResolverMock.Object,
+                _enabledProviders,
                 _loggerMock.Object
             )
         );
@@ -190,6 +207,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
+                _queueResolverMock.Object,
+                _enabledProviders,
                 null!
             )
         );
@@ -506,6 +525,8 @@ public class SagaCoordinatorBackgroundServiceTests {
             _cacheRepositoryMock.Object,
             _deduplicatorMock.Object,
             _resultCombiner,
+            _queueResolverMock.Object,
+            _enabledProviders,
             _loggerMock.Object
         );
     }

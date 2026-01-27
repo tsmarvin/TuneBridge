@@ -7,6 +7,7 @@
     <div class="card-body">
         <h2 class="card-title">Login</h2>
         <div id="loginForm">
+            <!-- Email/Password Login -->
             <div class="mb-3">
                 <label for="email" class="form-label">Email</label>
                 <input type="email" id="email" class="form-control" required autocomplete="email" />
@@ -17,6 +18,36 @@
             </div>
             <div id="error" class="alert alert-danger d-none"></div>
             <button id="loginBtn" class="btn btn-primary">Login</button>
+
+            <!-- Divider -->
+            <div class="d-flex align-items-center my-4">
+                <hr class="flex-grow-1" />
+                <span class="mx-3 text-muted">or</span>
+                <hr class="flex-grow-1" />
+            </div>
+
+            <!-- ATProto/Bluesky Login -->
+            <div class="mb-3">
+                <label for="atprotoHandle" class="form-label">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-cloud me-1" viewBox="0 0 16 16" style="color: #0085ff;">
+                        <path d="M4.406 3.342A5.53 5.53 0 0 1 8 2c2.69 0 4.923 2 5.166 4.579C14.758 6.804 16 8.137 16 9.773 16 11.569 14.502 13 12.687 13H3.781C1.708 13 0 11.366 0 9.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383"/>
+                    </svg>
+                    Login with Bluesky
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text">@@</span>
+                    <input type="text" id="atprotoHandle" class="form-control" placeholder="yourhandle.bsky.social" autocomplete="username" />
+                </div>
+                <div class="form-text">Enter your Bluesky handle (e.g., yourname.bsky.social)</div>
+            </div>
+            <button id="atprotoLoginBtn" class="btn btn-outline-primary w-100">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-box-arrow-in-right me-2" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 0-1 0v2A1.5 1.5 0 0 0 6.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-8A1.5 1.5 0 0 0 5 3.5v2a.5.5 0 0 0 1 0z"/>
+                    <path fill-rule="evenodd" d="M11.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H1.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708z"/>
+                </svg>
+                Continue with Bluesky
+            </button>
+
             <div class="text-muted text-center mt-3">
                 Don't have an account? <a href="/account/register">Register</a>
             </div>
@@ -90,6 +121,66 @@
                 error.classList.remove('d-none');
                 loginBtn.disabled = false;
                 loginBtn.textContent = 'Login';
+            }
+        });
+
+        // ATProto/Bluesky login handler
+        const atprotoHandle = document.getElementById('atprotoHandle');
+        const atprotoLoginBtn = document.getElementById('atprotoLoginBtn');
+
+        atprotoLoginBtn.addEventListener('click', async () => {
+            error.classList.add('d-none');
+            error.textContent = '';
+
+            if (!atprotoHandle.value) {
+                error.textContent = 'Please enter your Bluesky handle';
+                error.classList.remove('d-none');
+                return;
+            }
+
+            atprotoLoginBtn.disabled = true;
+            atprotoLoginBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Connecting...';
+
+            try {
+                const response = await fetch('/account/login-atproto', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ handle: atprotoHandle.value })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    error.textContent = data.message || 'Failed to start Bluesky login';
+                    error.classList.remove('d-none');
+                    atprotoLoginBtn.disabled = false;
+                    atprotoLoginBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-box-arrow-in-right me-2" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 0-1 0v2A1.5 1.5 0 0 0 6.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-8A1.5 1.5 0 0 0 5 3.5v2a.5.5 0 0 0 1 0z"/><path fill-rule="evenodd" d="M11.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H1.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708z"/></svg>Continue with Bluesky';
+                    return;
+                }
+
+                // Redirect to the authorization server
+                if (data.authorizationUrl) {
+                    window.location.href = data.authorizationUrl;
+                } else {
+                    error.textContent = 'Invalid response from server';
+                    error.classList.remove('d-none');
+                    atprotoLoginBtn.disabled = false;
+                    atprotoLoginBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-box-arrow-in-right me-2" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 0-1 0v2A1.5 1.5 0 0 0 6.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-8A1.5 1.5 0 0 0 5 3.5v2a.5.5 0 0 0 1 0z"/><path fill-rule="evenodd" d="M11.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H1.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708z"/></svg>Continue with Bluesky';
+                }
+            } catch (err) {
+                error.textContent = 'Network error: ' + err.message;
+                error.classList.remove('d-none');
+                atprotoLoginBtn.disabled = false;
+                atprotoLoginBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-box-arrow-in-right me-2" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 0-1 0v2A1.5 1.5 0 0 0 6.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-8A1.5 1.5 0 0 0 5 3.5v2a.5.5 0 0 0 1 0z"/><path fill-rule="evenodd" d="M11.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H1.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708z"/></svg>Continue with Bluesky';
+            }
+        });
+
+        // Allow Enter key to trigger Bluesky login
+        atprotoHandle.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                atprotoLoginBtn.click();
             }
         });
     </script>

@@ -138,7 +138,7 @@ For local development, you can use an `appsettings.json` file instead of environ
     "CacheDays": 7,
     "RedisConnectionString": "localhost:6379",
     "BaseUrl": "localhost",
-    "LogFilePath": "./logs/bridgebeats-.log",
+    "LogDirPath": "./logs",
     "CardCacheExpirationHours": 1,
     "CardCacheCleanupInterval": 500,
     "RateLimitRetryThreshold": "00:02:00",

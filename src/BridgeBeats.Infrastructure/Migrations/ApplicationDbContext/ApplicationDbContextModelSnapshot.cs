@@ -7,308 +7,391 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
-    [DbContext( typeof( ApplicationDbContext ) )]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot {
-        protected override void BuildModel( ModelBuilder modelBuilder ) {
+namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb
+{
+    [DbContext(typeof(ApplicationDbContext))]
+    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    {
+        protected override void BuildModel(ModelBuilder modelBuilder)
+        {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation( "ProductVersion", "10.0.2" );
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.2");
 
-            modelBuilder.Entity( "BridgeBeats.Infrastructure.Identity.ApplicationUser", b => {
-                b.Property<string>( "Id" )
-                    .HasColumnType( "TEXT" );
+            modelBuilder.Entity("BridgeBeats.Infrastructure.Identity.ApplicationUser", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
-                b.Property<int>( "AccessFailedCount" )
-                    .HasColumnType( "INTEGER" );
+                    b.Property<int>("AccessFailedCount")
+                        .HasColumnType("INTEGER");
 
-                b.Property<string>( "ApiKeyHash" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("ApiKeyHash")
+                        .HasColumnType("TEXT");
 
-                b.Property<DateTime?>( "AppleMusicTokenExpiration" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<DateTime?>("AppleMusicTokenExpiration")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "AppleMusicUserToken" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("AppleMusicUserToken")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "ConcurrencyStamp" )
-                    .IsConcurrencyToken( )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("AtProtoAccessToken")
+                        .HasColumnType("TEXT");
 
-                b.Property<DateTime>( "CreatedAt" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("AtProtoDPoPKey")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "Email" )
-                    .HasMaxLength( 256 )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("AtProtoDid")
+                        .HasColumnType("TEXT");
 
-                b.Property<bool>( "EmailConfirmed" )
-                    .HasColumnType( "INTEGER" );
+                    b.Property<string>("AtProtoHandle")
+                        .HasColumnType("TEXT");
 
-                b.Property<bool>( "LockoutEnabled" )
-                    .HasColumnType( "INTEGER" );
+                    b.Property<string>("AtProtoRefreshToken")
+                        .HasColumnType("TEXT");
 
-                b.Property<DateTimeOffset?>( "LockoutEnd" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<DateTime?>("AtProtoTokenExpiration")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "NormalizedEmail" )
-                    .HasMaxLength( 256 )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "NormalizedUserName" )
-                    .HasMaxLength( 256 )
-                    .HasColumnType( "TEXT" );
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "PasswordHash" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "PhoneNumber" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<bool>("EmailConfirmed")
+                        .HasColumnType("INTEGER");
 
-                b.Property<bool>( "PhoneNumberConfirmed" )
-                    .HasColumnType( "INTEGER" );
+                    b.Property<bool>("LockoutEnabled")
+                        .HasColumnType("INTEGER");
 
-                b.Property<DateTime?>( "RateLimitWindowStart" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<DateTimeOffset?>("LockoutEnd")
+                        .HasColumnType("TEXT");
 
-                b.Property<int>( "RequestCount" )
-                    .HasColumnType( "INTEGER" );
+                    b.Property<string>("NormalizedEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "SecurityStamp" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("NormalizedUserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                b.Property<bool>( "TwoFactorEnabled" )
-                    .HasColumnType( "INTEGER" );
+                    b.Property<string>("PasswordHash")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "UserName" )
-                    .HasMaxLength( 256 )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("PhoneNumber")
+                        .HasColumnType("TEXT");
 
-                b.HasKey( "Id" );
+                    b.Property<bool>("PhoneNumberConfirmed")
+                        .HasColumnType("INTEGER");
 
-                b.HasIndex( "ApiKeyHash" )
-                    .IsUnique( );
+                    b.Property<DateTime?>("RateLimitWindowStart")
+                        .HasColumnType("TEXT");
 
-                b.HasIndex( "NormalizedEmail" )
-                    .HasDatabaseName( "EmailIndex" );
+                    b.Property<int>("RequestCount")
+                        .HasColumnType("INTEGER");
 
-                b.HasIndex( "NormalizedUserName" )
-                    .IsUnique( )
-                    .HasDatabaseName( "UserNameIndex" );
+                    b.Property<string>("SecurityStamp")
+                        .HasColumnType("TEXT");
 
-                b.ToTable( "AspNetUsers", (string)null );
-            } );
+                    b.Property<bool>("TwoFactorEnabled")
+                        .HasColumnType("INTEGER");
 
-            modelBuilder.Entity( "BridgeBeats.Infrastructure.Playlists.PlaylistEntry", b => {
-                b.Property<string>( "PlaylistId" )
-                    .HasMaxLength( 64 )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("UserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "CardIds" )
-                    .IsRequired( )
-                    .HasMaxLength( 2000 )
-                    .HasColumnType( "TEXT" );
+                    b.HasKey("Id");
 
-                b.Property<string>( "CardRkeys" )
-                    .IsRequired( )
-                    .HasMaxLength( 2000 )
-                    .HasColumnType( "TEXT" );
+                    b.HasIndex("ApiKeyHash")
+                        .IsUnique();
 
-                b.Property<DateTime>( "CreatedAt" )
-                    .HasColumnType( "TEXT" );
+                    b.HasIndex("AtProtoDid")
+                        .IsUnique()
+                        .HasFilter("[AtProtoDid] IS NOT NULL");
 
-                b.Property<string>( "Description" )
-                    .HasMaxLength( 1000 )
-                    .HasColumnType( "TEXT" );
+                    b.HasIndex("NormalizedEmail")
+                        .HasDatabaseName("EmailIndex");
 
-                b.Property<DateTime?>( "ExpiresAt" )
-                    .HasColumnType( "TEXT" );
+                    b.HasIndex("NormalizedUserName")
+                        .IsUnique()
+                        .HasDatabaseName("UserNameIndex");
 
-                b.Property<string>( "Title" )
-                    .HasMaxLength( 200 )
-                    .HasColumnType( "TEXT" );
+                    b.ToTable("AspNetUsers", (string)null);
+                });
 
-                b.Property<string>( "UserId" )
-                    .HasMaxLength( 450 )
-                    .HasColumnType( "TEXT" );
+            modelBuilder.Entity("BridgeBeats.Infrastructure.Identity.AtProtoOAuthState", b =>
+                {
+                    b.Property<string>("State")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                b.HasKey( "PlaylistId" );
+                    b.Property<string>("AuthorizationServerUri")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
 
-                b.HasIndex( "CreatedAt" );
+                    b.Property<string>("CodeVerifier")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                b.HasIndex( "ExpiresAt" );
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
-                b.HasIndex( "UserId" );
+                    b.Property<string>("DPoPKeyJwk")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                b.ToTable( "Playlists" );
-            } );
+                    b.Property<string>("Did")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityRole", b => {
-                b.Property<string>( "Id" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "ConcurrencyStamp" )
-                    .IsConcurrencyToken( )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("Handle")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "Name" )
-                    .HasMaxLength( 256 )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("PdsUri")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "NormalizedName" )
-                    .HasMaxLength( 256 )
-                    .HasColumnType( "TEXT" );
+                    b.HasKey("State");
 
-                b.HasKey( "Id" );
+                    b.HasIndex("ExpiresAt");
 
-                b.HasIndex( "NormalizedName" )
-                    .IsUnique( )
-                    .HasDatabaseName( "RoleNameIndex" );
+                    b.ToTable("AtProtoOAuthStates");
+                });
 
-                b.ToTable( "AspNetRoles", (string)null );
-            } );
+            modelBuilder.Entity("BridgeBeats.Infrastructure.Playlists.PlaylistEntry", b =>
+                {
+                    b.Property<string>("PlaylistId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b => {
-                b.Property<int>( "Id" )
-                    .ValueGeneratedOnAdd( )
-                    .HasColumnType( "INTEGER" );
+                    b.Property<string>("CardIds")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "ClaimType" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("CardRkeys")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "ClaimValue" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "RoleId" )
-                    .IsRequired( )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
 
-                b.HasKey( "Id" );
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
 
-                b.HasIndex( "RoleId" );
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
 
-                b.ToTable( "AspNetRoleClaims", (string)null );
-            } );
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b => {
-                b.Property<int>( "Id" )
-                    .ValueGeneratedOnAdd( )
-                    .HasColumnType( "INTEGER" );
+                    b.HasKey("PlaylistId");
 
-                b.Property<string>( "ClaimType" )
-                    .HasColumnType( "TEXT" );
+                    b.HasIndex("CreatedAt");
 
-                b.Property<string>( "ClaimValue" )
-                    .HasColumnType( "TEXT" );
+                    b.HasIndex("ExpiresAt");
 
-                b.Property<string>( "UserId" )
-                    .IsRequired( )
-                    .HasColumnType( "TEXT" );
+                    b.HasIndex("UserId");
 
-                b.HasKey( "Id" );
+                    b.ToTable("Playlists");
+                });
 
-                b.HasIndex( "UserId" );
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
-                b.ToTable( "AspNetUserClaims", (string)null );
-            } );
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b => {
-                b.Property<string>( "LoginProvider" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("Name")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "ProviderKey" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("NormalizedName")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "ProviderDisplayName" )
-                    .HasColumnType( "TEXT" );
+                    b.HasKey("Id");
 
-                b.Property<string>( "UserId" )
-                    .IsRequired( )
-                    .HasColumnType( "TEXT" );
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("RoleNameIndex");
 
-                b.HasKey( "LoginProvider", "ProviderKey" );
+                    b.ToTable("AspNetRoles", (string)null);
+                });
 
-                b.HasIndex( "UserId" );
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
 
-                b.ToTable( "AspNetUserLogins", (string)null );
-            } );
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("TEXT");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityUserRole<string>", b => {
-                b.Property<string>( "UserId" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("ClaimValue")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "RoleId" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("RoleId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                b.HasKey( "UserId", "RoleId" );
+                    b.HasKey("Id");
 
-                b.HasIndex( "RoleId" );
+                    b.HasIndex("RoleId");
 
-                b.ToTable( "AspNetUserRoles", (string)null );
-            } );
+                    b.ToTable("AspNetRoleClaims", (string)null);
+                });
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b => {
-                b.Property<string>( "UserId" )
-                    .HasColumnType( "TEXT" );
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
 
-                b.Property<string>( "LoginProvider" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "Name" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("ClaimValue")
+                        .HasColumnType("TEXT");
 
-                b.Property<string>( "Value" )
-                    .HasColumnType( "TEXT" );
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                b.HasKey( "UserId", "LoginProvider", "Name" );
+                    b.HasKey("Id");
 
-                b.ToTable( "AspNetUserTokens", (string)null );
-            } );
+                    b.HasIndex("UserId");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b => {
-                b.HasOne( "Microsoft.AspNetCore.Identity.IdentityRole", null )
-                    .WithMany( )
-                    .HasForeignKey( "RoleId" )
-                    .OnDelete( DeleteBehavior.Cascade )
-                    .IsRequired( );
-            } );
+                    b.ToTable("AspNetUserClaims", (string)null);
+                });
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b => {
-                b.HasOne( "BridgeBeats.Infrastructure.Identity.ApplicationUser", null )
-                    .WithMany( )
-                    .HasForeignKey( "UserId" )
-                    .OnDelete( DeleteBehavior.Cascade )
-                    .IsRequired( );
-            } );
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
+                {
+                    b.Property<string>("LoginProvider")
+                        .HasColumnType("TEXT");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b => {
-                b.HasOne( "BridgeBeats.Infrastructure.Identity.ApplicationUser", null )
-                    .WithMany( )
-                    .HasForeignKey( "UserId" )
-                    .OnDelete( DeleteBehavior.Cascade )
-                    .IsRequired( );
-            } );
+                    b.Property<string>("ProviderKey")
+                        .HasColumnType("TEXT");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityUserRole<string>", b => {
-                b.HasOne( "Microsoft.AspNetCore.Identity.IdentityRole", null )
-                    .WithMany( )
-                    .HasForeignKey( "RoleId" )
-                    .OnDelete( DeleteBehavior.Cascade )
-                    .IsRequired( );
+                    b.Property<string>("ProviderDisplayName")
+                        .HasColumnType("TEXT");
 
-                b.HasOne( "BridgeBeats.Infrastructure.Identity.ApplicationUser", null )
-                    .WithMany( )
-                    .HasForeignKey( "UserId" )
-                    .OnDelete( DeleteBehavior.Cascade )
-                    .IsRequired( );
-            } );
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-            modelBuilder.Entity( "Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b => {
-                b.HasOne( "BridgeBeats.Infrastructure.Identity.ApplicationUser", null )
-                    .WithMany( )
-                    .HasForeignKey( "UserId" )
-                    .OnDelete( DeleteBehavior.Cascade )
-                    .IsRequired( );
-            } );
+                    b.HasKey("LoginProvider", "ProviderKey");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AspNetUserLogins", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<string>", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RoleId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "RoleId");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("AspNetUserRoles", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LoginProvider")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "LoginProvider", "Name");
+
+                    b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
+                {
+                    b.HasOne("BridgeBeats.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
+                {
+                    b.HasOne("BridgeBeats.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<string>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("BridgeBeats.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
+                {
+                    b.HasOne("BridgeBeats.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
 #pragma warning restore 612, 618
         }
     }

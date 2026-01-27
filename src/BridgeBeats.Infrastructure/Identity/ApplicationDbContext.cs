@@ -19,6 +19,11 @@ public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> option
     /// </summary>
     public DbSet<PlaylistEntry> Playlists { get; set; }
 
+    /// <summary>
+    /// Temporary storage for ATProto OAuth state during authentication flow.
+    /// </summary>
+    public DbSet<AtProtoOAuthState> AtProtoOAuthStates { get; set; }
+
     /// <inheritdoc/>
     protected override void OnModelCreating( ModelBuilder builder ) {
         base.OnModelCreating( builder );
@@ -27,6 +32,12 @@ public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> option
         _ = builder.Entity<ApplicationUser>( )
             .HasIndex( u => u.ApiKeyHash )
             .IsUnique( );
+
+        // Add unique index for ATProto DID
+        _ = builder.Entity<ApplicationUser>( )
+            .HasIndex( u => u.AtProtoDid )
+            .IsUnique( )
+            .HasFilter( "[AtProtoDid] IS NOT NULL" );
 
         // Configure PlaylistEntry
         _ = builder.Entity<PlaylistEntry>( entity => {
@@ -52,6 +63,34 @@ public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> option
 
             _ = entity.HasIndex( e => e.UserId );
             _ = entity.HasIndex( e => e.CreatedAt );
+            _ = entity.HasIndex( e => e.ExpiresAt );
+        } );
+
+        // Configure AtProtoOAuthState for temporary OAuth state storage
+        _ = builder.Entity<AtProtoOAuthState>( entity => {
+            _ = entity.HasKey( e => e.State );
+            _ = entity.Property( e => e.State )
+                .IsRequired( )
+                .HasMaxLength( 128 );
+            _ = entity.Property( e => e.CodeVerifier )
+                .IsRequired( )
+                .HasMaxLength( 128 );
+            _ = entity.Property( e => e.Handle )
+                .IsRequired( )
+                .HasMaxLength( 256 );
+            _ = entity.Property( e => e.Did )
+                .HasMaxLength( 128 );
+            _ = entity.Property( e => e.PdsUri )
+                .HasMaxLength( 512 );
+            _ = entity.Property( e => e.AuthorizationServerUri )
+                .HasMaxLength( 512 );
+            _ = entity.Property( e => e.DPoPKeyJwk )
+                .IsRequired( );
+            _ = entity.Property( e => e.CreatedAt )
+                .IsRequired( );
+            _ = entity.Property( e => e.ExpiresAt )
+                .IsRequired( );
+
             _ = entity.HasIndex( e => e.ExpiresAt );
         } );
     }

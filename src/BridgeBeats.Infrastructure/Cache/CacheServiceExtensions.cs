@@ -12,6 +12,21 @@ namespace BridgeBeats.Infrastructure.Cache {
     public static class CacheServiceExtensions {
 
         /// <summary>
+        /// Adds the Redis-based genre cache service.
+        /// Redis connection must be available via <see cref="IConnectionMultiplexer"/>.
+        /// </summary>
+        /// <param name="services">The service collection to configure.</param>
+        /// <returns>The configured service collection.</returns>
+        public static IServiceCollection AddGenreCache( this IServiceCollection services ) {
+            _ = services.AddSingleton<IGenreCacheService>( s => new RedisGenreCache(
+                s.GetRequiredService<IConnectionMultiplexer>( ),
+                s.GetRequiredService<ILogger<RedisGenreCache>>( )
+            ) );
+
+            return services;
+        }
+
+        /// <summary>
         /// Adds the Redis-based media link cache repository.
         /// This method should only be called when ATProto storage is configured.
         /// Redis connection must be available via <see cref="IConnectionMultiplexer"/>.
@@ -66,54 +81,11 @@ namespace BridgeBeats.Infrastructure.Cache {
             _ = services.AddHostedService( s => new SqliteToRedisMigrator(
                 s.GetService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
                 s.GetRequiredService<IConnectionMultiplexer>( ),
-                s.GetRequiredService<IATProtoStorageService>( ),
                 s.GetRequiredService<ILogger<SqliteToRedisMigrator>>( ),
-                cacheDays,
-                atProtoUserDID
+                cacheDays
             ) );
 
             return services;
-        }
-
-        /// <summary>
-        /// Adds the SQLite-based media link cache repository (legacy, used during migration).
-        /// This method should only be called when ATProto storage is configured.
-        /// </summary>
-        /// <param name="services">The service collection to configure.</param>
-        /// <param name="cacheDays">Number of days to cache media link results.</param>
-        /// <param name="atProtoUserDID">ATProto user DID for storage (required).</param>
-        /// <returns>The configured service collection.</returns>
-        public static IServiceCollection AddSqliteMediaLinkCache(
-            this IServiceCollection services,
-            int cacheDays,
-            string atProtoUserDID
-        ) {
-            _ = services.AddSingleton<IMediaLinkCacheRepository>( s => new MediaLinkCacheRepository(
-                s.GetRequiredService<IDbContextFactory<MediaLinkCacheDbContext>>( ),
-                s.GetRequiredService<IATProtoStorageService>( ),
-                s.GetRequiredService<ILogger<MediaLinkCacheRepository>>( ),
-                cacheDays,
-                atProtoUserDID
-            ) );
-
-            return services;
-        }
-
-        /// <summary>
-        /// Adds the media link cache repository as a singleton using DbContextFactory for thread-safe database access.
-        /// This method should only be called when ATProto storage is configured.
-        /// </summary>
-        /// <param name="services">The service collection to configure.</param>
-        /// <param name="cacheDays">Number of days to cache media link results.</param>
-        /// <param name="atProtoUserDID">ATProto user DID for storage (required).</param>
-        /// <returns>The configured service collection.</returns>
-        [Obsolete( "Use AddRedisMediaLinkCache instead. This method will be removed after Redis migration is complete." )]
-        public static IServiceCollection AddMediaLinkCache(
-            this IServiceCollection services,
-            int cacheDays,
-            string atProtoUserDID
-        ) {
-            return services.AddSqliteMediaLinkCache( cacheDays, atProtoUserDID );
         }
     }
 }

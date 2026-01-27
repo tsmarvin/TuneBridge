@@ -48,9 +48,13 @@ namespace BridgeBeats.Infrastructure {
                                      !string.IsNullOrWhiteSpace( atProtoUserDID );
 
             if (atProtoConfigured) {
-                _ = services.AddATProtoStorage( atProtoIdentifier, atProtoPassword );
+                _ = services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
+                _ = services.AddATProtoStorage( );
                 _ = services.AddRedisMediaLinkCache( cacheDays, atProtoUserDID! );
             }
+
+            // Register genre cache (always available when Redis is configured)
+            _ = services.AddGenreCache( );
 
             // Register queue infrastructure (shared services)
             _ = services.AddQueueInfrastructure( );

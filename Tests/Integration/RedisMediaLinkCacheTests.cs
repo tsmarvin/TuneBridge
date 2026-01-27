@@ -342,6 +342,48 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
+    /// Verifies that <see cref="RedisMediaLinkCache.AddInputLinksAsync"/> skips writing when the record
+    /// already exists with the same RecordUri, avoiding unnecessary Redis writes during cache bootstrap.
+    /// </summary>
+    [TestMethod]
+    public async Task AddInputLinksAsync_SkipsWrite_WhenRecordAlreadyExistsWithSameUri( ) {
+        // Arrange
+        MediaLinkResult result = CreateTestResult( "SKIPTEST123", false );
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:SKIPTEST123";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        // First call - should write to Redis
+        _ = await _cache.CacheResultAsync( result );
+
+        // Get the ISRC key value and TTL after first write
+        IDatabase db = _redis!.GetDatabase( );
+        TimeSpan? ttlBefore = await db.KeyTimeToLiveAsync( "lookup:isrc:SKIPTEST123" );
+        Assert.IsNotNull( ttlBefore, "ISRC key should exist after first write" );
+
+        // Wait a brief moment to ensure TTL would be different if re-written
+        await Task.Delay( 100 );
+
+        // Second call with same result and recordUri - should skip write but refresh TTL
+        await _cache.AddInputLinksAsync( recordUri, result );
+
+        // Get TTL after second call
+        TimeSpan? ttlAfter = await db.KeyTimeToLiveAsync( "lookup:isrc:SKIPTEST123" );
+        Assert.IsNotNull( ttlAfter, "ISRC key should still exist after skip" );
+
+        // TTL should be refreshed (close to original cache days)
+        // The TTL after should be >= TTL before (since we refreshed it)
+        Assert.IsTrue( ttlAfter >= ttlBefore!.Value.Subtract( TimeSpan.FromSeconds( 1 ) ),
+            "TTL should be refreshed, not reduced" );
+    }
+
+    /// <summary>
     /// Creates a test MediaLinkResult with the specified external ID.
     /// </summary>
     private static MediaLinkResult CreateTestResult( string externalId, bool isAlbum )

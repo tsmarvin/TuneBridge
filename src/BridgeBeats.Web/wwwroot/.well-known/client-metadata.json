@@ -1,0 +1,22 @@
+{
+  "client_id": "https://bridgebeats.link/.well-known/client-metadata.json",
+  "client_name": "BridgeBeats",
+  "client_uri": "https://bridgebeats.link",
+  "logo_uri": "https://bridgebeats.link/images/icon-192.png",
+  "tos_uri": "https://bridgebeats.link/privacy",
+  "policy_uri": "https://bridgebeats.link/privacy",
+  "application_type": "web",
+  "grant_types": [
+    "authorization_code",
+    "refresh_token"
+  ],
+  "response_types": [
+    "code"
+  ],
+  "scope": "atproto repo:link.bridgebeats.playlist",
+  "redirect_uris": [
+    "https://bridgebeats.link/account/atproto-callback"
+  ],
+  "token_endpoint_auth_method": "none",
+  "dpop_bound_access_tokens": true
+}

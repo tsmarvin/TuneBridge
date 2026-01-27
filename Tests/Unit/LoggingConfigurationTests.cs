@@ -70,7 +70,7 @@ public partial class LoggingConfigurationTests {
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["BridgeBeats:LogFilePath"] = logPath,
+                ["BridgeBeats:LogDirPath"] = logDir,
                 ["Logging:LogLevel:Default"] = "Information"
             };
 
@@ -163,7 +163,7 @@ public partial class LoggingConfigurationTests {
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["BridgeBeats:LogFilePath"] = logPath,
+                ["BridgeBeats:LogDirPath"] = Path.GetDirectoryName(logPath)!,
                 ["Logging:LogLevel:Default"] = "Information",
                 ["OpenTelemetry:OtlpEndpoint"] = "http://aspire-dashboard:4317"
             };
@@ -173,10 +173,10 @@ public partial class LoggingConfigurationTests {
                 .Build( );
 
             // Act & Assert
-            string? filePath = configuration["BridgeBeats:LogFilePath"];
+            string? dirPath = configuration["BridgeBeats:LogDirPath"];
             string? otlpEndpoint = configuration["OpenTelemetry:OtlpEndpoint"];
 
-            Assert.IsFalse( string.IsNullOrWhiteSpace( filePath ), "Log File Path should be configured" );
+            Assert.IsFalse( string.IsNullOrWhiteSpace( dirPath ), "Log Dir Path should be configured" );
             Assert.IsFalse( string.IsNullOrWhiteSpace( otlpEndpoint ), "OTLP endpoint should be configured" );
 
             // Verify both can be configured simultaneously

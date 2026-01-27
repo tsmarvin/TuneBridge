@@ -52,7 +52,7 @@ API_KEY_SALT="$(read_secret "api_key_salt")"
 RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
 # Logging configuration
-LOG_FILE_PATH="${LOG_FILE_PATH:-/app/data/logs/bridgebeats-.log}"
+LOG_DIR_PATH="${LOG_DIR_PATH:-/app/data/logs}"
 
 # Resilience configuration
 RESILIENCE_MAX_RETRY_AFTER_SECONDS="${RESILIENCE_MAX_RETRY_AFTER_SECONDS:-120}"
@@ -98,7 +98,7 @@ cat > /app/appsettings.json <<EOF
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
     "BaseUrl": "$BASEURL",
-    "LogFilePath": "$(escape_bs "$LOG_FILE_PATH")",
+    "LogDirPath": "$(escape_bs "$LOG_DIR_PATH")",
     "CardCacheExpirationHours": $CARD_CACHE_EXPIRATION_HOURS,
     "CardCacheCleanupInterval": $CARD_CACHE_CLEANUP_INTERVAL,
     "Resilience": {
@@ -155,7 +155,7 @@ export Parameters__RateLimitRequestsPerHour="$RATE_LIMIT_REQUESTS_PER_HOUR"
 export Parameters__CacheDays="$CACHE_DAYS"
 export Parameters__LinkCacheConnectionString="$LINK_CACHE_CONNECTION_STRING"
 export Parameters__IdentityConnectionString="$IDENTITY_CONNECTION_STRING"
-export Parameters__LogFilePath="$LOG_FILE_PATH"
+export Parameters__LogDirPath="$LOG_DIR_PATH"
 export Parameters__CardCacheExpirationHours="$CARD_CACHE_EXPIRATION_HOURS"
 export Parameters__CardCacheCleanupInterval="$CARD_CACHE_CLEANUP_INTERVAL"
 export Parameters__ResilienceMaxRetryAfterSeconds="$RESILIENCE_MAX_RETRY_AFTER_SECONDS"

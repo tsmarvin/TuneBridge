@@ -632,8 +632,8 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
         Match match = s_redisStreamIdPattern.Match( compositeId );
         if (!match.Success) {
-            throw new ArgumentException( 
-                $"Invalid composite message ID format. Expected 'stream:timestamp-sequence', got: {compositeId}", 
+            throw new ArgumentException(
+                $"Invalid composite message ID format. Expected 'stream:timestamp-sequence', got: {compositeId}",
                 nameof( compositeId ) );
         }
 

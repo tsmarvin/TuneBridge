@@ -742,7 +742,8 @@
       "bridgebeats.contracts": {
         "type": "Project",
         "dependencies": {
-          "idunno.AtProto": "[1.4.0, )"
+          "idunno.AtProto": "[1.4.0, )",
+          "idunno.Bluesky": "[1.4.0, )"
         }
       }
     }

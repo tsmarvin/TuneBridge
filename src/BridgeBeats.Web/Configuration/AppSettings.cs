@@ -108,9 +108,9 @@ namespace BridgeBeats.Web.Configuration {
         public string BaseUrl { get; set; } = string.Empty;
 
         /// <summary>
-        /// The log file path for the service.
+        /// The log directory path for the service. Each project writes to logs/{ProjectName}-.log.
         /// </summary>
-        public string LogFilePath { get; set; } = string.Empty;
+        public string LogDirPath { get; set; } = "./logs";
 
         /// <summary>
         /// The number of hours to cache OpenGraph cards in memory before expiration. Default is 1 hour.

@@ -25,6 +25,15 @@ public static class SpotifyConstants {
     public const int MaxAlbumsPerBatchLookup = 20;
 
     /// <summary>
+    /// Maximum number of artist IDs that can be requested in a single bulk lookup.
+    /// </summary>
+    /// <remarks>
+    /// Endpoint: GET /artists?ids={comma-separated-ids}
+    /// Documentation: https://developer.spotify.com/documentation/web-api/reference/get-multiple-artists
+    /// </remarks>
+    public const int MaxArtistsPerBatchLookup = 50;
+
+    /// <summary>
     /// Rate limit endpoint key for bulk track lookups.
     /// Used to track rate limits separately from single-track lookups.
     /// </summary>
@@ -35,4 +44,10 @@ public static class SpotifyConstants {
     /// Used to track rate limits separately from single-album lookups.
     /// </summary>
     public const string BulkAlbumsEndpoint = "BulkAlbums";
+
+    /// <summary>
+    /// Rate limit endpoint key for bulk artist lookups.
+    /// Used to track rate limits separately from single-artist lookups.
+    /// </summary>
+    public const string BulkArtistsEndpoint = "BulkArtists";
 }
