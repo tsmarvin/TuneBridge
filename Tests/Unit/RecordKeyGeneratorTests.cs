@@ -176,7 +176,7 @@ namespace BridgeBeats.Tests.Unit {
             string cardId = RecordKeyGenerator.GenerateCardId( rkey );
 
             // Assert
-            Assert.IsLessThanOrEqualTo( 32, cardId.Length, "Card ID should not exceed 32 characters" );
+            Assert.IsLessThanOrEqualTo( cardId.Length, 32, "Card ID should not exceed 32 characters" );
             Assert.IsTrue( cardId.All( c => char.IsLetterOrDigit( c ) || c == '-' ), "Card ID should be URL-safe" );
             Assert.IsTrue( cardId.All( c => !char.IsUpper( c ) ), "Card ID should be lowercase" );
         }

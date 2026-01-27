@@ -51,9 +51,9 @@ The Discord integration runs as a separate worker service (`BridgeBeats.Worker.D
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
 | `OTLP_ENDPOINT` | OpenTelemetry OTLP endpoint for Aspire Dashboard | `http://aspire-dashboard:4317` |
-| `LOG_FILE_PATH` | File path for log files | `/app/data/logs/bridgebeats-.log` |
+| `BridgeBeats__LogDirPath` | Directory path for log files | `./logs` |
 | `CACHE_DAYS` | Number of days to cache ATProto PDS lookup results | `7` |
-| `REDIS_CONNECTION_STRING` | Redis connection string for caching and queuing | `localhost:6379` (provided by Aspire) |
+| `ConnectionStrings__redis` | Redis connection string for caching and queuing | `localhost:6379` (provided by Aspire) |
 | `BridgeBeats__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=bridgebeats.db` |
 | `BridgeBeats__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
 | `CARD_CACHE_EXPIRATION_HOURS` | Number of hours to cache OpenGraph cards in memory | `1` |
