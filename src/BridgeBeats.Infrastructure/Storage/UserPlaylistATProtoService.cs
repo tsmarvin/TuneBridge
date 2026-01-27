@@ -362,10 +362,9 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
         // Tracked in issue: https://github.com/tsmarvin/BridgeBeats/issues/210
 
         throw new NotImplementedException(
-            $"ATProto OAuth session restoration is not yet implemented. " +
-            $"User '{userDid}' has valid OAuth tokens, but the idunno.Bluesky library does not support " +
-            $"creating authenticated agents from stored credentials. This functionality is required for " +
-            $"playlist write operations. Tracked in issue #210."
+            "ATProto OAuth session restoration is not yet implemented. " +
+            "The idunno.Bluesky library does not support creating authenticated agents from stored OAuth credentials. " +
+            "This functionality is required for playlist write operations. Tracked in issue #210."
         );
     }
 

@@ -20,6 +20,15 @@ public class OAuthStateCleanupService(
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
         _logger.LogInformation( "OAuth state cleanup service started" );
 
+        // Perform initial cleanup immediately
+        try {
+            _logger.LogInformation( "Running initial OAuth state cleanup..." );
+            int removedCount = await _oauthService.CleanupExpiredStatesAsync( stoppingToken );
+            _logger.LogInformation( "Initial OAuth state cleanup completed. Removed {Count} expired entries.", removedCount );
+        } catch (Exception ex) {
+            _logger.LogError( ex, "Error during initial OAuth state cleanup" );
+        }
+
         while (!stoppingToken.IsCancellationRequested) {
             try {
                 await Task.Delay( _cleanupInterval, stoppingToken );
