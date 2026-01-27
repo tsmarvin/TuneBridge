@@ -350,22 +350,23 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
         }
 
         // Create an authenticated agent
-        // Note: The idunno.Bluesky library doesn't have a direct way to create an agent with
-        // pre-existing OAuth tokens. For now, we create an unauthenticated agent and log a warning.
-        // Full OAuth session restoration will require additional library support or
-        // direct HTTP calls with the stored access token and DPoP key.
-        _logger.LogWarning(
-            "OAuth session restoration not yet fully implemented. " +
-            "Creating agent for user {UserDid} - PDS operations may require additional implementation.",
-            userDid
-        );
-
-        // TODO: When idunno.Bluesky supports OAuth session restoration, update this to:
+        // Note: The idunno.Bluesky library doesn't currently support creating an agent with
+        // pre-existing OAuth tokens. This functionality is blocked until the library provides
+        // a way to restore OAuth sessions or until we implement direct HTTP calls to the PDS.
+        //
+        // Required for implementation:
         // 1. Deserialize the DPoP key from user.EncryptedAtProtoDPoPKey (decrypted automatically by Data Protection)
         // 2. Create an agent with the stored session (access token, refresh token, DPoP key)
-        // 3. The agent should then be able to make authenticated requests
+        // 3. Use the DPoP key to sign authenticated requests to the PDS
+        //
+        // Tracked in issue: https://github.com/tsmarvin/BridgeBeats/issues/210
 
-        return new BlueskyAgent( );
+        throw new NotImplementedException(
+            $"ATProto OAuth session restoration is not yet implemented. " +
+            $"User '{userDid}' has valid OAuth tokens, but the idunno.Bluesky library does not support " +
+            $"creating authenticated agents from stored credentials. This functionality is required for " +
+            $"playlist write operations. Tracked in issue #210."
+        );
     }
 
     /// <summary>
