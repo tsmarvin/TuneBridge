@@ -211,11 +211,6 @@ public sealed class RedisGenreCache : IGenreCacheService {
         // Score = Unix timestamp for FIFO ordering
         double score = DateTimeOffset.UtcNow.ToUnixTimeSeconds( );
 
-        // Use NX to avoid updating score if already in queue
-        SortedSetEntry[] entries = artistList
-            .Select( id => new SortedSetEntry( id, score ) )
-            .ToArray( );
-
         // SortedSetAdd with When.NotExists prevents duplicate entries
         foreach (string artistId in artistList) {
             _ = await db.SortedSetAddAsync( queueKey, artistId, score, When.NotExists );
