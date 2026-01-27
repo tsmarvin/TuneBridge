@@ -34,16 +34,14 @@ public static partial class ProviderUrlParser {
     /// <param name="url">The URL to parse.</param>
     /// <returns>The extracted ID, or null if the URL is invalid or cannot be parsed.</returns>
     public static string? ExtractId( SupportedProviders provider, string url ) {
-        if (string.IsNullOrWhiteSpace( url )) {
-            return null;
-        }
-
-        return provider switch {
-            SupportedProviders.AppleMusic => ExtractAppleMusicId( url ),
-            SupportedProviders.Spotify => ExtractSpotifyId( url ),
-            SupportedProviders.Tidal => ExtractTidalId( url ),
-            _ => null
-        };
+        return string.IsNullOrWhiteSpace( url )
+            ? null
+            : provider switch {
+                SupportedProviders.AppleMusic => ExtractAppleMusicId( url ),
+                SupportedProviders.Spotify => ExtractSpotifyId( url ),
+                SupportedProviders.Tidal => ExtractTidalId( url ),
+                _ => null
+            };
     }
 
     /// <summary>
@@ -137,7 +135,7 @@ public static partial class ProviderUrlParser {
             Match match = s_tidalLinkRegex.Match( url );
             if (match.Success) {
                 string type = match.Groups["type"].Value;
-                
+
                 // Only extract IDs for tracks and albums
                 if (type.Equals( "track", StringComparison.OrdinalIgnoreCase ) ||
                     type.Equals( "album", StringComparison.OrdinalIgnoreCase )) {

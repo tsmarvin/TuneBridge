@@ -4,6 +4,7 @@ using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Worker.CacheBootstrap;
 using Microsoft.Extensions.Logging;
 using Moq;
+using StackExchange.Redis;
 
 namespace BridgeBeats.Tests.Unit;
 
@@ -16,6 +17,7 @@ public class CacheBootstrapBackgroundServiceTests {
 
     private Mock<IATProtoStorageService> _atProtoStorageMock = null!;
     private Mock<IMediaLinkCacheRepository> _cacheRepositoryMock = null!;
+    private Mock<IConnectionMultiplexer> _redisMock = null!;
     private Mock<ILogger<CacheBootstrapBackgroundService>> _loggerMock = null!;
     private CacheBootstrapSettings _settings = null!;
 
@@ -29,7 +31,12 @@ public class CacheBootstrapBackgroundServiceTests {
     public void Initialize( ) {
         _atProtoStorageMock = new Mock<IATProtoStorageService>( );
         _cacheRepositoryMock = new Mock<IMediaLinkCacheRepository>( );
+        _redisMock = new Mock<IConnectionMultiplexer>( );
         _loggerMock = new Mock<ILogger<CacheBootstrapBackgroundService>>( );
+
+        // Setup Redis mock to return empty endpoints (avoids null reference in diagnostics)
+        _ = _redisMock.Setup( r => r.GetEndPoints( It.IsAny<bool>( ) ) ).Returns( [] );
+
         _settings = new CacheBootstrapSettings(
             s_testPdsUri,
             TestUserDid,
@@ -225,6 +232,7 @@ public class CacheBootstrapBackgroundServiceTests {
         return new CacheBootstrapBackgroundService(
             _atProtoStorageMock.Object,
             _cacheRepositoryMock.Object,
+            _redisMock.Object,
             _settings,
             _loggerMock.Object
         );

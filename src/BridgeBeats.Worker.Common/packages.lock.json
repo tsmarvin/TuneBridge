@@ -2,15 +2,6 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
-      "NetCord.Hosting": {
-        "type": "Direct",
-        "requested": "[1.0.0-alpha.457, )",
-        "resolved": "1.0.0-alpha.457",
-        "contentHash": "lkjbIMMt5VOD0OvGI7BkMGYSCCr1tZv7iFc9D/VzASYpSf3pGvGebqufrVgnH0hUpwKmQ6Rwmhr1lgHT8xU3+A==",
-        "dependencies": {
-          "NetCord": "1.0.0-alpha.457"
-        }
-      },
       "DnsClient": {
         "type": "Transitive",
         "resolved": "1.8.0",
@@ -181,11 +172,6 @@
         "dependencies": {
           "Microsoft.IdentityModel.Logging": "8.15.0"
         }
-      },
-      "NetCord": {
-        "type": "Transitive",
-        "resolved": "1.0.0-alpha.457",
-        "contentHash": "zyIh34TSdmHeco9st+mga3u+VvC0X7D3CehW9bIVXl5EIOuIbecpE+8ADCA/RtJQRjPjorsh0s2ioyZ5nhiUpg=="
       },
       "OpenTelemetry": {
         "type": "Transitive",

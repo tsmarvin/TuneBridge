@@ -1,6 +1,8 @@
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Web.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;
@@ -13,6 +15,7 @@ namespace BridgeBeats.Web.Controllers;
 /// </remarks>
 /// <param name="statisticsService">Optional statistics service (null if not configured).</param>
 /// <param name="logger">Logger for diagnostic information.</param>
+[Authorize]
 public class StatisticsController(
     IStatisticsService? statisticsService,
     ILogger<StatisticsController> logger
@@ -45,6 +48,7 @@ public class StatisticsController(
     /// <returns>Redirect to the statistics page.</returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize( Roles = Roles.AspireDashboardAccess )]
     public async Task<IActionResult> Refresh( CancellationToken cancellationToken ) {
         if (statisticsService is null) {
             return RedirectToAction( nameof( Index ) );

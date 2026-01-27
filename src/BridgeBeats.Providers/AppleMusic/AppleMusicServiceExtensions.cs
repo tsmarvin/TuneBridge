@@ -27,6 +27,34 @@ namespace BridgeBeats.Providers.AppleMusic {
             HashSet<SupportedProviders> enabledProviders,
             int maxRetryAfterSeconds = 120
         ) {
+            if (!services.AddAppleMusicJwtHandler( teamId, keyId, keyPath, maxRetryAfterSeconds )) {
+                return false;
+            }
+
+            _ = services.AddTransient<AppleMusicLookupService>( );
+
+            _ = enabledProviders.Add( SupportedProviders.AppleMusic );
+            return true;
+        }
+
+        /// <summary>
+        /// Registers the AppleJwtHandler and musickit-api HTTP client for MusicKit JS authentication.
+        /// This is needed for the AppleMusicController to generate developer tokens, regardless of
+        /// whether worker services are used for backend lookups.
+        /// </summary>
+        /// <param name="services">The service collection to add services to.</param>
+        /// <param name="teamId">The Apple Developer Team ID.</param>
+        /// <param name="keyId">The Apple Music API Key ID.</param>
+        /// <param name="keyPath">The path to the .p8 private key file.</param>
+        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
+        /// <returns>True if the JWT handler was registered; otherwise false.</returns>
+        public static bool AddAppleMusicJwtHandler(
+            this IServiceCollection services,
+            string? teamId,
+            string? keyId,
+            string? keyPath,
+            int maxRetryAfterSeconds = 120
+        ) {
             // Check if Apple Music credentials are provided
             if (string.IsNullOrWhiteSpace( teamId ) ||
                 string.IsNullOrWhiteSpace( keyId )) {
@@ -57,9 +85,7 @@ namespace BridgeBeats.Providers.AppleMusic {
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "applemusic" ) );
 
             _ = services.AddSingleton( new AppleJwtHandler( teamId, keyId, keyContents ) );
-            _ = services.AddTransient<AppleMusicLookupService>( );
 
-            _ = enabledProviders.Add( SupportedProviders.AppleMusic );
             return true;
         }
 
