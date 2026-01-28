@@ -6,10 +6,18 @@ namespace BridgeBeats.Infrastructure.Migrations
 {
     /// <inheritdoc />
     /// <remarks>
-    /// This migration adds encrypted storage for DPoP keys but does not migrate existing data.
+    /// This migration adds a new column intended for storing ATProto DPoP keys.
+    /// IMPORTANT: Despite the [ProtectedPersonalData] attribute on the property, automatic encryption
+    /// is NOT currently functional because IPersonalDataProtector is not properly configured.
+    /// The column name "Encrypted" is aspirational - data will be stored as plain text until
+    /// proper Data Protection / IPersonalDataProtector infrastructure is implemented.
+    /// 
     /// Any users with existing OAuth sessions will need to re-authenticate after this migration
-    /// is applied. This is intentional as existing keys were stored unencrypted and cannot be
-    /// safely migrated to the new encrypted storage without the Data Protection API infrastructure.
+    /// is applied. This is intentional, as previously stored keys were unencrypted and are not
+    /// migrated to the new column.
+    /// 
+    /// TODO: Implement IPersonalDataProtector or use AddIdentity() instead of AddIdentityCore()
+    /// to enable automatic encryption/decryption of properties with [ProtectedPersonalData] attribute.
     /// </remarks>
     public partial class EncryptATProtoDPoPKey : Migration
     {
