@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,11 +11,15 @@ namespace BridgeBeats.Infrastructure.Identity {
     public static class IdentityServiceExtensions {
 
         /// <summary>
-        /// Adds ASP.NET Core Identity services with secure password requirements.
+        /// Adds ASP.NET Core Identity services with secure password requirements and personal data protection.
         /// </summary>
         /// <param name="services">The service collection to configure.</param>
         /// <returns>The configured service collection.</returns>
         public static IServiceCollection AddBridgeBeatsIdentity( this IServiceCollection services ) {
+            // Configure Data Protection for encrypting personal data
+            // Keys are stored in application data directory by default
+            _ = services.AddDataProtection( );
+
             _ = services.AddIdentityCore<ApplicationUser>( options => {
                 // Password settings
                 options.Password.RequireDigit = true;

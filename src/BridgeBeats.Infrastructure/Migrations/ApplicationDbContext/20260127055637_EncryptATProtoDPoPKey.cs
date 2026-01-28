@@ -5,6 +5,12 @@
 namespace BridgeBeats.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    /// <remarks>
+    /// This migration adds encrypted storage for DPoP keys but does not migrate existing data.
+    /// Any users with existing OAuth sessions will need to re-authenticate after this migration
+    /// is applied. This is intentional as existing keys were stored unencrypted and cannot be
+    /// safely migrated to the new encrypted storage without the Data Protection API infrastructure.
+    /// </remarks>
     public partial class EncryptATProtoDPoPKey : Migration
     {
         /// <inheritdoc />
