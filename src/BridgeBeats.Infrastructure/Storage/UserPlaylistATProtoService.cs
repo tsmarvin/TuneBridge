@@ -355,8 +355,8 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
         // a way to restore OAuth sessions or until we implement direct HTTP calls to the PDS.
         //
         // Required for implementation:
-        // 1. Retrieve and decrypt the DPoP key from user.EncryptedAtProtoDPoPKey
-        //    (manual decryption required as [ProtectedPersonalData] is not functional without IPersonalDataProtector)
+        // 1. Retrieve the DPoP key from user.EncryptedAtProtoDPoPKey
+        //    (WARNING: Currently stored as plain text - encryption not yet implemented)
         // 2. Create an agent with the stored session (access token, refresh token, DPoP key)
         // 3. Use the DPoP key to sign authenticated requests to the PDS
         //

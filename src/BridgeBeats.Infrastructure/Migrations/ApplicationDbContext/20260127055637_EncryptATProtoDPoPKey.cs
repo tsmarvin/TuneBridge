@@ -6,18 +6,24 @@ namespace BridgeBeats.Infrastructure.Migrations
 {
     /// <inheritdoc />
     /// <remarks>
-    /// This migration adds a new column intended for storing ATProto DPoP keys.
-    /// IMPORTANT: Despite the [ProtectedPersonalData] attribute on the property, automatic encryption
-    /// is NOT currently functional because IPersonalDataProtector is not properly configured.
-    /// The column name "Encrypted" is aspirational - data will be stored as plain text until
-    /// proper Data Protection / IPersonalDataProtector infrastructure is implemented.
-    /// 
+    /// <para>
+    /// This migration adds a column for ATProto DPoP private keys.
+    /// </para>
+    /// <para>
+    /// <strong>SECURITY WARNING:</strong> Despite the column name "EncryptedAtProtoDPoPKey" and the
+    /// [ProtectedPersonalData] attribute, data is currently stored as PLAIN TEXT. Automatic encryption
+    /// requires implementing and registering IPersonalDataProtector, which is not yet done. The column
+    /// name is misleading and will be addressed in a future update.
+    /// </para>
+    /// <para>
+    /// Storing DPoP private keys in plain text is a security risk. These keys prove ownership of OAuth
+    /// tokens, and database access could allow an attacker to impersonate users. This is a known issue
+    /// and should be resolved before production deployment.
+    /// </para>
+    /// <para>
     /// Any users with existing OAuth sessions will need to re-authenticate after this migration
-    /// is applied. This is intentional, as previously stored keys were unencrypted and are not
-    /// migrated to the new column.
-    /// 
-    /// TODO: Implement IPersonalDataProtector or use AddIdentity() instead of AddIdentityCore()
-    /// to enable automatic encryption/decryption of properties with [ProtectedPersonalData] attribute.
+    /// is applied, as existing keys from the old column are not migrated.
+    /// </para>
     /// </remarks>
     public partial class EncryptATProtoDPoPKey : Migration
     {

@@ -60,9 +60,11 @@ public class ApplicationUser : IdentityUser {
     public string? AtProtoRefreshToken { get; set; }
 
     /// <summary>
-    /// Encrypted ATProto DPoP (Demonstration of Proof-of-Possession) private key in JWK format.
-    /// The key is encrypted at rest using ASP.NET Core Data Protection API.
+    /// ATProto DPoP (Demonstration of Proof-of-Possession) private key in JWK format.
     /// Used to sign requests and prove ownership of OAuth tokens.
+    /// WARNING: Currently stored as plain text in the database. The [ProtectedPersonalData] attribute
+    /// is present but non-functional without IPersonalDataProtector implementation.
+    /// This is a known security issue tracked for resolution.
     /// </summary>
     [ProtectedPersonalData]
     public string? EncryptedAtProtoDPoPKey { get; set; }

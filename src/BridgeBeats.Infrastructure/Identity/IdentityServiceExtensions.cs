@@ -15,12 +15,15 @@ namespace BridgeBeats.Infrastructure.Identity {
         /// </summary>
         /// <param name="services">The service collection to configure.</param>
         /// <returns>The configured service collection.</returns>
+        /// <remarks>
+        /// Data Protection is configured but [ProtectedPersonalData] attribute will not function
+        /// without implementing and registering IPersonalDataProtector. This is a known limitation.
+        /// </remarks>
         public static IServiceCollection AddBridgeBeatsIdentity( this IServiceCollection services ) {
-            // Configure Data Protection for encrypting personal data
+            // Configure Data Protection for infrastructure
             // Keys are stored in application data directory by default
-            // Note: [ProtectedPersonalData] attribute requires additional setup not included here.
-            // Properties marked with this attribute will NOT be automatically encrypted without
-            // implementing and registering IPersonalDataProtector or using AddIdentity() instead of AddIdentityCore().
+            // Note: [ProtectedPersonalData] attribute requires IPersonalDataProtector to be registered
+            // separately - it is NOT automatically functional with just AddDataProtection().
             _ = services.AddDataProtection( );
 
             _ = services.AddIdentityCore<ApplicationUser>( options => {
