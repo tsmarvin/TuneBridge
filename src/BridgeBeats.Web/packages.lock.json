@@ -67,9 +67,9 @@
       },
       "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
-        "requested": "[10.0.2, )",
-        "resolved": "10.0.2",
-        "contentHash": "sXdDtMf2qcnbygw9OdE535c2lxSxrZP8gO4UhDJ0xiJbl1wIqXS1OTcTDFTIJPOFd6Mhcm8gPEthqWGUxBsTqw=="
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "kICGrGYEzCNI3wPzfEXcwNHgTvlvVn9yJDhSdRK+oZQy4jvYH529u7O0xf5ocQKzOMjfS07+3z9PKRIjrFMJDA=="
       },
       "Microsoft.OpenApi": {
         "type": "Direct",
@@ -79,17 +79,17 @@
       },
       "NetCord": {
         "type": "Direct",
-        "requested": "[1.0.0-alpha.455, )",
-        "resolved": "1.0.0-alpha.455",
-        "contentHash": "RHV5OdZ8O5CtDBMjIVS3Aq4JcRtiwSnTtYWbuPUllJUK0nQ+MSSBK2OWnc1iQ/7nu1VWMseh2WgExl5nXMDHLw=="
+        "requested": "[1.0.0-alpha.458, )",
+        "resolved": "1.0.0-alpha.458",
+        "contentHash": "EYLRCC9Xp6I8XWd5agj+jasxxkwOOopuX3JeyPFMfj/0tb6sokeqi1FWKHhDXZYgMVkpz8VnbVcM0LV/JFTQpw=="
       },
       "NetCord.Hosting": {
         "type": "Direct",
-        "requested": "[1.0.0-alpha.455, )",
-        "resolved": "1.0.0-alpha.455",
-        "contentHash": "hvyyKoZ5DggyCU9aPkNzGsYwtn7QnPlqOj7gYORWdxp6KVkI/M/vYPjlflnh8oRFh2hOD5U1HN8l/y6Tv9n6Aw==",
+        "requested": "[1.0.0-alpha.458, )",
+        "resolved": "1.0.0-alpha.458",
+        "contentHash": "4AQdmHl672B72ytJARDPebSJ07sXfXOQNwCu3zRWgUCJ5A+HGoCZwujf3NMzJuP0LfEOQlggKwjOH1wN6cuYhA==",
         "dependencies": {
-          "NetCord": "1.0.0-alpha.455"
+          "NetCord": "1.0.0-alpha.458"
         }
       },
       "Serilog.AspNetCore": {
