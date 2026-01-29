@@ -322,7 +322,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     /// <summary>
     /// Determines if a message should be blocked based on its lookup type.
     /// </summary>
-    private bool IsMessageBlocked( T request, HashSet<string> blockedEndpoints ) {
+    private static bool IsMessageBlocked( T request, HashSet<string> blockedEndpoints ) {
         // Extract the lookup type from the request if it's a QueuedLookupRequest
         if (request is QueuedLookupRequest lookupRequest) {
             // Use the LookupType as the endpoint key for rate limiting

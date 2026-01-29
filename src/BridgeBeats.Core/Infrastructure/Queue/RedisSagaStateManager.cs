@@ -405,7 +405,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         );
     }
 
-    private async Task<Dictionary<SupportedProviders, ProviderLookupState>> LoadProviderStatesAsync(
+    private static async Task<Dictionary<SupportedProviders, ProviderLookupState>> LoadProviderStatesAsync(
         IDatabase db,
         string sagaId
     ) {
