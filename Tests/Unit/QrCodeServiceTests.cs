@@ -1,5 +1,5 @@
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Services;
+using BridgeBeats.Core.Domain.Services;
 
 namespace BridgeBeats.Tests.Unit;
 

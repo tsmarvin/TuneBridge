@@ -15,12 +15,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.457" />
+    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.459" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Contracts\BridgeBeats.Contracts.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Core\BridgeBeats.Core.csproj" />
   </ItemGroup>
 
 </Project>

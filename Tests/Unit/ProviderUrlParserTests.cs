@@ -1,5 +1,5 @@
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Contracts.Utilities;
+using BridgeBeats.Core.Domain.Utilities;
 
 namespace BridgeBeats.Tests.Unit;
 

@@ -1593,7 +1593,7 @@
           "idunno.Bluesky": "[1.4.0, )"
         }
       },
-      "bridgebeats.infrastructure": {
+      "bridgebeats.core": {
         "type": "Project",
         "dependencies": {
           "AspNetCore.Authentication.ApiKey": "[9.0.0, )",
@@ -1601,19 +1601,6 @@
           "BridgeBeats.Contracts": "[1.0.0, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.2, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.2, )",
-          "idunno.Bluesky": "[1.4.0, )"
-        }
-      },
-      "bridgebeats.providers": {
-        "type": "Project",
-        "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )"
-        }
-      },
-      "bridgebeats.servicedefaults": {
-        "type": "Project",
-        "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )",
           "Microsoft.Extensions.Http.Resilience": "[10.2.0, )",
           "Microsoft.Extensions.ServiceDiscovery": "[10.2.0, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.15.0, )",
@@ -1621,63 +1608,35 @@
           "OpenTelemetry.Instrumentation.AspNetCore": "[1.15.0, )",
           "OpenTelemetry.Instrumentation.Http": "[1.15.0, )",
           "OpenTelemetry.Instrumentation.Runtime": "[1.15.0, )",
+          "QRCoder": "[1.7.0, )",
           "Serilog.AspNetCore": "[10.0.0, )",
           "Serilog.Sinks.File": "[7.0.0, )"
-        }
-      },
-      "bridgebeats.services": {
-        "type": "Project",
-        "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )",
-          "BridgeBeats.Infrastructure": "[1.0.0, )",
-          "BridgeBeats.Providers": "[1.0.0, )",
-          "QRCoder": "[1.7.0, )"
         }
       },
       "bridgebeats.web": {
         "type": "Project",
         "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )",
-          "BridgeBeats.Infrastructure": "[1.0.0, )",
-          "BridgeBeats.Providers": "[1.0.0, )",
-          "BridgeBeats.ServiceDefaults": "[1.0.0, )",
-          "BridgeBeats.Services": "[1.0.0, )",
+          "BridgeBeats.Core": "[1.0.0, )",
           "Microsoft.OpenApi": "[3.3.1, )",
-          "Serilog.AspNetCore": "[10.0.0, )",
-          "Serilog.Sinks.File": "[7.0.0, )",
           "Swashbuckle.AspNetCore": "[10.1.0, )"
         }
       },
       "bridgebeats.worker.cachebootstrap": {
         "type": "Project",
         "dependencies": {
-          "BridgeBeats.Infrastructure": "[1.0.0, )",
-          "BridgeBeats.ServiceDefaults": "[1.0.0, )"
-        }
-      },
-      "bridgebeats.worker.common": {
-        "type": "Project",
-        "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )",
-          "BridgeBeats.ServiceDefaults": "[1.0.0, )"
+          "BridgeBeats.Core": "[1.0.0, )"
         }
       },
       "bridgebeats.worker.sagacoordinator": {
         "type": "Project",
         "dependencies": {
-          "BridgeBeats.Infrastructure": "[1.0.0, )",
-          "BridgeBeats.ServiceDefaults": "[1.0.0, )",
-          "BridgeBeats.Services": "[1.0.0, )"
+          "BridgeBeats.Core": "[1.0.0, )"
         }
       },
       "bridgebeats.worker.spotify": {
         "type": "Project",
         "dependencies": {
-          "BridgeBeats.Infrastructure": "[1.0.0, )",
-          "BridgeBeats.Providers": "[1.0.0, )",
-          "BridgeBeats.ServiceDefaults": "[1.0.0, )",
-          "BridgeBeats.Services": "[1.0.0, )",
-          "BridgeBeats.Worker.Common": "[1.0.0, )"
+          "BridgeBeats.Core": "[1.0.0, )"
         }
       }
     }

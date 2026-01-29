@@ -1,4 +1,4 @@
-using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Core.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;

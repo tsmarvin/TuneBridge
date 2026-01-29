@@ -2,7 +2,6 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Queue;
 using BridgeBeats.Services.LinkResolver;
 using Microsoft.Extensions.Logging;
 using Moq;

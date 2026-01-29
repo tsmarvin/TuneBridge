@@ -2,8 +2,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Queue;
-using BridgeBeats.Services.Queue;
+using BridgeBeats.Core.Domain.Services.Queue;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Worker.SagaCoordinator;

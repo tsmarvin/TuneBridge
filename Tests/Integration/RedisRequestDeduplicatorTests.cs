@@ -1,4 +1,4 @@
-using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;

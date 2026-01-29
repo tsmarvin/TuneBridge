@@ -5,7 +5,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Providers.Spotify;
+using BridgeBeats.Core.Domain.Providers.Spotify;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Worker.Spotify;

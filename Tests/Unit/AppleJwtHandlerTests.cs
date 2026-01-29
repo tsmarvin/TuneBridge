@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using BridgeBeats.Providers.AppleMusic;
+using BridgeBeats.Core.Domain.Providers.AppleMusic;
 
 namespace BridgeBeats.Tests.Unit;
 

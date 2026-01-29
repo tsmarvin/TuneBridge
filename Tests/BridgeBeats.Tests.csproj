@@ -43,9 +43,6 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
     <ProjectReference Include="..\src\BridgeBeats.Contracts\BridgeBeats.Contracts.csproj" />
-    <ProjectReference Include="..\src\BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj" />
-    <ProjectReference Include="..\src\BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
-    <ProjectReference Include="..\src\BridgeBeats.Services\BridgeBeats.Services.csproj" />
     <ProjectReference Include="..\src\BridgeBeats.Web\BridgeBeats.Web.csproj" />
     <ProjectReference Include="..\src\BridgeBeats.Worker.SagaCoordinator\BridgeBeats.Worker.SagaCoordinator.csproj" />
     <ProjectReference Include="..\src\BridgeBeats.Worker.Spotify\BridgeBeats.Worker.Spotify.csproj" />

@@ -13,10 +13,26 @@ namespace BridgeBeats.Contracts.Records;
 /// <param name="CompletedAt">When the lookup completed.</param>
 /// <param name="ErrorMessage">Error message if the lookup failed.</param>
 public sealed record ProviderLookupState(
-    [property: JsonPropertyName( "provider" )] SupportedProviders Provider,
-    [property: JsonPropertyName( "isComplete" )] bool IsComplete,
-    [property: JsonPropertyName( "isSuccess" )] bool IsSuccess,
-    [property: JsonPropertyName( "resultJson" ), JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )] string? ResultJson,
-    [property: JsonPropertyName( "completedAt" ), JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )] DateTimeOffset? CompletedAt,
-    [property: JsonPropertyName( "errorMessage" ), JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )] string? ErrorMessage
+
+    [property: JsonPropertyName( "provider" )]
+    SupportedProviders Provider,
+
+    [property: JsonPropertyName( "isComplete" )]
+    bool IsComplete,
+
+    [property: JsonPropertyName( "isSuccess" )]
+    bool IsSuccess,
+
+    [property: JsonPropertyName( "resultJson" ),
+    JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
+    string? ResultJson,
+
+    [property: JsonPropertyName( "completedAt" ),
+    JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
+    DateTimeOffset? CompletedAt,
+
+    [property: JsonPropertyName( "errorMessage" ),
+    JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
+    string? ErrorMessage
+
 );

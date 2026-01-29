@@ -1,9 +1,7 @@
 using System.Text.Json;
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Providers.AppleMusic;
-using BridgeBeats.ServiceDefaults;
-using BridgeBeats.Services.Queue;
-using BridgeBeats.Worker.Common;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Domain.Providers.AppleMusic;
 using Serilog;
 
 namespace BridgeBeats.Worker.AppleMusic;

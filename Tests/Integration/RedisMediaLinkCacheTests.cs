@@ -1,8 +1,9 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Cache;
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Core.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Storage;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
@@ -211,8 +212,8 @@ public class RedisMediaLinkCacheTests {
         _ = await _cache.CacheResultAsync( result );
 
         // Get the card ID from the result
-        string rkey = BridgeBeats.Infrastructure.Storage.RecordKeyGenerator.GenerateRkey( result );
-        string cardId = BridgeBeats.Infrastructure.Storage.RecordKeyGenerator.GenerateCardId( rkey );
+        string rkey = RecordKeyGenerator.GenerateRkey( result );
+        string cardId = RecordKeyGenerator.GenerateCardId( rkey );
 
         // Act
         (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =

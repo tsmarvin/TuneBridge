@@ -1,5 +1,5 @@
 using System.Diagnostics.Metrics;
-using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Queue;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Tests.Integration;

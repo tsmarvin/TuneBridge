@@ -3,7 +3,8 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Storage;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -314,19 +315,6 @@ namespace BridgeBeats.Web.Controllers {
 
             return Ok( new { hasResults = true, items } );
         }
-
-        /// <summary>
-        /// Request for web-specific lookup.
-        /// </summary>
-        /// <param name="Uri">Music URL(s) to look up (can contain multiple URLs).</param>
-        public record WebLookupRequest( string Uri );
-
-        /// <summary>
-        /// Individual result item with card URL and fallback data.
-        /// </summary>
-        /// <param name="CardUrl">URL to the stored OpenGraph card, if available.</param>
-        /// <param name="FallbackData">The raw result data for fallback display.</param>
-        public record WebLookupResultItem( string? CardUrl, MediaLinkResult FallbackData );
 
         /// <summary>
         /// Streams music lookup results progressively as they're retrieved.

@@ -1,6 +1,6 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Infrastructure.Storage;
+using BridgeBeats.Core.Infrastructure.Storage;
 
 namespace BridgeBeats.Tests.Unit {
 

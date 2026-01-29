@@ -1,5 +1,5 @@
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Cache;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;

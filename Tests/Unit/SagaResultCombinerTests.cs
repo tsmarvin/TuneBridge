@@ -2,7 +2,7 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Services.Queue;
+using BridgeBeats.Core.Domain.Services.Queue;
 using Microsoft.Extensions.Logging;
 using Moq;
 

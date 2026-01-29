@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
-using BridgeBeats.Providers.Common;
+using BridgeBeats.Core.Domain.Providers.Common;
 using Microsoft.Extensions.Logging;
 using Moq;
 

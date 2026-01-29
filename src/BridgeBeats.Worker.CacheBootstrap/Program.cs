@@ -1,7 +1,7 @@
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Cache;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.ServiceDefaults;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Extensions;
 using Serilog;
 using StackExchange.Redis;
 

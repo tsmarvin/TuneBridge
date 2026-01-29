@@ -1,7 +1,7 @@
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Providers.Spotify;
+using BridgeBeats.Core.Domain.Providers.Spotify;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Worker.Spotify;

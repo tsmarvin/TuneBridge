@@ -1,11 +1,10 @@
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Cache;
-using BridgeBeats.Infrastructure.Queue;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.ServiceDefaults;
-using BridgeBeats.Services.Queue;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Domain.Services.Queue;
+using BridgeBeats.Core.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Extensions;
 using Serilog;
 using StackExchange.Redis;
 

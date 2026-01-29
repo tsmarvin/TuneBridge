@@ -1,4 +1,4 @@
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Core.Infrastructure.Utilities;
 
 namespace BridgeBeats.Tests.Unit;
 

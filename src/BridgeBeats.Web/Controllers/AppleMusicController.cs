@@ -2,10 +2,11 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Identity;
-using BridgeBeats.Infrastructure.Storage;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Domain.Providers.AppleMusic;
+using BridgeBeats.Core.Infrastructure.Identity;
+using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Infrastructure.Utilities;
-using BridgeBeats.Providers.AppleMusic;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -65,11 +66,6 @@ public class AppleMusicController(
         string token = jwtHandler.NewAuthenticationHeader( ).Parameter ?? string.Empty;
         return Ok( new { token } );
     }
-
-    /// <summary>Request for storing Apple Music user token.</summary>
-    /// <param name="UserToken">Apple Music user token from MusicKit JS.</param>
-    /// <param name="ExpiresInMs">Token expiration time in milliseconds.</param>
-    public record StoreTokenRequest( string UserToken, long ExpiresInMs );
 
     /// <summary>
     /// Stores the Apple Music user token for the authenticated user.
@@ -242,10 +238,6 @@ public class AppleMusicController(
             expiresAt = user.AppleMusicTokenExpiration
         } );
     }
-
-    /// <summary>Request for processing a playlist.</summary>
-    /// <param name="PlaylistId">Apple Music playlist ID.</param>
-    public record ProcessPlaylistRequest( string PlaylistId );
 
     /// <summary>
     /// Processes a playlist by fetching its tracks and converting them via URLList endpoint.

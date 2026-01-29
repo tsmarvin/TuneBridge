@@ -1,8 +1,8 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.Services.LinkResolver;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Infrastructure.Storage;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;
@@ -11,7 +11,12 @@ namespace BridgeBeats.Web.Controllers;
 /// Controller for serving OpenGraph embeddable cards for music links.
 /// </summary>
 [Route( "card" )]
-public class OpenGraphCardController( IOpenGraphCardService cardService, IQrCodeService qrCodeService, IMediaLinkCacheRepository? cacheRepository = null, ILogger<OpenGraphCardController>? logger = null ) : Controller {
+public class OpenGraphCardController(
+    IOpenGraphCardService cardService,
+    IQrCodeService qrCodeService,
+    IMediaLinkCacheRepository? cacheRepository = null,
+    ILogger<OpenGraphCardController>? logger = null
+) : Controller {
 
     private readonly IOpenGraphCardService _cardService = cardService;
     private readonly IQrCodeService _qrCodeService = qrCodeService;

@@ -4,7 +4,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Services.Queue;
+using BridgeBeats.Core.Domain.Services.Queue;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;

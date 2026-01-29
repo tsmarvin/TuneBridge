@@ -4,15 +4,11 @@ using AspNetCore.Authentication.ApiKey;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Cache;
-using BridgeBeats.Infrastructure.Identity;
-using BridgeBeats.Infrastructure.Queue;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.Providers;
-using BridgeBeats.Providers.AppleMusic;
-using BridgeBeats.ServiceDefaults;
-using BridgeBeats.Services;
-using BridgeBeats.Services.Statistics;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Domain.Services;
+using BridgeBeats.Core.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Extensions;
+using BridgeBeats.Core.Infrastructure.Identity;
 using BridgeBeats.Web.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
@@ -323,27 +319,9 @@ namespace BridgeBeats.Web.Configuration {
         }
 
         private static void ConfigureIdentity( IServiceCollection services ) {
-            _ = services.AddIdentityCore<ApplicationUser>( options => {
-                // Password settings
-                options.Password.RequireDigit = true;
-                options.Password.RequireLowercase = true;
-                options.Password.RequireUppercase = true;
-                options.Password.RequireNonAlphanumeric = true;
-                options.Password.RequiredLength = 14;
-
-                // User settings
-                options.User.RequireUniqueEmail = true;
-            } )
-            .AddRoles<IdentityRole>( )
-            .AddEntityFrameworkStores<ApplicationDbContext>( )
-            .AddSignInManager( )
-            .AddDefaultTokenProviders( );
-
-            // Register scoped ApplicationDbContext for Identity framework using the factory
-            _ = services.AddScoped( sp => {
-                IDbContextFactory<ApplicationDbContext> factory = sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( );
-                return factory.CreateDbContext( );
-            } );
+            // Use the centralized Identity configuration from Infrastructure project
+            // This includes Data Protection configuration for [ProtectedPersonalData] attributes
+            _ = services.AddBridgeBeatsIdentity( );
         }
 
         private static void ConfigureApiKeyAuth( IServiceCollection services, AppSettings settings ) {
@@ -422,6 +400,9 @@ namespace BridgeBeats.Web.Configuration {
                         sp.GetRequiredService<IHttpClientFactory>( )
                     )
                 );
+
+                // Register background service for cleaning up expired OAuth states
+                _ = services.AddHostedService<OAuthStateCleanupService>( );
             }
 
             if (string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) ||
