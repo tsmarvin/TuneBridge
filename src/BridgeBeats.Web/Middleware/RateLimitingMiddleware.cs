@@ -108,7 +108,7 @@ public class RateLimitingMiddleware {
             );
 
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            context.Response.Headers["Retry-After"] = ((int)timeRemaining.TotalSeconds).ToString( );
+            context.Response.Headers.RetryAfter = ((int)timeRemaining.TotalSeconds).ToString( );
             await context.Response.WriteAsJsonAsync( new {
                 error = "Rate limit exceeded",
                 message = $"Maximum {_maxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
@@ -137,7 +137,7 @@ public class RateLimitingMiddleware {
             );
 
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            context.Response.Headers["Retry-After"] = ((int)timeRemaining.TotalSeconds).ToString( );
+            context.Response.Headers.RetryAfter = ((int)timeRemaining.TotalSeconds).ToString( );
             await context.Response.WriteAsJsonAsync( new {
                 error = "Rate limit exceeded",
                 message = $"Maximum {_maxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
