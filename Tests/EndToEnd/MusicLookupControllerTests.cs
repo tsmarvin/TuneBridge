@@ -25,7 +25,6 @@ public class MusicLookupControllerTests {
     /// </summary>
     /// <param name="context">The test context provided by the test framework.</param>
     [ClassInitialize]
-    [Obsolete]
     public static async Task ClassInitialize( TestContext context ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -42,15 +41,15 @@ public class MusicLookupControllerTests {
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = "";
+        configData["BridgeBeats:DiscordToken"] = string.Empty;
         // Disable worker services mode - use direct provider implementations
         configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
         // Force ATProto credentials to empty to disable caching service
         // The caching service requires background workers (QueueProcessorBackgroundService)
         // that are not running in the test environment, causing tests to timeout
-        configData["BridgeBeats:ATProtoIdentifier"] = "";
-        configData["BridgeBeats:ATProtoPassword"] = "";
-        configData["BridgeBeats:ATProtoUserDID"] = "";
+        configData["BridgeBeats:ATProtoIdentifier"] = string.Empty;
+        configData["BridgeBeats:ATProtoPassword"] = string.Empty;
+        configData["BridgeBeats:ATProtoUserDID"] = string.Empty;
         // Higher rate limit for integration tests
         configData["BridgeBeats:RateLimitRequestsPerHour"] = "1000";
 

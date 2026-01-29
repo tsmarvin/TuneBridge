@@ -2,7 +2,6 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Queue;
-using BridgeBeats.Infrastructure.Queue;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 

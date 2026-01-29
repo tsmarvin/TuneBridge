@@ -29,10 +29,9 @@ public class MusicLookupServiceTests {
     /// <summary>
     /// Initializes shared services and test infrastructure for all tests in this class.
     /// </summary>
-    /// <param name="context">The test context provided by MSTest.</param>
+    /// <param name="_">The test context provided by MSTest (unused).</param>
     [ClassInitialize]
-    [Obsolete]
-    public static async Task ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext _ ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
                             .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
                                             .AddUserSecrets<Web.Program>( optional: true )
@@ -51,15 +50,15 @@ public class MusicLookupServiceTests {
         // ============================================================================
 
         // Disable Discord in tests
-        overrides["BridgeBeats:DiscordToken"] = "";
+        overrides["BridgeBeats:DiscordToken"] = string.Empty;
 
         // Disable worker services mode - use direct provider implementations
         overrides["BridgeBeats:Workers:UseWorkerServices"] = "false";
 
         // Disable ATProto caching/queue mode - forces DefaultMediaLinkService (direct calls)
-        overrides["BridgeBeats:ATProtoIdentifier"] = "";
-        overrides["BridgeBeats:ATProtoPassword"] = "";
-        overrides["BridgeBeats:ATProtoUserDID"] = "";
+        overrides["BridgeBeats:ATProtoIdentifier"] = string.Empty;
+        overrides["BridgeBeats:ATProtoPassword"] = string.Empty;
+        overrides["BridgeBeats:ATProtoUserDID"] = string.Empty;
 
         s_factory = new CustomWebApplicationFactory( overrides );
         s_serviceProvider = s_factory.Services;

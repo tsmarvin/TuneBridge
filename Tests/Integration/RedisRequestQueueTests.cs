@@ -1,6 +1,6 @@
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -26,10 +26,9 @@ public class RedisRequestQueueTests {
     /// <summary>
     /// Initializes the shared Redis connection for all tests in this class.
     /// </summary>
-    /// <param name="context">The test context provided by MSTest.</param>
+    /// <param name="_">The test context provided by MSTest (unused).</param>
     [ClassInitialize]
-    [Obsolete]
-    public static async Task ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }

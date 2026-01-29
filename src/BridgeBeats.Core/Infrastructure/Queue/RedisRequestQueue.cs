@@ -3,11 +3,10 @@ using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
-namespace BridgeBeats.Infrastructure.Queue;
+namespace BridgeBeats.Core.Infrastructure.Queue;
 
 /// <summary>
 /// Redis Streams-based implementation of <see cref="IRequestQueue{T}"/> for a specific music provider.

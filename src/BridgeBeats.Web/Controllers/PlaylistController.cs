@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Mvc;
 

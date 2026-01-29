@@ -12,7 +12,7 @@ using BridgeBeats.Core.Domain.Services.LinkResolver;
 using BridgeBeats.Core.Domain.Services.Queue;
 using BridgeBeats.Core.Infrastructure.Extensions;
 using BridgeBeats.Core.Infrastructure.Identity;
-using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Queue;
 using BridgeBeats.Services.LinkResolver;
 using Microsoft.AspNetCore.Html;
 using Microsoft.EntityFrameworkCore;

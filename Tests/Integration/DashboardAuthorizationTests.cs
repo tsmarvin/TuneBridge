@@ -28,7 +28,6 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Initializes the test factory and HTTP client before each test.
     /// </summary>
     [TestInitialize]
-    [Obsolete]
     public async Task Setup( ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -45,13 +44,13 @@ public class DashboardAuthorizationTests : IDisposable {
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = "";
+        configData["BridgeBeats:DiscordToken"] = string.Empty;
         // Disable worker services mode - use direct provider implementations
         configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
         // Force ATProto credentials to empty to disable caching service
-        configData["BridgeBeats:ATProtoIdentifier"] = "";
-        configData["BridgeBeats:ATProtoPassword"] = "";
-        configData["BridgeBeats:ATProtoUserDID"] = "";
+        configData["BridgeBeats:ATProtoIdentifier"] = string.Empty;
+        configData["BridgeBeats:ATProtoPassword"] = string.Empty;
+        configData["BridgeBeats:ATProtoUserDID"] = string.Empty;
 
         _factory = new DashboardTestWebApplicationFactory( configData );
         _client = _factory.CreateClient( );
@@ -197,7 +196,6 @@ public class DashboardAuthorizationTests : IDisposable {
         private string? _testUserEmail;
         private bool _testUserHasRole;
 
-        [Obsolete]
         public DashboardTestWebApplicationFactory( Dictionary<string, string?>? configOverrides )
             : base( configOverrides ) { }
 

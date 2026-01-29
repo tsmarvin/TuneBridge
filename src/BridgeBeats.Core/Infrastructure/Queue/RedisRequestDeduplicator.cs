@@ -1,6 +1,6 @@
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Core.Infrastructure.Queue;

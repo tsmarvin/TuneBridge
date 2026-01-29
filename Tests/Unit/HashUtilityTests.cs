@@ -148,7 +148,7 @@ public class HashUtilityTests {
     [TestMethod]
     public void ComputeSha256Base32_HandlesEmptyString( ) {
         // Arrange
-        string input = "";
+        string input = string.Empty;
 
         // Act
         string hash = HashUtility.ComputeSha256Base32( input );

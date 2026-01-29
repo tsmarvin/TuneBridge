@@ -71,7 +71,7 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
                 _ = services.AddDbContextFactory<MediaLinkCacheDbContext>( options =>
                     options.UseSqlite(
                         sqliteConnectionString,
-                        b => b.MigrationsAssembly( "BridgeBeats.Infrastructure" )
+                        b => b.MigrationsAssembly( "BridgeBeats.Core" )
                     )
                 );
             }

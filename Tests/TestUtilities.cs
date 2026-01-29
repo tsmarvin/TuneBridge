@@ -46,7 +46,6 @@ public static class SharedTestInfrastructure {
     /// <summary>
     /// Ensures the Redis container is started. This is idempotent and thread-safe.
     /// </summary>
-    [Obsolete]
     private static void EnsureInitialized( ) {
         if (s_initialized) {
             return;
@@ -58,8 +57,7 @@ public static class SharedTestInfrastructure {
             }
 
             try {
-                s_redisContainer = new RedisBuilder( )
-                    .WithImage( "redis:7-alpine" )
+                s_redisContainer = new RedisBuilder( "redis:7-alpine" )
                     .Build( );
 
                 // Start synchronously to ensure container is ready
@@ -79,10 +77,9 @@ public static class SharedTestInfrastructure {
     /// <summary>
     /// Assembly-level initialization that ensures the Redis test infrastructure is started.
     /// </summary>
-    /// <param name="context">The test context provided by the test framework.</param>
+    /// <param name="_">The test context provided by the test framework (unused).</param>
     [AssemblyInitialize]
-    [Obsolete]
-    public static void AssemblyInitialize( TestContext context ) {
+    public static void AssemblyInitialize( TestContext _ ) {
         // Trigger initialization early during assembly setup
         EnsureInitialized( );
     }
@@ -102,7 +99,6 @@ public static class SharedTestInfrastructure {
     /// Ensures Redis is available. Call this at the start of tests that require Redis.
     /// This will trigger container startup if not already done.
     /// </summary>
-    [Obsolete]
     public static void RequireRedis( ) {
         EnsureInitialized( );
 
@@ -128,14 +124,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     /// <summary>
     /// Initializes a new instance of the <see cref="CustomWebApplicationFactory"/> with default configuration.
     /// </summary>
-    [Obsolete]
     public CustomWebApplicationFactory( ) : this( null ) { }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CustomWebApplicationFactory"/> with optional configuration overrides.
     /// </summary>
     /// <param name="configOverrides">Optional dictionary of configuration values to override defaults.</param>
-    [Obsolete]
     public CustomWebApplicationFactory( Dictionary<string, string?>? configOverrides ) {
         // IMPORTANT: Require Redis FIRST, before accessing RedisConnectionString.
         // This ensures the container is started and the connection string is populated.
@@ -165,10 +159,20 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
             ["Aspire:StackExchange:Redis:ConnectionString"] = redisConnectionString,
         };
 
-        // Merge overrides onto defaults (overrides win)
+        // Merge overrides onto defaults (overrides win), EXCEPT for critical test infrastructure keys
+        // that must always use the test container connection
+        HashSet<string> protectedKeys = [
+            "ConnectionStrings:redis",
+            "Aspire:StackExchange:Redis:ConnectionString",
+        ];
+
         _configData = defaults;
         if (configOverrides is not null) {
             foreach (KeyValuePair<string, string?> kvp in configOverrides) {
+                // Skip protected keys - test infrastructure values must not be overridden
+                if (protectedKeys.Contains( kvp.Key )) {
+                    continue;
+                }
                 _configData[kvp.Key] = kvp.Value;
             }
 

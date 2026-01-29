@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace BridgeBeats.Infrastructure.Utilities;
+namespace BridgeBeats.Core.Infrastructure.Utilities;
 
 /// <summary>
 /// Extension methods for sanitizing log input.

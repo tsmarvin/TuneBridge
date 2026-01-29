@@ -6,7 +6,7 @@ using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Providers.AppleMusic;
 using BridgeBeats.Core.Infrastructure.Identity;
 using BridgeBeats.Core.Infrastructure.Storage;
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;

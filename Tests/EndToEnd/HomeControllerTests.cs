@@ -15,10 +15,9 @@ public class HomeControllerTests {
     /// <summary>
     /// Initializes the test factory and HTTP client for all tests in this class.
     /// </summary>
-    /// <param name="context">The test context provided by MSTest.</param>
+    /// <param name="_">The test context provided by MSTest (unused).</param>
     [ClassInitialize]
-    [Obsolete]
-    public static async Task ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext _ ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
             .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
@@ -34,14 +33,14 @@ public class HomeControllerTests {
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = "";
+        configData["BridgeBeats:DiscordToken"] = string.Empty;
         // Disable worker services mode - use direct provider implementations
         configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
         // Force ATProto credentials to empty to disable caching service
         // The caching service requires background workers that are not running in the test environment
-        configData["BridgeBeats:ATProtoIdentifier"] = "";
-        configData["BridgeBeats:ATProtoPassword"] = "";
-        configData["BridgeBeats:ATProtoUserDID"] = "";
+        configData["BridgeBeats:ATProtoIdentifier"] = string.Empty;
+        configData["BridgeBeats:ATProtoPassword"] = string.Empty;
+        configData["BridgeBeats:ATProtoUserDID"] = string.Empty;
 
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );

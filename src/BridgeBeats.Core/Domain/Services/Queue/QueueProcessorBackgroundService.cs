@@ -6,7 +6,6 @@ using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Queue;
-using BridgeBeats.Infrastructure.Queue;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 

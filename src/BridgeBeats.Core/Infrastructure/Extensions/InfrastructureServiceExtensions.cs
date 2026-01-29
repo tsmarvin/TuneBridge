@@ -31,7 +31,7 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
             _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
                 options.UseSqlite(
                     identityConnectionString,
-                    b => b.MigrationsAssembly( "BridgeBeats.Infrastructure" )
+                    b => b.MigrationsAssembly( "BridgeBeats.Core" )
                 )
             );
 

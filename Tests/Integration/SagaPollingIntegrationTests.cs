@@ -30,10 +30,9 @@ public class SagaPollingIntegrationTests {
     /// <summary>
     /// Initializes the Redis connection for all tests in the class.
     /// </summary>
-    /// <param name="context">The test context provided by the test framework.</param>
+    /// <param name="_">The test context provided by the test framework (unused).</param>
     [ClassInitialize]
-    [Obsolete]
-    public static async Task ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }

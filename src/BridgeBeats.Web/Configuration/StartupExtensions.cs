@@ -313,7 +313,7 @@ namespace BridgeBeats.Web.Configuration {
             _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
                 options.UseSqlite(
                     settings.IdentityConnectionString,
-                    b => b.MigrationsAssembly( "BridgeBeats.Infrastructure" )
+                    b => b.MigrationsAssembly( "BridgeBeats.Core" )
                 )
             );
         }

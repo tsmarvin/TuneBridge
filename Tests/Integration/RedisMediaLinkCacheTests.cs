@@ -31,10 +31,9 @@ public class RedisMediaLinkCacheTests {
     /// <summary>
     /// Initializes the shared Redis connection for all tests in this class.
     /// </summary>
-    /// <param name="context">The test context provided by MSTest.</param>
+    /// <param name="_">The test context provided by MSTest (unused).</param>
     [ClassInitialize]
-    [Obsolete]
-    public static async Task ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
         _redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }

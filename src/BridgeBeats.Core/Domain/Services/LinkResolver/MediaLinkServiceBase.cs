@@ -4,7 +4,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Providers.Common;
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Core.Infrastructure.Utilities;
 
 namespace BridgeBeats.Services.LinkResolver {
 

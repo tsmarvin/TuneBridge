@@ -5,7 +5,6 @@ using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Utilities;
 using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Core.Infrastructure.Utilities;
-using BridgeBeats.Infrastructure.Utilities;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Core.Infrastructure.Cache;
