@@ -10,10 +10,17 @@ namespace BridgeBeats.Web.Middleware;
 /// Middleware that enforces rate limiting on protected endpoints.
 /// Uses in-memory caching to reduce database load.
 /// </summary>
-public partial class RateLimitingMiddleware {
-    private readonly RequestDelegate _next;
-    private readonly ILogger<RateLimitingMiddleware> _logger;
-    private readonly int _maxRequestsPerHour;
+/// <remarks>
+/// Initializes a new instance of the <see cref="RateLimitingMiddleware"/> class.
+/// </remarks>
+/// <param name="next">The next middleware in the pipeline.</param>
+/// <param name="logger">Logger for rate limiting events.</param>
+/// <param name="maxRequestsPerHour">Maximum number of requests allowed per hour per user.</param>
+public partial class RateLimitingMiddleware(
+    RequestDelegate next,
+    ILogger<RateLimitingMiddleware> logger,
+    int maxRequestsPerHour
+) {
 
     // Only these endpoints are rate-limited (all are POST). Public URL streaming endpoint is excluded.
     private static readonly HashSet<string> s_rateLimitedRoutes = new(
@@ -25,22 +32,6 @@ public partial class RateLimitingMiddleware {
         ],
         StringComparer.OrdinalIgnoreCase
     );
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="RateLimitingMiddleware"/> class.
-    /// </summary>
-    /// <param name="next">The next middleware in the pipeline.</param>
-    /// <param name="logger">Logger for rate limiting events.</param>
-    /// <param name="maxRequestsPerHour">Maximum number of requests allowed per hour per user.</param>
-    public RateLimitingMiddleware(
-        RequestDelegate next,
-        ILogger<RateLimitingMiddleware> logger,
-        int maxRequestsPerHour
-    ) {
-        _next = next;
-        _logger = logger;
-        _maxRequestsPerHour = maxRequestsPerHour;
-    }
 
     /// <summary>
     /// Invokes the rate limiting middleware to check if the user has exceeded their hourly limit.
@@ -60,20 +51,20 @@ public partial class RateLimitingMiddleware {
 
         // Only enforce rate limiting on specific protected search endpoints and only for POST requests
         if (!HttpMethods.IsPost( context.Request.Method ) || !s_rateLimitedRoutes.Contains( path )) {
-            await _next( context );
+            await next( context );
             return;
         }
 
         // Skip rate limiting for unauthenticated users (they'll be rejected by [Authorize])
         if (!context.User.Identity?.IsAuthenticated ?? true) {
-            await _next( context );
+            await next( context );
             return;
         }
 
         // Get the username from the authenticated user
         string? username = context.User.Identity?.Name;
         if (string.IsNullOrEmpty( username )) {
-            await _next( context );
+            await next( context );
             return;
         }
 
@@ -85,7 +76,7 @@ public partial class RateLimitingMiddleware {
         } );
 
         if (user == null) {
-            await _next( context );
+            await next( context );
             return;
         }
 
@@ -100,10 +91,10 @@ public partial class RateLimitingMiddleware {
         }
 
         // Check if rate limit is exceeded
-        if (user.RequestCount >= _maxRequestsPerHour) {
+        if (user.RequestCount >= maxRequestsPerHour) {
             TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1) - now;
             LogRateLimitExceeded(
-                _logger,
+                logger,
                 username,
                 Math.Ceiling( timeRemaining.TotalMinutes )
             );
@@ -112,7 +103,7 @@ public partial class RateLimitingMiddleware {
             context.Response.Headers.RetryAfter = ((int)timeRemaining.TotalSeconds).ToString( );
             await context.Response.WriteAsJsonAsync( new {
                 error = "Rate limit exceeded",
-                message = $"Maximum {_maxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
+                message = $"Maximum {maxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
                 retryAfter = (int)timeRemaining.TotalSeconds
             } );
             return;
@@ -122,7 +113,7 @@ public partial class RateLimitingMiddleware {
         int rowsAffected = await dbContext.Database.ExecuteSqlInterpolatedAsync(
  $@"UPDATE AspNetUsers
  SET RequestCount = RequestCount + 1
- WHERE Id = {user.Id} AND RequestCount < {_maxRequestsPerHour}"
+ WHERE Id = {user.Id} AND RequestCount < {maxRequestsPerHour}"
  );
 
         // Invalidate cache to ensure fresh data on next request
@@ -132,7 +123,7 @@ public partial class RateLimitingMiddleware {
         if (rowsAffected == 0) {
             TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1) - now;
             LogRateLimitExceededConcurrent(
-                _logger,
+                logger,
                 username,
                 Math.Ceiling( timeRemaining.TotalMinutes )
             );
@@ -141,13 +132,13 @@ public partial class RateLimitingMiddleware {
             context.Response.Headers.RetryAfter = ((int)timeRemaining.TotalSeconds).ToString( );
             await context.Response.WriteAsJsonAsync( new {
                 error = "Rate limit exceeded",
-                message = $"Maximum {_maxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
+                message = $"Maximum {maxRequestsPerHour} requests per hour allowed. Please try again in {Math.Ceiling( timeRemaining.TotalMinutes )} minutes.",
                 retryAfter = (int)timeRemaining.TotalSeconds
             } );
             return;
         }
 
-        await _next( context );
+        await next( context );
     }
 
     /// <summary>

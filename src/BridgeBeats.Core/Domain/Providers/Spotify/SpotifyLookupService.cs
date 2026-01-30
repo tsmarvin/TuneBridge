@@ -739,7 +739,8 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// </summary>
         private static void LogResponseBodySerialized( ILogger logger, string? body, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
-                LogResponseBody( logger, JsonSerializer.Serialize( body, options ) );
+                string serializedBody = JsonSerializer.Serialize( body, options );
+                LogResponseBody( logger, serializedBody );
             }
         }
 
@@ -748,7 +749,8 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// </summary>
         private static void LogJsonElementSerialized( ILogger logger, JsonElement element, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
-                LogResponseBody( logger, JsonSerializer.Serialize( element, options ) );
+                string serializedElement = JsonSerializer.Serialize( element, options );
+                LogResponseBody( logger, serializedElement );
             }
         }
 

@@ -23,28 +23,25 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// to be notified when the result is available, avoiding redundant API calls.
 /// </para>
 /// </remarks>
-public sealed partial class RedisRequestDeduplicator : IRequestDeduplicator {
+/// <remarks>
+/// Initializes a new instance of the <see cref="RedisRequestDeduplicator"/> class.
+/// </remarks>
+/// <param name="redis">The Redis connection multiplexer.</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+public sealed partial class RedisRequestDeduplicator(
+    IConnectionMultiplexer redis,
+    ILogger<RedisRequestDeduplicator> logger
+) : IRequestDeduplicator {
 
-    private readonly IConnectionMultiplexer _redis;
-    private readonly ILogger<RedisRequestDeduplicator> _logger;
-    private readonly string _instanceId;
+    private readonly IConnectionMultiplexer _redis = redis
+                                                   ?? throw new ArgumentNullException( nameof( redis ) );
+    private readonly ILogger<RedisRequestDeduplicator> _logger = logger
+                                                               ?? throw new ArgumentNullException( nameof( logger ) );
+
+    private readonly string _instanceId = $"{Environment.MachineName}:{Guid.NewGuid( ):N}"[..32];
 
     private const string InFlightPrefix = "inflight:";
     private const string CompleteChannelPrefix = "complete:";
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="RedisRequestDeduplicator"/> class.
-    /// </summary>
-    /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    public RedisRequestDeduplicator(
-        IConnectionMultiplexer redis,
-        ILogger<RedisRequestDeduplicator> logger
-    ) {
-        _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-        _instanceId = $"{Environment.MachineName}:{Guid.NewGuid( ):N}"[..32];
-    }
 
     /// <inheritdoc/>
     public async Task<DeduplicationResult> TryAcquireAsync(
@@ -66,7 +63,10 @@ public sealed partial class RedisRequestDeduplicator : IRequestDeduplicator {
         );
 
         if (acquired) {
-            LogLockAcquired( _logger, requestKey.SanitizeForLogging( ), _instanceId );
+            if (_logger.IsEnabled( LogLevel.Debug )) {
+                string sanitizedRequestKey = requestKey.SanitizeForLogging( );
+                LogLockAcquired( _logger, sanitizedRequestKey, _instanceId );
+            }
 
             return new DeduplicationResult(
                 Acquired: true,
@@ -80,7 +80,11 @@ public sealed partial class RedisRequestDeduplicator : IRequestDeduplicator {
 
         RedisValue holder = await db.StringGetAsync( lockKey );
 
-        LogAlreadyInFlight( _logger, requestKey.SanitizeForLogging( ), holder.ToString( ).SanitizeForLogging( ) );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string sanitizedRequestKey = requestKey.SanitizeForLogging( );
+            string sanitizedHolder = holder.ToString( ).SanitizeForLogging( );
+            LogAlreadyInFlight( _logger, sanitizedRequestKey, sanitizedHolder );
+        }
 
         return new DeduplicationResult(
             Acquired: false,
@@ -122,7 +126,11 @@ public sealed partial class RedisRequestDeduplicator : IRequestDeduplicator {
         string message = resultUri ?? string.Empty;
         _ = await subscriber.PublishAsync( RedisChannel.Literal( channelKey ), message );
 
-        LogLockReleased( _logger, requestKey.SanitizeForLogging( ), !string.IsNullOrEmpty( resultUri ) );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string sanitizedRequestKey = requestKey.SanitizeForLogging( );
+            bool hasResult = !string.IsNullOrEmpty( resultUri );
+            LogLockReleased( _logger, sanitizedRequestKey, hasResult );
+        }
     }
 
     /// <inheritdoc/>
@@ -153,7 +161,10 @@ public sealed partial class RedisRequestDeduplicator : IRequestDeduplicator {
             if (!stillInFlight) {
                 // Already completed, the result may have been published before we subscribed
                 // Return null to indicate the caller should check cache
-                LogCompletedBeforeSubscription( _logger, requestKey.SanitizeForLogging( ) );
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string sanitizedRequestKey = requestKey.SanitizeForLogging( );
+                    LogCompletedBeforeSubscription( _logger, sanitizedRequestKey );
+                }
                 return null;
             }
 
@@ -165,7 +176,10 @@ public sealed partial class RedisRequestDeduplicator : IRequestDeduplicator {
                 }
                 return null;
             } catch (OperationCanceledException) {
-                LogWaitTimeout( _logger, requestKey.SanitizeForLogging( ) );
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string sanitizedRequestKey = requestKey.SanitizeForLogging( );
+                    LogWaitTimeout( _logger, sanitizedRequestKey );
+                }
                 return null;
             }
         } finally {

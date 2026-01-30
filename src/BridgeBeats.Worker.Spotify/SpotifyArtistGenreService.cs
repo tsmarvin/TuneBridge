@@ -25,31 +25,27 @@ namespace BridgeBeats.Worker.Spotify;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed partial class SpotifyArtistGenreService : BackgroundService {
+/// <remarks>
+/// Initializes a new instance of the <see cref="SpotifyArtistGenreService"/> class.
+/// </remarks>
+public sealed partial class SpotifyArtistGenreService(
+    IConnectionMultiplexer redis,
+    IGenreCacheService genreCache,
+    SpotifyLookupService lookupService,
+    ILogger<SpotifyArtistGenreService> logger
+) : BackgroundService {
 
-    private readonly IConnectionMultiplexer _redis;
-    private readonly IGenreCacheService _genreCache;
-    private readonly SpotifyLookupService _lookupService;
-    private readonly ILogger<SpotifyArtistGenreService> _logger;
+    private readonly IConnectionMultiplexer _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
+    private readonly IGenreCacheService _genreCache = genreCache
+                                                    ?? throw new ArgumentNullException( nameof( genreCache ) );
+    private readonly SpotifyLookupService _lookupService = lookupService
+                                                         ?? throw new ArgumentNullException( nameof( lookupService ) );
+    private readonly ILogger<SpotifyArtistGenreService> _logger = logger
+                                                                ?? throw new ArgumentNullException( nameof( logger ) );
 
     private static readonly TimeSpan s_checkInterval = TimeSpan.FromMinutes( 5 );
     private static readonly TimeSpan s_scheduleInterval = TimeSpan.FromDays( 7 );
     private static readonly TimeSpan s_errorDelay = TimeSpan.FromMinutes( 1 );
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="SpotifyArtistGenreService"/> class.
-    /// </summary>
-    public SpotifyArtistGenreService(
-        IConnectionMultiplexer redis,
-        IGenreCacheService genreCache,
-        SpotifyLookupService lookupService,
-        ILogger<SpotifyArtistGenreService> logger
-    ) {
-        _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
-        _genreCache = genreCache ?? throw new ArgumentNullException( nameof( genreCache ) );
-        _lookupService = lookupService ?? throw new ArgumentNullException( nameof( lookupService ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-    }
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {

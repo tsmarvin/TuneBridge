@@ -39,7 +39,10 @@ public sealed partial class StatisticsService(
         await _cacheLock.WaitAsync( cancellationToken );
         try {
             // Force refresh - do not check cache validity (this is an explicit refresh request)
-            LogRefreshingStatistics( logger, settings.PdsUri.ToString( ), settings.UserDid );
+            if (logger.IsEnabled( LogLevel.Information )) {
+                string pdsUriString = settings.PdsUri.ToString( );
+                LogRefreshingStatistics( logger, pdsUriString, settings.UserDid );
+            }
 
             LookupStatistics stats = await ComputeStatisticsAsync( cancellationToken );
 

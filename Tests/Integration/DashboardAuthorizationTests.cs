@@ -191,13 +191,12 @@ public class DashboardAuthorizationTests : IDisposable {
     /// <summary>
     /// Custom factory that adds test authentication scheme.
     /// </summary>
-    private sealed class DashboardTestWebApplicationFactory : CustomWebApplicationFactory {
+    private sealed class DashboardTestWebApplicationFactory(
+        Dictionary<string, string?>? configOverrides
+    ) : CustomWebApplicationFactory( configOverrides ) {
         private string? _testUserId;
         private string? _testUserEmail;
         private bool _testUserHasRole;
-
-        public DashboardTestWebApplicationFactory( Dictionary<string, string?>? configOverrides )
-            : base( configOverrides ) { }
 
         /// <summary>
         /// Sets the test user information for authentication simulation.

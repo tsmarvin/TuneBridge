@@ -26,22 +26,15 @@ namespace BridgeBeats.Worker.JetStreamWatcher;
 /// validates them against known provider patterns, and enqueues them for processing
 /// without waiting for results. Deduplication is handled by the queue infrastructure.
 /// </remarks>
-public sealed partial class JetStreamWatcherService : BackgroundService {
-    private readonly ILogger<JetStreamWatcherService> _logger;
-    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="JetStreamWatcherService"/> class.
-    /// </summary>
-    /// <param name="logger">The logger instance.</param>
-    /// <param name="queueResolver">The provider queue resolver for submitting lookup requests.</param>
-    public JetStreamWatcherService(
-        ILogger<JetStreamWatcherService> logger,
-        IProviderQueueResolver<QueuedLookupRequest> queueResolver
-    ) {
-        _logger = logger;
-        _queueResolver = queueResolver;
-    }
+/// <remarks>
+/// Initializes a new instance of the <see cref="JetStreamWatcherService"/> class.
+/// </remarks>
+/// <param name="logger">The logger instance.</param>
+/// <param name="queueResolver">The provider queue resolver for submitting lookup requests.</param>
+public sealed partial class JetStreamWatcherService(
+    ILogger<JetStreamWatcherService> logger,
+    IProviderQueueResolver<QueuedLookupRequest> queueResolver
+) : BackgroundService {
 
     /// <summary>
     /// The main execution loop that connects to Jetstream and processes incoming events.
@@ -49,8 +42,8 @@ public sealed partial class JetStreamWatcherService : BackgroundService {
     /// <param name="stoppingToken">The cancellation token for graceful shutdown.</param>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
         Console.OutputEncoding = Encoding.UTF8;
-        LogWatcherStarting( _logger );
-        LogWatchingForLinks( _logger );
+        LogWatcherStarting( logger );
+        LogWatchingForLinks( logger );
 
         while (!stoppingToken.IsCancellationRequested) {
             try {
@@ -59,13 +52,13 @@ public sealed partial class JetStreamWatcherService : BackgroundService {
                 // Graceful shutdown - expected
                 break;
             } catch (Exception ex) {
-                LogConnectionError( _logger, ex );
+                LogConnectionError( logger, ex );
                 await Task.Delay( TimeSpan.FromSeconds( 5 ), stoppingToken )
                     .ConfigureAwait( ConfigureAwaitOptions.SuppressThrowing );
             }
         }
 
-        LogWatcherStopped( _logger );
+        LogWatcherStopped( logger );
     }
 
     /// <summary>
@@ -98,7 +91,7 @@ public sealed partial class JetStreamWatcherService : BackgroundService {
                 } catch (Exception ex) {
                     // Log unexpected errors but continue processing
                     if (!IsExpectedParsingError( ex )) {
-                        LogRecordProcessingError( _logger, ex );
+                        LogRecordProcessingError( logger, ex );
                     }
                 }
             }
@@ -106,7 +99,7 @@ public sealed partial class JetStreamWatcherService : BackgroundService {
 
         // Connect to jetstream
         await jetStream.ConnectAsync( cancellationToken: stoppingToken );
-        LogConnected( _logger );
+        LogConnected( logger );
 
         // Keep running until cancellation or disconnect
         while (!stoppingToken.IsCancellationRequested && jetStream.IsConnected) {
@@ -114,7 +107,7 @@ public sealed partial class JetStreamWatcherService : BackgroundService {
         }
 
         await jetStream.CloseAsync( );
-        LogDisconnected( _logger );
+        LogDisconnected( logger );
     }
 
     /// <summary>
@@ -292,10 +285,10 @@ public sealed partial class JetStreamWatcherService : BackgroundService {
 
         // Fire-and-forget: enqueue at bulk priority
         try {
-            IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( provider.Value );
+            IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( provider.Value );
             await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
         } catch (Exception ex) {
-            LogEnqueueError( _logger, ex, normalizedLink );
+            LogEnqueueError( logger, ex, normalizedLink );
         }
     }
 

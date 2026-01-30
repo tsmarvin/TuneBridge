@@ -28,11 +28,21 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// expiration during active processing.
 /// </para>
 /// </remarks>
-public sealed partial class RedisSagaStateManager : ISagaStateManager {
+/// <remarks>
+/// Initializes a new instance of the <see cref="RedisSagaStateManager"/> class.
+/// </remarks>
+/// <param name="redis">The Redis connection multiplexer.</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+/// <param name="settings">Queue configuration settings.</param>
+public sealed partial class RedisSagaStateManager(
+    IConnectionMultiplexer redis,
+    ILogger<RedisSagaStateManager> logger,
+    IOptions<QueueSettings> settings
+    ) : ISagaStateManager {
 
-    private readonly IConnectionMultiplexer _redis;
-    private readonly ILogger<RedisSagaStateManager> _logger;
-    private readonly QueueSettings _settings;
+    private readonly IConnectionMultiplexer _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
+    private readonly ILogger<RedisSagaStateManager> _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
+    private readonly QueueSettings _settings = settings?.Value ?? throw new ArgumentNullException( nameof( settings ) );
 
     private const string SagaPrefix = "saga:";
     private const string ProviderSuffix = ":provider:";
@@ -55,22 +65,6 @@ public sealed partial class RedisSagaStateManager : ISagaStateManager {
     private const string FieldResultJson = "resultJson";
     private const string FieldCompletedAt = "completedAt";
     private const string FieldErrorMessage = "errorMessage";
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="RedisSagaStateManager"/> class.
-    /// </summary>
-    /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    /// <param name="settings">Queue configuration settings.</param>
-    public RedisSagaStateManager(
-        IConnectionMultiplexer redis,
-        ILogger<RedisSagaStateManager> logger,
-        IOptions<QueueSettings> settings
-    ) {
-        _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-        _settings = settings?.Value ?? throw new ArgumentNullException( nameof( settings ) );
-    }
 
     /// <inheritdoc/>
     public async Task<LookupSagaState> GetOrCreateAsync(
@@ -376,7 +370,10 @@ public sealed partial class RedisSagaStateManager : ISagaStateManager {
             _ = await db.KeyExpireAsync( key, ttl );
         }
 
-        LogProviderStatesInitialized( _logger, sagaId, providers.Count( ) );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            int providerCount = providers.Count( );
+            LogProviderStatesInitialized( _logger, sagaId, providerCount );
+        }
     }
 
     private static async Task<Dictionary<SupportedProviders, ProviderLookupState>> LoadProviderStatesAsync(

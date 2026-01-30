@@ -113,7 +113,10 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         );
 
         if (rateLimitState.IsRateLimited) {
-            LogRateLimited( _logger, "Bulk tracks", rateLimitState.RetryAfter?.ToString( ) ?? "unknown" );
+            if (_logger.IsEnabled( LogLevel.Warning )) {
+                string retryAfterStr = rateLimitState.RetryAfter?.ToString( ) ?? "unknown";
+                LogRateLimited( _logger, "Bulk tracks", retryAfterStr );
+            }
             return false;
         }
 
@@ -132,7 +135,10 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         );
 
         if (rateLimitState.IsRateLimited) {
-            LogRateLimited( _logger, "Bulk albums", rateLimitState.RetryAfter?.ToString( ) ?? "unknown" );
+            if (_logger.IsEnabled( LogLevel.Warning )) {
+                string retryAfterStr = rateLimitState.RetryAfter?.ToString( ) ?? "unknown";
+                LogRateLimited( _logger, "Bulk albums", retryAfterStr );
+            }
             return false;
         }
 

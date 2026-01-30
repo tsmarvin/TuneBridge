@@ -128,12 +128,11 @@ internal sealed record ProviderQueueRegistration<T>( SupportedProviders Provider
 /// Default implementation of <see cref="IProviderQueueResolver{T}"/>.
 /// </summary>
 /// <typeparam name="T">The type of request handled by the queues.</typeparam>
-internal sealed class ProviderQueueResolver<T> : IProviderQueueResolver<T> where T : class, IQueueableRequest {
-    private readonly IReadOnlyDictionary<SupportedProviders, IRequestQueue<T>> _queues;
-
-    public ProviderQueueResolver( Dictionary<SupportedProviders, IRequestQueue<T>> queues ) {
-        _queues = queues;
-    }
+internal sealed class ProviderQueueResolver<T>(
+    Dictionary<SupportedProviders,
+    IRequestQueue<T>> queues
+) : IProviderQueueResolver<T> where T : class, IQueueableRequest {
+    private readonly IReadOnlyDictionary<SupportedProviders, IRequestQueue<T>> _queues = queues;
 
     public IRequestQueue<T> GetQueue( SupportedProviders provider ) {
         return !_queues.TryGetValue( provider, out IRequestQueue<T>? queue )

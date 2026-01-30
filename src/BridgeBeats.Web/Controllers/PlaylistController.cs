@@ -119,13 +119,23 @@ public partial class PlaylistController( IPlaylistService? playlistService, IOpe
                     // If we successfully recreated the result, store it back in the card service
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
-                        LogCardRegenerated( cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( ) );
+                        if (_logger?.IsEnabled( LogLevel.Information ) == true) {
+                            string sanitizedCardId = cardId.SanitizeForLogging( );
+                            string sanitizedRkey = rkey.SanitizeForLogging( );
+                            string sanitizedId = id.SanitizeForLogging( );
+                            LogCardRegenerated( sanitizedCardId, sanitizedRkey, sanitizedId );
+                        }
                     }
                 }
             }
 
             if (result == null) {
-                LogCardLoadFailed( cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( ) );
+                if (_logger?.IsEnabled( LogLevel.Warning ) == true) {
+                    string sanitizedCardId = cardId.SanitizeForLogging( );
+                    string sanitizedRkey = rkey.SanitizeForLogging( );
+                    string sanitizedId = id.SanitizeForLogging( );
+                    LogCardLoadFailed( sanitizedCardId, sanitizedRkey, sanitizedId );
+                }
                 continue;
             }
 
@@ -200,13 +210,21 @@ public partial class PlaylistController( IPlaylistService? playlistService, IOpe
 
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
-                        LogEmbedCardRegenerated( cardId.SanitizeForLogging( ), id.SanitizeForLogging( ) );
+                        if (_logger?.IsEnabled( LogLevel.Information ) == true) {
+                            string sanitizedCardId = cardId.SanitizeForLogging( );
+                            string sanitizedId = id.SanitizeForLogging( );
+                            LogEmbedCardRegenerated( sanitizedCardId, sanitizedId );
+                        }
                     }
                 }
             }
 
             if (result == null) {
-                LogEmbedCardLoadFailed( cardId.SanitizeForLogging( ), id.SanitizeForLogging( ) );
+                if (_logger?.IsEnabled( LogLevel.Warning ) == true) {
+                    string sanitizedCardId = cardId.SanitizeForLogging( );
+                    string sanitizedId = id.SanitizeForLogging( );
+                    LogEmbedCardLoadFailed( sanitizedCardId, sanitizedId );
+                }
                 continue;
             }
 

@@ -314,7 +314,8 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
         /// </summary>
         private static void LogResponseBodySerialized( ILogger logger, string? body, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
-                LogResponseBody( logger, JsonSerializer.Serialize( body, options ) );
+                string serializedBody = JsonSerializer.Serialize( body, options );
+                LogResponseBody( logger, serializedBody );
             }
         }
 
@@ -323,7 +324,8 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
         /// </summary>
         private static void LogSongSerialized( ILogger logger, AppleMusicSong song, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
-                LogResponseBody( logger, JsonSerializer.Serialize( song, options ) );
+                string serializedSong = JsonSerializer.Serialize( song, options );
+                LogResponseBody( logger, serializedSong );
             }
         }
 
@@ -332,7 +334,8 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
         /// </summary>
         private static void LogAlbumSerialized( ILogger logger, AppleMusicAlbum album, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
-                LogResponseBody( logger, JsonSerializer.Serialize( album, options ) );
+                string serializedAlbum = JsonSerializer.Serialize( album, options );
+                LogResponseBody( logger, serializedAlbum );
             }
         }
 

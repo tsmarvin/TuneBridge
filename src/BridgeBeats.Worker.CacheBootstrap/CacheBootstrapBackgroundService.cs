@@ -59,13 +59,20 @@ public sealed partial class CacheBootstrapBackgroundService(
             foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
                 IServer server = redis.GetServer( endpoint );
                 keyCountBefore = server.DatabaseSize( );
-                LogRedisKeyCountBefore( logger, keyCountBefore, endpoint.ToString( ) ?? "unknown" );
+                if (logger.IsEnabled( LogLevel.Information )) {
+                    string endpointStr = endpoint.ToString( ) ?? "unknown";
+                    LogRedisKeyCountBefore( logger, keyCountBefore, endpointStr );
+                }
             }
         } catch (Exception ex) {
             LogRedisKeyCountBeforeError( logger, ex );
         }
 
-        LogBootstrapStarting( logger, settings.PdsUri?.ToString( ) ?? "unknown", settings.UserDid ?? "unknown" );
+        if (logger.IsEnabled( LogLevel.Information )) {
+            string pdsUriStr = settings.PdsUri?.ToString( ) ?? "unknown";
+            string userDidStr = settings.UserDid ?? "unknown";
+            LogBootstrapStarting( logger, pdsUriStr, userDidStr );
+        }
 
         Stopwatch stopwatch = Stopwatch.StartNew( );
         int successCount = 0;
@@ -108,7 +115,10 @@ public sealed partial class CacheBootstrapBackgroundService(
             foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
                 IServer server = redis.GetServer( endpoint );
                 keyCountAfter = server.DatabaseSize( );
-                LogRedisKeyCountAfter( logger, keyCountAfter, endpoint.ToString( ) ?? "unknown" );
+                if (logger.IsEnabled( LogLevel.Information )) {
+                    string endpointStr = endpoint.ToString( ) ?? "unknown";
+                    LogRedisKeyCountAfter( logger, keyCountAfter, endpointStr );
+                }
             }
         } catch (Exception ex) {
             LogRedisKeyCountAfterError( logger, ex );

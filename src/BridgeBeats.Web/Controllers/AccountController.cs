@@ -97,7 +97,7 @@ public partial class AccountController(
 
         return Ok( new {
             userId = user.Id,
-            apiKey = apiKey,
+            apiKey,
             message = "Registration successful. Save your API key - it will not be shown again."
         } );
     }
@@ -150,7 +150,7 @@ public partial class AccountController(
 
         return Ok( new {
             userId = user.Id,
-            apiKey = apiKey,
+            apiKey,
             message = apiKey == "***EXISTING_KEY***"
                 ? "Login successful. Use /account/regenerate-api-key to get a new API key if needed."
                 : "Login successful. New API key generated."
@@ -210,7 +210,7 @@ public partial class AccountController(
         LogApiKeyRegenerated( user.Id );
 
         return Ok( new {
-            apiKey = apiKey,
+            apiKey,
             message = "API key regenerated successfully. Update your applications with the new key."
         } );
     }
@@ -349,7 +349,7 @@ public partial class AccountController(
             // Return the authorization URL for the client to redirect to
             return Ok( new {
                 authorizationUrl = authUrl.ToString( ),
-                state = state
+                state
             } );
         } catch (Exception ex) {
             LogAtProtoOAuthStartFailed( ex, request.Handle );

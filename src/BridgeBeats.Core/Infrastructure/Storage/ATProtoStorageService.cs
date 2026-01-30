@@ -61,8 +61,11 @@ public partial class ATProtoStorageService(
             );
 
             if (putResult.Succeeded && putResult.Result is not null) {
-                LogUpdatedRecord( logger, putResult.Result.Uri.ToString( ) );
-                return putResult.Result.Uri.ToString( );
+                string uri = putResult.Result.Uri.ToString( );
+                if (logger.IsEnabled( LogLevel.Information )) {
+                    LogUpdatedRecord( logger, uri );
+                }
+                return uri;
             }
 
             // If update failed, try to create new record
@@ -78,9 +81,12 @@ public partial class ATProtoStorageService(
                 throw new InvalidOperationException( $"Failed to create record on ATProto PDS: {errorMsg}" );
             }
 
-            LogCreatedRecord( logger, createResult.Result.Uri.ToString( ) );
+            string recordUri = createResult.Result.Uri.ToString( );
+            if (logger.IsEnabled( LogLevel.Information )) {
+                LogCreatedRecord( logger, recordUri );
+            }
 
-            return createResult.Result.Uri.ToString( );
+            return recordUri;
         } catch (Exception ex) {
             LogStoreError( logger, ex );
             throw;

@@ -205,7 +205,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
 
         _ = builder.ConfigureAppConfiguration( ( context, config ) => {
             // Remove any existing in-memory collections to avoid conflicts
-            IConfigurationSource[] existingSources = config.Sources.ToArray();
+            IConfigurationSource[] existingSources = [.. config.Sources];
             config.Sources.Clear( );
 
             // Add back non-memory sources (like environment variables, command line, etc.)

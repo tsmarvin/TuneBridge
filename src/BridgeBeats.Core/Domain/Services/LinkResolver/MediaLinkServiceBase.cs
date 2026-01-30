@@ -74,13 +74,19 @@ namespace BridgeBeats.Services.LinkResolver {
                             if (lookup is not null) { linkResults.Add( lookup, (provider, link) ); }
                         } catch (Exception e) {
                             LogUrlLookupProviderError( Logger, e, provider );
-                            LogUrlLookupProviderTrace( Logger, link.SanitizeForLogging( ) );
+                            if (Logger.IsEnabled( LogLevel.Trace )) {
+                                string sanitizedLink = link.SanitizeForLogging( );
+                                LogUrlLookupProviderTrace( Logger, sanitizedLink );
+                            }
                         }
                     }
                 }
             } catch (Exception ex) {
                 LogUrlLookupError( Logger, ex );
-                LogUrlLookupTrace( Logger, content.SanitizeForLogging( ) );
+                if (Logger.IsEnabled( LogLevel.Trace )) {
+                    string sanitizedContent = content.SanitizeForLogging( );
+                    LogUrlLookupTrace( Logger, sanitizedContent );
+                }
             }
             return linkResults;
         }
@@ -101,12 +107,20 @@ namespace BridgeBeats.Services.LinkResolver {
                         if (lookup is not null) { return (lookup, provider); }
                     } catch (Exception ex) {
                         LogArtistTitleLookupProviderError( Logger, ex, provider );
-                        LogArtistTitleLookupProviderTrace( Logger, title.SanitizeForLogging( ), artist.SanitizeForLogging( ) );
+                        if (Logger.IsEnabled( LogLevel.Trace )) {
+                            string sanitizedTitle = title.SanitizeForLogging( );
+                            string sanitizedArtist = artist.SanitizeForLogging( );
+                            LogArtistTitleLookupProviderTrace( Logger, sanitizedTitle, sanitizedArtist );
+                        }
                     }
                 }
             } catch (Exception ex) {
                 LogArtistTitleLookupError( Logger, ex );
-                LogArtistTitleLookupTrace( Logger, title.SanitizeForLogging( ), artist.SanitizeForLogging( ) );
+                if (Logger.IsEnabled( LogLevel.Trace )) {
+                    string sanitizedTitle = title.SanitizeForLogging( );
+                    string sanitizedArtist = artist.SanitizeForLogging( );
+                    LogArtistTitleLookupTrace( Logger, sanitizedTitle, sanitizedArtist );
+                }
             }
             return null;
         }
@@ -130,12 +144,18 @@ namespace BridgeBeats.Services.LinkResolver {
                         if (lookup is not null) { return (lookup, provider); }
                     } catch (Exception ex) {
                         LogExternalIdLookupProviderError( Logger, ex, provider );
-                        LogExternalIdLookupProviderTrace( Logger, externalId.SanitizeForLogging( ), isAlbum );
+                        if (Logger.IsEnabled( LogLevel.Trace )) {
+                            string sanitizedExternalId = externalId.SanitizeForLogging( );
+                            LogExternalIdLookupProviderTrace( Logger, sanitizedExternalId, isAlbum );
+                        }
                     }
                 }
             } catch (Exception ex) {
                 LogExternalIdLookupError( Logger, ex );
-                LogExternalIdLookupTrace( Logger, externalId.SanitizeForLogging( ), isAlbum );
+                if (Logger.IsEnabled( LogLevel.Trace )) {
+                    string sanitizedExternalId = externalId.SanitizeForLogging( );
+                    LogExternalIdLookupTrace( Logger, sanitizedExternalId, isAlbum );
+                }
             }
 
             return null;
@@ -167,7 +187,10 @@ namespace BridgeBeats.Services.LinkResolver {
                 }
             } catch (Exception ex) {
                 LogProviderIdLookupError( Logger, ex );
-                LogProviderIdLookupTrace( Logger, providerId.SanitizeForLogging( ), provider, isAlbum );
+                if (Logger.IsEnabled( LogLevel.Trace )) {
+                    string sanitizedProviderId = providerId.SanitizeForLogging( );
+                    LogProviderIdLookupTrace( Logger, sanitizedProviderId, provider, isAlbum );
+                }
             }
 
             return null;
@@ -261,7 +284,10 @@ namespace BridgeBeats.Services.LinkResolver {
                     if (lookup is not null) { input.Results.Add( provider, lookup ); }
                 } catch (Exception ex) {
                     LogSecondaryLookupError( Logger, ex, provider, firstValue.Artist, firstValue.Title, firstValue.ExternalId, firstValue.IsAlbum ?? false, string.Join( ", ", completedList.Select( l => l.ToString( ) ) ) );
-                    LogSecondaryLookupTrace( Logger, JsonSerializer.Serialize( input, SerializerOptions ) );
+                    if (Logger.IsEnabled( LogLevel.Trace )) {
+                        string serializedInput = JsonSerializer.Serialize( input, SerializerOptions );
+                        LogSecondaryLookupTrace( Logger, serializedInput );
+                    }
                 }
             }
             return input;

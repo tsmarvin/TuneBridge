@@ -129,7 +129,10 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         RateLimitState rateLimitState = await _rateLimitTracker.GetStateAsync( _provider, endpoint, ct );
 
         if (rateLimitState.IsRateLimited) {
-            LogEndpointRateLimited( _logger, endpoint, rateLimitState.RetryAfter.GetValueOrDefault( ), message.MessageId );
+            if (_logger.IsEnabled( LogLevel.Debug )) {
+                DateTimeOffset retryAfter = rateLimitState.RetryAfter.GetValueOrDefault( );
+                LogEndpointRateLimited( _logger, endpoint, retryAfter, message.MessageId );
+            }
 
             // Requeue with delay until rate limit expires
             await _queue.RequeueAsync( message.MessageId, rateLimitState.TimeRemaining, ct );

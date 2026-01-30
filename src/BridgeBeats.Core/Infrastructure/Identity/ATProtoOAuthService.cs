@@ -117,7 +117,10 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             throw new InvalidOperationException( $"Failed to resolve handle '{handle}' to a DID" );
         }
 
-        LogResolvedHandle( _logger, handle, did.ToString( ) );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string didString = did.ToString( );
+            LogResolvedHandle( _logger, handle, didString );
+        }
 
         // Step 2: Resolve PDS URI
         Uri? pdsUri = await agent.ResolvePds( did, cancellationToken );
@@ -125,7 +128,11 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             throw new InvalidOperationException( $"Failed to resolve PDS for DID '{did}'" );
         }
 
-        LogResolvedPds( _logger, did.ToString( ), pdsUri.ToString( ) );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string didString = did.ToString( );
+            string pdsUriString = pdsUri.ToString( );
+            LogResolvedPds( _logger, didString, pdsUriString );
+        }
 
         // Step 3: Resolve authorization server
         Uri? authorizationServer = await agent.ResolveAuthorizationServer( pdsUri, cancellationToken );
@@ -133,7 +140,11 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             throw new InvalidOperationException( $"Failed to resolve authorization server for PDS '{pdsUri}'" );
         }
 
-        LogResolvedAuthServer( _logger, pdsUri.ToString( ), authorizationServer.ToString( ) );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string pdsUriString = pdsUri.ToString( );
+            string authServerString = authorizationServer.ToString( );
+            LogResolvedAuthServer( _logger, pdsUriString, authServerString );
+        }
 
         // Step 4: Fetch authorization server metadata
         AuthorizationServerMetadata metadata = await GetAuthorizationServerMetadataAsync(
@@ -141,7 +152,11 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             cancellationToken
         );
 
-        LogFetchedMetadata( _logger, metadata.TokenEndpoint?.ToString( ) ?? "null", metadata.PushedAuthorizationRequestEndpoint?.ToString( ) ?? "null" );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string tokenEndpoint = metadata.TokenEndpoint?.ToString( ) ?? "null";
+            string parEndpoint = metadata.PushedAuthorizationRequestEndpoint?.ToString( ) ?? "null";
+            LogFetchedMetadata( _logger, tokenEndpoint, parEndpoint );
+        }
 
         // Step 5: Generate PKCE code verifier and challenge
         string codeVerifier = GenerateCodeVerifier( );
@@ -385,13 +400,19 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
 
         // Check cache first
         if (s_metadataCache.TryGetValue( cacheKey, out (AuthorizationServerMetadata Metadata, DateTime ExpiresAt) cached ) && cached.ExpiresAt > DateTime.UtcNow) {
-            LogUsingCachedMetadata( _logger, authorizationServer.ToString( ) );
+            if (_logger.IsEnabled( LogLevel.Debug )) {
+                string authServerString = authorizationServer.ToString( );
+                LogUsingCachedMetadata( _logger, authServerString );
+            }
             return cached.Metadata;
         }
 
         // Fetch metadata from well-known endpoint
         Uri metadataUrl = new(authorizationServer, AuthServerMetadataPath);
-        LogFetchingMetadata( _logger, metadataUrl.ToString( ) );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string metadataUrlString = metadataUrl.ToString( );
+            LogFetchingMetadata( _logger, metadataUrlString );
+        }
 
         HttpClient httpClient = _httpClientFactory.CreateClient("ATProtoOAuth");
         using HttpResponseMessage response = await httpClient.GetAsync(metadataUrl, cancellationToken);
@@ -434,7 +455,10 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         // Cache the metadata
         s_metadataCache[cacheKey] = (metadata, DateTime.UtcNow.Add( s_metadataCacheDuration ));
 
-        LogCachedMetadata( _logger, authorizationServer.ToString( ), metadata.RequiresPushedAuthorizationRequests );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string authServerString = authorizationServer.ToString( );
+            LogCachedMetadata( _logger, authServerString, metadata.RequiresPushedAuthorizationRequests );
+        }
 
         return metadata;
     }
@@ -878,8 +902,8 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             ["jwk"] = new {
                 kty = "EC",
                 crv = "P-256",
-                x = x,
-                y = y
+                x,
+                y
             }
         };
 

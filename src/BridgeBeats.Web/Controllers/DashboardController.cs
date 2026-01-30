@@ -10,24 +10,17 @@ namespace BridgeBeats.Web.Controllers;
 /// <summary>
 /// Controller for Aspire Dashboard authorization checks.
 /// </summary>
+/// <remarks>
+/// Initializes a new instance of the <see cref="DashboardController"/> class.
+/// </remarks>
+/// <param name="userManager">The user manager.</param>
+/// <param name="logger">The logger.</param>
 [ApiController]
 [Route( "api/[controller]" )]
-public partial class DashboardController : ControllerBase {
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly ILogger<DashboardController> _logger;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DashboardController"/> class.
-    /// </summary>
-    /// <param name="userManager">The user manager.</param>
-    /// <param name="logger">The logger.</param>
-    public DashboardController(
-        UserManager<ApplicationUser> userManager,
-        ILogger<DashboardController> logger
-    ) {
-        _userManager = userManager;
-        _logger = logger;
-    }
+public partial class DashboardController(
+    UserManager<ApplicationUser> userManager,
+    ILogger<DashboardController> logger
+) : ControllerBase {
 
     /// <summary>
     /// Checks if the current user has access to the Aspire Dashboard.
@@ -37,21 +30,21 @@ public partial class DashboardController : ControllerBase {
     [HttpGet( "authorize" )]
     [Authorize]
     public async Task<IActionResult> Authorize( ) {
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
 
         if (user == null) {
-            LogAuthorizationFailedUserNotFound( _logger );
+            LogAuthorizationFailedUserNotFound( logger );
             return Unauthorized( new { error = "User not authenticated" } );
         }
 
-        bool hasAccess = await _userManager.IsInRoleAsync( user, Roles.AspireDashboardAccess );
+        bool hasAccess = await userManager.IsInRoleAsync( user, Roles.AspireDashboardAccess );
 
         if (!hasAccess) {
-            LogAuthorizationDeniedMissingRole( _logger, user.Id, Roles.AspireDashboardAccess );
+            LogAuthorizationDeniedMissingRole( logger, user.Id, Roles.AspireDashboardAccess );
             return StatusCode( 403, new { error = "Access denied: AspireDashboardAccess role required" } );
         }
 
-        LogAuthorizationGranted( _logger, user.Id );
+        LogAuthorizationGranted( logger, user.Id );
         return Ok( new { authorized = true } );
     }
 

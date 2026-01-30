@@ -24,38 +24,35 @@ namespace BridgeBeats.Services.LinkResolver;
 /// 7. Return result to caller (partial if rate-limited)
 /// </para>
 /// </remarks>
-public sealed partial class LookupOrchestrator : ILookupOrchestrator {
-    private readonly IMediaLinkCacheRepository _cache;
-    private readonly IRequestDeduplicator _deduplicator;
-    private readonly ISagaStateManager _sagaManager;
-    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver;
-    private readonly IATProtoStorageService _atProtoStorage;
-    private readonly HashSet<SupportedProviders> _enabledProviders;
-    private readonly ILogger<LookupOrchestrator> _logger;
+/// <remarks>
+/// Initializes a new instance of the <see cref="LookupOrchestrator"/> class.
+/// </remarks>
+public sealed partial class LookupOrchestrator(
+    IMediaLinkCacheRepository cache,
+    IRequestDeduplicator deduplicator,
+    ISagaStateManager sagaManager,
+    IProviderQueueResolver<QueuedLookupRequest> queueResolver,
+    IATProtoStorageService atProtoStorage,
+    HashSet<SupportedProviders> enabledProviders,
+    ILogger<LookupOrchestrator> logger
+) : ILookupOrchestrator {
+    private readonly IMediaLinkCacheRepository _cache = cache
+                                                        ?? throw new ArgumentNullException( nameof( cache ) );
+    private readonly IRequestDeduplicator _deduplicator = deduplicator
+                                                        ?? throw new ArgumentNullException( nameof( deduplicator ) );
+    private readonly ISagaStateManager _sagaManager = sagaManager
+                                                    ?? throw new ArgumentNullException( nameof( sagaManager ) );
+    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver = queueResolver
+                                                                                ?? throw new ArgumentNullException( nameof( queueResolver ) );
+    private readonly IATProtoStorageService _atProtoStorage = atProtoStorage
+                                                            ?? throw new ArgumentNullException( nameof( atProtoStorage ) );
+    private readonly HashSet<SupportedProviders> _enabledProviders = enabledProviders
+                                                                   ?? throw new ArgumentNullException( nameof( enabledProviders ) );
+    private readonly ILogger<LookupOrchestrator> _logger = logger
+                                                         ?? throw new ArgumentNullException( nameof( logger ) );
 
     private static readonly TimeSpan s_defaultTimeout = TimeSpan.FromSeconds( 30 );
     private static readonly TimeSpan s_deduplicationLockDuration = TimeSpan.FromMinutes( 5 );
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="LookupOrchestrator"/> class.
-    /// </summary>
-    public LookupOrchestrator(
-        IMediaLinkCacheRepository cache,
-        IRequestDeduplicator deduplicator,
-        ISagaStateManager sagaManager,
-        IProviderQueueResolver<QueuedLookupRequest> queueResolver,
-        IATProtoStorageService atProtoStorage,
-        HashSet<SupportedProviders> enabledProviders,
-        ILogger<LookupOrchestrator> logger
-    ) {
-        _cache = cache ?? throw new ArgumentNullException( nameof( cache ) );
-        _deduplicator = deduplicator ?? throw new ArgumentNullException( nameof( deduplicator ) );
-        _sagaManager = sagaManager ?? throw new ArgumentNullException( nameof( sagaManager ) );
-        _queueResolver = queueResolver ?? throw new ArgumentNullException( nameof( queueResolver ) );
-        _atProtoStorage = atProtoStorage ?? throw new ArgumentNullException( nameof( atProtoStorage ) );
-        _enabledProviders = enabledProviders ?? throw new ArgumentNullException( nameof( enabledProviders ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-    }
 
     /// <inheritdoc/>
     public async IAsyncEnumerable<LookupResult> LookupByContentAsync( string content ) {

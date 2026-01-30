@@ -13,12 +13,24 @@ namespace BridgeBeats.Core.Infrastructure.Cache;
 /// Runs once at startup and sets a migration completion flag in Redis.
 /// After migration, falls back to Redis for all operations.
 /// </summary>
-public sealed partial class SqliteToRedisMigrator : IHostedService {
+/// <remarks>
+/// Initializes a new instance of the <see cref="SqliteToRedisMigrator"/> class.
+/// </remarks>
+/// <param name="dbContextFactory">Factory for creating SQLite database contexts. Can be null if SQLite is not configured.</param>
+/// <param name="redis">The Redis connection multiplexer.</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+/// <param name="cacheDays">Number of days to consider cache entries fresh.</param>
+public sealed partial class SqliteToRedisMigrator(
+    IDbContextFactory<MediaLinkCacheDbContext>? dbContextFactory,
+    IConnectionMultiplexer redis,
+    ILogger<SqliteToRedisMigrator> logger,
+    int cacheDays
+) : IHostedService {
 
-    private readonly IDbContextFactory<MediaLinkCacheDbContext>? _dbContextFactory;
-    private readonly IConnectionMultiplexer _redis;
-    private readonly ILogger<SqliteToRedisMigrator> _logger;
-    private readonly int _cacheDays;
+    private readonly IConnectionMultiplexer _redis = redis
+                                                   ?? throw new ArgumentNullException( nameof( redis ) );
+    private readonly ILogger<SqliteToRedisMigrator> _logger = logger
+                                                            ?? throw new ArgumentNullException( nameof( logger ) );
 
     private const string MigrationCompleteKey = "migration:sqlite:complete";
     private const string LookupIsrcPrefix = "lookup:isrc:";
@@ -27,25 +39,6 @@ public sealed partial class SqliteToRedisMigrator : IHostedService {
     private const string LookupCardPrefix = "lookup:card:";
     private const string LookupProviderPrefix = "lookup:provider:";
     private const string LookupMetadataPrefix = "lookup:metadata:";
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="SqliteToRedisMigrator"/> class.
-    /// </summary>
-    /// <param name="dbContextFactory">Factory for creating SQLite database contexts. Can be null if SQLite is not configured.</param>
-    /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    /// <param name="cacheDays">Number of days to consider cache entries fresh.</param>
-    public SqliteToRedisMigrator(
-        IDbContextFactory<MediaLinkCacheDbContext>? dbContextFactory,
-        IConnectionMultiplexer redis,
-        ILogger<SqliteToRedisMigrator> logger,
-        int cacheDays
-    ) {
-        _dbContextFactory = dbContextFactory;
-        _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-        _cacheDays = cacheDays;
-    }
 
     /// <inheritdoc/>
     public async Task StartAsync( CancellationToken cancellationToken ) {
@@ -61,7 +54,7 @@ public sealed partial class SqliteToRedisMigrator : IHostedService {
             }
 
             // Check if SQLite database is available
-            if (_dbContextFactory is null) {
+            if (dbContextFactory is null) {
                 LogNoSqlite( _logger );
                 _ = await db.StringSetAsync( MigrationCompleteKey, DateTime.UtcNow.ToString( "O" ) );
                 return;
@@ -91,7 +84,7 @@ public sealed partial class SqliteToRedisMigrator : IHostedService {
     public Task StopAsync( CancellationToken cancellationToken ) => Task.CompletedTask;
 
     private async Task MigrateDataAsync( IDatabase db, CancellationToken cancellationToken ) {
-        await using MediaLinkCacheDbContext dbContext = await _dbContextFactory!.CreateDbContextAsync( cancellationToken );
+        await using MediaLinkCacheDbContext dbContext = await dbContextFactory!.CreateDbContextAsync( cancellationToken );
 
         // Get total count of cache entries for logging without loading them all into memory
         int totalCount = await dbContext.CacheEntries.CountAsync( cancellationToken );
@@ -100,7 +93,7 @@ public sealed partial class SqliteToRedisMigrator : IHostedService {
 
         int successCount = 0;
         int failCount = 0;
-        TimeSpan expiry = TimeSpan.FromDays( _cacheDays );
+        TimeSpan expiry = TimeSpan.FromDays( cacheDays );
 
         // Stream cache entries to avoid loading all into memory at once
         await foreach (MediaLinkCacheEntry entry in dbContext.CacheEntries

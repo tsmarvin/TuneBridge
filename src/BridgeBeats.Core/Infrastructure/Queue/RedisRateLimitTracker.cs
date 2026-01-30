@@ -23,25 +23,22 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// after a successful request (optional optimization).
 /// </para>
 /// </remarks>
-public sealed partial class RedisRateLimitTracker : IRateLimitTracker {
+/// <remarks>
+/// Initializes a new instance of the <see cref="RedisRateLimitTracker"/> class.
+/// </remarks>
+/// <param name="redis">The Redis connection multiplexer.</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+public sealed partial class RedisRateLimitTracker(
+    IConnectionMultiplexer redis,
+    ILogger<RedisRateLimitTracker> logger
+) : IRateLimitTracker {
 
-    private readonly IConnectionMultiplexer _redis;
-    private readonly ILogger<RedisRateLimitTracker> _logger;
+    private readonly IConnectionMultiplexer _redis = redis
+                                                   ?? throw new ArgumentNullException( nameof( redis ) );
+    private readonly ILogger<RedisRateLimitTracker> _logger = logger
+                                                            ?? throw new ArgumentNullException( nameof( logger ) );
 
     private const string RateLimitPrefix = "ratelimit:";
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="RedisRateLimitTracker"/> class.
-    /// </summary>
-    /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    public RedisRateLimitTracker(
-        IConnectionMultiplexer redis,
-        ILogger<RedisRateLimitTracker> logger
-    ) {
-        _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-    }
 
     /// <inheritdoc/>
     public async Task<RateLimitState> GetStateAsync(

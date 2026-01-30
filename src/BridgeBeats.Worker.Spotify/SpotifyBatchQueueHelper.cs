@@ -206,7 +206,10 @@ public sealed partial class SpotifyBatchQueueHelper {
 
         _ = await db.StreamAddAsync( stream, fields );
 
-        LogEnqueuedToBulkStream( _logger, request.LookupType.ToString( ), stream );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string lookupTypeStr = request.LookupType.ToString( );
+            LogEnqueuedToBulkStream( _logger, lookupTypeStr, stream );
+        }
 
         return true;
     }

@@ -19,23 +19,20 @@ namespace BridgeBeats.Core.Domain.Services.LinkResolver;
 ///   <item>ATProto storage for results</item>
 /// </list>
 /// </remarks>
-public sealed partial class CachingMediaLinkService : IMediaLinkService {
+/// <remarks>
+/// Initializes a new instance of the <see cref="CachingMediaLinkService"/> class.
+/// </remarks>
+/// <param name="orchestrator">The lookup orchestrator for queue-based lookups.</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+public sealed partial class CachingMediaLinkService(
+    ILookupOrchestrator orchestrator,
+    ILogger<CachingMediaLinkService> logger
+) : IMediaLinkService {
 
-    private readonly ILookupOrchestrator _orchestrator;
-    private readonly ILogger<CachingMediaLinkService> _logger;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="CachingMediaLinkService"/> class.
-    /// </summary>
-    /// <param name="orchestrator">The lookup orchestrator for queue-based lookups.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    public CachingMediaLinkService(
-        ILookupOrchestrator orchestrator,
-        ILogger<CachingMediaLinkService> logger
-    ) {
-        _orchestrator = orchestrator ?? throw new ArgumentNullException( nameof( orchestrator ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-    }
+    private readonly ILookupOrchestrator _orchestrator = orchestrator
+                                                       ?? throw new ArgumentNullException( nameof( orchestrator ) );
+    private readonly ILogger<CachingMediaLinkService> _logger = logger
+                                                              ?? throw new ArgumentNullException( nameof( logger ) );
 
     /// <inheritdoc/>
     public async Task<MediaLinkResult?> GetInfoAsync( string title, string artist ) {

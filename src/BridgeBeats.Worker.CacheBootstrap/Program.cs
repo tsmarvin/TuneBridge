@@ -116,12 +116,15 @@ public static class Program {
         Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger("CacheBootstrap.Startup");
 
         // Log Redis connection details
-        ProgramLog.LogRedisConnectionInfo(
-            logger,
-            redis.Configuration,
-            redis.IsConnected,
-            redis.GetDatabase( ).Database
-        );
+        if (logger.IsEnabled( LogLevel.Information )) {
+            int databaseNum = redis.GetDatabase( ).Database;
+            ProgramLog.LogRedisConnectionInfo(
+                logger,
+                redis.Configuration,
+                redis.IsConnected,
+                databaseNum
+            );
+        }
 
         // Verify we can actually write to Redis
         IDatabase db = redis.GetDatabase();
@@ -146,7 +149,10 @@ public static class Program {
         foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
             IServer server = redis.GetServer(endpoint);
             long keyCount = server.DatabaseSize();
-            ProgramLog.LogRedisKeyCount( logger, endpoint.ToString( ) ?? "unknown", keyCount );
+            if (logger.IsEnabled( LogLevel.Information )) {
+                string endpointStr = endpoint.ToString( ) ?? "unknown";
+                ProgramLog.LogRedisKeyCount( logger, endpointStr, keyCount );
+            }
         }
     }
 

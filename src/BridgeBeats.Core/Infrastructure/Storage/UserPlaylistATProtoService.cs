@@ -20,36 +20,31 @@ namespace BridgeBeats.Core.Infrastructure.Storage;
 /// on user PDSs rather than the server's PDS, and uses OAuth tokens
 /// instead of app passwords.
 /// </remarks>
-public partial class UserPlaylistATProtoService : IUserPlaylistATProtoService {
+/// <remarks>
+/// Initializes a new instance of the <see cref="UserPlaylistATProtoService"/> class.
+/// </remarks>
+/// <param name="serverDid">The DID of the BridgeBeats server (used as default lookupRepository).</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+/// <param name="dbContextFactory">Factory for creating database contexts.</param>
+/// <param name="oauthService">Optional ATProto OAuth service for token refresh.</param>
+public partial class UserPlaylistATProtoService(
+    string serverDid,
+    ILogger<UserPlaylistATProtoService> logger,
+    IDbContextFactory<ApplicationDbContext> dbContextFactory,
+    IATProtoOAuthService? oauthService = null
+) : IUserPlaylistATProtoService {
 
     /// <summary>
     /// The NSID (Namespaced Identifier) for the BridgeBeats playlist lexicon.
     /// </summary>
     private static readonly Nsid s_playlistCollection = new( "link.bridgebeats.playlist" );
 
-    private readonly string _serverDid;
-    private readonly ILogger<UserPlaylistATProtoService> _logger;
-    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-    private readonly IATProtoOAuthService? _oauthService;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="UserPlaylistATProtoService"/> class.
-    /// </summary>
-    /// <param name="serverDid">The DID of the BridgeBeats server (used as default lookupRepository).</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    /// <param name="dbContextFactory">Factory for creating database contexts.</param>
-    /// <param name="oauthService">Optional ATProto OAuth service for token refresh.</param>
-    public UserPlaylistATProtoService(
-        string serverDid,
-        ILogger<UserPlaylistATProtoService> logger,
-        IDbContextFactory<ApplicationDbContext> dbContextFactory,
-        IATProtoOAuthService? oauthService = null
-    ) {
-        _serverDid = serverDid ?? throw new ArgumentNullException( nameof( serverDid ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-        _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException( nameof( dbContextFactory ) );
-        _oauthService = oauthService;
-    }
+    private readonly string _serverDid = serverDid
+                                       ?? throw new ArgumentNullException( nameof( serverDid ) );
+    private readonly ILogger<UserPlaylistATProtoService> _logger = logger
+                                                                 ?? throw new ArgumentNullException( nameof( logger ) );
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory = dbContextFactory
+                                                                               ?? throw new ArgumentNullException( nameof( dbContextFactory ) );
 
     /// <inheritdoc/>
     public async Task<string> CreatePlaylistAsync(
@@ -98,9 +93,12 @@ public partial class UserPlaylistATProtoService : IUserPlaylistATProtoService {
                 throw new InvalidOperationException( $"Failed to create playlist on user's PDS: {errorMsg}" );
             }
 
-            LogPlaylistCreated( playlist.Title, userDid, createResult.Result.Uri.ToString( ) );
+            string playlistUri = createResult.Result.Uri.ToString( );
+            if (_logger.IsEnabled( LogLevel.Information )) {
+                LogPlaylistCreated( playlist.Title, userDid, playlistUri );
+            }
 
-            return createResult.Result.Uri.ToString( );
+            return playlistUri;
         } catch (Exception ex) when (ex is not InvalidOperationException) {
             LogCreateFailed( ex, userDid );
             throw;
@@ -186,9 +184,12 @@ public partial class UserPlaylistATProtoService : IUserPlaylistATProtoService {
                 throw new InvalidOperationException( $"Failed to update playlist on user's PDS: {errorMsg}" );
             }
 
-            LogPlaylistUpdated( playlist.Title, userDid, putResult.Result.Uri.ToString( ) );
+            string playlistUri = putResult.Result.Uri.ToString( );
+            if (_logger.IsEnabled( LogLevel.Information )) {
+                LogPlaylistUpdated( playlist.Title, userDid, playlistUri );
+            }
 
-            return putResult.Result.Uri.ToString( );
+            return playlistUri;
         } catch (Exception ex) when (ex is not InvalidOperationException) {
             LogUpdateFailed( ex, userDid );
             throw;
@@ -312,10 +313,10 @@ public partial class UserPlaylistATProtoService : IUserPlaylistATProtoService {
         }
 
         // Check if tokens need refresh
-        if (_oauthService is not null && !_oauthService.IsTokenValid( user.AtProtoTokenExpiration )) {
+        if (oauthService is not null && !oauthService.IsTokenValid( user.AtProtoTokenExpiration )) {
             LogRefreshingTokens( userDid );
 
-            ATProtoOAuthResult? refreshResult = await _oauthService.RefreshTokensAsync(
+            ATProtoOAuthResult? refreshResult = await oauthService.RefreshTokensAsync(
                 user.AtProtoDid!,
                 user.AtProtoRefreshToken,
                 user.EncryptedAtProtoDPoPKey,

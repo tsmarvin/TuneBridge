@@ -175,7 +175,11 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
             // Add lookup indices to Redis
             await AddInputLinksAsync( recordUri, result );
 
-            LogCachedResult( _logger, rkey.SanitizeForLogging( ), recordUri.SanitizeForLogging( ) );
+            if (_logger.IsEnabled( LogLevel.Information )) {
+                string sanitizedRkey = rkey.SanitizeForLogging( );
+                string sanitizedRecordUri = recordUri.SanitizeForLogging( );
+                LogCachedResult( _logger, sanitizedRkey, sanitizedRecordUri );
+            }
             return recordUri;
         } catch (Exception ex) {
             LogCacheError( _logger, ex );
@@ -214,7 +218,10 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 if (existingMeta?.RecordUri == recordUri) {
                     // Record already cached with same URI - just refresh TTL on all keys
                     await RefreshTtlForRkeyAsync( db, rkey, expiry );
-                    LogCacheEntryExists( _logger, rkey.SanitizeForLogging( ) );
+                    if (_logger.IsEnabled( LogLevel.Debug )) {
+                        string sanitizedRkey = rkey.SanitizeForLogging( );
+                        LogCacheEntryExists( _logger, sanitizedRkey );
+                    }
                     return;
                 }
             }
@@ -295,10 +302,17 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
             // Verify the meta key was actually written (spot check)
             RedisValue verifyValue = await db.StringGetAsync( metaKey );
             if (verifyValue.IsNullOrEmpty) {
-                LogWriteVerificationFailed( _logger, rkey.SanitizeForLogging( ) );
+                if (_logger.IsEnabled( LogLevel.Warning )) {
+                    string sanitizedRkey = rkey.SanitizeForLogging( );
+                    LogWriteVerificationFailed( _logger, sanitizedRkey );
+                }
             }
 
-            LogCreatedLookupEntries( _logger, rkey.SanitizeForLogging( ), cardId.SanitizeForLogging( ), allKeys.Count );
+            if (_logger.IsEnabled( LogLevel.Information )) {
+                string sanitizedRkey = rkey.SanitizeForLogging( );
+                string sanitizedCardId = cardId.SanitizeForLogging( );
+                LogCreatedLookupEntries( _logger, sanitizedRkey, sanitizedCardId, allKeys.Count );
+            }
         } catch (Exception ex) {
             LogAddInputLinksError( _logger, ex );
             throw;
@@ -319,7 +333,10 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
             _ = await db.KeyDeleteAsync( keysToDelete );
             _ = await db.KeyDeleteAsync( keysSetKey );
 
-            LogRemovedLookupKeys( _logger, existingKeys.Length, rkey.SanitizeForLogging( ) );
+            if (_logger.IsEnabled( LogLevel.Debug )) {
+                string sanitizedRkey = rkey.SanitizeForLogging( );
+                LogRemovedLookupKeys( _logger, existingKeys.Length, sanitizedRkey );
+            }
         }
     }
 
@@ -363,7 +380,10 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 return CheckRecordFreshness( pdsResult, recordUri );
             }
         } catch (Exception ex) {
-            LogPdsLookupFailed( _logger, ex, externalId.SanitizeForLogging( ) );
+            if (_logger.IsEnabled( LogLevel.Warning )) {
+                string sanitizedExternalId = externalId.SanitizeForLogging( );
+                LogPdsLookupFailed( _logger, ex, sanitizedExternalId );
+            }
         }
 
         return null;
@@ -376,12 +396,18 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
         try {
             MediaLinkResult? result = await _atprotoStorage.GetMediaLinkResultAsync( recordUri );
             if (result != null) {
-                LogCacheHit( _logger, recordUri.SanitizeForLogging( ) );
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string sanitizedRecordUri = recordUri.SanitizeForLogging( );
+                    LogCacheHit( _logger, sanitizedRecordUri );
+                }
                 return CheckRecordFreshness( result, recordUri );
             }
 
             // Record not found on PDS - remove from Redis
-            LogRecordNotFound( _logger, recordUri.SanitizeForLogging( ) );
+            if (_logger.IsEnabled( LogLevel.Information )) {
+                string sanitizedRecordUri = recordUri.SanitizeForLogging( );
+                LogRecordNotFound( _logger, sanitizedRecordUri );
+            }
         } catch (HttpRequestException ex) {
             LogHttpError( _logger, ex, ex.StatusCode );
         } catch (Exception ex) {

@@ -485,7 +485,8 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
         /// </summary>
         private static void LogResponseBodySerialized( ILogger logger, string? body, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
-                LogResponseBody( logger, JsonSerializer.Serialize( body, options ) );
+                string serializedBody = JsonSerializer.Serialize( body, options );
+                LogResponseBody( logger, serializedBody );
             }
         }
 
@@ -494,7 +495,8 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
         /// </summary>
         private static void LogDataSerialized( ILogger logger, TidalResource data, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
-                LogDataTrace( logger, JsonSerializer.Serialize( data, options ) );
+                string serializedData = JsonSerializer.Serialize( data, options );
+                LogDataTrace( logger, serializedData );
             }
         }
 
@@ -503,7 +505,8 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
         /// </summary>
         private static void LogIncludedSerialized( ILogger logger, List<TidalResource> included, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
-                LogIncludedTrace( logger, JsonSerializer.Serialize( included, options ) );
+                string serializedIncluded = JsonSerializer.Serialize( included, options );
+                LogIncludedTrace( logger, serializedIncluded );
             }
         }
 

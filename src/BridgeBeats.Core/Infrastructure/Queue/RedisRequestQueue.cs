@@ -127,7 +127,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         // Record enqueue metric
         QueueMetrics.RecordEnqueue( _provider, priority );
 
-        LogEnqueued( _logger, messageId!, stream, priority );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string msgId = messageId!;
+            LogEnqueued( _logger, msgId, stream, priority );
+        }
     }
 
     /// <inheritdoc/>
@@ -231,7 +234,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
                 }
 
                 // Message is blocked - leave it pending, don't acknowledge
-                LogSkippingBlockedMessage( _logger, pending.MessageId.ToString( ), stream );
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string msgIdString = pending.MessageId.ToString( );
+                    LogSkippingBlockedMessage( _logger, msgIdString, stream );
+                }
             }
         }
 
@@ -250,7 +256,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
             // Check if this message's endpoint is blocked
             if (IsMessageBlocked( parsed.Payload, blockedEndpoints )) {
-                LogSkippingRateLimitedMessage( _logger, entry.Id.ToString( ), stream );
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string entryIdString = entry.Id.ToString( );
+                    LogSkippingRateLimitedMessage( _logger, entryIdString, stream );
+                }
                 continue;
             }
 

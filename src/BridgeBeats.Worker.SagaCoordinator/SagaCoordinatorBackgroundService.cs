@@ -18,56 +18,53 @@ namespace BridgeBeats.Worker.SagaCoordinator;
 ///   <item>Releasing deduplication locks to notify waiters</item>
 /// </list>
 /// </summary>
-public sealed partial class SagaCoordinatorBackgroundService : BackgroundService {
-    private readonly IConnectionMultiplexer _redis;
-    private readonly ISagaStateManager _sagaManager;
-    private readonly IATProtoStorageService _atProtoStorage;
-    private readonly IMediaLinkCacheRepository _cacheRepository;
-    private readonly IRequestDeduplicator _deduplicator;
-    private readonly SagaResultCombiner _resultCombiner;
-    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver;
-    private readonly HashSet<SupportedProviders> _enabledProviders;
-    private readonly ILogger<SagaCoordinatorBackgroundService> _logger;
+/// <remarks>
+/// Initializes a new instance of the <see cref="SagaCoordinatorBackgroundService"/> class.
+/// </remarks>
+/// <param name="redis">Redis connection for Pub/Sub subscriptions.</param>
+/// <param name="sagaManager">Saga state manager for querying completed sagas.</param>
+/// <param name="atProtoStorage">ATProto storage for writing final results.</param>
+/// <param name="cacheRepository">Cache repository for updating the cache.</param>
+/// <param name="deduplicator">Request deduplicator for releasing locks.</param>
+/// <param name="resultCombiner">Result combiner for assembling final results.</param>
+/// <param name="queueResolver">Queue resolver for queuing secondary provider lookups.</param>
+/// <param name="enabledProviders">Set of enabled providers for secondary lookups.</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+public sealed partial class SagaCoordinatorBackgroundService(
+    IConnectionMultiplexer redis,
+    ISagaStateManager sagaManager,
+    IATProtoStorageService atProtoStorage,
+    IMediaLinkCacheRepository cacheRepository,
+    IRequestDeduplicator deduplicator,
+    SagaResultCombiner resultCombiner,
+    IProviderQueueResolver<QueuedLookupRequest> queueResolver,
+    HashSet<SupportedProviders> enabledProviders,
+    ILogger<SagaCoordinatorBackgroundService> logger
+    ) : BackgroundService {
+    private readonly IConnectionMultiplexer _redis = redis
+                                                   ?? throw new ArgumentNullException( nameof( redis ) );
+    private readonly ISagaStateManager _sagaManager = sagaManager
+                                                    ?? throw new ArgumentNullException( nameof( sagaManager ) );
+    private readonly IATProtoStorageService _atProtoStorage = atProtoStorage
+                                                            ?? throw new ArgumentNullException( nameof( atProtoStorage ) );
+    private readonly IMediaLinkCacheRepository _cacheRepository = cacheRepository
+                                                                ?? throw new ArgumentNullException( nameof( cacheRepository ) );
+    private readonly IRequestDeduplicator _deduplicator = deduplicator
+                                                        ?? throw new ArgumentNullException( nameof( deduplicator ) );
+    private readonly SagaResultCombiner _resultCombiner = resultCombiner
+                                                        ?? throw new ArgumentNullException( nameof( resultCombiner ) );
+    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver = queueResolver
+                                                                                ?? throw new ArgumentNullException( nameof( queueResolver ) );
+    private readonly HashSet<SupportedProviders> _enabledProviders = enabledProviders
+                                                                   ?? throw new ArgumentNullException( nameof( enabledProviders ) );
+    private readonly ILogger<SagaCoordinatorBackgroundService> _logger = logger
+                                                                       ?? throw new ArgumentNullException( nameof( logger ) );
 
     private const string SagaCompletedChannel = "saga:completed";
     private const string LookupCompleteChannelPattern = "complete:*";
     private static readonly TimeSpan s_pollingInterval = TimeSpan.FromSeconds( 30 );
     private static readonly TimeSpan s_minimumSagaAge = TimeSpan.FromSeconds( 15 );
     private const int PollingBatchLimit = 100;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="SagaCoordinatorBackgroundService"/> class.
-    /// </summary>
-    /// <param name="redis">Redis connection for Pub/Sub subscriptions.</param>
-    /// <param name="sagaManager">Saga state manager for querying completed sagas.</param>
-    /// <param name="atProtoStorage">ATProto storage for writing final results.</param>
-    /// <param name="cacheRepository">Cache repository for updating the cache.</param>
-    /// <param name="deduplicator">Request deduplicator for releasing locks.</param>
-    /// <param name="resultCombiner">Result combiner for assembling final results.</param>
-    /// <param name="queueResolver">Queue resolver for queuing secondary provider lookups.</param>
-    /// <param name="enabledProviders">Set of enabled providers for secondary lookups.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    public SagaCoordinatorBackgroundService(
-        IConnectionMultiplexer redis,
-        ISagaStateManager sagaManager,
-        IATProtoStorageService atProtoStorage,
-        IMediaLinkCacheRepository cacheRepository,
-        IRequestDeduplicator deduplicator,
-        SagaResultCombiner resultCombiner,
-        IProviderQueueResolver<QueuedLookupRequest> queueResolver,
-        HashSet<SupportedProviders> enabledProviders,
-        ILogger<SagaCoordinatorBackgroundService> logger
-    ) {
-        _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
-        _sagaManager = sagaManager ?? throw new ArgumentNullException( nameof( sagaManager ) );
-        _atProtoStorage = atProtoStorage ?? throw new ArgumentNullException( nameof( atProtoStorage ) );
-        _cacheRepository = cacheRepository ?? throw new ArgumentNullException( nameof( cacheRepository ) );
-        _deduplicator = deduplicator ?? throw new ArgumentNullException( nameof( deduplicator ) );
-        _resultCombiner = resultCombiner ?? throw new ArgumentNullException( nameof( resultCombiner ) );
-        _queueResolver = queueResolver ?? throw new ArgumentNullException( nameof( queueResolver ) );
-        _enabledProviders = enabledProviders ?? throw new ArgumentNullException( nameof( enabledProviders ) );
-        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-    }
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
@@ -85,11 +82,15 @@ public sealed partial class SagaCoordinatorBackgroundService : BackgroundService
             ( channel, message ) => {
                 // Use channel to avoid analyzer warning
                 if (message.HasValue && !channel.IsNullOrEmpty) {
-                    LogReceivedSagaCompletionEvent(
-                        _logger,
-                        channel.ToString( ),
-                        message.ToString( )
-                    );
+                    if (_logger.IsEnabled( LogLevel.Information )) {
+                        string channelStr = channel.ToString( );
+                        string messageStr = message.ToString( );
+                        LogReceivedSagaCompletionEvent(
+                            _logger,
+                            channelStr,
+                            messageStr
+                        );
+                    }
                     // Fire-and-forget with exception handling since SubscribeAsync expects a void delegate
                     _ = Task.Run( async ( ) => {
                         try {
@@ -325,12 +326,16 @@ public sealed partial class SagaCoordinatorBackgroundService : BackgroundService
     }
 
     private async Task WritePartialResultAsync( LookupSagaState saga, CancellationToken ct ) {
-        LogAssemblingPartialResult(
-            _logger,
-            saga.SagaId,
-            saga.ProviderStates.Count( kv => kv.Value.IsComplete ),
-            saga.ProviderStates.Count
-        );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            int completedCount = saga.ProviderStates.Count( kv => kv.Value.IsComplete );
+            int totalCount = saga.ProviderStates.Count;
+            LogAssemblingPartialResult(
+                _logger,
+                saga.SagaId,
+                completedCount,
+                totalCount
+            );
+        }
 
         // Combine results from completed providers (may be partial)
         MediaLinkResult? partialResult = _resultCombiner.CombineResults( saga, allowIncomplete: true );
@@ -430,13 +435,19 @@ public sealed partial class SagaCoordinatorBackgroundService : BackgroundService
                 _ = providersWithData.Add( provider );
             }
 
-            LogCacheHitForExternalId( _logger, externalId, string.Join( ", ", providersWithData ) );
+            if (_logger.IsEnabled( LogLevel.Debug )) {
+                string providersStr = string.Join( ", ", providersWithData );
+                LogCacheHitForExternalId( _logger, externalId, providersStr );
+            }
         }
 
         // Queue lookups for providers we don't have data for
         foreach (SupportedProviders provider in otherProviders) {
             if (providersWithData.Contains( provider )) {
-                LogSkippingProviderCached( _logger, provider.ToString( ), externalId );
+                if (_logger.IsEnabled( LogLevel.Trace )) {
+                    string providerStr = provider.ToString( );
+                    LogSkippingProviderCached( _logger, providerStr, externalId );
+                }
                 continue;
             }
 
@@ -447,7 +458,10 @@ public sealed partial class SagaCoordinatorBackgroundService : BackgroundService
             // Check if there's already a saga for this lookup
             LookupSagaState? existingSaga = await _sagaManager.GetAsync(sagaId, ct);
             if (existingSaga is not null) {
-                LogSagaAlreadyExists( _logger, sagaId, provider.ToString( ), externalId );
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string providerStr = provider.ToString( );
+                    LogSagaAlreadyExists( _logger, sagaId, providerStr, externalId );
+                }
                 continue;
             }
 
@@ -472,9 +486,16 @@ public sealed partial class SagaCoordinatorBackgroundService : BackgroundService
                 IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue(provider);
                 await queue.EnqueueAsync( secondaryRequest, QueuePriority.Background, ct );
 
-                LogQueuedSecondaryLookup( _logger, lookupType.ToString( ), provider.ToString( ), externalId, sagaId );
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string lookupTypeStr = lookupType.ToString( );
+                    string providerStr = provider.ToString( );
+                    LogQueuedSecondaryLookup( _logger, lookupTypeStr, providerStr, externalId, sagaId );
+                }
             } catch (Exception ex) {
-                LogFailedToQueueSecondary( _logger, ex, provider.ToString( ), externalId );
+                if (_logger.IsEnabled( LogLevel.Warning )) {
+                    string providerStr = provider.ToString( );
+                    LogFailedToQueueSecondary( _logger, ex, providerStr, externalId );
+                }
                 // Continue with other providers - don't fail the entire operation
             }
         }

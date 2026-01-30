@@ -12,19 +12,16 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
     /// This handler should be registered before the resilience handler in the HTTP client pipeline
     /// to intercept 429 responses before retry logic is applied.
     /// </remarks>
-    public partial class RetryAfterLimitHandler : DelegatingHandler {
-        private readonly TimeSpan _maxRetryAfter;
-        private readonly ILogger<RetryAfterLimitHandler> _logger;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="RetryAfterLimitHandler"/> class.
-        /// </summary>
-        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
-        /// <param name="logger">Logger for recording rate limit events.</param>
-        public RetryAfterLimitHandler( int maxRetryAfterSeconds, ILogger<RetryAfterLimitHandler> logger ) {
-            _maxRetryAfter = TimeSpan.FromSeconds( maxRetryAfterSeconds );
-            _logger = logger;
-        }
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="RetryAfterLimitHandler"/> class.
+    /// </remarks>
+    /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
+    /// <param name="logger">Logger for recording rate limit events.</param>
+    public partial class RetryAfterLimitHandler(
+        int maxRetryAfterSeconds,
+        ILogger<RetryAfterLimitHandler> logger
+    ) : DelegatingHandler {
+        private readonly TimeSpan _maxRetryAfter = TimeSpan.FromSeconds( maxRetryAfterSeconds );
 
         /// <inheritdoc/>
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -41,7 +38,7 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
                     Contracts.Enums.SupportedProviders? provider = RetryAfterExceededException.DetermineProviderFromUri( requestUri );
 
                     LogRateLimitExceeded(
-                        _logger,
+                        logger,
                         provider?.ToString( ) ?? "Unknown",
                         retryAfter.Value.TotalSeconds,
                         _maxRetryAfter.TotalSeconds,
