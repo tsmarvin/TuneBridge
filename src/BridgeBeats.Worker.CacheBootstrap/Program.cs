@@ -116,8 +116,8 @@ public static class Program {
         Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger("CacheBootstrap.Startup");
 
         // Log Redis connection details
-        logger.LogInformation(
-            "Redis connection: {Configuration}, IsConnected: {IsConnected}, Database: {Database}",
+        ProgramLog.LogRedisConnectionInfo(
+            logger,
             redis.Configuration,
             redis.IsConnected,
             redis.GetDatabase( ).Database
@@ -128,15 +128,15 @@ public static class Program {
         string testKey = "cache-bootstrap:startup-test";
         bool setResult = await db.StringSetAsync(testKey, DateTimeOffset.UtcNow.ToString(), TimeSpan.FromMinutes(1));
         string? getValue = await db.StringGetAsync(testKey);
-        logger.LogInformation(
-            "Redis write test - SetResult: {SetResult}, ReadBack: {ReadBack}",
+        ProgramLog.LogRedisWriteTest(
+            logger,
             setResult,
             getValue
         );
 
         if (!setResult || string.IsNullOrEmpty( getValue )) {
-            logger.LogError(
-                "Redis write verification failed! SetResult: {SetResult}, ReadBack: {ReadBack}",
+            ProgramLog.LogRedisWriteVerificationFailed(
+                logger,
                 setResult,
                 getValue
             );
@@ -146,7 +146,7 @@ public static class Program {
         foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
             IServer server = redis.GetServer(endpoint);
             long keyCount = server.DatabaseSize();
-            logger.LogInformation( "Redis server {Endpoint} has {KeyCount} keys", endpoint, keyCount );
+            ProgramLog.LogRedisKeyCount( logger, endpoint.ToString( ) ?? "unknown", keyCount );
         }
     }
 

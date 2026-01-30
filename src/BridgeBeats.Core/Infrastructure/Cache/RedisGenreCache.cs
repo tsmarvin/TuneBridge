@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Core.Infrastructure.Logging;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Core.Infrastructure.Cache;
@@ -17,7 +18,7 @@ namespace BridgeBeats.Core.Infrastructure.Cache;
 ///
 /// Data persists until explicitly overwritten (no TTL).
 /// </remarks>
-public sealed class RedisGenreCache : IGenreCacheService {
+public sealed partial class RedisGenreCache : IGenreCacheService {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisGenreCache> _logger;
@@ -81,7 +82,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
         IDatabase db = _redis.GetDatabase( );
         string key = BuildGenreKey( provider, providerId );
 
-        List<string> genreList = genres.ToList( );
+        List<string> genreList = [.. genres];
         string genresJson = JsonSerializer.Serialize( genreList, _jsonOptions );
         string cachedAt = DateTimeOffset.UtcNow.ToString( "o" );
 
@@ -92,12 +93,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
 
         await db.HashSetAsync( key, entries );
 
-        _logger.LogDebug(
-            "Cached {Count} genres for {Provider} track {ProviderId}",
-            genreList.Count,
-            provider,
-            providerId
-        );
+        LogCachedTrackGenres( _logger, genreList.Count, provider, providerId );
     }
 
     /// <inheritdoc/>
@@ -127,7 +123,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
         IDatabase db = _redis.GetDatabase( );
         string key = BuildArtistGenreKey( provider, artistId );
 
-        List<string> genreList = genres.ToList( );
+        List<string> genreList = [.. genres];
         string genresJson = JsonSerializer.Serialize( genreList, _jsonOptions );
         string cachedAt = DateTimeOffset.UtcNow.ToString( "o" );
 
@@ -138,12 +134,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
 
         await db.HashSetAsync( key, entries );
 
-        _logger.LogDebug(
-            "Cached {Count} genres for {Provider} artist {ArtistId}",
-            genreList.Count,
-            provider,
-            artistId
-        );
+        LogCachedArtistGenres( _logger, genreList.Count, provider, artistId );
     }
 
     /// <inheritdoc/>
@@ -160,10 +151,9 @@ public sealed class RedisGenreCache : IGenreCacheService {
         RedisValue[] artistIds = await db.ListRangeAsync( key );
         return artistIds.Length == 0
             ? null
-            : (IReadOnlyList<string>)artistIds
+            : [.. artistIds
             .Where( v => !v.IsNullOrEmpty )
-            .Select( v => v.ToString( ) )
-            .ToList( );
+            .Select( v => v.ToString( ) )];
     }
 
     /// <inheritdoc/>
@@ -175,7 +165,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
     ) {
         if (string.IsNullOrWhiteSpace( trackId )) { return; }
 
-        List<string> artistList = artistIds.Where( id => !string.IsNullOrWhiteSpace( id ) ).ToList( );
+        List<string> artistList = [.. artistIds.Where( id => !string.IsNullOrWhiteSpace( id ) )];
         if (artistList.Count == 0) { return; }
 
         IDatabase db = _redis.GetDatabase( );
@@ -184,15 +174,10 @@ public sealed class RedisGenreCache : IGenreCacheService {
         // Delete existing and set new (atomic via transaction)
         ITransaction transaction = db.CreateTransaction( );
         _ = transaction.KeyDeleteAsync( key );
-        _ = transaction.ListRightPushAsync( key, artistList.Select( id => (RedisValue)id ).ToArray( ) );
+        _ = transaction.ListRightPushAsync( key, [.. artistList.Select( id => (RedisValue)id )] );
         _ = await transaction.ExecuteAsync( );
 
-        _logger.LogDebug(
-            "Cached {Count} artist mappings for {Provider} track {TrackId}",
-            artistList.Count,
-            provider,
-            trackId
-        );
+        LogCachedArtistMappings( _logger, artistList.Count, provider, trackId );
     }
 
     /// <inheritdoc/>
@@ -201,7 +186,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
         IEnumerable<string> artistIds,
         CancellationToken ct = default
     ) {
-        List<string> artistList = artistIds.Where( id => !string.IsNullOrWhiteSpace( id ) ).Distinct( ).ToList( );
+        List<string> artistList = [.. artistIds.Where( id => !string.IsNullOrWhiteSpace( id ) ).Distinct( )];
         if (artistList.Count == 0) { return; }
 
         IDatabase db = _redis.GetDatabase( );
@@ -215,11 +200,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
             _ = await db.SortedSetAddAsync( queueKey, artistId, score, When.NotExists );
         }
 
-        _logger.LogDebug(
-            "Enqueued {Count} artists for {Provider} genre refresh",
-            artistList.Count,
-            provider
-        );
+        LogEnqueuedArtists( _logger, artistList.Count, provider );
     }
 
     /// <inheritdoc/>
@@ -236,17 +217,14 @@ public sealed class RedisGenreCache : IGenreCacheService {
         // Pop the oldest entries (lowest scores = earliest queued)
         SortedSetEntry[] entries = await db.SortedSetPopAsync( queueKey, batchSize, Order.Ascending );
 
-        List<string> artistIds = entries
+        List<string> artistIds = [..
+            entries
             .Where( e => e.Element.HasValue )
             .Select( e => e.Element.ToString( ) )
-            .ToList( );
+        ];
 
         if (artistIds.Count > 0) {
-            _logger.LogDebug(
-                "Dequeued {Count} artists from {Provider} refresh queue",
-                artistIds.Count,
-                provider
-            );
+            LogDequeuedArtists( _logger, artistIds.Count, provider );
         }
 
         return artistIds;
@@ -276,7 +254,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
         RedisValue[] artistIds = await db.ListRangeAsync( trackArtistsKey );
 
         if (artistIds.Length == 0) {
-            _logger.LogDebug( "No artist mapping found for Spotify track {TrackId}", trackId );
+            LogNoArtistMapping( _logger, trackId );
             return null;
         }
 
@@ -302,23 +280,15 @@ public sealed class RedisGenreCache : IGenreCacheService {
         }
 
         if (!anyArtistHasGenres) {
-            _logger.LogDebug(
-                "No artist genres cached yet for Spotify track {TrackId}",
-                trackId
-            );
+            LogNoArtistGenres( _logger, trackId );
             return null;
         }
 
         // Cache the merged result for future lookups
-        List<string> genreList = mergedGenres.ToList( );
+        List<string> genreList = [.. mergedGenres];
         await SetGenresAsync( SupportedProviders.Spotify, trackId, genreList, ct );
 
-        _logger.LogDebug(
-            "Resolved {Count} genres for Spotify track {TrackId} from {ArtistCount} artists",
-            genreList.Count,
-            trackId,
-            artistIds.Length
-        );
+        LogResolvedGenres( _logger, genreList.Count, trackId, artistIds.Length );
 
         return genreList;
     }
@@ -335,7 +305,7 @@ public sealed class RedisGenreCache : IGenreCacheService {
             List<string>? genres = JsonSerializer.Deserialize<List<string>>( genresValue.ToString( ), _jsonOptions );
             return genres;
         } catch (JsonException ex) {
-            _logger.LogWarning( ex, "Failed to parse cached genres JSON" );
+            LogParseError( _logger, ex );
             return null;
         }
     }
@@ -363,4 +333,62 @@ public sealed class RedisGenreCache : IGenreCacheService {
     /// </summary>
     private static string BuildArtistRefreshQueueKey( SupportedProviders provider ) =>
         $"{ArtistRefreshQueuePrefix}{provider}";
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheCachedTrackGenres,
+        Level = LogLevel.Debug,
+        Message = "Cached {Count} genres for {Provider} track {ProviderId}" )]
+    internal static partial void LogCachedTrackGenres( ILogger logger, int count, SupportedProviders provider, string providerId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheCachedArtistGenres,
+        Level = LogLevel.Debug,
+        Message = "Cached {Count} genres for {Provider} artist {ArtistId}" )]
+    internal static partial void LogCachedArtistGenres( ILogger logger, int count, SupportedProviders provider, string artistId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheCachedArtistMappings,
+        Level = LogLevel.Debug,
+        Message = "Cached {Count} artist mappings for {Provider} track {TrackId}" )]
+    internal static partial void LogCachedArtistMappings( ILogger logger, int count, SupportedProviders provider, string trackId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheEnqueuedArtists,
+        Level = LogLevel.Debug,
+        Message = "Enqueued {Count} artists for {Provider} genre refresh" )]
+    internal static partial void LogEnqueuedArtists( ILogger logger, int count, SupportedProviders provider );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheDequeuedArtists,
+        Level = LogLevel.Debug,
+        Message = "Dequeued {Count} artists from {Provider} refresh queue" )]
+    internal static partial void LogDequeuedArtists( ILogger logger, int count, SupportedProviders provider );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheNoArtistMapping,
+        Level = LogLevel.Debug,
+        Message = "No artist mapping found for Spotify track {TrackId}" )]
+    internal static partial void LogNoArtistMapping( ILogger logger, string trackId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheNoArtistGenres,
+        Level = LogLevel.Debug,
+        Message = "No artist genres cached yet for Spotify track {TrackId}" )]
+    internal static partial void LogNoArtistGenres( ILogger logger, string trackId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheResolvedGenres,
+        Level = LogLevel.Debug,
+        Message = "Resolved {Count} genres for Spotify track {TrackId} from {ArtistCount} artists" )]
+    internal static partial void LogResolvedGenres( ILogger logger, int count, string trackId, int artistCount );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisGenreCacheParseError,
+        Level = LogLevel.Warning,
+        Message = "Failed to parse cached genres JSON" )]
+    internal static partial void LogParseError( ILogger logger, Exception ex );
+
+    #endregion
 }

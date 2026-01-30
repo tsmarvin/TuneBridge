@@ -1,8 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using BridgeBeats.Core.Domain.Providers.Common;
 
-namespace BridgeBeats.Providers.Common;
+namespace BridgeBeats.Core.Domain.Providers.Common;
 
 /// <summary>
 /// HTTP message handler that records OpenTelemetry metrics for all provider API requests.

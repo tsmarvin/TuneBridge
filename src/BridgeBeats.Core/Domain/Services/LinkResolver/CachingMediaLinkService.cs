@@ -2,6 +2,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 
 namespace BridgeBeats.Core.Domain.Services.LinkResolver;
 
@@ -18,7 +19,7 @@ namespace BridgeBeats.Core.Domain.Services.LinkResolver;
 ///   <item>ATProto storage for results</item>
 /// </list>
 /// </remarks>
-public sealed class CachingMediaLinkService : IMediaLinkService {
+public sealed partial class CachingMediaLinkService : IMediaLinkService {
 
     private readonly ILookupOrchestrator _orchestrator;
     private readonly ILogger<CachingMediaLinkService> _logger;
@@ -89,15 +90,23 @@ public sealed class CachingMediaLinkService : IMediaLinkService {
                 string message = $"{rateLimitInfo.Provider} is temporarily unavailable. Results will be updated when available (retry after {rateLimitInfo.RetryAfter:u}).";
                 lookupResult.Result.Messages.Add( message );
 
-                _logger.LogInformation(
-                    "Partial result returned for saga {SagaId}. {Provider} rate-limited until {RetryAfter}",
-                    lookupResult.SagaId,
-                    rateLimitInfo.Provider,
-                    rateLimitInfo.RetryAfter
-                );
+                LogPartialResultReturned( _logger, lookupResult.SagaId ?? string.Empty, rateLimitInfo.Provider, rateLimitInfo.RetryAfter );
             }
         }
 
         return lookupResult.Result;
     }
+
+    #region LoggerMessage Definitions
+
+    /// <summary>
+    /// Logs that a partial result was returned due to rate limiting.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.PartialResultReturned,
+        Level = LogLevel.Information,
+        Message = "Partial result returned for saga {SagaId}. {Provider} rate-limited until {RetryAfter}" )]
+    private static partial void LogPartialResultReturned( ILogger logger, string sagaId, SupportedProviders provider, DateTimeOffset retryAfter );
+
+    #endregion LoggerMessage Definitions
 }

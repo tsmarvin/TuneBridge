@@ -4,6 +4,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Providers.Common;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Utilities;
 
 namespace BridgeBeats.Services.LinkResolver {
@@ -72,14 +73,14 @@ namespace BridgeBeats.Services.LinkResolver {
                             MusicLookupResult? lookup = await svc.GetInfoAsync( link );
                             if (lookup is not null) { linkResults.Add( lookup, (provider, link) ); }
                         } catch (Exception e) {
-                            Logger.LogError( e, "Failed while getting initial media link lookup data by URL for {provider}.", provider );
-                            Logger.LogTrace( "link: {link}", link.SanitizeForLogging( ) );
+                            LogUrlLookupProviderError( Logger, e, provider );
+                            LogUrlLookupProviderTrace( Logger, link.SanitizeForLogging( ) );
                         }
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "Failed while getting initial media link lookup data by URL." );
-                Logger.LogTrace( "Content: {content}", content.SanitizeForLogging( ) );
+                LogUrlLookupError( Logger, ex );
+                LogUrlLookupTrace( Logger, content.SanitizeForLogging( ) );
             }
             return linkResults;
         }
@@ -99,13 +100,13 @@ namespace BridgeBeats.Services.LinkResolver {
                         MusicLookupResult? lookup = await svc.GetInfoAsync( title, artist );
                         if (lookup is not null) { return (lookup, provider); }
                     } catch (Exception ex) {
-                        Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title for {provider}.", provider );
-                        Logger.LogTrace( "title: '{title}', artist: '{artist}'", title.SanitizeForLogging( ), artist.SanitizeForLogging( ) );
+                        LogArtistTitleLookupProviderError( Logger, ex, provider );
+                        LogArtistTitleLookupProviderTrace( Logger, title.SanitizeForLogging( ), artist.SanitizeForLogging( ) );
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
-                Logger.LogTrace( "title: '{title}', artist: '{artist}'", title.SanitizeForLogging( ), artist.SanitizeForLogging( ) );
+                LogArtistTitleLookupError( Logger, ex );
+                LogArtistTitleLookupTrace( Logger, title.SanitizeForLogging( ), artist.SanitizeForLogging( ) );
             }
             return null;
         }
@@ -128,13 +129,13 @@ namespace BridgeBeats.Services.LinkResolver {
 
                         if (lookup is not null) { return (lookup, provider); }
                     } catch (Exception ex) {
-                        Logger.LogError( ex, "Failed while getting initial media link lookup data by externalId for {provider}.", provider );
-                        Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", externalId.SanitizeForLogging( ), isAlbum );
+                        LogExternalIdLookupProviderError( Logger, ex, provider );
+                        LogExternalIdLookupProviderTrace( Logger, externalId.SanitizeForLogging( ), isAlbum );
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "Failed while getting initial media link lookup data by artist/title." );
-                Logger.LogTrace( "externalId: '{externalId}', isAlbum: {isAlbum}", externalId.SanitizeForLogging( ), isAlbum );
+                LogExternalIdLookupError( Logger, ex );
+                LogExternalIdLookupTrace( Logger, externalId.SanitizeForLogging( ), isAlbum );
             }
 
             return null;
@@ -156,7 +157,7 @@ namespace BridgeBeats.Services.LinkResolver {
                 if (string.IsNullOrWhiteSpace( providerId )) { return null; }
 
                 if (!EnabledProviders.TryGetValue( provider, out IMusicLookupService? svc )) {
-                    Logger.LogWarning( "Provider {provider} is not enabled or configured", provider );
+                    LogProviderNotEnabled( Logger, provider );
                     return null;
                 }
                 MusicLookupResult? lookup = await svc.GetInfoByIDAsync( providerId, isAlbum );
@@ -165,9 +166,8 @@ namespace BridgeBeats.Services.LinkResolver {
                     return lookup;
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "Failed while getting initial media link lookup data by providerId." );
-                Logger.LogTrace( "providerId: '{providerId}', provider: {provider}, isAlbum: {isAlbum}",
-                    providerId.SanitizeForLogging( ), provider, isAlbum );
+                LogProviderIdLookupError( Logger, ex );
+                LogProviderIdLookupTrace( Logger, providerId.SanitizeForLogging( ), provider, isAlbum );
             }
 
             return null;
@@ -260,17 +260,8 @@ namespace BridgeBeats.Services.LinkResolver {
                     MusicLookupResult? lookup = await svc.GetInfoAsync( firstValue );
                     if (lookup is not null) { input.Results.Add( provider, lookup ); }
                 } catch (Exception ex) {
-                    Logger.LogError( ex,
-                        "Error during secondary lookup via {additionalProvider} for artist '{artist}', title " +
-                        "'{title}' externalId '{externalId}' isAlbum={isAlbum} originalProvider(s)={provider}",
-                        provider,
-                        firstValue.Artist,
-                        firstValue.Title,
-                        firstValue.ExternalId,
-                        firstValue.IsAlbum,
-                        string.Join( ", ", completedList.Select( l => l.ToString( ) ) )
-                    );
-                    Logger.LogTrace( "Input data: {InputData}", JsonSerializer.Serialize( input, SerializerOptions ) );
+                    LogSecondaryLookupError( Logger, ex, provider, firstValue.Artist, firstValue.Title, firstValue.ExternalId, firstValue.IsAlbum ?? false, string.Join( ", ", completedList.Select( l => l.ToString( ) ) ) );
+                    LogSecondaryLookupTrace( Logger, JsonSerializer.Serialize( input, SerializerOptions ) );
                 }
             }
             return input;
@@ -280,6 +271,163 @@ namespace BridgeBeats.Services.LinkResolver {
         private protected static partial Regex ValidHttpsLink( );
 
         #endregion Base Class Private Implementations
+
+        #region LoggerMessage Definitions
+
+        /// <summary>
+        /// Logs an error when URL lookup fails for a specific provider.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.UrlLookupProviderError,
+            Level = LogLevel.Error,
+            Message = "Failed while getting initial media link lookup data by URL for {Provider}." )]
+        private static partial void LogUrlLookupProviderError( ILogger logger, Exception ex, SupportedProviders provider );
+
+        /// <summary>
+        /// Logs trace-level information for URL lookup.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.UrlLookupProviderTrace,
+            Level = LogLevel.Trace,
+            Message = "link: {Link}" )]
+        private static partial void LogUrlLookupProviderTrace( ILogger logger, string link );
+
+        /// <summary>
+        /// Logs an error when URL lookup fails.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.UrlLookupError,
+            Level = LogLevel.Error,
+            Message = "Failed while getting initial media link lookup data by URL." )]
+        private static partial void LogUrlLookupError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs trace-level content for URL lookup.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.UrlLookupTrace,
+            Level = LogLevel.Trace,
+            Message = "Content: {Content}" )]
+        private static partial void LogUrlLookupTrace( ILogger logger, string content );
+
+        /// <summary>
+        /// Logs an error when artist/title lookup fails for a specific provider.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ArtistTitleLookupProviderError,
+            Level = LogLevel.Error,
+            Message = "Failed while getting initial media link lookup data by artist/title for {Provider}." )]
+        private static partial void LogArtistTitleLookupProviderError( ILogger logger, Exception ex, SupportedProviders provider );
+
+        /// <summary>
+        /// Logs trace-level information for artist/title lookup.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ArtistTitleLookupProviderTrace,
+            Level = LogLevel.Trace,
+            Message = "title: '{Title}', artist: '{Artist}'" )]
+        private static partial void LogArtistTitleLookupProviderTrace( ILogger logger, string title, string artist );
+
+        /// <summary>
+        /// Logs an error when artist/title lookup fails.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ArtistTitleLookupError,
+            Level = LogLevel.Error,
+            Message = "Failed while getting initial media link lookup data by artist/title." )]
+        private static partial void LogArtistTitleLookupError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs trace-level information for artist/title lookup.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ArtistTitleLookupTrace,
+            Level = LogLevel.Trace,
+            Message = "title: '{Title}', artist: '{Artist}'" )]
+        private static partial void LogArtistTitleLookupTrace( ILogger logger, string title, string artist );
+
+        /// <summary>
+        /// Logs an error when external ID lookup fails for a specific provider.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ExternalIdLookupProviderError,
+            Level = LogLevel.Error,
+            Message = "Failed while getting initial media link lookup data by externalId for {Provider}." )]
+        private static partial void LogExternalIdLookupProviderError( ILogger logger, Exception ex, SupportedProviders provider );
+
+        /// <summary>
+        /// Logs trace-level information for external ID lookup.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ExternalIdLookupProviderTrace,
+            Level = LogLevel.Trace,
+            Message = "externalId: '{ExternalId}', isAlbum: {IsAlbum}" )]
+        private static partial void LogExternalIdLookupProviderTrace( ILogger logger, string externalId, bool isAlbum );
+
+        /// <summary>
+        /// Logs an error when external ID lookup fails.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ExternalIdLookupError,
+            Level = LogLevel.Error,
+            Message = "Failed while getting initial media link lookup data by externalId." )]
+        private static partial void LogExternalIdLookupError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs trace-level information for external ID lookup.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ExternalIdLookupTrace,
+            Level = LogLevel.Trace,
+            Message = "externalId: '{ExternalId}', isAlbum: {IsAlbum}" )]
+        private static partial void LogExternalIdLookupTrace( ILogger logger, string externalId, bool isAlbum );
+
+        /// <summary>
+        /// Logs a warning when a provider is not enabled.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ProviderNotEnabled,
+            Level = LogLevel.Warning,
+            Message = "Provider {Provider} is not enabled or configured" )]
+        private static partial void LogProviderNotEnabled( ILogger logger, SupportedProviders provider );
+
+        /// <summary>
+        /// Logs an error when provider ID lookup fails.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ProviderIdLookupError,
+            Level = LogLevel.Error,
+            Message = "Failed while getting initial media link lookup data by providerId." )]
+        private static partial void LogProviderIdLookupError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs trace-level information for provider ID lookup.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.ProviderIdLookupTrace,
+            Level = LogLevel.Trace,
+            Message = "providerId: '{ProviderId}', provider: {Provider}, isAlbum: {IsAlbum}" )]
+        private static partial void LogProviderIdLookupTrace( ILogger logger, string providerId, SupportedProviders provider, bool isAlbum );
+
+        /// <summary>
+        /// Logs an error when secondary lookup fails.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.SecondaryLookupError,
+            Level = LogLevel.Error,
+            Message = "Error during secondary lookup via {AdditionalProvider} for artist '{Artist}', title '{Title}' externalId '{ExternalId}' isAlbum={IsAlbum} originalProvider(s)={Provider}" )]
+        private static partial void LogSecondaryLookupError( ILogger logger, Exception ex, SupportedProviders additionalProvider, string artist, string title, string externalId, bool isAlbum, string provider );
+
+        /// <summary>
+        /// Logs trace-level input data for secondary lookup.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Services.LinkResolver.SecondaryLookupTrace,
+            Level = LogLevel.Trace,
+            Message = "Input data: {InputData}" )]
+        private static partial void LogSecondaryLookupTrace( ILogger logger, string inputData );
+
+        #endregion LoggerMessage Definitions
 
     }
 }

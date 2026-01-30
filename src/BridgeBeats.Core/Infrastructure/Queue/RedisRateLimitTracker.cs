@@ -1,6 +1,7 @@
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Core.Infrastructure.Queue;
@@ -22,7 +23,7 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// after a successful request (optional optimization).
 /// </para>
 /// </remarks>
-public sealed class RedisRateLimitTracker : IRateLimitTracker {
+public sealed partial class RedisRateLimitTracker : IRateLimitTracker {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisRateLimitTracker> _logger;
@@ -66,11 +67,7 @@ public sealed class RedisRateLimitTracker : IRateLimitTracker {
         if (!DateTimeOffset.TryParse( value.ToString( ), out DateTimeOffset retryAfter )) {
             // Invalid value, clean it up
             _ = await db.KeyDeleteAsync( key );
-            _logger.LogWarning(
-                "Invalid rate limit value for {Provider}:{Endpoint}, removed",
-                provider,
-                endpoint
-            );
+            LogInvalidValueRemoved( _logger, provider, endpoint );
 
             return new RateLimitState(
                 IsRateLimited: false,
@@ -111,11 +108,7 @@ public sealed class RedisRateLimitTracker : IRateLimitTracker {
         TimeSpan ttl = retryAfter - DateTimeOffset.UtcNow;
 
         if (ttl <= TimeSpan.Zero) {
-            _logger.LogDebug(
-                "Rate limit for {Provider}:{Endpoint} already expired, not setting",
-                provider,
-                endpoint
-            );
+            LogExpiredNotSet( _logger, provider, endpoint );
             return;
         }
 
@@ -127,13 +120,7 @@ public sealed class RedisRateLimitTracker : IRateLimitTracker {
         // Record rate limit metrics
         QueueMetrics.RecordRateLimitEvent( provider, endpoint, ttl.TotalSeconds );
 
-        _logger.LogInformation(
-            "Set rate limit for {Provider}:{Endpoint} until {RetryAfter} (TTL: {Ttl})",
-            provider,
-            endpoint,
-            retryAfter,
-            ttl
-        );
+        LogRateLimitSet( _logger, provider, endpoint, retryAfter, ttl );
     }
 
     /// <inheritdoc/>
@@ -150,11 +137,7 @@ public sealed class RedisRateLimitTracker : IRateLimitTracker {
         bool deleted = await db.KeyDeleteAsync( key );
 
         if (deleted) {
-            _logger.LogDebug(
-                "Cleared rate limit for {Provider}:{Endpoint}",
-                provider,
-                endpoint
-            );
+            LogRateLimitCleared( _logger, provider, endpoint );
         }
     }
 
@@ -201,4 +184,32 @@ public sealed class RedisRateLimitTracker : IRateLimitTracker {
 
     private static string GetKey( SupportedProviders provider, string endpoint ) =>
         $"{RateLimitPrefix}{provider}:{endpoint.Trim( ).ToLowerInvariant( )}";
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRateLimitTrackerInvalidValueRemoved,
+        Level = LogLevel.Warning,
+        Message = "Invalid rate limit value for {Provider}:{Endpoint}, removed" )]
+    internal static partial void LogInvalidValueRemoved( ILogger logger, SupportedProviders provider, string endpoint );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRateLimitTrackerExpiredNotSet,
+        Level = LogLevel.Debug,
+        Message = "Rate limit for {Provider}:{Endpoint} already expired, not setting" )]
+    internal static partial void LogExpiredNotSet( ILogger logger, SupportedProviders provider, string endpoint );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRateLimitTrackerRateLimitSet,
+        Level = LogLevel.Information,
+        Message = "Set rate limit for {Provider}:{Endpoint} until {RetryAfter} (TTL: {Ttl})" )]
+    internal static partial void LogRateLimitSet( ILogger logger, SupportedProviders provider, string endpoint, DateTimeOffset retryAfter, TimeSpan ttl );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRateLimitTrackerCleared,
+        Level = LogLevel.Debug,
+        Message = "Cleared rate limit for {Provider}:{Endpoint}" )]
+    internal static partial void LogRateLimitCleared( ILogger logger, SupportedProviders provider, string endpoint );
+
+    #endregion
 }

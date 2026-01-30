@@ -1,4 +1,5 @@
 using BridgeBeats.Core.Infrastructure.Identity;
+using BridgeBeats.Web.Logging;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -9,7 +10,7 @@ namespace BridgeBeats.Web.Middleware;
 /// Middleware that enforces rate limiting on protected endpoints.
 /// Uses in-memory caching to reduce database load.
 /// </summary>
-public class RateLimitingMiddleware {
+public partial class RateLimitingMiddleware {
     private readonly RequestDelegate _next;
     private readonly ILogger<RateLimitingMiddleware> _logger;
     private readonly int _maxRequestsPerHour;
@@ -101,8 +102,8 @@ public class RateLimitingMiddleware {
         // Check if rate limit is exceeded
         if (user.RequestCount >= _maxRequestsPerHour) {
             TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1) - now;
-            _logger.LogWarning(
-                "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes.",
+            LogRateLimitExceeded(
+                _logger,
                 username,
                 Math.Ceiling( timeRemaining.TotalMinutes )
             );
@@ -130,10 +131,10 @@ public class RateLimitingMiddleware {
         // If no rows were updated, the rate limit was exceeded by a concurrent request
         if (rowsAffected == 0) {
             TimeSpan timeRemaining = user.RateLimitWindowStart.Value.AddHours(1) - now;
-            _logger.LogWarning(
-            "Rate limit exceeded for user {Username} (concurrent check). Window resets in {Minutes} minutes.",
-            username,
-            Math.Ceiling( timeRemaining.TotalMinutes )
+            LogRateLimitExceededConcurrent(
+                _logger,
+                username,
+                Math.Ceiling( timeRemaining.TotalMinutes )
             );
 
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
@@ -148,4 +149,22 @@ public class RateLimitingMiddleware {
 
         await _next( context );
     }
+
+    /// <summary>
+    /// Logs that a rate limit was exceeded for a user.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Middleware.RateLimitingMiddlewareRateLimitExceeded,
+        Level = LogLevel.Warning,
+        Message = "Rate limit exceeded for user {Username}. Window resets in {Minutes} minutes." )]
+    private static partial void LogRateLimitExceeded( ILogger logger, string? username, double minutes );
+
+    /// <summary>
+    /// Logs that a rate limit was exceeded for a user during concurrent request checking.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Middleware.RateLimitingMiddlewareRateLimitExceededConcurrent,
+        Level = LogLevel.Warning,
+        Message = "Rate limit exceeded for user {Username} (concurrent check). Window resets in {Minutes} minutes." )]
+    private static partial void LogRateLimitExceededConcurrent( ILogger logger, string? username, double minutes );
 }

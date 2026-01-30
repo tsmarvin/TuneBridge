@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
@@ -100,18 +101,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
                     StreamPosition.NewMessages,
                     createStream: true
                 );
-                _logger.LogInformation(
-                    "Created consumer group {Group} for stream {Stream}",
-                    _consumerGroup,
-                    stream
-                );
+                LogConsumerGroupCreated( _logger, _consumerGroup, stream );
             } catch (RedisServerException ex) when (ex.Message.Contains( "BUSYGROUP" )) {
                 // Consumer group already exists, which is fine
-                _logger.LogDebug(
-                    "Consumer group {Group} already exists for stream {Stream}",
-                    _consumerGroup,
-                    stream
-                );
+                LogConsumerGroupExists( _logger, _consumerGroup, stream );
             }
         }
     }
@@ -134,12 +127,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         // Record enqueue metric
         QueueMetrics.RecordEnqueue( _provider, priority );
 
-        _logger.LogDebug(
-            "Enqueued message {MessageId} to {Stream} with priority {Priority}",
-            messageId,
-            stream,
-            priority
-        );
+        LogEnqueued( _logger, messageId!, stream, priority );
     }
 
     /// <inheritdoc/>
@@ -243,11 +231,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
                 }
 
                 // Message is blocked - leave it pending, don't acknowledge
-                _logger.LogDebug(
-                    "Skipping rate-limited message {MessageId} in {Stream} - endpoint is blocked",
-                    pending.MessageId,
-                    stream
-                );
+                LogSkippingBlockedMessage( _logger, pending.MessageId.ToString( ), stream );
             }
         }
 
@@ -266,11 +250,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
             // Check if this message's endpoint is blocked
             if (IsMessageBlocked( parsed.Payload, blockedEndpoints )) {
-                _logger.LogDebug(
-                    "Skipping rate-limited message {MessageId} in {Stream}",
-                    entry.Id,
-                    stream
-                );
+                LogSkippingRateLimitedMessage( _logger, entry.Id.ToString( ), stream );
                 continue;
             }
 
@@ -349,7 +329,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         // Record acknowledge metric
         QueueMetrics.RecordAcknowledge( _provider );
 
-        _logger.LogDebug( "Acknowledged and deleted message {MessageId} from {Stream}", id, stream );
+        LogAcknowledged( _logger, id, stream );
     }
 
     /// <inheritdoc/>
@@ -363,7 +343,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         StreamEntry[] entries = await db.StreamRangeAsync( stream, id, id, count: 1 );
 
         if (entries.Length == 0) {
-            _logger.LogWarning( "Message {MessageId} not found in {Stream} for requeue", id, stream );
+            LogMessageNotFoundForRequeue( _logger, id, stream );
             return;
         }
 
@@ -376,7 +356,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         if (delay.HasValue && delay.Value > TimeSpan.Zero) {
             // For delayed requeue, we'd need a separate delay mechanism (e.g., sorted set with score = delivery time)
             // For now, add immediately with a note. Phase 4 workers can implement delay checking.
-            _logger.LogDebug( "Delayed requeue requested but not yet implemented. Adding immediately." );
+            LogDelayedRequeueNotImplemented( _logger );
         }
 
         // Re-add with updated enqueued time
@@ -390,7 +370,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         // Record requeue metric
         QueueMetrics.RecordRequeue( _provider );
 
-        _logger.LogDebug( "Requeued message from {Stream}", stream );
+        LogRequeued( _logger, stream );
     }
 
     /// <inheritdoc/>
@@ -458,12 +438,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         // Delete from DLQ
         _ = await db.StreamDeleteAsync( _dlqStream, [id] );
 
-        _logger.LogInformation(
-            "Moved message {MessageId} from DLQ to {Stream} with priority {Priority}",
-            id,
-            targetStream,
-            priority
-        );
+        LogMovedFromDlq( _logger, id, targetStream, priority );
     }
 
     /// <inheritdoc/>
@@ -477,7 +452,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         StreamEntry[] entries = await db.StreamRangeAsync( stream, id, id, count: 1 );
 
         if (entries.Length == 0) {
-            _logger.LogWarning( "Message {MessageId} not found in {Stream} for DLQ move", id, stream );
+            LogMessageNotFoundForDlqMove( _logger, id, stream );
             return;
         }
 
@@ -498,12 +473,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         _ = await db.StreamAcknowledgeAsync( stream, _consumerGroup, id );
         _ = await db.StreamDeleteAsync( stream, [id] );
 
-        _logger.LogWarning(
-            "Moved message {MessageId} from {Stream} to DLQ. Reason: {Reason}",
-            id,
-            stream,
-            reason
-        );
+        LogMovedToDlq( _logger, id, stream, reason );
     }
 
     /// <inheritdoc/>
@@ -520,7 +490,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         long deleted = await db.StreamDeleteAsync( _dlqStream, [id] );
 
         if (deleted > 0) {
-            _logger.LogInformation( "Deleted message {MessageId} from DLQ", id );
+            LogDeletedFromDlq( _logger, id );
         }
 
         return deleted > 0;
@@ -562,11 +532,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
             if (depth.Bulk < minBulkThreshold) {
                 // Not enough bulk messages to process - skip bulk queue
-                _logger.LogDebug(
-                    "Gating bulk operations - queue depth ({Depth}) below threshold ({Threshold})",
-                    depth.Bulk,
-                    minBulkThreshold
-                );
+                LogBulkGated( _logger, depth.Bulk, minBulkThreshold );
 
                 // Return order without bulk
                 int total = _settings.Weights.Interactive + _settings.Weights.Background;
@@ -587,14 +553,14 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         string? enqueuedAtStr = entry[MessageEnqueuedAtField];
 
         if (string.IsNullOrEmpty( payload )) {
-            _logger.LogWarning( "Message {Id} in {Stream} has no payload", entry.Id, stream );
+            LogMessageNoPayload( _logger, entry.Id.ToString( ), stream );
             return null;
         }
 
         try {
             T? request = JsonSerializer.Deserialize<T>( payload, _jsonOptions );
             if (request is null) {
-                _logger.LogWarning( "Failed to deserialize message {Id} payload", entry.Id );
+                LogDeserializationFailed( _logger, entry.Id.ToString( ) );
                 return null;
             }
 
@@ -607,7 +573,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
             return new QueuedMessage<T>( compositeId, request, enqueuedAt );
         } catch (JsonException ex) {
-            _logger.LogError( ex, "Failed to deserialize message {Id} from {Stream}", entry.Id, stream );
+            LogDeserializationError( _logger, ex, entry.Id.ToString( ), stream );
             return null;
         }
     }
@@ -641,4 +607,110 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
         return (stream, id);
     }
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueConsumerGroupCreated,
+        Level = LogLevel.Information,
+        Message = "Created consumer group {Group} for stream {Stream}" )]
+    internal static partial void LogConsumerGroupCreated( ILogger logger, string group, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueConsumerGroupExists,
+        Level = LogLevel.Debug,
+        Message = "Consumer group {Group} already exists for stream {Stream}" )]
+    internal static partial void LogConsumerGroupExists( ILogger logger, string group, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueEnqueued,
+        Level = LogLevel.Debug,
+        Message = "Enqueued message {MessageId} to {Stream} with priority {Priority}" )]
+    internal static partial void LogEnqueued( ILogger logger, string messageId, string stream, QueuePriority priority );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueSkippingBlockedMessage,
+        Level = LogLevel.Debug,
+        Message = "Skipping rate-limited message {MessageId} in {Stream} - endpoint is blocked" )]
+    internal static partial void LogSkippingBlockedMessage( ILogger logger, string messageId, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueSkippingRateLimitedMessage,
+        Level = LogLevel.Debug,
+        Message = "Skipping rate-limited message {MessageId} in {Stream}" )]
+    internal static partial void LogSkippingRateLimitedMessage( ILogger logger, string messageId, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueAcknowledged,
+        Level = LogLevel.Debug,
+        Message = "Acknowledged and deleted message {MessageId} from {Stream}" )]
+    internal static partial void LogAcknowledged( ILogger logger, string messageId, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMessageNotFoundForRequeue,
+        Level = LogLevel.Warning,
+        Message = "Message {MessageId} not found in {Stream} for requeue" )]
+    internal static partial void LogMessageNotFoundForRequeue( ILogger logger, string messageId, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDelayedRequeueNotImplemented,
+        Level = LogLevel.Debug,
+        Message = "Delayed requeue requested but not yet implemented. Adding immediately." )]
+    internal static partial void LogDelayedRequeueNotImplemented( ILogger logger );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueRequeued,
+        Level = LogLevel.Debug,
+        Message = "Requeued message from {Stream}" )]
+    internal static partial void LogRequeued( ILogger logger, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMovedFromDlq,
+        Level = LogLevel.Information,
+        Message = "Moved message {MessageId} from DLQ to {Stream} with priority {Priority}" )]
+    internal static partial void LogMovedFromDlq( ILogger logger, string messageId, string stream, QueuePriority priority );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMessageNotFoundForDlqMove,
+        Level = LogLevel.Warning,
+        Message = "Message {MessageId} not found in {Stream} for DLQ move" )]
+    internal static partial void LogMessageNotFoundForDlqMove( ILogger logger, string messageId, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMovedToDlq,
+        Level = LogLevel.Warning,
+        Message = "Moved message {MessageId} from {Stream} to DLQ. Reason: {Reason}" )]
+    internal static partial void LogMovedToDlq( ILogger logger, string messageId, string stream, string reason );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDeletedFromDlq,
+        Level = LogLevel.Information,
+        Message = "Deleted message {MessageId} from DLQ" )]
+    internal static partial void LogDeletedFromDlq( ILogger logger, string messageId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueBulkGated,
+        Level = LogLevel.Debug,
+        Message = "Gating bulk operations - queue depth ({Depth}) below threshold ({Threshold})" )]
+    internal static partial void LogBulkGated( ILogger logger, int depth, int threshold );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMessageNoPayload,
+        Level = LogLevel.Warning,
+        Message = "Message {Id} in {Stream} has no payload" )]
+    internal static partial void LogMessageNoPayload( ILogger logger, string id, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDeserializationFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to deserialize message {Id} payload" )]
+    internal static partial void LogDeserializationFailed( ILogger logger, string id );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDeserializationError,
+        Level = LogLevel.Error,
+        Message = "Failed to deserialize message {Id} from {Stream}" )]
+    internal static partial void LogDeserializationError( ILogger logger, Exception ex, string id, string stream );
+
+    #endregion
 }

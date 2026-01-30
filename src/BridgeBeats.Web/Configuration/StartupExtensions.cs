@@ -292,7 +292,7 @@ namespace BridgeBeats.Web.Configuration {
                 // Validate Redis connection (fail-fast if unavailable)
                 IConnectionMultiplexer? redis = serviceProvider.GetService<IConnectionMultiplexer>( );
                 if (redis is null) {
-                    logger.LogWarning( "BridgeBeats: Redis not configured - caching will be unavailable" );
+                    StartupExtensionsLog.LogRedisNotConfigured( logger );
                     return;
                 }
 
@@ -300,9 +300,9 @@ namespace BridgeBeats.Web.Configuration {
                     throw new InvalidOperationException( "Redis connection is not established. Check Redis configuration and connectivity." );
                 }
 
-                logger.LogInformation( "BridgeBeats: Redis cache connection established successfully" );
+                StartupExtensionsLog.LogRedisConnected( logger );
             } catch (Exception ex) {
-                logger.LogError( ex, "Failed to initialize Redis cache connection" );
+                StartupExtensionsLog.LogRedisFailed( logger, ex );
                 throw; // Fail-fast on Redis unavailability
             }
         }

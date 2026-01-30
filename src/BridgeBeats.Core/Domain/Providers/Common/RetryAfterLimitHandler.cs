@@ -1,5 +1,6 @@
 using System.Net;
 using BridgeBeats.Contracts.Exceptions;
+using BridgeBeats.Core.Infrastructure.Logging;
 
 namespace BridgeBeats.Core.Domain.Providers.Common {
     /// <summary>
@@ -11,7 +12,7 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
     /// This handler should be registered before the resilience handler in the HTTP client pipeline
     /// to intercept 429 responses before retry logic is applied.
     /// </remarks>
-    public class RetryAfterLimitHandler : DelegatingHandler {
+    public partial class RetryAfterLimitHandler : DelegatingHandler {
         private readonly TimeSpan _maxRetryAfter;
         private readonly ILogger<RetryAfterLimitHandler> _logger;
 
@@ -39,9 +40,8 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
                     Uri? requestUri = request.RequestUri;
                     Contracts.Enums.SupportedProviders? provider = RetryAfterExceededException.DetermineProviderFromUri( requestUri );
 
-                    _logger.LogWarning(
-                        "Rate limit exceeded threshold for {Provider}. Retry-After: {RetryAfterSeconds}s, " +
-                        "Threshold: {ThresholdSeconds}s. Request URI: {RequestUri}. Failing fast instead of waiting.",
+                    LogRateLimitExceeded(
+                        _logger,
                         provider?.ToString( ) ?? "Unknown",
                         retryAfter.Value.TotalSeconds,
                         _maxRetryAfter.TotalSeconds,
@@ -81,5 +81,18 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
 
             return null;
         }
+
+        #region LoggerMessage Methods
+
+        /// <summary>
+        /// Logs when the rate limit threshold has been exceeded.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Common.RateLimitExceeded,
+            Level = LogLevel.Warning,
+            Message = "Rate limit exceeded threshold for {Provider}. Retry-After: {RetryAfterSeconds}s, Threshold: {ThresholdSeconds}s. Request URI: {RequestUri}. Failing fast instead of waiting." )]
+        internal static partial void LogRateLimitExceeded( ILogger logger, string provider, double retryAfterSeconds, double thresholdSeconds, Uri? requestUri );
+
+        #endregion LoggerMessage Methods
     }
 }

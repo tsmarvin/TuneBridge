@@ -80,7 +80,7 @@ namespace BridgeBeats.Infrastructure.Migrations.MediaLinkCache {
             _ = migrationBuilder.CreateIndex(
                 name: "IX_LookupEntries_LookupValue_LookupType_IsAlbum",
                 table: "LookupEntries",
-                columns: new[] { "LookupValue", "LookupType", "IsAlbum" },
+                columns: ["LookupValue", "LookupType", "IsAlbum"],
                 unique: true );
 
             _ = migrationBuilder.CreateIndex(
@@ -96,7 +96,7 @@ namespace BridgeBeats.Infrastructure.Migrations.MediaLinkCache {
             _ = migrationBuilder.CreateIndex(
                 name: "IX_ProviderEntries_Provider_ProviderId",
                 table: "ProviderEntries",
-                columns: new[] { "Provider", "ProviderId" },
+                columns: ["Provider", "ProviderId"],
                 unique: true );
 
             _ = migrationBuilder.CreateIndex(

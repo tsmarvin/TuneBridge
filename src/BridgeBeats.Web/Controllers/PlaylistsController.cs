@@ -13,7 +13,7 @@ namespace BridgeBeats.Web.Controllers;
 /// </summary>
 [Authorize]
 [Route( "playlists" )]
-public class PlaylistsController( IPlaylistService? playlistService, ILogger<PlaylistsController>? logger = null ) : Controller {
+public partial class PlaylistsController( IPlaylistService? playlistService, ILogger<PlaylistsController>? logger = null ) : Controller {
 
     private readonly IPlaylistService? _playlistService = playlistService;
     private readonly ILogger<PlaylistsController>? _logger = logger;
@@ -51,7 +51,7 @@ public class PlaylistsController( IPlaylistService? playlistService, ILogger<Pla
 
             return View( "Index", viewModel );
         } catch (Exception ex) {
-            _logger?.LogError( ex, "Error loading user playlists for user {UserId}", userId );
+            LogLoadError( ex, userId );
             return View( "Index", new PlaylistsViewModel {
                 ErrorMessage = "Failed to load playlists. Please try again later."
             } );
@@ -79,7 +79,7 @@ public class PlaylistsController( IPlaylistService? playlistService, ILogger<Pla
                 ? Ok( new { message = "Playlist deleted successfully" } )
                 : NotFound( new { error = "Playlist not found or you don't have permission to delete it" } );
         } catch (Exception ex) {
-            _logger?.LogError( ex, "Error deleting playlist {PlaylistId} for user {UserId}", id.SanitizeForLogging( ), userId );
+            LogDeleteError( ex, id.SanitizeForLogging( ), userId );
             return StatusCode( 500, new { error = "Failed to delete playlist" } );
         }
     }

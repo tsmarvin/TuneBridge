@@ -2,6 +2,7 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Providers.Spotify;
+using BridgeBeats.Worker.Spotify.Logging;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Worker.Spotify;
@@ -24,7 +25,7 @@ namespace BridgeBeats.Worker.Spotify;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class SpotifyArtistGenreService : BackgroundService {
+public sealed partial class SpotifyArtistGenreService : BackgroundService {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly IGenreCacheService _genreCache;
@@ -52,7 +53,7 @@ public sealed class SpotifyArtistGenreService : BackgroundService {
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
-        _logger.LogInformation( "Spotify artist genre service starting" );
+        LogServiceStarting( _logger );
 
         // Wait a bit before starting to allow other services to initialize
         await Task.Delay( TimeSpan.FromSeconds( 30 ), stoppingToken );
@@ -65,10 +66,10 @@ public sealed class SpotifyArtistGenreService : BackgroundService {
                 bool shouldRunScheduled = DateTimeOffset.UtcNow - lastFullRun >= s_scheduleInterval;
 
                 if (shouldRunScheduled) {
-                    _logger.LogInformation( "Starting scheduled artist genre refresh" );
+                    LogStartingScheduledRefresh( _logger );
                     await ProcessAllQueuedArtistsAsync( stoppingToken );
                     lastFullRun = DateTimeOffset.UtcNow;
-                    _logger.LogInformation( "Completed scheduled artist genre refresh" );
+                    LogCompletedScheduledRefresh( _logger );
                 }
 
                 // Wait before checking again
@@ -76,12 +77,12 @@ public sealed class SpotifyArtistGenreService : BackgroundService {
             } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
                 break;
             } catch (Exception ex) {
-                _logger.LogError( ex, "Error in artist genre processor loop" );
+                LogProcessorLoopError( _logger, ex );
                 await Task.Delay( s_errorDelay, stoppingToken );
             }
         }
 
-        _logger.LogInformation( "Spotify artist genre service stopping" );
+        LogServiceStopping( _logger );
     }
 
     /// <summary>
@@ -89,7 +90,7 @@ public sealed class SpotifyArtistGenreService : BackgroundService {
     /// </summary>
     private async Task ProcessAllQueuedArtistsAsync( CancellationToken ct ) {
         long queueLength = await _genreCache.GetArtistRefreshQueueLengthAsync( SupportedProviders.Spotify, ct );
-        _logger.LogInformation( "Artist refresh queue has {QueueLength} artists pending", queueLength );
+        LogQueueLength( _logger, queueLength );
 
         int totalProcessed = 0;
         int batchCount = 0;
@@ -102,7 +103,7 @@ public sealed class SpotifyArtistGenreService : BackgroundService {
             );
 
             if (artistIds.Count == 0) {
-                _logger.LogDebug( "Artist refresh queue is empty" );
+                LogQueueEmpty( _logger );
                 break;
             }
 
@@ -110,22 +111,13 @@ public sealed class SpotifyArtistGenreService : BackgroundService {
             int processed = await ProcessArtistBatchAsync( artistIds, ct );
             totalProcessed += processed;
 
-            _logger.LogDebug(
-                "Batch {BatchNumber}: Processed {Processed}/{Total} artists",
-                batchCount,
-                processed,
-                artistIds.Count
-            );
+            LogBatchProcessed( _logger, batchCount, processed, artistIds.Count );
 
             // Small delay between batches to be nice to Spotify's rate limits
             await Task.Delay( TimeSpan.FromMilliseconds( 100 ), ct );
         }
 
-        _logger.LogInformation(
-            "Artist genre refresh complete: {TotalProcessed} artists in {BatchCount} batches",
-            totalProcessed,
-            batchCount
-        );
+        LogRefreshComplete( _logger, totalProcessed, batchCount );
     }
 
     /// <summary>
@@ -142,7 +134,7 @@ public sealed class SpotifyArtistGenreService : BackgroundService {
             foreach ((string artistId, List<string>? genres) in results) {
                 if (genres == null) {
                     // Artist not found - don't cache anything (leave for retry later if needed)
-                    _logger.LogDebug( "Artist {ArtistId} not found", artistId );
+                    LogArtistNotFound( _logger, artistId );
                     continue;
                 }
 
@@ -153,8 +145,89 @@ public sealed class SpotifyArtistGenreService : BackgroundService {
 
             return successCount;
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error processing artist batch of {Count} artists", artistIds.Count );
+            LogBatchError( _logger, ex, artistIds.Count );
             return 0;
         }
     }
+
+    #region LoggerMessage Methods
+
+    /// <summary>Logs that the service is starting.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistGenreServiceStarting,
+        Level = LogLevel.Information,
+        Message = "Spotify artist genre service starting" )]
+    private static partial void LogServiceStarting( ILogger logger );
+
+    /// <summary>Logs that a scheduled refresh is starting.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.StartingScheduledRefresh,
+        Level = LogLevel.Information,
+        Message = "Starting scheduled artist genre refresh" )]
+    private static partial void LogStartingScheduledRefresh( ILogger logger );
+
+    /// <summary>Logs that a scheduled refresh completed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.CompletedScheduledRefresh,
+        Level = LogLevel.Information,
+        Message = "Completed scheduled artist genre refresh" )]
+    private static partial void LogCompletedScheduledRefresh( ILogger logger );
+
+    /// <summary>Logs an error in the processor loop.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistProcessorLoopError,
+        Level = LogLevel.Error,
+        Message = "Error in artist genre processor loop" )]
+    private static partial void LogProcessorLoopError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that the service is stopping.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistGenreServiceStopping,
+        Level = LogLevel.Information,
+        Message = "Spotify artist genre service stopping" )]
+    private static partial void LogServiceStopping( ILogger logger );
+
+    /// <summary>Logs the current queue length.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistQueueLength,
+        Level = LogLevel.Information,
+        Message = "Artist refresh queue has {QueueLength} artists pending" )]
+    private static partial void LogQueueLength( ILogger logger, long queueLength );
+
+    /// <summary>Logs that the queue is empty.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistQueueEmpty,
+        Level = LogLevel.Debug,
+        Message = "Artist refresh queue is empty" )]
+    private static partial void LogQueueEmpty( ILogger logger );
+
+    /// <summary>Logs that a batch was processed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistBatchProcessed,
+        Level = LogLevel.Debug,
+        Message = "Batch {BatchNumber}: Processed {Processed}/{Total} artists" )]
+    private static partial void LogBatchProcessed( ILogger logger, int batchNumber, int processed, int total );
+
+    /// <summary>Logs that the refresh is complete.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistRefreshComplete,
+        Level = LogLevel.Information,
+        Message = "Artist genre refresh complete: {TotalProcessed} artists in {BatchCount} batches" )]
+    private static partial void LogRefreshComplete( ILogger logger, int totalProcessed, int batchCount );
+
+    /// <summary>Logs that an artist was not found.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistNotFound,
+        Level = LogLevel.Debug,
+        Message = "Artist {ArtistId} not found" )]
+    private static partial void LogArtistNotFound( ILogger logger, string artistId );
+
+    /// <summary>Logs an error processing an artist batch.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ArtistBatchError,
+        Level = LogLevel.Error,
+        Message = "Error processing artist batch of {Count} artists" )]
+    private static partial void LogBatchError( ILogger logger, Exception ex, int count );
+
+    #endregion
 }

@@ -5,6 +5,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using idunno.AtProto;
 using idunno.AtProto.Repo;
 using idunno.Bluesky;
@@ -22,7 +23,7 @@ namespace BridgeBeats.Core.Infrastructure.Storage;
 /// </remarks>
 /// <param name="sessionManager">The centralized session manager for authentication.</param>
 /// <param name="logger">Logger for diagnostic information.</param>
-public class ATProtoStorageService(
+public partial class ATProtoStorageService(
     IATProtoSessionManager sessionManager,
     ILogger<ATProtoStorageService> logger
 ) : IATProtoStorageService {
@@ -60,7 +61,7 @@ public class ATProtoStorageService(
             );
 
             if (putResult.Succeeded && putResult.Result is not null) {
-                logger.LogInformation( "Successfully updated existing MediaLinkResult on ATProto PDS: {uri}", putResult.Result.Uri );
+                LogUpdatedRecord( logger, putResult.Result.Uri.ToString( ) );
                 return putResult.Result.Uri.ToString( );
             }
 
@@ -77,11 +78,11 @@ public class ATProtoStorageService(
                 throw new InvalidOperationException( $"Failed to create record on ATProto PDS: {errorMsg}" );
             }
 
-            logger.LogInformation( "Successfully created MediaLinkResult on ATProto PDS: {uri}", createResult.Result.Uri );
+            LogCreatedRecord( logger, createResult.Result.Uri.ToString( ) );
 
             return createResult.Result.Uri.ToString( );
         } catch (Exception ex) {
-            logger.LogError( ex, "Failed to store MediaLinkResult on ATProto PDS" );
+            LogStoreError( logger, ex );
             throw;
         }
     }
@@ -105,12 +106,12 @@ public class ATProtoStorageService(
                 return ConvertFromRecord( getRecordResult.Result.Value );
             } else if (!getRecordResult.Succeeded) {
                 string errorMsg = getRecordResult.AtErrorDetail?.Message ?? $"HTTP {getRecordResult.StatusCode}";
-                logger.LogWarning( "Failed to get record from ATProto PDS: {error}", errorMsg );
+                LogGetRecordFailed( logger, errorMsg );
             }
 
             return null;
         } catch (Exception ex) {
-            logger.LogError( ex, "Failed to retrieve MediaLinkResult from ATProto PDS: {uri}", recordUri );
+            LogRetrieveError( logger, ex, recordUri );
             return null;
         }
     }
@@ -283,7 +284,7 @@ public class ATProtoStorageService(
 
             if (!listResult.Succeeded || listResult.Result is null) {
                 string errorMsg = listResult.AtErrorDetail?.Message ?? $"HTTP {listResult.StatusCode}";
-                logger.LogError( "Failed to list records from ATProto PDS: {Error}", errorMsg );
+                LogListRecordsError( logger, errorMsg );
                 yield break;
             }
 
@@ -299,4 +300,44 @@ public class ATProtoStorageService(
             cursor = listResult.Result.Cursor;
         } while (!string.IsNullOrEmpty( cursor ));
     }
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceUpdatedRecord,
+        Level = LogLevel.Information,
+        Message = "Successfully updated existing MediaLinkResult on ATProto PDS: {uri}" )]
+    internal static partial void LogUpdatedRecord( ILogger logger, string uri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceCreatedRecord,
+        Level = LogLevel.Information,
+        Message = "Successfully created MediaLinkResult on ATProto PDS: {uri}" )]
+    internal static partial void LogCreatedRecord( ILogger logger, string uri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceStoreError,
+        Level = LogLevel.Error,
+        Message = "Failed to store MediaLinkResult on ATProto PDS" )]
+    internal static partial void LogStoreError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceGetRecordFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to get record from ATProto PDS: {error}" )]
+    internal static partial void LogGetRecordFailed( ILogger logger, string error );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceRetrieveError,
+        Level = LogLevel.Error,
+        Message = "Failed to retrieve MediaLinkResult from ATProto PDS: {uri}" )]
+    internal static partial void LogRetrieveError( ILogger logger, Exception ex, string uri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceListRecordsError,
+        Level = LogLevel.Error,
+        Message = "Failed to list records from ATProto PDS: {error}" )]
+    internal static partial void LogListRecordsError( ILogger logger, string error );
+
+    #endregion
 }

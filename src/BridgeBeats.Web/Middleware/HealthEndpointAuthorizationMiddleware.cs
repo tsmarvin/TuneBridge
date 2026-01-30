@@ -1,4 +1,5 @@
 using BridgeBeats.Contracts.Constants;
+using BridgeBeats.Web.Logging;
 
 namespace BridgeBeats.Web.Middleware;
 
@@ -6,7 +7,7 @@ namespace BridgeBeats.Web.Middleware;
 /// Middleware to restrict access to the liveness endpoint to internal requests only (localhost and Docker network).
 /// Allows Aspire Dashboard and Caddy to access the liveness endpoint while blocking public access.
 /// </summary>
-public class HealthEndpointAuthorizationMiddleware {
+public partial class HealthEndpointAuthorizationMiddleware {
     private readonly RequestDelegate _next;
     private readonly ILogger<HealthEndpointAuthorizationMiddleware> _logger;
 
@@ -46,10 +47,19 @@ public class HealthEndpointAuthorizationMiddleware {
         }
 
         // Block external access
-        _logger.LogWarning( "Blocked external access to liveness endpoint from {IP}", remoteIp );
+        LogBlockedExternalAccess( _logger, remoteIp );
         context.Response.StatusCode = 403;
         await context.Response.WriteAsync( "Forbidden: Liveness endpoint is not publicly accessible." );
     }
+
+    /// <summary>
+    /// Logs that external access to the liveness endpoint was blocked.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Middleware.HealthEndpointAuthorizationMiddlewareBlockedExternalAccess,
+        Level = LogLevel.Warning,
+        Message = "Blocked external access to liveness endpoint from {IP}" )]
+    private static partial void LogBlockedExternalAccess( ILogger logger, string? ip );
 
     /// <summary>
     /// Determines if a request is from an internal source.

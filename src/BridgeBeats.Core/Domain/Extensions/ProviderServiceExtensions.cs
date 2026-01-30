@@ -3,7 +3,6 @@ using BridgeBeats.Core.Domain.Providers.AppleMusic;
 using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Spotify;
 using BridgeBeats.Core.Domain.Providers.Tidal;
-using BridgeBeats.Providers.Common;
 
 namespace BridgeBeats.Core.Domain.Extensions {
 

@@ -4,6 +4,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Providers.Common;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Utilities;
 
 namespace BridgeBeats.Services.LinkResolver;
@@ -182,7 +183,7 @@ public sealed partial class LookupOrchestrator : ILookupOrchestrator {
         (MediaLinkResult result, string recordUri, bool isStale)? cached = await cacheCheck( );
 
         if (cached.HasValue && !cached.Value.isStale) {
-            _logger.LogDebug( "Cache hit for {LookupKey}", lookupKey );
+            LogCacheHit( _logger, lookupKey );
             return new LookupResult {
                 Result = cached.Value.result,
                 IsPartial = false
@@ -193,7 +194,7 @@ public sealed partial class LookupOrchestrator : ILookupOrchestrator {
         DeduplicationResult dedup = await _deduplicator.TryAcquireAsync( lookupKey, s_deduplicationLockDuration );
 
         if (!dedup.Acquired && dedup.AlreadyInFlight) {
-            _logger.LogDebug( "Request {LookupKey} already in-flight, waiting for completion", lookupKey );
+            LogRequestAlreadyInFlight( _logger, lookupKey );
 
             // Wait for the other instance to complete
             string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, s_defaultTimeout );
@@ -231,7 +232,7 @@ public sealed partial class LookupOrchestrator : ILookupOrchestrator {
                 initialProvider
             );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error performing lookup for {LookupKey}", lookupKey );
+            LogLookupError( _logger, ex, lookupKey );
 
             // Release the lock on error
             await _deduplicator.ReleaseAsync( lookupKey, null );
@@ -288,13 +289,7 @@ public sealed partial class LookupOrchestrator : ILookupOrchestrator {
         IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( firstProvider );
         await queue.EnqueueAsync( request, QueuePriority.Interactive );
 
-        _logger.LogInformation(
-            "Created saga {SagaId} and queued initial lookup for {Provider} ({LookupType}:{LookupValue})",
-            sagaId,
-            firstProvider,
-            lookupType,
-            lookupValue
-        );
+        LogSagaCreated( _logger, sagaId, firstProvider, lookupType, lookupValue );
 
         // Wait for initial result via deduplicator subscription
         string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, s_defaultTimeout );
@@ -360,4 +355,44 @@ public sealed partial class LookupOrchestrator : ILookupOrchestrator {
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex ValidHttpsLink( );
+
+    #region LoggerMessage Definitions
+
+    /// <summary>
+    /// Logs a cache hit for a lookup key.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorCacheHit,
+        Level = LogLevel.Debug,
+        Message = "Cache hit for {LookupKey}" )]
+    private static partial void LogCacheHit( ILogger logger, string lookupKey );
+
+    /// <summary>
+    /// Logs that a request is already in-flight.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorRequestAlreadyInFlight,
+        Level = LogLevel.Debug,
+        Message = "Request {LookupKey} already in-flight, waiting for completion" )]
+    private static partial void LogRequestAlreadyInFlight( ILogger logger, string lookupKey );
+
+    /// <summary>
+    /// Logs an error performing a lookup.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorLookupError,
+        Level = LogLevel.Error,
+        Message = "Error performing lookup for {LookupKey}" )]
+    private static partial void LogLookupError( ILogger logger, Exception ex, string lookupKey );
+
+    /// <summary>
+    /// Logs that a saga was created and initial lookup queued.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorSagaCreated,
+        Level = LogLevel.Information,
+        Message = "Created saga {SagaId} and queued initial lookup for {Provider} ({LookupType}:{LookupValue})" )]
+    private static partial void LogSagaCreated( ILogger logger, string sagaId, SupportedProviders provider, LookupRequestType lookupType, string lookupValue );
+
+    #endregion LoggerMessage Definitions
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 
 namespace BridgeBeats.Core.Domain.Services.Queue;
 
@@ -20,7 +21,7 @@ namespace BridgeBeats.Core.Domain.Services.Queue;
 /// track/album was found.
 /// </para>
 /// </remarks>
-public sealed class SagaResultCombiner {
+public sealed partial class SagaResultCombiner {
     private readonly ILogger<SagaResultCombiner> _logger;
     private readonly JsonSerializerOptions _jsonOptions;
 
@@ -50,10 +51,7 @@ public sealed class SagaResultCombiner {
         ArgumentNullException.ThrowIfNull( saga );
 
         if (!saga.IsComplete && !allowIncomplete) {
-            _logger.LogWarning(
-                "Attempted to combine results for incomplete saga {SagaId}",
-                saga.SagaId
-            );
+            LogCombineResultsIncompleteSaga( _logger, saga.SagaId );
         }
 
         // Extract successful results from the saga
@@ -74,20 +72,12 @@ public sealed class SagaResultCombiner {
                     successfulResults.Add( (provider, result) );
                 }
             } catch (JsonException ex) {
-                _logger.LogWarning(
-                    ex,
-                    "Failed to deserialize result for provider {Provider} in saga {SagaId}",
-                    provider,
-                    saga.SagaId
-                );
+                LogDeserializeResultFailed( _logger, ex, provider, saga.SagaId );
             }
         }
 
         if (successfulResults.Count == 0) {
-            _logger.LogWarning(
-                "Saga {SagaId} has no successful results yet",
-                saga.SagaId
-            );
+            LogNoSuccessfulResults( _logger, saga.SagaId );
             return null;
         }
 
@@ -108,7 +98,7 @@ public sealed class SagaResultCombiner {
     ) {
         ArgumentNullException.ThrowIfNull( results );
 
-        List<(SupportedProviders provider, MusicLookupResult result)> resultList = results.ToList( );
+        List<(SupportedProviders provider, MusicLookupResult result)> resultList = [.. results];
 
         if (resultList.Count == 0) {
             return null;
@@ -140,12 +130,48 @@ public sealed class SagaResultCombiner {
             mediaLinkResult.Results[provider] = result;
         }
 
-        _logger.LogDebug(
-            "Combined {Count} provider results for saga {SagaId}",
-            results.Count,
-            saga.SagaId
-        );
+        LogCombinedResults( _logger, results.Count, saga.SagaId );
 
         return mediaLinkResult;
     }
+
+    #region LoggerMessage Definitions
+
+    /// <summary>
+    /// Logs that an attempt was made to combine results for an incomplete saga.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.CombineResultsIncompleteSaga,
+        Level = LogLevel.Warning,
+        Message = "Attempted to combine results for incomplete saga {SagaId}" )]
+    private static partial void LogCombineResultsIncompleteSaga( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that deserializing a provider result failed.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.DeserializeResultFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to deserialize result for provider {Provider} in saga {SagaId}" )]
+    private static partial void LogDeserializeResultFailed( ILogger logger, Exception ex, SupportedProviders provider, string sagaId );
+
+    /// <summary>
+    /// Logs that a saga has no successful results yet.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.NoSuccessfulResults,
+        Level = LogLevel.Warning,
+        Message = "Saga {SagaId} has no successful results yet" )]
+    private static partial void LogNoSuccessfulResults( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that provider results were combined for a saga.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.CombinedResults,
+        Level = LogLevel.Debug,
+        Message = "Combined {Count} provider results for saga {SagaId}" )]
+    private static partial void LogCombinedResults( ILogger logger, int count, string sagaId );
+
+    #endregion LoggerMessage Definitions
 }

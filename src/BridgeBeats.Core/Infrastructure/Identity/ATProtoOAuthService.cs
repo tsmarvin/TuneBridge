@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using idunno.AtProto;
 using idunno.Bluesky;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,7 @@ namespace BridgeBeats.Core.Infrastructure.Identity;
 /// Service for managing ATProto OAuth authentication flows.
 /// Implements the ATProto OAuth profile with PAR, PKCE, and DPoP.
 /// </summary>
-public class ATProtoOAuthService : IATProtoOAuthService {
+public partial class ATProtoOAuthService : IATProtoOAuthService {
 
     /// <summary>
     /// Safety margin before token expiration to trigger refresh (30 seconds).
@@ -105,7 +106,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         // Normalize handle (remove @ prefix if present)
         handle = handle.TrimStart( '@' ).Trim( );
 
-        _logger.LogInformation( "Starting ATProto OAuth flow for handle: {Handle}", handle );
+        LogStartFlow( _logger, handle );
 
         // Create an agent to resolve the handle and build the OAuth URL
         using BlueskyAgent agent = new( );
@@ -116,7 +117,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             throw new InvalidOperationException( $"Failed to resolve handle '{handle}' to a DID" );
         }
 
-        _logger.LogDebug( "Resolved handle {Handle} to DID {Did}", handle, did );
+        LogResolvedHandle( _logger, handle, did.ToString( ) );
 
         // Step 2: Resolve PDS URI
         Uri? pdsUri = await agent.ResolvePds( did, cancellationToken );
@@ -124,7 +125,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             throw new InvalidOperationException( $"Failed to resolve PDS for DID '{did}'" );
         }
 
-        _logger.LogDebug( "Resolved DID {Did} to PDS {PdsUri}", did, pdsUri );
+        LogResolvedPds( _logger, did.ToString( ), pdsUri.ToString( ) );
 
         // Step 3: Resolve authorization server
         Uri? authorizationServer = await agent.ResolveAuthorizationServer( pdsUri, cancellationToken );
@@ -132,7 +133,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             throw new InvalidOperationException( $"Failed to resolve authorization server for PDS '{pdsUri}'" );
         }
 
-        _logger.LogDebug( "Resolved PDS {PdsUri} to authorization server {AuthServer}", pdsUri, authorizationServer );
+        LogResolvedAuthServer( _logger, pdsUri.ToString( ), authorizationServer.ToString( ) );
 
         // Step 4: Fetch authorization server metadata
         AuthorizationServerMetadata metadata = await GetAuthorizationServerMetadataAsync(
@@ -140,11 +141,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             cancellationToken
         );
 
-        _logger.LogDebug(
-            "Fetched auth server metadata. Token endpoint: {TokenEndpoint}, PAR endpoint: {ParEndpoint}",
-            metadata.TokenEndpoint,
-            metadata.PushedAuthorizationRequestEndpoint
-        );
+        LogFetchedMetadata( _logger, metadata.TokenEndpoint?.ToString( ) ?? "null", metadata.PushedAuthorizationRequestEndpoint?.ToString( ) ?? "null" );
 
         // Step 5: Generate PKCE code verifier and challenge
         string codeVerifier = GenerateCodeVerifier( );
@@ -187,10 +184,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             );
         } else {
             // Fallback to direct authorization URL (may not work with all ATProto servers)
-            _logger.LogWarning(
-                "Authorization server {AuthServer} does not support PAR. Using direct authorization URL.",
-                authorizationServer
-            );
+            LogNoParSupport( _logger, authorizationServer.ToString( ) );
             authorizationUrl = BuildDirectAuthorizationUrl(
                 metadata.AuthorizationEndpoint!,
                 authorizationServer,
@@ -201,11 +195,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             );
         }
 
-        _logger.LogInformation(
-            "OAuth authorization started for handle {Handle}, state {State}",
-            handle,
-            state
-        );
+        LogAuthStarted( _logger, handle, state );
 
         return (authorizationUrl, state);
     }
@@ -221,7 +211,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         ArgumentException.ThrowIfNullOrWhiteSpace( code );
         ArgumentException.ThrowIfNullOrWhiteSpace( iss );
 
-        _logger.LogInformation( "Completing ATProto OAuth flow for state: {State}", state );
+        LogCompletingFlow( _logger, state );
 
         // Step 1: Look up the OAuth state
         await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
@@ -241,11 +231,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
 
         // Step 2: Verify the issuer matches the expected authorization server
         if (!string.Equals( oauthState.AuthorizationServerUri?.TrimEnd( '/' ), iss.TrimEnd( '/' ), StringComparison.OrdinalIgnoreCase )) {
-            _logger.LogWarning(
-                "Issuer mismatch. Expected: {Expected}, Got: {Actual}",
-                oauthState.AuthorizationServerUri,
-                iss
-            );
+            LogIssuerMismatch( _logger, oauthState.AuthorizationServerUri ?? "null", iss );
             throw new InvalidOperationException( "Authorization server issuer does not match. Possible security issue." );
         }
 
@@ -263,11 +249,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         _ = dbContext.AtProtoOAuthStates.Remove( oauthState );
         _ = await dbContext.SaveChangesAsync( cancellationToken );
 
-        _logger.LogInformation(
-            "OAuth authorization completed for DID {Did}, handle {Handle}",
-            result.Did,
-            result.Handle
-        );
+        LogAuthCompleted( _logger, result.Did, result.Handle );
 
         return result;
     }
@@ -283,20 +265,20 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         ArgumentException.ThrowIfNullOrWhiteSpace( refreshToken );
         ArgumentException.ThrowIfNullOrWhiteSpace( dpoPKeyJwk );
 
-        _logger.LogDebug( "Refreshing ATProto tokens for DID: {Did}", did );
+        LogRefreshingTokens( _logger, did );
 
         try {
             // Resolve the user's PDS to find the token endpoint
             using BlueskyAgent agent = new( );
             Uri? pdsUri = await agent.ResolvePds( new Did( did ), cancellationToken );
             if (pdsUri is null) {
-                _logger.LogWarning( "Failed to resolve PDS for DID {Did} during token refresh", did );
+                LogRefreshPdsFailed( _logger, did );
                 return null;
             }
 
             Uri? authServer = await agent.ResolveAuthorizationServer( pdsUri, cancellationToken );
             if (authServer is null) {
-                _logger.LogWarning( "Failed to resolve auth server for DID {Did} during token refresh", did );
+                LogRefreshAuthServerFailed( _logger, did );
                 return null;
             }
 
@@ -311,12 +293,12 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             );
 
             if (result is not null) {
-                _logger.LogInformation( "Successfully refreshed ATProto tokens for DID {Did}", did );
+                LogRefreshSuccess( _logger, did );
             }
 
             return result;
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to refresh ATProto tokens for DID {Did}", did );
+            LogRefreshError( _logger, ex, did );
             return null;
         }
     }
@@ -336,7 +318,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             .ExecuteDeleteAsync( cancellationToken );
 
         if (deleted > 0) {
-            _logger.LogInformation( "Cleaned up {Count} expired ATProto OAuth states", deleted );
+            LogCleanedUpStates( _logger, deleted );
         }
 
         return deleted;
@@ -403,25 +385,20 @@ public class ATProtoOAuthService : IATProtoOAuthService {
 
         // Check cache first
         if (s_metadataCache.TryGetValue( cacheKey, out (AuthorizationServerMetadata Metadata, DateTime ExpiresAt) cached ) && cached.ExpiresAt > DateTime.UtcNow) {
-            _logger.LogDebug( "Using cached authorization server metadata for {AuthServer}", authorizationServer );
+            LogUsingCachedMetadata( _logger, authorizationServer.ToString( ) );
             return cached.Metadata;
         }
 
         // Fetch metadata from well-known endpoint
         Uri metadataUrl = new(authorizationServer, AuthServerMetadataPath);
-        _logger.LogDebug( "Fetching authorization server metadata from {MetadataUrl}", metadataUrl );
+        LogFetchingMetadata( _logger, metadataUrl.ToString( ) );
 
         HttpClient httpClient = _httpClientFactory.CreateClient("ATProtoOAuth");
         using HttpResponseMessage response = await httpClient.GetAsync(metadataUrl, cancellationToken);
 
         if (!response.IsSuccessStatusCode) {
             string errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning(
-                "Failed to fetch authorization server metadata from {MetadataUrl}. Status: {StatusCode}. Response: {Response}",
-                metadataUrl,
-                response.StatusCode,
-                errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent
-            );
+            LogMetadataFetchFailed( _logger, metadataUrl.ToString( ), (int)response.StatusCode, errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent );
             throw new InvalidOperationException( $"Failed to fetch authorization server metadata: {response.StatusCode}" );
         }
 
@@ -446,22 +423,18 @@ public class ATProtoOAuthService : IATProtoOAuthService {
                 RequiresPushedAuthorizationRequests = root.TryGetProperty( "require_pushed_authorization_requests", out JsonElement requireParElem )
                     && requireParElem.GetBoolean( ),
                 DPoPSigningAlgValuesSupported = root.TryGetProperty( "dpop_signing_alg_values_supported", out JsonElement dpopAlgsElem )
-                    ? dpopAlgsElem.EnumerateArray( ).Select( e => e.GetString( )! ).ToArray( )
+                    ? [.. dpopAlgsElem.EnumerateArray( ).Select( e => e.GetString( )! )]
                     : []
             };
         } catch (JsonException ex) {
-            _logger.LogError( ex, "Failed to parse authorization server metadata from {MetadataUrl}", metadataUrl );
+            LogMetadataParseError( _logger, ex, metadataUrl.ToString( ) );
             throw new InvalidOperationException( "Failed to parse authorization server metadata", ex );
         }
 
         // Cache the metadata
         s_metadataCache[cacheKey] = (metadata, DateTime.UtcNow.Add( s_metadataCacheDuration ));
 
-        _logger.LogDebug(
-            "Cached authorization server metadata for {AuthServer}. PAR required: {ParRequired}",
-            authorizationServer,
-            metadata.RequiresPushedAuthorizationRequests
-        );
+        LogCachedMetadata( _logger, authorizationServer.ToString( ), metadata.RequiresPushedAuthorizationRequests );
 
         return metadata;
     }
@@ -519,11 +492,11 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             requestUri = root.GetProperty( "request_uri" ).GetString( )
                 ?? throw new InvalidOperationException( "PAR response missing request_uri" );
         } catch (JsonException ex) {
-            _logger.LogError( ex, "Failed to parse PAR response" );
+            LogParParseError( _logger, ex );
             throw new InvalidOperationException( "Failed to parse PAR response", ex );
         }
 
-        _logger.LogDebug( "PAR successful. Request URI: {RequestUri}", requestUri );
+        LogParSuccess( _logger, requestUri );
 
         // Build authorization URL with request_uri
         UriBuilder builder = new(metadata.AuthorizationEndpoint);
@@ -614,31 +587,19 @@ public class ATProtoOAuthService : IATProtoOAuthService {
                     response.Headers.TryGetValues( "DPoP-Nonce", out IEnumerable<string>? nonceValues )) {
                     currentNonce = nonceValues.FirstOrDefault( );
                     if (!string.IsNullOrWhiteSpace( currentNonce ) && attempt < MaxDPoPNonceRetries) {
-                        _logger.LogDebug(
-                            "Received use_dpop_nonce error, retrying with nonce. Attempt {Attempt}/{MaxRetries}",
-                            attempt + 1,
-                            MaxDPoPNonceRetries
-                        );
+                        LogDPoPNonceRetry( _logger, attempt + 1, MaxDPoPNonceRetries );
                         continue;
                     }
                 }
 
                 // Not a nonce error or max retries exceeded
-                _logger.LogError(
-                    "Token request failed with status {StatusCode}. Response: {Response}",
-                    response.StatusCode,
-                    errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent
-                );
+                LogTokenRequestFailed( _logger, (int)response.StatusCode, errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent );
                 throw new InvalidOperationException( $"Token request failed: {response.StatusCode}. Response: {errorContent}" );
             }
 
             if (!response.IsSuccessStatusCode) {
                 string errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError(
-                    "Token request failed with status {StatusCode}. Response: {Response}",
-                    response.StatusCode,
-                    errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent
-                );
+                LogTokenRequestFailed( _logger, (int)response.StatusCode, errorContent.Length > 200 ? errorContent[..200] + "..." : errorContent );
                 throw new InvalidOperationException( $"Token request failed: {response.StatusCode}" );
             }
 
@@ -665,10 +626,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         ArgumentNullException.ThrowIfNull( oauthState );
         ArgumentException.ThrowIfNullOrWhiteSpace( code );
 
-        _logger.LogInformation(
-            "Exchanging authorization code for tokens. State: {State}",
-            oauthState.State
-        );
+        LogExchangingCode( _logger, oauthState.State );
 
         // Step 1: Fetch authorization server metadata to get the token endpoint
         Uri authServer = new(oauthState.AuthorizationServerUri!);
@@ -720,44 +678,26 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             scope = root.TryGetProperty( "scope", out JsonElement scopeElem ) ? scopeElem.GetString( ) : null;
             sub = root.TryGetProperty( "sub", out JsonElement subElem ) ? subElem.GetString( ) : null;
         } catch (JsonException ex) {
-            _logger.LogError(
-                ex,
-                "Failed to parse token response. Content: {ResponseContent}",
-                responseContent
-            );
+            LogTokenParseError( _logger, ex, responseContent );
             throw new InvalidOperationException( "Token response had invalid format or missing required properties.", ex );
         } catch (KeyNotFoundException ex) {
             // This catches missing properties from GetProperty() calls above
-            _logger.LogError(
-                ex,
-                "Token response missing required property. Content: {ResponseContent}",
-                responseContent
-            );
+            LogTokenMissingProperty( _logger, ex, responseContent );
             throw new InvalidOperationException( "Token response missing required property.", ex );
         }
 
         // Step 6: Validate the sub (DID) - fail if missing or doesn't match
         if (string.IsNullOrWhiteSpace( sub )) {
-            _logger.LogError(
-                "Token response missing 'sub' (DID) claim. Content: {ResponseContent}",
-                responseContent
-            );
+            LogTokenMissingSub( _logger, responseContent );
             throw new InvalidOperationException( "Token response missing 'sub' (DID) claim" );
         }
 
         if (!string.Equals( sub, oauthState.Did, StringComparison.OrdinalIgnoreCase )) {
-            _logger.LogWarning(
-                "DID mismatch in token response. Expected: {Expected}, Got: {Actual}",
-                oauthState.Did,
-                sub
-            );
+            LogTokenDidMismatch( _logger, oauthState.Did ?? "null", sub );
             throw new InvalidOperationException( "Token response DID does not match expected DID" );
         }
 
-        _logger.LogInformation(
-            "Successfully exchanged authorization code for tokens. DID: {Did}",
-            sub
-        );
+        LogCodeExchanged( _logger, sub );
 
         // Step 7: Return the OAuth result
         return new ATProtoOAuthResult {
@@ -788,7 +728,7 @@ public class ATProtoOAuthService : IATProtoOAuthService {
         );
 
         if (metadata.TokenEndpoint is null) {
-            _logger.LogWarning( "Authorization server metadata missing token_endpoint for DID {Did}", did );
+            LogMissingTokenEndpoint( _logger, did );
             return null;
         }
 
@@ -828,21 +768,17 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             scope = root.TryGetProperty( "scope", out JsonElement scopeElem ) ? scopeElem.GetString( ) : null;
             sub = root.TryGetProperty( "sub", out JsonElement subElem ) ? subElem.GetString( ) : null;
         } catch (Exception ex) when (ex is JsonException or KeyNotFoundException) {
-            _logger.LogError( ex, "Failed to parse token refresh response for DID {Did}", did );
+            LogRefreshParseError( _logger, ex, did );
             return null;
         }
 
         // Step 5: Validate the sub (DID) matches if present
         if (!string.IsNullOrWhiteSpace( sub ) && !string.Equals( sub, did, StringComparison.OrdinalIgnoreCase )) {
-            _logger.LogWarning(
-                "DID mismatch in token refresh response. Expected: {Expected}, Got: {Actual}",
-                did,
-                sub
-            );
+            LogRefreshDidMismatch( _logger, did, sub );
             return null;
         }
 
-        _logger.LogInformation( "Successfully refreshed ATProto tokens for DID {Did}", did );
+        LogRefreshSuccess( _logger, did );
 
         // Step 6: Return the refreshed OAuth result
         return new ATProtoOAuthResult {
@@ -970,6 +906,214 @@ public class ATProtoOAuthService : IATProtoOAuthService {
             .Replace( '+', '-' )
             .Replace( '/', '_' );
     }
+
+    #endregion
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceStartFlow,
+        Level = LogLevel.Information,
+        Message = "Starting ATProto OAuth flow for handle: {Handle}" )]
+    internal static partial void LogStartFlow( ILogger logger, string handle );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceResolvedHandle,
+        Level = LogLevel.Debug,
+        Message = "Resolved handle {Handle} to DID {Did}" )]
+    internal static partial void LogResolvedHandle( ILogger logger, string handle, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceResolvedPds,
+        Level = LogLevel.Debug,
+        Message = "Resolved DID {Did} to PDS {PdsUri}" )]
+    internal static partial void LogResolvedPds( ILogger logger, string did, string pdsUri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceResolvedAuthServer,
+        Level = LogLevel.Debug,
+        Message = "Resolved PDS {PdsUri} to authorization server {AuthServer}" )]
+    internal static partial void LogResolvedAuthServer( ILogger logger, string pdsUri, string authServer );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceFetchedMetadata,
+        Level = LogLevel.Debug,
+        Message = "Fetched auth server metadata. Token endpoint: {TokenEndpoint}, PAR endpoint: {ParEndpoint}" )]
+    internal static partial void LogFetchedMetadata( ILogger logger, string tokenEndpoint, string parEndpoint );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceNoParSupport,
+        Level = LogLevel.Warning,
+        Message = "Authorization server {AuthServer} does not support PAR. Using direct authorization URL." )]
+    internal static partial void LogNoParSupport( ILogger logger, string authServer );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceAuthStarted,
+        Level = LogLevel.Information,
+        Message = "OAuth authorization started for handle {Handle}, state {State}" )]
+    internal static partial void LogAuthStarted( ILogger logger, string handle, string state );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceCompletingFlow,
+        Level = LogLevel.Information,
+        Message = "Completing ATProto OAuth flow for state: {State}" )]
+    internal static partial void LogCompletingFlow( ILogger logger, string state );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceIssuerMismatch,
+        Level = LogLevel.Warning,
+        Message = "Issuer mismatch. Expected: {Expected}, Got: {Actual}" )]
+    internal static partial void LogIssuerMismatch( ILogger logger, string expected, string actual );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceAuthCompleted,
+        Level = LogLevel.Information,
+        Message = "OAuth authorization completed for DID {Did}, handle {Handle}" )]
+    internal static partial void LogAuthCompleted( ILogger logger, string did, string handle );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceRefreshingTokens,
+        Level = LogLevel.Debug,
+        Message = "Refreshing ATProto tokens for DID: {Did}" )]
+    internal static partial void LogRefreshingTokens( ILogger logger, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceRefreshPdsFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to resolve PDS for DID {Did} during token refresh" )]
+    internal static partial void LogRefreshPdsFailed( ILogger logger, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceRefreshAuthServerFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to resolve auth server for DID {Did} during token refresh" )]
+    internal static partial void LogRefreshAuthServerFailed( ILogger logger, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceRefreshSuccess,
+        Level = LogLevel.Information,
+        Message = "Successfully refreshed ATProto tokens for DID {Did}" )]
+    internal static partial void LogRefreshSuccess( ILogger logger, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceRefreshError,
+        Level = LogLevel.Error,
+        Message = "Failed to refresh ATProto tokens for DID {Did}" )]
+    internal static partial void LogRefreshError( ILogger logger, Exception ex, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceCleanedUpStates,
+        Level = LogLevel.Information,
+        Message = "Cleaned up {Count} expired ATProto OAuth states" )]
+    internal static partial void LogCleanedUpStates( ILogger logger, int count );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceUsingCachedMetadata,
+        Level = LogLevel.Debug,
+        Message = "Using cached authorization server metadata for {AuthServer}" )]
+    internal static partial void LogUsingCachedMetadata( ILogger logger, string authServer );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceFetchingMetadata,
+        Level = LogLevel.Debug,
+        Message = "Fetching authorization server metadata from {MetadataUrl}" )]
+    internal static partial void LogFetchingMetadata( ILogger logger, string metadataUrl );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceMetadataFetchFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to fetch authorization server metadata from {MetadataUrl}. Status: {StatusCode}. Response: {Response}" )]
+    internal static partial void LogMetadataFetchFailed( ILogger logger, string metadataUrl, int statusCode, string response );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceMetadataParseError,
+        Level = LogLevel.Error,
+        Message = "Failed to parse authorization server metadata from {MetadataUrl}" )]
+    internal static partial void LogMetadataParseError( ILogger logger, Exception ex, string metadataUrl );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceCachedMetadata,
+        Level = LogLevel.Debug,
+        Message = "Cached authorization server metadata for {AuthServer}. PAR required: {ParRequired}" )]
+    internal static partial void LogCachedMetadata( ILogger logger, string authServer, bool parRequired );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceParSuccess,
+        Level = LogLevel.Debug,
+        Message = "PAR successful. Request URI: {RequestUri}" )]
+    internal static partial void LogParSuccess( ILogger logger, string requestUri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceParParseError,
+        Level = LogLevel.Error,
+        Message = "Failed to parse PAR response" )]
+    internal static partial void LogParParseError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceDPoPNonceRetry,
+        Level = LogLevel.Debug,
+        Message = "Received use_dpop_nonce error, retrying with nonce. Attempt {Attempt}/{MaxRetries}" )]
+    internal static partial void LogDPoPNonceRetry( ILogger logger, int attempt, int maxRetries );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceTokenRequestFailed,
+        Level = LogLevel.Error,
+        Message = "Token request failed with status {StatusCode}. Response: {Response}" )]
+    internal static partial void LogTokenRequestFailed( ILogger logger, int statusCode, string response );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceExchangingCode,
+        Level = LogLevel.Information,
+        Message = "Exchanging authorization code for tokens. State: {State}" )]
+    internal static partial void LogExchangingCode( ILogger logger, string state );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceTokenParseError,
+        Level = LogLevel.Error,
+        Message = "Failed to parse token response. Content: {ResponseContent}" )]
+    internal static partial void LogTokenParseError( ILogger logger, Exception ex, string responseContent );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceTokenMissingProperty,
+        Level = LogLevel.Error,
+        Message = "Token response missing required property. Content: {ResponseContent}" )]
+    internal static partial void LogTokenMissingProperty( ILogger logger, Exception ex, string responseContent );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceTokenMissingSub,
+        Level = LogLevel.Error,
+        Message = "Token response missing 'sub' (DID) claim. Content: {ResponseContent}" )]
+    internal static partial void LogTokenMissingSub( ILogger logger, string responseContent );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceTokenDidMismatch,
+        Level = LogLevel.Warning,
+        Message = "DID mismatch in token response. Expected: {Expected}, Got: {Actual}" )]
+    internal static partial void LogTokenDidMismatch( ILogger logger, string expected, string actual );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceCodeExchanged,
+        Level = LogLevel.Information,
+        Message = "Successfully exchanged authorization code for tokens. DID: {Did}" )]
+    internal static partial void LogCodeExchanged( ILogger logger, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceMissingTokenEndpoint,
+        Level = LogLevel.Warning,
+        Message = "Authorization server metadata missing token_endpoint for DID {Did}" )]
+    internal static partial void LogMissingTokenEndpoint( ILogger logger, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceRefreshParseError,
+        Level = LogLevel.Error,
+        Message = "Failed to parse token refresh response for DID {Did}" )]
+    internal static partial void LogRefreshParseError( ILogger logger, Exception ex, string did );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Identity.ATProtoOAuthServiceRefreshDidMismatch,
+        Level = LogLevel.Warning,
+        Message = "DID mismatch in token refresh response. Expected: {Expected}, Got: {Actual}" )]
+    internal static partial void LogRefreshDidMismatch( ILogger logger, string expected, string actual );
 
     #endregion
 }

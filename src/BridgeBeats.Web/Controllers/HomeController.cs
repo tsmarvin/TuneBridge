@@ -23,7 +23,7 @@ namespace BridgeBeats.Web.Controllers {
     /// <param name="mediaLinkService">Optional music lookup service.</param>
     /// <param name="cardService">Optional OpenGraph card service.</param>
     /// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
-    public class HomeController(
+    public partial class HomeController(
         ILogger<HomeController> logger,
         ICompositeViewEngine viewEngine,
         IMediaLinkService? mediaLinkService = null,
@@ -244,11 +244,11 @@ namespace BridgeBeats.Web.Controllers {
             try {
                 return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, cacheRepository );
             } catch (InvalidOperationException ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
+                LogCacheInvalidOp( ex );
             } catch (ArgumentException ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
+                LogCacheArgError( ex );
             } catch (Exception ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
+                LogCacheError( ex );
             }
 
             return null;
@@ -401,7 +401,7 @@ namespace BridgeBeats.Web.Controllers {
                         processedCount++;
 
                     } catch (Exception ex) {
-                        logger.LogError( ex, "Error processing individual result for URI: {Uri}", uri.SanitizeForLogging( ) );
+                        LogStreamResultError( ex, uri.SanitizeForLogging( ) );
                         errorCount++;
                     }
                 }
@@ -418,7 +418,7 @@ namespace BridgeBeats.Web.Controllers {
                 }
 
             } catch (Exception ex) {
-                logger.LogError( ex, "Error during lookup stream for URI: {Uri}", uri.SanitizeForLogging( ) );
+                LogStreamError( ex, uri.SanitizeForLogging( ) );
                 await Response.WriteAsync( $"<div class=\"alert alert-danger\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount + 1}\">An error occurred during lookup: {ex.Message}</div>" );
             }
         }

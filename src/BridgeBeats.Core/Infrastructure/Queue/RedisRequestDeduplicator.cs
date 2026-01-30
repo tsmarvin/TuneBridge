@@ -1,5 +1,6 @@
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Utilities;
 using StackExchange.Redis;
 
@@ -22,7 +23,7 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// to be notified when the result is available, avoiding redundant API calls.
 /// </para>
 /// </remarks>
-public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
+public sealed partial class RedisRequestDeduplicator : IRequestDeduplicator {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisRequestDeduplicator> _logger;
@@ -65,11 +66,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
         );
 
         if (acquired) {
-            _logger.LogDebug(
-                "Acquired processing lock for {RequestKey} (instance: {InstanceId})",
-                requestKey.SanitizeForLogging( ),
-                _instanceId
-            );
+            LogLockAcquired( _logger, requestKey.SanitizeForLogging( ), _instanceId );
 
             return new DeduplicationResult(
                 Acquired: true,
@@ -83,11 +80,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
 
         RedisValue holder = await db.StringGetAsync( lockKey );
 
-        _logger.LogDebug(
-            "Request {RequestKey} already in-flight (held by: {Holder})",
-            requestKey.SanitizeForLogging( ),
-            holder.ToString( ).SanitizeForLogging( )
-        );
+        LogAlreadyInFlight( _logger, requestKey.SanitizeForLogging( ), holder.ToString( ).SanitizeForLogging( ) );
 
         return new DeduplicationResult(
             Acquired: false,
@@ -113,8 +106,8 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
         // Verify we own the lock before releasing (prevent accidental release of another instance's lock)
         RedisValue currentHolder = await db.StringGetAsync( lockKey );
         if (currentHolder.HasValue && currentHolder.ToString( ) != _instanceId) {
-            _logger.LogWarning(
-                "Attempted to release lock for {RequestKey} but held by {Holder}, not {InstanceId}",
+            LogReleaseDenied(
+                _logger,
                 requestKey.SanitizeForLogging( ),
                 currentHolder.ToString( ).SanitizeForLogging( ),
                 _instanceId
@@ -129,11 +122,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
         string message = resultUri ?? string.Empty;
         _ = await subscriber.PublishAsync( RedisChannel.Literal( channelKey ), message );
 
-        _logger.LogDebug(
-            "Released lock for {RequestKey} and published completion (hasResult: {HasResult})",
-            requestKey.SanitizeForLogging( ),
-            !string.IsNullOrEmpty( resultUri )
-        );
+        LogLockReleased( _logger, requestKey.SanitizeForLogging( ), !string.IsNullOrEmpty( resultUri ) );
     }
 
     /// <inheritdoc/>
@@ -164,10 +153,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
             if (!stillInFlight) {
                 // Already completed, the result may have been published before we subscribed
                 // Return null to indicate the caller should check cache
-                _logger.LogDebug(
-                    "Request {RequestKey} completed before subscription was active",
-                    requestKey.SanitizeForLogging( )
-                );
+                LogCompletedBeforeSubscription( _logger, requestKey.SanitizeForLogging( ) );
                 return null;
             }
 
@@ -179,10 +165,7 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
                 }
                 return null;
             } catch (OperationCanceledException) {
-                _logger.LogDebug(
-                    "Timeout waiting for completion of {RequestKey}",
-                    requestKey.SanitizeForLogging( )
-                );
+                LogWaitTimeout( _logger, requestKey.SanitizeForLogging( ) );
                 return null;
             }
         } finally {
@@ -203,4 +186,44 @@ public sealed class RedisRequestDeduplicator : IRequestDeduplicator {
 
         return $"{lookupType.ToLowerInvariant( )}:{lookupValue.Trim( ).ToUpperInvariant( )}";
     }
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorLockAcquired,
+        Level = LogLevel.Debug,
+        Message = "Acquired processing lock for {RequestKey} (instance: {InstanceId})" )]
+    internal static partial void LogLockAcquired( ILogger logger, string requestKey, string instanceId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorAlreadyInFlight,
+        Level = LogLevel.Debug,
+        Message = "Request {RequestKey} already in-flight (held by: {Holder})" )]
+    internal static partial void LogAlreadyInFlight( ILogger logger, string requestKey, string holder );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorReleaseDenied,
+        Level = LogLevel.Warning,
+        Message = "Attempted to release lock for {RequestKey} but held by {Holder}, not {InstanceId}" )]
+    internal static partial void LogReleaseDenied( ILogger logger, string requestKey, string holder, string instanceId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorLockReleased,
+        Level = LogLevel.Debug,
+        Message = "Released lock for {RequestKey} and published completion (hasResult: {HasResult})" )]
+    internal static partial void LogLockReleased( ILogger logger, string requestKey, bool hasResult );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorCompletedBeforeSubscription,
+        Level = LogLevel.Debug,
+        Message = "Request {RequestKey} completed before subscription was active" )]
+    internal static partial void LogCompletedBeforeSubscription( ILogger logger, string requestKey );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorWaitTimeout,
+        Level = LogLevel.Debug,
+        Message = "Timeout waiting for completion of {RequestKey}" )]
+    internal static partial void LogWaitTimeout( ILogger logger, string requestKey );
+
+    #endregion
 }

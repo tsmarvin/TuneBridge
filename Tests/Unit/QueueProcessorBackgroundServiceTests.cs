@@ -907,23 +907,24 @@ public class QueueProcessorBackgroundServiceTests {
     public async Task ExecuteAsync_WhenNoMessages_ShouldContinuePolling( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
-        int dequeueCallCount = 0;
+        CountdownEvent pollCountdown = new( 2 ); // Wait for 2 poll calls
 
         _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( ( ) => {
-                dequeueCallCount++;
+                if (!pollCountdown.IsSet) {
+                    _ = pollCountdown.Signal( );
+                }
                 return null;
             } );
 
-        // Act
-        using CancellationTokenSource cts = new( );
-        Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 350 ); // Should allow for multiple poll cycles (100ms delay each)
-        await cts.CancelAsync( );
+        // Act - StartAsync triggers ExecuteAsync but doesn't block
+        _ = service.StartAsync( CancellationToken.None );
+        bool reachedTarget = pollCountdown.Wait( TimeSpan.FromSeconds( 2 ) );
         await service.StopAsync( CancellationToken.None );
+        pollCountdown.Dispose( );
 
-        // Assert - Should have polled multiple times
-        Assert.IsGreaterThanOrEqualTo( 2, dequeueCallCount, $"Expected at least 2 dequeue calls, got {dequeueCallCount}" );
+        // Assert
+        Assert.IsTrue( reachedTarget, "Service did not poll at least 2 times within timeout" );
     }
 
     #endregion

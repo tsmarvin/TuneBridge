@@ -3,8 +3,9 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Providers.AppleMusic.Models;
+using BridgeBeats.Core.Domain.Providers.Common;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Providers.AppleMusic;
-using BridgeBeats.Providers.Common;
 
 namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
 
@@ -142,8 +143,8 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
                 }
                 return null;
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the artist list json response from apple." );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
+                LogParseArtistListError( Logger, ex );
+                LogResponseBodySerialized( Logger, body, SerializerOptions );
                 return null;
             }
         }
@@ -181,8 +182,8 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from apple.", lookupKey );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
+                LogParseResponseError( Logger, ex, lookupKey );
+                LogResponseBodySerialized( Logger, body, SerializerOptions );
             }
             return null;
         }
@@ -209,8 +210,8 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
                     return song != null ? ParseAppleMusicSongResponse( song, lookupKey, storeFront ) : null;
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from apple.", lookupKey );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
+                LogParseResponseError( Logger, ex, lookupKey );
+                LogResponseBodySerialized( Logger, body, SerializerOptions );
             }
             return null;
         }
@@ -240,8 +241,8 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from apple.", lookupKey );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( song, SerializerOptions ) );
+                LogParseResponseError( Logger, ex, lookupKey );
+                LogSongSerialized( Logger, song, SerializerOptions );
                 return null;
             }
         }
@@ -271,13 +272,71 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from apple.", lookupKey );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( album, SerializerOptions ) );
+                LogParseResponseError( Logger, ex, lookupKey );
+                LogAlbumSerialized( Logger, album, SerializerOptions );
                 return null;
             }
         }
 
         #endregion IMusicLookupService Private Methods
+
+        #region LoggerMessage Methods
+
+        /// <summary>
+        /// Logs an error parsing the artist list response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.AppleMusic.ParseArtistListError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing the artist list json response from apple." )]
+        internal static partial void LogParseArtistListError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs an error parsing the JSON response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.AppleMusic.ParseResponseError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing the {LookupKey} json response from apple." )]
+        internal static partial void LogParseResponseError( ILogger logger, Exception ex, LookupRequestType lookupKey );
+
+        /// <summary>
+        /// Logs the response body for trace level debugging.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.AppleMusic.ResponseBodyTrace,
+            Level = LogLevel.Trace,
+            Message = "{ResponseBody}" )]
+        internal static partial void LogResponseBody( ILogger logger, string? responseBody );
+
+        /// <summary>
+        /// Logs the serialized response body for trace level debugging.
+        /// </summary>
+        private static void LogResponseBodySerialized( ILogger logger, string? body, JsonSerializerOptions options ) {
+            if (logger.IsEnabled( LogLevel.Trace )) {
+                LogResponseBody( logger, JsonSerializer.Serialize( body, options ) );
+            }
+        }
+
+        /// <summary>
+        /// Logs the serialized song for trace level debugging.
+        /// </summary>
+        private static void LogSongSerialized( ILogger logger, AppleMusicSong song, JsonSerializerOptions options ) {
+            if (logger.IsEnabled( LogLevel.Trace )) {
+                LogResponseBody( logger, JsonSerializer.Serialize( song, options ) );
+            }
+        }
+
+        /// <summary>
+        /// Logs the serialized album for trace level debugging.
+        /// </summary>
+        private static void LogAlbumSerialized( ILogger logger, AppleMusicAlbum album, JsonSerializerOptions options ) {
+            if (logger.IsEnabled( LogLevel.Trace )) {
+                LogResponseBody( logger, JsonSerializer.Serialize( album, options ) );
+            }
+        }
+
+        #endregion LoggerMessage Methods
 
     }
 }

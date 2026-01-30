@@ -27,7 +27,7 @@ namespace BridgeBeats.Core.Infrastructure.Storage;
 /// Redis Key Pattern: <c>atproto:session:{identifier}</c> → JSON <see cref="ATProtoPersistedCredentials"/>
 /// </para>
 /// </remarks>
-public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDisposable {
+public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager, IDisposable {
 
     private const string SessionKeyPrefix = "atproto:session:";
     private const string LockKeyPrefix = "atproto:auth:lock:";
@@ -93,7 +93,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
     public async Task<BlueskyAgent> ForceReauthenticateAsync( CancellationToken cancellationToken = default ) {
         ObjectDisposedException.ThrowIf( _disposed, this );
 
-        _logger.LogWarning( "Force re-authentication requested for {Identifier}", _identifier );
+        LogForceReauthRequested( _identifier );
 
         // Clear stored credentials
         await ClearStoredCredentialsAsync( );
@@ -116,7 +116,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
             RedisValue storedCredentials = await db.StringGetAsync( _sessionKey );
 
             if (storedCredentials.IsNullOrEmpty) {
-                _logger.LogDebug( "No stored credentials found in Redis for {Identifier}", _identifier );
+                LogNoStoredCredentials( _identifier );
                 return false;
             }
 
@@ -126,15 +126,11 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
             );
 
             if (credentials is null) {
-                _logger.LogWarning( "Failed to deserialize stored credentials for {Identifier}", _identifier );
+                LogDeserializeFailed( _identifier );
                 return false;
             }
 
-            _logger.LogInformation(
-                "Attempting to restore session for {Identifier} (persisted at {PersistedAt})",
-                _identifier,
-                credentials.PersistedAt
-            );
+            LogRestoringSession( _identifier, credentials.PersistedAt );
 
             // Create a new agent and attempt session restoration
             BlueskyAgent agent = new( );
@@ -159,17 +155,17 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
             bool refreshResult = await agent.RefreshCredentials( restoredCredential, cancellationToken );
 
             if (refreshResult) {
-                _logger.LogInformation( "Successfully restored session for {Identifier}", _identifier );
+                LogSessionRestored( _identifier );
                 _agent?.Dispose( );
                 _agent = agent;
                 return true;
             }
 
-            _logger.LogWarning( "Failed to restore session for {Identifier} - refresh returned false", _identifier );
+            LogRestoreFailed( _identifier );
             agent.Dispose( );
             return false;
         } catch (Exception ex) {
-            _logger.LogWarning( ex, "Exception while restoring session for {Identifier}", _identifier );
+            LogRestoreException( ex, _identifier );
             return false;
         }
     }
@@ -187,7 +183,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
 
         if (!lockAcquired) {
             // Another instance is logging in - wait briefly and retry getting authenticated agent
-            _logger.LogDebug( "Another instance is performing login for {Identifier}, waiting...", _identifier );
+            LogWaitingForLock( _identifier );
             await Task.Delay( TimeSpan.FromSeconds( 2 ), cancellationToken );
 
             // Try to restore from Redis (the other instance should have stored credentials)
@@ -196,14 +192,14 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
             }
 
             // If still no session, proceed with our own login
-            _logger.LogWarning( "Still no session after waiting - proceeding with login for {Identifier}", _identifier );
+            LogProceedingWithLogin( _identifier );
         }
 
         try {
             BlueskyAgent agent = new( );
             SubscribeToAgentEvents( agent );
 
-            _logger.LogInformation( "Performing fresh login for {Identifier}", _identifier );
+            LogFreshLogin( _identifier );
 
             AtProtoHttpResult<bool> loginResult = await agent.Login( _identifier, _password );
 
@@ -213,7 +209,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
                 throw new InvalidOperationException( $"Failed to authenticate to PDS: {errorMsg}" );
             }
 
-            _logger.LogInformation( "Successfully authenticated to PDS for {Identifier}", _identifier );
+            LogAuthenticated( _identifier );
 
             // Persist credentials (the Authenticated event handler will also do this, but we do it explicitly for safety)
             await PersistCredentialsFromAgentAsync( agent );
@@ -248,7 +244,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
     /// Handles the Authenticated event - persists initial credentials.
     /// </summary>
     private void OnAuthenticated( object? sender, EventArgs e ) {
-        _logger.LogDebug( "Agent authenticated event for {Identifier}", _identifier );
+        LogAgentAuthenticated( _identifier );
 
         if (sender is BlueskyAgent agent) {
             // Fire and forget - don't block the event
@@ -256,7 +252,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
                 try {
                     await PersistCredentialsFromAgentAsync( agent );
                 } catch (Exception ex) {
-                    _logger.LogError( ex, "Failed to persist credentials after authentication for {Identifier}", _identifier );
+                    LogPersistAfterAuthFailed( ex, _identifier );
                 }
             } );
         }
@@ -266,7 +262,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
     /// Handles the CredentialsUpdated event - persists refreshed credentials.
     /// </summary>
     private void OnCredentialsUpdated( object? sender, EventArgs e ) {
-        _logger.LogDebug( "Agent credentials updated event for {Identifier}", _identifier );
+        LogCredentialsUpdated( _identifier );
 
         if (sender is BlueskyAgent agent) {
             // Fire and forget - don't block the event
@@ -274,7 +270,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
                 try {
                     await PersistCredentialsFromAgentAsync( agent );
                 } catch (Exception ex) {
-                    _logger.LogError( ex, "Failed to persist updated credentials for {Identifier}", _identifier );
+                    LogPersistUpdateFailed( ex, _identifier );
                 }
             } );
         }
@@ -284,14 +280,14 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
     /// Handles the TokenRefreshFailed event - clears stored credentials and triggers re-login.
     /// </summary>
     private void OnTokenRefreshFailed( object? sender, EventArgs e ) {
-        _logger.LogWarning( "Token refresh failed for {Identifier} - clearing stored credentials", _identifier );
+        LogTokenRefreshFailed( _identifier );
 
         // Fire and forget - clear credentials and let next request trigger re-login
         _ = Task.Run( async ( ) => {
             try {
                 await ClearStoredCredentialsAsync( );
             } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to clear credentials after token refresh failure for {Identifier}", _identifier );
+                LogClearAfterRefreshFailed( ex, _identifier );
             }
         } );
     }
@@ -300,14 +296,14 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
     /// Handles the Unauthenticated event - clears stored credentials.
     /// </summary>
     private void OnUnauthenticated( object? sender, EventArgs e ) {
-        _logger.LogInformation( "Agent unauthenticated event for {Identifier}", _identifier );
+        LogUnauthenticated( _identifier );
 
         // Fire and forget - clear credentials
         _ = Task.Run( async ( ) => {
             try {
                 await ClearStoredCredentialsAsync( );
             } catch (Exception ex) {
-                _logger.LogError( ex, "Failed to clear credentials after unauthenticated event for {Identifier}", _identifier );
+                LogClearAfterUnauthFailed( ex, _identifier );
             }
         } );
     }
@@ -317,7 +313,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
     /// </summary>
     private async Task PersistCredentialsFromAgentAsync( BlueskyAgent agent ) {
         if (!agent.IsAuthenticated || agent.Credentials is null) {
-            _logger.LogDebug( "Cannot persist credentials - agent not authenticated" );
+            LogCannotPersist( );
             return;
         }
 
@@ -348,7 +344,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
         IDatabase db = _redis.GetDatabase( );
         _ = await db.StringSetAsync( _sessionKey, json );
 
-        _logger.LogDebug( "Persisted credentials to Redis for {Identifier}", _identifier );
+        LogPersisted( _identifier );
     }
 
     /// <summary>
@@ -357,7 +353,7 @@ public sealed class RedisATProtoSessionManager : IATProtoSessionManager, IDispos
     private async Task ClearStoredCredentialsAsync( ) {
         IDatabase db = _redis.GetDatabase( );
         _ = await db.KeyDeleteAsync( _sessionKey );
-        _logger.LogDebug( "Cleared stored credentials from Redis for {Identifier}", _identifier );
+        LogCleared( _identifier );
     }
 
     /// <inheritdoc/>

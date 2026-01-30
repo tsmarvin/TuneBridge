@@ -16,7 +16,7 @@ namespace BridgeBeats.Web.Controllers;
 /// <param name="statisticsService">Optional statistics service (null if not configured).</param>
 /// <param name="logger">Logger for diagnostic information.</param>
 [Authorize]
-public class StatisticsController(
+public partial class StatisticsController(
     IStatisticsService? statisticsService,
     ILogger<StatisticsController> logger
 ) : Controller {
@@ -27,7 +27,7 @@ public class StatisticsController(
     /// <returns>The statistics view.</returns>
     public async Task<IActionResult> Index( CancellationToken cancellationToken ) {
         if (statisticsService is null) {
-            logger.LogWarning( "Statistics service not available" );
+            LogNotAvailable( );
             return View( "Error", new ErrorViewModel { Message = "Statistics service is not configured." } );
         }
 
@@ -37,7 +37,7 @@ public class StatisticsController(
         } catch (OperationCanceledException) {
             throw; // Let the framework handle cancellation
         } catch (Exception ex) {
-            logger.LogError( ex, "Error retrieving statistics" );
+            LogRetrieveError( ex );
             return View( "Error", new ErrorViewModel { Message = "Unable to retrieve statistics. Please try again later." } );
         }
     }
@@ -57,7 +57,7 @@ public class StatisticsController(
         try {
             _ = await statisticsService.RefreshStatisticsAsync( cancellationToken );
         } catch (Exception ex) {
-            logger.LogError( ex, "Error refreshing statistics" );
+            LogRefreshError( ex );
         }
 
         return RedirectToAction( nameof( Index ) );

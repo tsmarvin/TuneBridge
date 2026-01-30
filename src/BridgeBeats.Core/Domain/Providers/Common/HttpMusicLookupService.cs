@@ -3,6 +3,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records.WorkerApi;
+using BridgeBeats.Core.Infrastructure.Logging;
 
 namespace BridgeBeats.Core.Domain.Providers.Common;
 
@@ -14,7 +15,7 @@ namespace BridgeBeats.Core.Domain.Providers.Common;
 /// <param name="httpClientFactory">Factory for creating HTTP clients.</param>
 /// <param name="httpClientName">The named HTTP client to use (configured with service discovery).</param>
 /// <param name="logger">Logger for diagnostic information.</param>
-public class HttpMusicLookupService(
+public partial class HttpMusicLookupService(
     SupportedProviders provider,
     IHttpClientFactory httpClientFactory,
     string httpClientName,
@@ -74,53 +75,78 @@ public class HttpMusicLookupService(
             HttpResponseMessage response = await client.PostAsJsonAsync( endpoint, request );
 
             if (!response.IsSuccessStatusCode) {
-                logger.LogWarning(
-                    "Worker {Provider} returned HTTP {StatusCode} for {Endpoint}",
-                    provider,
-                    (int)response.StatusCode,
-                    endpoint
-                );
+                LogWorkerHttpError( logger, provider, (int)response.StatusCode, endpoint );
                 return null;
             }
 
             ProviderLookupResponse? result = await response.Content.ReadFromJsonAsync<ProviderLookupResponse>( );
 
             if (result == null) {
-                logger.LogWarning(
-                    "Worker {Provider} returned null response for {Endpoint}",
-                    provider,
-                    endpoint
-                );
+                LogWorkerNullResponse( logger, provider, endpoint );
                 return null;
             }
 
             if (!result.Success && !string.IsNullOrWhiteSpace( result.ErrorMessage )) {
-                logger.LogWarning(
-                    "Worker {Provider} returned error for {Endpoint}: {ErrorMessage}",
-                    provider,
-                    endpoint,
-                    result.ErrorMessage
-                );
+                LogWorkerError( logger, provider, endpoint, result.ErrorMessage );
                 return null;
             }
 
             return result.Result;
         } catch (HttpRequestException ex) {
-            logger.LogError(
-                ex,
-                "HTTP error communicating with {Provider} worker at {Endpoint}",
-                provider,
-                endpoint
-            );
+            LogHttpRequestError( logger, ex, provider, endpoint );
             throw; // Re-throw to let the caller handle worker unavailability
         } catch (Exception ex) {
-            logger.LogError(
-                ex,
-                "Unexpected error communicating with {Provider} worker at {Endpoint}",
-                provider,
-                endpoint
-            );
+            LogUnexpectedError( logger, ex, provider, endpoint );
             throw;
         }
     }
+
+    #region LoggerMessage Methods
+
+    /// <summary>
+    /// Logs when a worker returns an HTTP error status.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Providers.Common.WorkerHttpError,
+        Level = LogLevel.Warning,
+        Message = "Worker {Provider} returned HTTP {StatusCode} for {Endpoint}" )]
+    internal static partial void LogWorkerHttpError( ILogger logger, SupportedProviders provider, int statusCode, string endpoint );
+
+    /// <summary>
+    /// Logs when a worker returns a null response.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Providers.Common.WorkerNullResponse,
+        Level = LogLevel.Warning,
+        Message = "Worker {Provider} returned null response for {Endpoint}" )]
+    internal static partial void LogWorkerNullResponse( ILogger logger, SupportedProviders provider, string endpoint );
+
+    /// <summary>
+    /// Logs when a worker returns an error message.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Providers.Common.WorkerError,
+        Level = LogLevel.Warning,
+        Message = "Worker {Provider} returned error for {Endpoint}: {ErrorMessage}" )]
+    internal static partial void LogWorkerError( ILogger logger, SupportedProviders provider, string endpoint, string errorMessage );
+
+    /// <summary>
+    /// Logs an HTTP request exception when communicating with a worker.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Providers.Common.HttpRequestError,
+        Level = LogLevel.Error,
+        Message = "HTTP error communicating with {Provider} worker at {Endpoint}" )]
+    internal static partial void LogHttpRequestError( ILogger logger, Exception ex, SupportedProviders provider, string endpoint );
+
+    /// <summary>
+    /// Logs an unexpected exception when communicating with a worker.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Providers.Common.UnexpectedError,
+        Level = LogLevel.Error,
+        Message = "Unexpected error communicating with {Provider} worker at {Endpoint}" )]
+    internal static partial void LogUnexpectedError( ILogger logger, Exception ex, SupportedProviders provider, string endpoint );
+
+    #endregion LoggerMessage Methods
 }

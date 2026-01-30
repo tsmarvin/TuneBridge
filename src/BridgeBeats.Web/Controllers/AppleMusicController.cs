@@ -32,7 +32,7 @@ namespace BridgeBeats.Web.Controllers;
 /// <param name="cardService">Optional OpenGraph card service.</param>
 /// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
 [Authorize]
-public class AppleMusicController(
+public partial class AppleMusicController(
     UserManager<ApplicationUser> userManager,
     IHttpClientFactory httpClientFactory,
     ILogger<AppleMusicController> logger,
@@ -93,11 +93,11 @@ public class AppleMusicController(
         Microsoft.AspNetCore.Identity.IdentityResult result = await userManager.UpdateAsync( user );
 
         if (!result.Succeeded) {
-            logger.LogError( "Failed to store Apple Music token for user {UserId}", user.Id );
+            LogStoreTokenFailed( user.Id );
             return BadRequest( new { message = "Failed to store token" } );
         }
 
-        logger.LogInformation( "Apple Music token stored for user {UserId}", user.Id );
+        LogTokenStored( user.Id );
 
         return Ok( new { message = "Token stored successfully" } );
     }
@@ -139,7 +139,7 @@ public class AppleMusicController(
             HttpResponseMessage response = await client.GetAsync( "https://api.music.apple.com/v1/me/library/playlists" );
 
             if (!response.IsSuccessStatusCode) {
-                logger.LogError( "Failed to retrieve playlists for user {UserId}: {StatusCode}", user.Id, response.StatusCode );
+                LogGetPlaylistsFailed( user.Id, (int)response.StatusCode );
                 return StatusCode( (int)response.StatusCode, new { message = "Failed to retrieve playlists from Apple Music" } );
             }
 
@@ -165,7 +165,7 @@ public class AppleMusicController(
             return Ok( new { playlists } );
 
         } catch (Exception ex) {
-            logger.LogError( ex, "Error retrieving playlists for user {UserId}", user.Id );
+            LogGetPlaylistsError( ex, user.Id );
             return StatusCode( 500, new { message = "An error occurred while retrieving playlists" } );
         }
     }
@@ -207,11 +207,11 @@ public class AppleMusicController(
         try {
             return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, cacheRepository );
         } catch (InvalidOperationException ex) {
-            logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
+            LogCacheInvalidOp( ex );
         } catch (ArgumentException ex) {
-            logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
+            LogCacheArgError( ex );
         } catch (Exception ex) {
-            logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
+            LogCacheError( ex );
         }
 
         return null;
@@ -291,7 +291,7 @@ public class AppleMusicController(
                 HttpResponseMessage response = await client.GetAsync( nextUrl );
 
                 if (!response.IsSuccessStatusCode) {
-                    logger.LogError( "Failed to retrieve playlist tracks for user {UserId}: {StatusCode}", user.Id, response.StatusCode );
+                    LogGetTracksFailed( user.Id, (int)response.StatusCode );
                     return StatusCode( (int)response.StatusCode, new { message = "Failed to retrieve playlist tracks from Apple Music" } );
                 }
 
@@ -332,7 +332,7 @@ public class AppleMusicController(
                 }
                 if (totalTracks >= 1000) {
                     overonekay = true;
-                    logger.LogWarning( "Playlist {PlaylistId} exceeds 1000 tracks, processing limited to first 1000 tracks", playlistId );
+                    LogPlaylistTooLarge( playlistId );
                     break;
                 }
             }
@@ -346,7 +346,7 @@ public class AppleMusicController(
             } );
 
         } catch (Exception ex) {
-            logger.LogError( ex, "Error processing playlist for user {UserId}", user.Id );
+            LogProcessPlaylistError( ex, user.Id );
             return StatusCode( 500, new { message = "An error occurred while processing the playlist" } );
         }
     }
@@ -427,7 +427,7 @@ public class AppleMusicController(
                 await Response.Body.FlushAsync( );
                 processedCount++;
             } catch (Exception ex) {
-                logger.LogError( ex, "Error processing song {SongId}", songId.SanitizeForLogging( ) );
+                LogProcessSongError( ex, songId.SanitizeForLogging( ) );
                 errorCount++;
             }
         }

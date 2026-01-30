@@ -5,6 +5,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
@@ -34,7 +35,7 @@ namespace BridgeBeats.Core.Domain.Services.Queue;
 /// the specific endpoint to prevent other requests from immediately hitting the same limit.
 /// </para>
 /// </remarks>
-public sealed class QueueProcessorBackgroundService : BackgroundService {
+public sealed partial class QueueProcessorBackgroundService : BackgroundService {
     private readonly IConnectionMultiplexer _redis;
     private readonly IRequestQueue<QueuedLookupRequest> _queue;
     private readonly IRateLimitTracker _rateLimitTracker;
@@ -85,10 +86,7 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
-        _logger.LogInformation(
-            "Queue processor starting for provider {Provider}",
-            _provider
-        );
+        LogQueueProcessorStarting( _logger, _provider );
 
         // Ensure consumer groups exist before starting to consume
         if (_queue is RedisRequestQueue<QueuedLookupRequest> redisQueue) {
@@ -111,12 +109,12 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
                 // Normal shutdown
                 break;
             } catch (Exception ex) {
-                _logger.LogError( ex, "Error in queue processing loop for {Provider}", _provider );
+                LogQueueProcessorLoopError( _logger, ex, _provider );
                 await Task.Delay( s_errorDelay, stoppingToken );
             }
         }
 
-        _logger.LogInformation( "Queue processor stopping for provider {Provider}", _provider );
+        LogQueueProcessorStopping( _logger, _provider );
     }
 
     private async Task ProcessMessageAsync( QueuedMessage<QueuedLookupRequest> message, CancellationToken ct ) {
@@ -124,24 +122,14 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
         Stopwatch stopwatch = Stopwatch.StartNew( );
         string status = "success";
 
-        _logger.LogDebug(
-            "Processing message {MessageId} for saga {SagaId}, lookup type {LookupType}",
-            message.MessageId,
-            request.SagaId,
-            request.LookupType
-        );
+        LogProcessingMessage( _logger, message.MessageId, request.SagaId, request.LookupType );
 
         // Check if the endpoint for this lookup type is rate-limited
         string endpoint = request.LookupType.ToString( );
         RateLimitState rateLimitState = await _rateLimitTracker.GetStateAsync( _provider, endpoint, ct );
 
         if (rateLimitState.IsRateLimited) {
-            _logger.LogDebug(
-                "Endpoint {Endpoint} is rate-limited until {RetryAfter}, requeuing message {MessageId}",
-                endpoint,
-                rateLimitState.RetryAfter,
-                message.MessageId
-            );
+            LogEndpointRateLimited( _logger, endpoint, rateLimitState.RetryAfter.GetValueOrDefault( ), message.MessageId );
 
             // Requeue with delay until rate limit expires
             await _queue.RequeueAsync( message.MessageId, rateLimitState.TimeRemaining, ct );
@@ -179,11 +167,7 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
             // Acknowledge the message - processing complete
             await _queue.AcknowledgeAsync( message.MessageId, ct );
 
-            _logger.LogDebug(
-                "Successfully processed message {MessageId} for saga {SagaId}",
-                message.MessageId,
-                request.SagaId
-            );
+            LogMessageProcessed( _logger, message.MessageId, request.SagaId );
         } catch (RetryAfterExceededException ex) {
             status = "rate_limited";
             await HandleRateLimitExceptionAsync( message, request, ex, ct );
@@ -228,12 +212,7 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
         // Use the LookupRequestType as the endpoint identifier
         string endpoint = request.LookupType.ToString( );
 
-        _logger.LogWarning(
-            "Rate limit encountered for {Provider} endpoint {Endpoint}, retry after {RetryAfter}",
-            _provider,
-            endpoint,
-            ex.RetryAfterValue
-        );
+        LogRateLimitEncountered( _logger, _provider, endpoint, ex.RetryAfterValue );
 
         // Record the rate limit state
         DateTimeOffset retryAfter = DateTimeOffset.UtcNow.Add( ex.RetryAfterValue );
@@ -260,13 +239,7 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
         await _queue.AcknowledgeAsync( message.MessageId, ct );
         await _queue.EnqueueAsync( requeuedRequest, QueuePriority.Background, ct );
 
-        _logger.LogInformation(
-            "Saga {SagaId} marked as partial due to rate limit on {Endpoint}, requeued for {Provider} (will be deferred until {RetryAfter})",
-            request.SagaId,
-            endpoint,
-            _provider,
-            retryAfter
-        );
+        LogSagaMarkedPartial( _logger, request.SagaId, endpoint, _provider, retryAfter );
     }
 
     private async Task HandleProcessingExceptionAsync(
@@ -275,20 +248,11 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
         Exception ex,
         CancellationToken ct
     ) {
-        _logger.LogError(
-            ex,
-            "Failed to process lookup request {RequestId} for saga {SagaId}",
-            request.RequestId,
-            request.SagaId
-        );
+        LogProcessingFailed( _logger, ex, request.RequestId, request.SagaId );
 
         // Check if we've exceeded retry attempts
         if (request.AttemptCount >= MaxRetryAttempts) {
-            _logger.LogWarning(
-                "Message {MessageId} exceeded max retry attempts ({MaxRetries}), moving to DLQ",
-                message.MessageId,
-                MaxRetryAttempts
-            );
+            LogMaxRetriesExceeded( _logger, message.MessageId, MaxRetryAttempts );
 
             // Update saga with error state
             await _sagaManager.UpdateProviderStateAsync(
@@ -337,27 +301,26 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
             LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, ct );
 
             if (saga is null) {
-                _logger.LogDebug( "Saga {SagaId} not found, cannot check completion", sagaId );
+                LogSagaNotFoundForCompletion( _logger, sagaId );
                 return;
             }
 
             if (!saga.IsComplete) {
-                _logger.LogDebug( "Saga {SagaId} is not yet complete", sagaId );
+                LogSagaNotYetComplete( _logger, sagaId );
                 return;
             }
 
             if (!string.IsNullOrEmpty( saga.FinalResultUri )) {
-                _logger.LogDebug( "Saga {SagaId} already has final result", sagaId );
+                LogSagaAlreadyHasFinalResult( _logger, sagaId );
                 return;
             }
 
             // Saga is complete but doesn't have a final result - publish completion event
-            _logger.LogInformation( "Saga {SagaId} is complete, publishing completion event", sagaId );
-
+            LogSagaCompletePublishing( _logger, sagaId );
             ISubscriber subscriber = _redis.GetSubscriber( );
             _ = await subscriber.PublishAsync( RedisChannel.Literal( SagaCompletedChannel ), sagaId );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to check/publish saga completion for {SagaId}", sagaId );
+            LogSagaCompletionCheckFailed( _logger, ex, sagaId );
         }
     }
 
@@ -367,7 +330,7 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
             LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, ct );
 
             if (saga is null) {
-                _logger.LogWarning( "Saga {SagaId} not found, cannot publish lookup completion", sagaId );
+                LogSagaNotFoundForLookupCompletion( _logger, sagaId );
                 return;
             }
 
@@ -376,13 +339,175 @@ public sealed class QueueProcessorBackgroundService : BackgroundService {
             ISubscriber subscriber = _redis.GetSubscriber( );
             _ = await subscriber.PublishAsync( RedisChannel.Literal( channel ), saga.PartialResultUri ?? saga.FinalResultUri ?? string.Empty );
 
-            _logger.LogDebug(
-                "Published lookup completion for saga {SagaId} on channel {Channel}",
-                sagaId,
-                channel
-            );
+            LogLookupCompletionPublished( _logger, sagaId, channel );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to publish lookup completion for {SagaId}", sagaId );
+            LogLookupCompletionPublishFailed( _logger, ex, sagaId );
         }
     }
+
+    #region LoggerMessage Definitions
+
+    /// <summary>
+    /// Logs that the queue processor is starting for a provider.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.QueueProcessorStarting,
+        Level = LogLevel.Information,
+        Message = "Queue processor starting for provider {Provider}" )]
+    private static partial void LogQueueProcessorStarting( ILogger logger, SupportedProviders provider );
+
+    /// <summary>
+    /// Logs that the queue processor is stopping for a provider.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.QueueProcessorStopping,
+        Level = LogLevel.Information,
+        Message = "Queue processor stopping for provider {Provider}" )]
+    private static partial void LogQueueProcessorStopping( ILogger logger, SupportedProviders provider );
+
+    /// <summary>
+    /// Logs an error in the queue processing loop.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.QueueProcessorLoopError,
+        Level = LogLevel.Error,
+        Message = "Error in queue processing loop for {Provider}" )]
+    private static partial void LogQueueProcessorLoopError( ILogger logger, Exception ex, SupportedProviders provider );
+
+    /// <summary>
+    /// Logs that a message is being processed.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.ProcessingMessage,
+        Level = LogLevel.Debug,
+        Message = "Processing message {MessageId} for saga {SagaId}, lookup type {LookupType}" )]
+    private static partial void LogProcessingMessage( ILogger logger, string messageId, string sagaId, LookupRequestType lookupType );
+
+    /// <summary>
+    /// Logs that an endpoint is rate-limited and the message is being requeued.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.EndpointRateLimited,
+        Level = LogLevel.Debug,
+        Message = "Endpoint {Endpoint} is rate-limited until {RetryAfter}, requeuing message {MessageId}" )]
+    private static partial void LogEndpointRateLimited( ILogger logger, string endpoint, DateTimeOffset retryAfter, string messageId );
+
+    /// <summary>
+    /// Logs that a message was successfully processed.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.MessageProcessed,
+        Level = LogLevel.Debug,
+        Message = "Successfully processed message {MessageId} for saga {SagaId}" )]
+    private static partial void LogMessageProcessed( ILogger logger, string messageId, string sagaId );
+
+    /// <summary>
+    /// Logs that a rate limit was encountered for a provider endpoint.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.RateLimitEncountered,
+        Level = LogLevel.Warning,
+        Message = "Rate limit encountered for {Provider} endpoint {Endpoint}, retry after {RetryAfter}" )]
+    private static partial void LogRateLimitEncountered( ILogger logger, SupportedProviders provider, string endpoint, TimeSpan retryAfter );
+
+    /// <summary>
+    /// Logs that a saga was marked as partial due to rate limiting.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.SagaMarkedPartial,
+        Level = LogLevel.Information,
+        Message = "Saga {SagaId} marked as partial due to rate limit on {Endpoint}, requeued for {Provider} (will be deferred until {RetryAfter})" )]
+    private static partial void LogSagaMarkedPartial( ILogger logger, string sagaId, string endpoint, SupportedProviders provider, DateTimeOffset retryAfter );
+
+    /// <summary>
+    /// Logs that processing of a lookup request failed.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.ProcessingFailed,
+        Level = LogLevel.Error,
+        Message = "Failed to process lookup request {RequestId} for saga {SagaId}" )]
+    private static partial void LogProcessingFailed( ILogger logger, Exception ex, string requestId, string sagaId );
+
+    /// <summary>
+    /// Logs that a message exceeded the maximum retry attempts.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.MaxRetriesExceeded,
+        Level = LogLevel.Warning,
+        Message = "Message {MessageId} exceeded max retry attempts ({MaxRetries}), moving to DLQ" )]
+    private static partial void LogMaxRetriesExceeded( ILogger logger, string messageId, int maxRetries );
+
+    /// <summary>
+    /// Logs that a saga was not found when checking for completion.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.SagaNotFoundForCompletion,
+        Level = LogLevel.Debug,
+        Message = "Saga {SagaId} not found, cannot check completion" )]
+    private static partial void LogSagaNotFoundForCompletion( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that a saga is not yet complete.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.SagaNotYetComplete,
+        Level = LogLevel.Debug,
+        Message = "Saga {SagaId} is not yet complete" )]
+    private static partial void LogSagaNotYetComplete( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that a saga already has a final result.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.SagaAlreadyHasFinalResult,
+        Level = LogLevel.Debug,
+        Message = "Saga {SagaId} already has final result" )]
+    private static partial void LogSagaAlreadyHasFinalResult( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that a saga is complete and a completion event is being published.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.SagaCompletePublishing,
+        Level = LogLevel.Information,
+        Message = "Saga {SagaId} is complete, publishing completion event" )]
+    private static partial void LogSagaCompletePublishing( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that checking/publishing saga completion failed.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.SagaCompletionCheckFailed,
+        Level = LogLevel.Error,
+        Message = "Failed to check/publish saga completion for {SagaId}" )]
+    private static partial void LogSagaCompletionCheckFailed( ILogger logger, Exception ex, string sagaId );
+
+    /// <summary>
+    /// Logs that a saga was not found when publishing lookup completion.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.SagaNotFoundForLookupCompletion,
+        Level = LogLevel.Warning,
+        Message = "Saga {SagaId} not found, cannot publish lookup completion" )]
+    private static partial void LogSagaNotFoundForLookupCompletion( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that a lookup completion was published.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.LookupCompletionPublished,
+        Level = LogLevel.Debug,
+        Message = "Published lookup completion for saga {SagaId} on channel {Channel}" )]
+    private static partial void LogLookupCompletionPublished( ILogger logger, string sagaId, string channel );
+
+    /// <summary>
+    /// Logs that publishing a lookup completion failed.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.LookupCompletionPublishFailed,
+        Level = LogLevel.Error,
+        Message = "Failed to publish lookup completion for {SagaId}" )]
+    private static partial void LogLookupCompletionPublishFailed( ILogger logger, Exception ex, string sagaId );
+
+    #endregion LoggerMessage Definitions
 }

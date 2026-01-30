@@ -2,6 +2,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Storage;
 
 namespace BridgeBeats.Core.Domain.Services;
@@ -15,7 +16,7 @@ namespace BridgeBeats.Core.Domain.Services;
 /// <param name="atProtoStorage">Service for accessing ATProto storage.</param>
 /// <param name="settings">Configuration settings.</param>
 /// <param name="logger">Logger for diagnostic information.</param>
-public sealed class StatisticsService(
+public sealed partial class StatisticsService(
     IATProtoStorageService atProtoStorage,
     StatisticsSettings settings,
     ILogger<StatisticsService> logger
@@ -38,22 +39,14 @@ public sealed class StatisticsService(
         await _cacheLock.WaitAsync( cancellationToken );
         try {
             // Force refresh - do not check cache validity (this is an explicit refresh request)
-            logger.LogInformation(
-                "Refreshing statistics from ATProto PDS: {PdsUri}, DID: {UserDid}",
-                settings.PdsUri,
-                settings.UserDid
-            );
+            LogRefreshingStatistics( logger, settings.PdsUri.ToString( ), settings.UserDid );
 
             LookupStatistics stats = await ComputeStatisticsAsync( cancellationToken );
 
             _cachedStats = stats;
             _cacheExpiry = DateTimeOffset.UtcNow + settings.CacheDuration;
 
-            logger.LogInformation(
-                "Statistics refreshed: {TotalRecords} total records, cache expires at {CacheExpiry}",
-                stats.TotalRecords,
-                _cacheExpiry
-            );
+            LogStatisticsRefreshed( logger, stats.TotalRecords, _cacheExpiry );
 
             return stats;
         } finally {
@@ -104,19 +97,19 @@ public sealed class StatisticsService(
             recentCandidates.Add( (atUri, result, lookedUpAt) );
             if (recentCandidates.Count > 100) {
                 // Trim to keep memory usage reasonable during iteration
-                recentCandidates = recentCandidates
+                recentCandidates = [.. recentCandidates
                     .OrderByDescending( x => x.LookedUpAt )
-                    .Take( 10 )
-                    .ToList( );
+                    .Take( 10 )];
             }
         }
 
         // Build recent entries list
-        List<RecentLookupEntry> recentEntries = recentCandidates
+        List<RecentLookupEntry> recentEntries = [..
+            recentCandidates
             .OrderByDescending( x => x.LookedUpAt )
             .Take( 5 )
             .Select( x => CreateRecentEntry( x.AtUri, x.Result ) )
-            .ToList( );
+        ];
 
         return new LookupStatistics {
             TotalRecords = totalCount,
@@ -154,4 +147,26 @@ public sealed class StatisticsService(
             CardId = cardId
         };
     }
+
+    #region LoggerMessage Definitions
+
+    /// <summary>
+    /// Logs that statistics are being refreshed from ATProto PDS.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Other.RefreshingStatistics,
+        Level = LogLevel.Information,
+        Message = "Refreshing statistics from ATProto PDS: {PdsUri}, DID: {UserDid}" )]
+    private static partial void LogRefreshingStatistics( ILogger logger, string pdsUri, string userDid );
+
+    /// <summary>
+    /// Logs that statistics have been refreshed.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Other.StatisticsRefreshed,
+        Level = LogLevel.Information,
+        Message = "Statistics refreshed: {TotalRecords} total records, cache expires at {CacheExpiry}" )]
+    private static partial void LogStatisticsRefreshed( ILogger logger, int totalRecords, DateTimeOffset cacheExpiry );
+
+    #endregion LoggerMessage Definitions
 }

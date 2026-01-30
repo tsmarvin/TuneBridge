@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Worker.CacheBootstrap.Logging;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Worker.CacheBootstrap;
@@ -17,7 +18,7 @@ namespace BridgeBeats.Worker.CacheBootstrap;
 /// <param name="redis">Redis connection for verification.</param>
 /// <param name="settings">Configuration settings for the bootstrap service.</param>
 /// <param name="logger">Logger for diagnostic information.</param>
-public sealed class CacheBootstrapBackgroundService(
+public sealed partial class CacheBootstrapBackgroundService(
     IATProtoStorageService atProtoStorage,
     IMediaLinkCacheRepository cacheRepository,
     IConnectionMultiplexer redis,
@@ -41,11 +42,11 @@ public sealed class CacheBootstrapBackgroundService(
                 // Normal shutdown, exit gracefully
                 break;
             } catch (Exception ex) {
-                logger.LogError( ex, "Error during periodic cache bootstrap, will retry at next interval" );
+                LogBootstrapPeriodicError( logger, ex );
             }
         }
 
-        logger.LogInformation( "Cache bootstrap service is shutting down" );
+        LogBootstrapShuttingDown( logger );
     }
 
     /// <summary>
@@ -58,21 +59,23 @@ public sealed class CacheBootstrapBackgroundService(
             foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
                 IServer server = redis.GetServer( endpoint );
                 keyCountBefore = server.DatabaseSize( );
-                logger.LogInformation( "Redis key count BEFORE bootstrap: {KeyCount} (endpoint: {Endpoint})", keyCountBefore, endpoint );
+                LogRedisKeyCountBefore( logger, keyCountBefore, endpoint.ToString( ) ?? "unknown" );
             }
         } catch (Exception ex) {
-            logger.LogWarning( ex, "Failed to get Redis key count before bootstrap" );
+            LogRedisKeyCountBeforeError( logger, ex );
         }
 
-        logger.LogInformation(
-            "Starting cache bootstrap from ATProto PDS: {PdsUri}, DID: {UserDid}",
-            settings.PdsUri,
-            settings.UserDid
-        );
+        LogBootstrapStarting( logger, settings.PdsUri?.ToString( ) ?? "unknown", settings.UserDid ?? "unknown" );
 
         Stopwatch stopwatch = Stopwatch.StartNew( );
         int successCount = 0;
         int errorCount = 0;
+
+        // Validate settings before proceeding
+        if (settings.PdsUri is null || settings.UserDid is null) {
+            LogBootstrapFatalError( logger, new InvalidOperationException( "PdsUri and UserDid must be configured" ) );
+            return;
+        }
 
         try {
             await foreach ((string atUri, MediaLinkResult result) in
@@ -83,18 +86,18 @@ public sealed class CacheBootstrapBackgroundService(
                     successCount++;
 
                     if (successCount % 100 == 0) {
-                        logger.LogInformation( "Bootstrap progress: {Count} records processed", successCount );
+                        LogBootstrapProgress( logger, successCount );
                     }
                 } catch (Exception ex) {
                     errorCount++;
-                    logger.LogWarning( ex, "Failed to cache record: {AtUri}", atUri );
+                    LogCacheRecordError( logger, ex, atUri );
                 }
             }
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
-            logger.LogInformation( "Cache bootstrap was cancelled" );
+            LogBootstrapCancelled( logger );
             throw;
         } catch (Exception ex) {
-            logger.LogError( ex, "Fatal error during cache bootstrap" );
+            LogBootstrapFatalError( logger, ex );
         }
 
         stopwatch.Stop( );
@@ -105,14 +108,14 @@ public sealed class CacheBootstrapBackgroundService(
             foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
                 IServer server = redis.GetServer( endpoint );
                 keyCountAfter = server.DatabaseSize( );
-                logger.LogInformation( "Redis key count AFTER bootstrap: {KeyCount} (endpoint: {Endpoint})", keyCountAfter, endpoint );
+                LogRedisKeyCountAfter( logger, keyCountAfter, endpoint.ToString( ) ?? "unknown" );
             }
         } catch (Exception ex) {
-            logger.LogWarning( ex, "Failed to get Redis key count after bootstrap" );
+            LogRedisKeyCountAfterError( logger, ex );
         }
 
-        logger.LogInformation(
-            "Cache bootstrap completed in {ElapsedSeconds:F1}s. Success: {SuccessCount}, Errors: {ErrorCount}, Keys before: {KeysBefore}, Keys after: {KeysAfter}, Net change: {NetChange}",
+        LogBootstrapCompleted(
+            logger,
             stopwatch.Elapsed.TotalSeconds,
             successCount,
             errorCount,
@@ -121,4 +124,99 @@ public sealed class CacheBootstrapBackgroundService(
             keyCountAfter - keyCountBefore
         );
     }
+
+    #region LoggerMessage Methods
+
+    /// <summary>Logs error during periodic cache bootstrap.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BootstrapPeriodicError,
+        Level = LogLevel.Error,
+        Message = "Error during periodic cache bootstrap, will retry at next interval" )]
+    private static partial void LogBootstrapPeriodicError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that the cache bootstrap service is shutting down.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BootstrapShuttingDown,
+        Level = LogLevel.Information,
+        Message = "Cache bootstrap service is shutting down" )]
+    private static partial void LogBootstrapShuttingDown( ILogger logger );
+
+    /// <summary>Logs Redis key count before bootstrap.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RedisKeyCountBefore,
+        Level = LogLevel.Information,
+        Message = "Redis key count BEFORE bootstrap: {KeyCount} (endpoint: {Endpoint})" )]
+    private static partial void LogRedisKeyCountBefore( ILogger logger, long keyCount, string endpoint );
+
+    /// <summary>Logs failure to get Redis key count before bootstrap.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RedisKeyCountBeforeError,
+        Level = LogLevel.Warning,
+        Message = "Failed to get Redis key count before bootstrap" )]
+    private static partial void LogRedisKeyCountBeforeError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that cache bootstrap is starting.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BootstrapStarting,
+        Level = LogLevel.Information,
+        Message = "Starting cache bootstrap from ATProto PDS: {PdsUri}, DID: {UserDid}" )]
+    private static partial void LogBootstrapStarting( ILogger logger, string pdsUri, string userDid );
+
+    /// <summary>Logs bootstrap progress.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BootstrapProgress,
+        Level = LogLevel.Information,
+        Message = "Bootstrap progress: {Count} records processed" )]
+    private static partial void LogBootstrapProgress( ILogger logger, int count );
+
+    /// <summary>Logs failure to cache a record.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.CacheRecordError,
+        Level = LogLevel.Warning,
+        Message = "Failed to cache record: {AtUri}" )]
+    private static partial void LogCacheRecordError( ILogger logger, Exception ex, string atUri );
+
+    /// <summary>Logs that cache bootstrap was cancelled.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BootstrapCancelled,
+        Level = LogLevel.Information,
+        Message = "Cache bootstrap was cancelled" )]
+    private static partial void LogBootstrapCancelled( ILogger logger );
+
+    /// <summary>Logs fatal error during cache bootstrap.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BootstrapFatalError,
+        Level = LogLevel.Error,
+        Message = "Fatal error during cache bootstrap" )]
+    private static partial void LogBootstrapFatalError( ILogger logger, Exception ex );
+
+    /// <summary>Logs Redis key count after bootstrap.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RedisKeyCountAfter,
+        Level = LogLevel.Information,
+        Message = "Redis key count AFTER bootstrap: {KeyCount} (endpoint: {Endpoint})" )]
+    private static partial void LogRedisKeyCountAfter( ILogger logger, long keyCount, string endpoint );
+
+    /// <summary>Logs failure to get Redis key count after bootstrap.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RedisKeyCountAfterError,
+        Level = LogLevel.Warning,
+        Message = "Failed to get Redis key count after bootstrap" )]
+    private static partial void LogRedisKeyCountAfterError( ILogger logger, Exception ex );
+
+    /// <summary>Logs cache bootstrap completion.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BootstrapCompleted,
+        Level = LogLevel.Information,
+        Message = "Cache bootstrap completed in {ElapsedSeconds:F1}s. Success: {SuccessCount}, Errors: {ErrorCount}, Keys before: {KeysBefore}, Keys after: {KeysAfter}, Net change: {NetChange}" )]
+    private static partial void LogBootstrapCompleted(
+        ILogger logger,
+        double elapsedSeconds,
+        int successCount,
+        int errorCount,
+        long keysBefore,
+        long keysAfter,
+        long netChange );
+
+    #endregion
 }

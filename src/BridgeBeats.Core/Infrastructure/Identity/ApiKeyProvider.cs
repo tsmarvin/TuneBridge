@@ -14,7 +14,7 @@ namespace BridgeBeats.Core.Infrastructure.Identity;
 /// <param name="logger">Logger for diagnostics and error tracking.</param>
 /// <param name="userManager">User manager for database queries.</param>
 /// <param name="hasher">API key hasher for secure key validation.</param>
-public class ApiKeyProvider(
+public partial class ApiKeyProvider(
     ILogger<ApiKeyProvider> logger,
     UserManager<ApplicationUser> userManager,
     ApiKeyHasher hasher
@@ -38,10 +38,10 @@ public class ApiKeyProvider(
                 ? null
                 : (IApiKey)new ApiKey( key, user.UserName ?? user.Id, ["User"] );
         } catch (DbUpdateException ex) {
-            logger.LogError( ex, "Database error while validating API key" );
+            LogDbError( ex );
             return null;
         } catch (InvalidOperationException ex) {
-            logger.LogError( ex, "Invalid operation while validating API key" );
+            LogInvalidOperation( ex );
             return null;
         }
     }

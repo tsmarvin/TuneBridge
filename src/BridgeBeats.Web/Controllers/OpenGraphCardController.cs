@@ -11,7 +11,7 @@ namespace BridgeBeats.Web.Controllers;
 /// Controller for serving OpenGraph embeddable cards for music links.
 /// </summary>
 [Route( "card" )]
-public class OpenGraphCardController(
+public partial class OpenGraphCardController(
     IOpenGraphCardService cardService,
     IQrCodeService qrCodeService,
     IMediaLinkCacheRepository? cacheRepository = null,
@@ -126,11 +126,11 @@ public class OpenGraphCardController(
             // Don't include input link strategy for card pages (no input links available)
             return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, _cacheRepository, includeInputLinkStrategy: false );
         } catch (InvalidOperationException ex) {
-            _logger?.LogWarning( ex, "Failed to retrieve ATProto URI from cache for card (InvalidOperationException)" );
+            LogCacheInvalidOp( ex );
         } catch (ArgumentException ex) {
-            _logger?.LogWarning( ex, "Failed to retrieve ATProto URI from cache for card (ArgumentException)" );
+            LogCacheArgError( ex );
         } catch (Exception ex) {
-            _logger?.LogWarning( ex, "Failed to retrieve ATProto URI from cache for card" );
+            LogCacheError( ex );
         }
 
         return null;

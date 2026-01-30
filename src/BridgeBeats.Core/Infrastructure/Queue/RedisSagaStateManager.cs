@@ -1,6 +1,7 @@
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
@@ -27,7 +28,7 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// expiration during active processing.
 /// </para>
 /// </remarks>
-public sealed class RedisSagaStateManager : ISagaStateManager {
+public sealed partial class RedisSagaStateManager : ISagaStateManager {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisSagaStateManager> _logger;
@@ -96,7 +97,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
             LookupSagaState? existingState = await GetAsync( sagaId, cancellationToken );
 
             if (existingState is not null) {
-                _logger.LogDebug( "Resumed existing saga {SagaId}", sagaId );
+                LogSagaResumed( _logger, sagaId );
                 return existingState;
             }
         }
@@ -117,12 +118,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         // Add to pending index for efficient polling
         await AddToPendingIndexAsync( sagaId, cancellationToken );
 
-        _logger.LogInformation(
-            "Created new saga {SagaId} for lookup {LookupType}:{LookupValue}",
-            sagaId,
-            lookupType,
-            lookupValue
-        );
+        LogSagaCreated( _logger, sagaId, lookupType, lookupValue );
 
         return new LookupSagaState {
             SagaId = sagaId,
@@ -158,12 +154,12 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         if (!fields.TryGetValue( FieldLookupKey, out string? lookupKey ) ||
             !fields.TryGetValue( FieldLookupType, out string? lookupTypeStr ) ||
             !fields.TryGetValue( FieldLookupValue, out string? lookupValue )) {
-            _logger.LogWarning( "Saga {SagaId} has incomplete core state", sagaId );
+            LogIncompleteCoreState( _logger, sagaId );
             return null;
         }
 
         if (!Enum.TryParse<LookupRequestType>( lookupTypeStr, out LookupRequestType lookupType )) {
-            _logger.LogWarning( "Saga {SagaId} has invalid lookup type: {Type}", sagaId, lookupTypeStr );
+            LogInvalidLookupType( _logger, sagaId, lookupTypeStr );
             return null;
         }
 
@@ -234,13 +230,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         // Also extend the main saga key TTL
         _ = await db.KeyExpireAsync( GetSagaKey( sagaId ), ttl );
 
-        _logger.LogDebug(
-            "Updated provider state for saga {SagaId}, provider {Provider}: complete={Complete}, success={Success}",
-            sagaId,
-            state.Provider,
-            state.IsComplete,
-            state.IsSuccess
-        );
+        LogProviderStateUpdated( _logger, sagaId, state.Provider, state.IsComplete, state.IsSuccess );
     }
 
     /// <inheritdoc/>
@@ -259,11 +249,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         _ = await db.HashSetAsync( key, FieldPartialResultUri, uri );
         _ = await db.KeyExpireAsync( key, ttl );
 
-        _logger.LogInformation(
-            "Set partial result URI for saga {SagaId}: {Uri}",
-            sagaId,
-            uri
-        );
+        LogPartialResultUriSet( _logger, sagaId, uri );
     }
 
     /// <inheritdoc/>
@@ -285,11 +271,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         // Remove from pending index since saga is now finalized
         await RemoveFromPendingIndexAsync( sagaId, cancellationToken );
 
-        _logger.LogInformation(
-            "Set final result URI for saga {SagaId}: {Uri}",
-            sagaId,
-            uri
-        );
+        LogFinalResultUriSet( _logger, sagaId, uri );
     }
 
     /// <inheritdoc/>
@@ -312,7 +294,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         }
 
         if (sagaDeleted) {
-            _logger.LogInformation( "Deleted saga {SagaId}", sagaId );
+            LogSagaDeleted( _logger, sagaId );
         }
 
         return sagaDeleted;
@@ -329,7 +311,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         _ = await db.HashSetAsync( key, FieldIsPartial, isPartial.ToString( ) );
         _ = await db.KeyExpireAsync( key, ttl );
 
-        _logger.LogDebug( "Set isPartial={IsPartial} for saga {SagaId}", isPartial, sagaId );
+        LogIsPartialSet( _logger, isPartial, sagaId );
     }
 
     /// <inheritdoc/>
@@ -343,7 +325,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         _ = await db.HashSetAsync( key, FieldInitialProvider, provider.ToString( ) );
         _ = await db.KeyExpireAsync( key, ttl );
 
-        _logger.LogDebug( "Set initialProvider={Provider} for saga {SagaId}", provider, sagaId );
+        LogInitialProviderSet( _logger, provider, sagaId );
     }
 
     /// <inheritdoc/>
@@ -359,11 +341,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         _ = await db.HashSetAsync( key, FieldRateLimitInfo, json );
         _ = await db.KeyExpireAsync( key, ttl );
 
-        _logger.LogDebug(
-            "Set rateLimitInfo for saga {SagaId} with {Count} rate-limited providers",
-            sagaId,
-            rateLimitInfo.Count
-        );
+        LogRateLimitInfoSet( _logger, sagaId, rateLimitInfo.Count );
     }
 
     /// <inheritdoc/>
@@ -398,11 +376,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
             _ = await db.KeyExpireAsync( key, ttl );
         }
 
-        _logger.LogDebug(
-            "Initialized provider states for saga {SagaId} with {Count} providers",
-            sagaId,
-            providers.Count( )
-        );
+        LogProviderStatesInitialized( _logger, sagaId, providers.Count( ) );
     }
 
     private static async Task<Dictionary<SupportedProviders, ProviderLookupState>> LoadProviderStatesAsync(
@@ -496,10 +470,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         }
 
         if (result.Count > 0) {
-            _logger.LogInformation(
-                "Found {Count} completed but unfinalized sagas during polling",
-                result.Count
-            );
+            LogUnfinalizedSagasFound( _logger, result.Count );
         }
 
         return result;
@@ -512,7 +483,7 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         IDatabase db = _redis.GetDatabase( );
         _ = await db.SetAddAsync( PendingSagaSetKey, sagaId );
 
-        _logger.LogDebug( "Added saga {SagaId} to pending index", sagaId );
+        LogAddedToPendingIndex( _logger, sagaId );
     }
 
     /// <inheritdoc/>
@@ -522,11 +493,105 @@ public sealed class RedisSagaStateManager : ISagaStateManager {
         IDatabase db = _redis.GetDatabase( );
         _ = await db.SetRemoveAsync( PendingSagaSetKey, sagaId );
 
-        _logger.LogDebug( "Removed saga {SagaId} from pending index", sagaId );
+        LogRemovedFromPendingIndex( _logger, sagaId );
     }
 
     private static string GetSagaKey( string sagaId ) => $"{SagaPrefix}{sagaId}";
 
     private static string GetProviderKey( string sagaId, SupportedProviders provider ) =>
         $"{SagaPrefix}{sagaId}{ProviderSuffix}{provider}";
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerResumed,
+        Level = LogLevel.Debug,
+        Message = "Resumed existing saga {SagaId}" )]
+    internal static partial void LogSagaResumed( ILogger logger, string sagaId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerCreated,
+        Level = LogLevel.Information,
+        Message = "Created new saga {SagaId} for lookup {LookupType}:{LookupValue}" )]
+    internal static partial void LogSagaCreated( ILogger logger, string sagaId, LookupRequestType lookupType, string lookupValue );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerIncompleteCoreState,
+        Level = LogLevel.Warning,
+        Message = "Saga {SagaId} has incomplete core state" )]
+    internal static partial void LogIncompleteCoreState( ILogger logger, string sagaId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerInvalidLookupType,
+        Level = LogLevel.Warning,
+        Message = "Saga {SagaId} has invalid lookup type: {Type}" )]
+    internal static partial void LogInvalidLookupType( ILogger logger, string sagaId, string type );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerProviderStateUpdated,
+        Level = LogLevel.Debug,
+        Message = "Updated provider state for saga {SagaId}, provider {Provider}: complete={Complete}, success={Success}" )]
+    internal static partial void LogProviderStateUpdated( ILogger logger, string sagaId, SupportedProviders provider, bool complete, bool success );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerPartialResultUriSet,
+        Level = LogLevel.Information,
+        Message = "Set partial result URI for saga {SagaId}: {Uri}" )]
+    internal static partial void LogPartialResultUriSet( ILogger logger, string sagaId, string uri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerFinalResultUriSet,
+        Level = LogLevel.Information,
+        Message = "Set final result URI for saga {SagaId}: {Uri}" )]
+    internal static partial void LogFinalResultUriSet( ILogger logger, string sagaId, string uri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerDeleted,
+        Level = LogLevel.Information,
+        Message = "Deleted saga {SagaId}" )]
+    internal static partial void LogSagaDeleted( ILogger logger, string sagaId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerIsPartialSet,
+        Level = LogLevel.Debug,
+        Message = "Set isPartial={IsPartial} for saga {SagaId}" )]
+    internal static partial void LogIsPartialSet( ILogger logger, bool isPartial, string sagaId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerInitialProviderSet,
+        Level = LogLevel.Debug,
+        Message = "Set initialProvider={Provider} for saga {SagaId}" )]
+    internal static partial void LogInitialProviderSet( ILogger logger, SupportedProviders provider, string sagaId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerRateLimitInfoSet,
+        Level = LogLevel.Debug,
+        Message = "Set rateLimitInfo for saga {SagaId} with {Count} rate-limited providers" )]
+    internal static partial void LogRateLimitInfoSet( ILogger logger, string sagaId, int count );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerProviderStatesInitialized,
+        Level = LogLevel.Debug,
+        Message = "Initialized provider states for saga {SagaId} with {Count} providers" )]
+    internal static partial void LogProviderStatesInitialized( ILogger logger, string sagaId, int count );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerUnfinalizedSagasFound,
+        Level = LogLevel.Information,
+        Message = "Found {Count} completed but unfinalized sagas during polling" )]
+    internal static partial void LogUnfinalizedSagasFound( ILogger logger, int count );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerAddedToPendingIndex,
+        Level = LogLevel.Debug,
+        Message = "Added saga {SagaId} to pending index" )]
+    internal static partial void LogAddedToPendingIndex( ILogger logger, string sagaId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerRemovedFromPendingIndex,
+        Level = LogLevel.Debug,
+        Message = "Removed saga {SagaId} from pending index" )]
+    internal static partial void LogRemovedFromPendingIndex( ILogger logger, string sagaId );
+
+    #endregion
 }

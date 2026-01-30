@@ -3,9 +3,9 @@ using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Core.Domain.Providers.Common;
+using BridgeBeats.Core.Infrastructure.Logging;
 
-namespace BridgeBeats.Providers.Common {
+namespace BridgeBeats.Core.Domain.Providers.Common {
     /// <summary>
     /// Base class for music lookup services that query a specific music provider's API.
     /// </summary>
@@ -69,13 +69,7 @@ namespace BridgeBeats.Providers.Common {
 
             HttpResponseMessage resp = await http.GetAsync( requestUri );
             if (!resp.IsSuccessStatusCode) {
-                Logger.LogError(
-                    "An error occurred while fetching {lookupKey}data from {provider}: HTTP {statusCode} {reasonPhrase}",
-                    lookupKey,
-                    Provider.ToString( ),
-                    (int)resp.StatusCode,
-                    resp.ReasonPhrase
-                );
+                LogApiRequestError( Logger, lookupKey, Provider.ToString( ), (int)resp.StatusCode, resp.ReasonPhrase );
                 return null;
             }
             return await resp.Content.ReadAsStringAsync( );
@@ -192,6 +186,19 @@ namespace BridgeBeats.Providers.Common {
         private static partial Regex SongAddendumRegex( );
 
         #endregion Base Class Defaults
+
+        #region LoggerMessage Methods
+
+        /// <summary>
+        /// Logs an error when an API request fails.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Common.ApiRequestError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while fetching {LookupKey}data from {Provider}: HTTP {StatusCode} {ReasonPhrase}" )]
+        internal static partial void LogApiRequestError( ILogger logger, LookupRequestType lookupKey, string provider, int statusCode, string? reasonPhrase );
+
+        #endregion LoggerMessage Methods
 
     }
 

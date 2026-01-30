@@ -1,8 +1,10 @@
+using System.Net;
 using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Utilities;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Core.Infrastructure.Utilities;
 using StackExchange.Redis;
@@ -25,7 +27,7 @@ namespace BridgeBeats.Core.Infrastructure.Cache;
 /// - meta:{rkey} → JSON { CreatedAt, LastLookedUpAt, CardId }
 /// - keys:{rkey} → Set of all lookup keys associated with this rkey (for cleanup on refresh)
 /// </remarks>
-public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
+public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly IATProtoStorageService _atprotoStorage;
@@ -173,12 +175,10 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
             // Add lookup indices to Redis
             await AddInputLinksAsync( recordUri, result );
 
-            _logger.LogInformation( "Cached result with rkey: {Rkey}, recordUri: {RecordUri}",
-                rkey.SanitizeForLogging( ),
-                recordUri.SanitizeForLogging( ) );
+            LogCachedResult( _logger, rkey.SanitizeForLogging( ), recordUri.SanitizeForLogging( ) );
             return recordUri;
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error while caching result" );
+            LogCacheError( _logger, ex );
             throw;
         }
     }
@@ -214,10 +214,7 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 if (existingMeta?.RecordUri == recordUri) {
                     // Record already cached with same URI - just refresh TTL on all keys
                     await RefreshTtlForRkeyAsync( db, rkey, expiry );
-                    _logger.LogDebug(
-                        "Cache entry already exists for rkey: {Rkey}, refreshed TTL",
-                        rkey.SanitizeForLogging( )
-                    );
+                    LogCacheEntryExists( _logger, rkey.SanitizeForLogging( ) );
                     return;
                 }
             }
@@ -298,20 +295,12 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
             // Verify the meta key was actually written (spot check)
             RedisValue verifyValue = await db.StringGetAsync( metaKey );
             if (verifyValue.IsNullOrEmpty) {
-                _logger.LogError(
-                    "Redis write verification FAILED for rkey: {Rkey} - meta key not found after write!",
-                    rkey.SanitizeForLogging( )
-                );
+                LogWriteVerificationFailed( _logger, rkey.SanitizeForLogging( ) );
             }
 
-            _logger.LogInformation(
-                "Created Redis lookup entries for rkey: {Rkey}, cardId: {CardId}, {KeyCount} keys",
-                rkey.SanitizeForLogging( ),
-                cardId.SanitizeForLogging( ),
-                allKeys.Count
-            );
+            LogCreatedLookupEntries( _logger, rkey.SanitizeForLogging( ), cardId.SanitizeForLogging( ), allKeys.Count );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error while adding input links to Redis cache" );
+            LogAddInputLinksError( _logger, ex );
             throw;
         }
     }
@@ -330,9 +319,7 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
             _ = await db.KeyDeleteAsync( keysToDelete );
             _ = await db.KeyDeleteAsync( keysSetKey );
 
-            _logger.LogInformation( "Removed {KeyCount} existing lookup keys for rkey: {Rkey}",
-                existingKeys.Length,
-                rkey.SanitizeForLogging( ) );
+            LogRemovedLookupKeys( _logger, existingKeys.Length, rkey.SanitizeForLogging( ) );
         }
     }
 
@@ -376,8 +363,7 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 return CheckRecordFreshness( pdsResult, recordUri );
             }
         } catch (Exception ex) {
-            _logger.LogWarning( ex, "Failed to retrieve result from PDS by external ID: {ExternalId}",
-                externalId.SanitizeForLogging( ) );
+            LogPdsLookupFailed( _logger, ex, externalId.SanitizeForLogging( ) );
         }
 
         return null;
@@ -390,18 +376,16 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
         try {
             MediaLinkResult? result = await _atprotoStorage.GetMediaLinkResultAsync( recordUri );
             if (result != null) {
-                _logger.LogInformation( "Cache hit for RecordUri: {RecordUri}",
-                    recordUri.SanitizeForLogging( ) );
+                LogCacheHit( _logger, recordUri.SanitizeForLogging( ) );
                 return CheckRecordFreshness( result, recordUri );
             }
 
             // Record not found on PDS - remove from Redis
-            _logger.LogWarning( "Record not found on PDS, will be cleaned up on TTL expiry: {RecordUri}",
-                recordUri.SanitizeForLogging( ) );
+            LogRecordNotFound( _logger, recordUri.SanitizeForLogging( ) );
         } catch (HttpRequestException ex) {
-            _logger.LogError( ex, "HTTP error while trying to get cached result, StatusCode: {StatusCode}", ex.StatusCode );
+            LogHttpError( _logger, ex, ex.StatusCode );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error while trying to get cached result from PDS" );
+            LogPdsError( _logger, ex );
         }
 
         return null;
@@ -426,7 +410,7 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
         try {
             return ProviderUrlParser.ExtractId( provider, url );
         } catch (Exception ex) {
-            _logger.LogWarning( ex, "Failed to extract provider ID from URL for {Provider}.", provider );
+            LogExtractProviderIdFailed( _logger, ex, provider );
             return null;
         }
     }
@@ -441,4 +425,86 @@ public sealed class RedisMediaLinkCache : IMediaLinkCacheRepository {
         public DateTime CreatedAt { get; set; }
         public DateTime LastLookedUpAt { get; set; }
     }
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheCachedResult,
+        Level = LogLevel.Information,
+        Message = "Cached result with rkey: {Rkey}, recordUri: {RecordUri}" )]
+    internal static partial void LogCachedResult( ILogger logger, string rkey, string recordUri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheCacheError,
+        Level = LogLevel.Error,
+        Message = "Error while caching result" )]
+    internal static partial void LogCacheError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheEntryExists,
+        Level = LogLevel.Debug,
+        Message = "Cache entry already exists for rkey: {Rkey}, refreshed TTL" )]
+    internal static partial void LogCacheEntryExists( ILogger logger, string rkey );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheWriteVerificationFailed,
+        Level = LogLevel.Error,
+        Message = "Redis write verification FAILED for rkey: {Rkey} - meta key not found after write!" )]
+    internal static partial void LogWriteVerificationFailed( ILogger logger, string rkey );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheCreatedLookupEntries,
+        Level = LogLevel.Information,
+        Message = "Created Redis lookup entries for rkey: {Rkey}, cardId: {CardId}, {KeyCount} keys" )]
+    internal static partial void LogCreatedLookupEntries( ILogger logger, string rkey, string cardId, int keyCount );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheAddInputLinksError,
+        Level = LogLevel.Error,
+        Message = "Error while adding input links to Redis cache" )]
+    internal static partial void LogAddInputLinksError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheRemovedLookupKeys,
+        Level = LogLevel.Information,
+        Message = "Removed {KeyCount} existing lookup keys for rkey: {Rkey}" )]
+    internal static partial void LogRemovedLookupKeys( ILogger logger, int keyCount, string rkey );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCachePdsLookupFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to retrieve result from PDS by external ID: {ExternalId}" )]
+    internal static partial void LogPdsLookupFailed( ILogger logger, Exception ex, string externalId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheCacheHit,
+        Level = LogLevel.Information,
+        Message = "Cache hit for RecordUri: {RecordUri}" )]
+    internal static partial void LogCacheHit( ILogger logger, string recordUri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheRecordNotFound,
+        Level = LogLevel.Warning,
+        Message = "Record not found on PDS, will be cleaned up on TTL expiry: {RecordUri}" )]
+    internal static partial void LogRecordNotFound( ILogger logger, string recordUri );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheHttpError,
+        Level = LogLevel.Error,
+        Message = "HTTP error while trying to get cached result, StatusCode: {StatusCode}" )]
+    internal static partial void LogHttpError( ILogger logger, Exception ex, HttpStatusCode? statusCode );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCachePdsError,
+        Level = LogLevel.Error,
+        Message = "Error while trying to get cached result from PDS" )]
+    internal static partial void LogPdsError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Cache.RedisMediaLinkCacheExtractProviderIdFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to extract provider ID from URL for {Provider}." )]
+    internal static partial void LogExtractProviderIdFailed( ILogger logger, Exception ex, SupportedProviders provider );
+
+    #endregion
 }

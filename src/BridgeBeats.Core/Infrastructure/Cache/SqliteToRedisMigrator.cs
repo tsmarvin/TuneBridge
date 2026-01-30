@@ -1,5 +1,6 @@
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Core.Infrastructure.Cache.Entities;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -12,7 +13,7 @@ namespace BridgeBeats.Core.Infrastructure.Cache;
 /// Runs once at startup and sets a migration completion flag in Redis.
 /// After migration, falls back to Redis for all operations.
 /// </summary>
-public sealed class SqliteToRedisMigrator : IHostedService {
+public sealed partial class SqliteToRedisMigrator : IHostedService {
 
     private readonly IDbContextFactory<MediaLinkCacheDbContext>? _dbContextFactory;
     private readonly IConnectionMultiplexer _redis;
@@ -48,20 +49,20 @@ public sealed class SqliteToRedisMigrator : IHostedService {
 
     /// <inheritdoc/>
     public async Task StartAsync( CancellationToken cancellationToken ) {
-        _logger.LogInformation( "SqliteToRedisMigrator: Starting migration check..." );
+        LogStarting( _logger );
 
         try {
             IDatabase db = _redis.GetDatabase( );
 
             // Check if migration is already complete
             if (await db.KeyExistsAsync( MigrationCompleteKey )) {
-                _logger.LogInformation( "SqliteToRedisMigrator: Migration already complete, skipping." );
+                LogAlreadyComplete( _logger );
                 return;
             }
 
             // Check if SQLite database is available
             if (_dbContextFactory is null) {
-                _logger.LogInformation( "SqliteToRedisMigrator: SQLite not configured, marking migration as complete." );
+                LogNoSqlite( _logger );
                 _ = await db.StringSetAsync( MigrationCompleteKey, DateTime.UtcNow.ToString( "O" ) );
                 return;
             }
@@ -70,9 +71,9 @@ public sealed class SqliteToRedisMigrator : IHostedService {
 
             // Mark migration as complete (permanent - no TTL)
             _ = await db.StringSetAsync( MigrationCompleteKey, DateTime.UtcNow.ToString( "O" ) );
-            _logger.LogInformation( "SqliteToRedisMigrator: Migration completed successfully." );
+            LogCompleted( _logger );
         } catch (Microsoft.Data.Sqlite.SqliteException sqlEx) when (sqlEx.Message.Contains( "no such table" )) {
-            _logger.LogInformation( "SqliteToRedisMigrator: No existing SQLite cache tables found. Nothing to migrate." );
+            LogNoTables( _logger );
             // Mark migration as complete since there's nothing to migrate
             try {
                 IDatabase db = _redis.GetDatabase( );
@@ -81,7 +82,7 @@ public sealed class SqliteToRedisMigrator : IHostedService {
                 // Ignore - just a best effort to mark as complete
             }
         } catch (Exception ex) {
-            _logger.LogError( ex, "SqliteToRedisMigrator: Migration failed. Application will continue but cache may be incomplete." );
+            LogFailed( _logger, ex );
             // Don't throw - allow application to continue even if migration fails
         }
     }
@@ -95,7 +96,7 @@ public sealed class SqliteToRedisMigrator : IHostedService {
         // Get total count of cache entries for logging without loading them all into memory
         int totalCount = await dbContext.CacheEntries.CountAsync( cancellationToken );
 
-        _logger.LogInformation( "SqliteToRedisMigrator: Found {Count} cache entries to migrate.", totalCount );
+        LogFoundEntries( _logger, totalCount );
 
         int successCount = 0;
         int failCount = 0;
@@ -115,14 +116,11 @@ public sealed class SqliteToRedisMigrator : IHostedService {
                 successCount++;
             } catch (Exception ex) {
                 failCount++;
-                _logger.LogWarning( ex, "SqliteToRedisMigrator: Failed to migrate entry with rkey: {Rkey}", entry.Rkey );
+                LogEntryFailed( _logger, ex, entry.Rkey );
             }
         }
 
-        _logger.LogInformation(
-            "SqliteToRedisMigrator: Migration complete. Processed: {SuccessCount}, Failed: {FailCount}",
-            successCount, failCount
-        );
+        LogMigrationComplete( _logger, successCount, failCount );
     }
 
     private async Task MigrateCacheEntryAsync( IDatabase db, MediaLinkCacheEntry entry, TimeSpan expiry ) {
@@ -168,10 +166,7 @@ public sealed class SqliteToRedisMigrator : IHostedService {
             }
         }
 
-        _logger.LogDebug(
-            "SqliteToRedisMigrator: Processed entry with rkey: {Rkey}, added: {KeysAdded}, skipped: {KeysSkipped}",
-            entry.Rkey, keysAdded, keysSkipped
-        );
+        LogProcessedEntry( _logger, entry.Rkey, keysAdded, keysSkipped );
     }
 
     /// <summary>
@@ -197,4 +192,68 @@ public sealed class SqliteToRedisMigrator : IHostedService {
         _ = await db.StringSetAsync( key, value, expiry );
         return true;
     }
+
+    #region LoggerMessage Methods
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorStarting,
+        Level = LogLevel.Information,
+        Message = "SqliteToRedisMigrator: Starting migration check..." )]
+    internal static partial void LogStarting( ILogger logger );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorAlreadyComplete,
+        Level = LogLevel.Information,
+        Message = "SqliteToRedisMigrator: Migration already complete, skipping." )]
+    internal static partial void LogAlreadyComplete( ILogger logger );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorNoSqlite,
+        Level = LogLevel.Information,
+        Message = "SqliteToRedisMigrator: SQLite not configured, marking migration as complete." )]
+    internal static partial void LogNoSqlite( ILogger logger );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorCompleted,
+        Level = LogLevel.Information,
+        Message = "SqliteToRedisMigrator: Migration completed successfully." )]
+    internal static partial void LogCompleted( ILogger logger );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorNoTables,
+        Level = LogLevel.Information,
+        Message = "SqliteToRedisMigrator: No existing SQLite cache tables found. Nothing to migrate." )]
+    internal static partial void LogNoTables( ILogger logger );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorFailed,
+        Level = LogLevel.Error,
+        Message = "SqliteToRedisMigrator: Migration failed. Application will continue but cache may be incomplete." )]
+    internal static partial void LogFailed( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorFoundEntries,
+        Level = LogLevel.Information,
+        Message = "SqliteToRedisMigrator: Found {Count} cache entries to migrate." )]
+    internal static partial void LogFoundEntries( ILogger logger, int count );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorEntryFailed,
+        Level = LogLevel.Warning,
+        Message = "SqliteToRedisMigrator: Failed to migrate entry with rkey: {Rkey}" )]
+    internal static partial void LogEntryFailed( ILogger logger, Exception ex, string rkey );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorMigrationComplete,
+        Level = LogLevel.Information,
+        Message = "SqliteToRedisMigrator: Migration complete. Processed: {SuccessCount}, Failed: {FailCount}" )]
+    internal static partial void LogMigrationComplete( ILogger logger, int successCount, int failCount );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.SqliteToRedisMigratorProcessedEntry,
+        Level = LogLevel.Debug,
+        Message = "SqliteToRedisMigrator: Processed entry with rkey: {Rkey}, added: {KeysAdded}, skipped: {KeysSkipped}" )]
+    internal static partial void LogProcessedEntry( ILogger logger, string rkey, int keysAdded, int keysSkipped );
+
+    #endregion
 }

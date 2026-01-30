@@ -21,7 +21,7 @@ namespace BridgeBeats.Web.Controllers;
 /// <param name="signInManager">Sign-in manager for authentication.</param>
 /// <param name="logger">Logger for diagnostic information.</param>
 /// <param name="hasher">API key hasher for secure key generation and validation.</param>
-public class AccountController(
+public partial class AccountController(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
     ILogger<AccountController> logger,
@@ -93,7 +93,7 @@ public class AccountController(
         // Sign in the user automatically with a cookie for web UI
         await signInManager.SignInAsync( user, isPersistent: false );
 
-        logger.LogInformation( "User registered successfully with ID: {UserId}", user.Id );
+        LogUserRegistered( user.Id );
 
         return Ok( new {
             userId = user.Id,
@@ -146,7 +146,7 @@ public class AccountController(
             apiKey = "***EXISTING_KEY***";
         }
 
-        logger.LogInformation( "User logged in successfully with ID: {UserId}", user.Id );
+        LogUserLoggedIn( user.Id );
 
         return Ok( new {
             userId = user.Id,
@@ -207,7 +207,7 @@ public class AccountController(
             return BadRequest( new { message = "Failed to regenerate API key" } );
         }
 
-        logger.LogInformation( "User regenerated API key with ID: {UserId}", user.Id );
+        LogApiKeyRegenerated( user.Id );
 
         return Ok( new {
             apiKey = apiKey,
@@ -261,7 +261,7 @@ public class AccountController(
             } )
         };
 
-        logger.LogInformation( "User downloaded personal data with ID: {UserId}", user.Id );
+        LogDataDownloaded( user.Id );
 
         string json = JsonSerializer.Serialize(
             personalData,
@@ -299,11 +299,11 @@ public class AccountController(
         IdentityResult result = await userManager.DeleteAsync( user );
 
         if (!result.Succeeded) {
-            logger.LogError( "Failed to delete account for user ID: {UserId}", user.Id );
+            LogDeleteFailed( user.Id );
             return BadRequest( new { message = "Failed to delete account. Please try again." } );
         }
 
-        logger.LogInformation( "User account deleted with ID: {UserId}", user.Id );
+        LogAccountDeleted( user.Id );
 
         return Ok( new {
             message = "Account deleted successfully. All your personal data has been removed."
@@ -344,11 +344,7 @@ public class AccountController(
                 callbackUri
             );
 
-            logger.LogInformation(
-                "Started ATProto OAuth for handle {Handle}, redirecting to {AuthUrl}",
-                request.Handle,
-                authUrl.Host
-            );
+            LogAtProtoOAuthStarted( request.Handle, authUrl.Host );
 
             // Return the authorization URL for the client to redirect to
             return Ok( new {
@@ -356,7 +352,7 @@ public class AccountController(
                 state = state
             } );
         } catch (Exception ex) {
-            logger.LogError( ex, "Failed to start ATProto OAuth for handle {Handle}", request.Handle );
+            LogAtProtoOAuthStartFailed( ex, request.Handle );
             return BadRequest( new {
                 message = $"Failed to start login: {ex.Message}"
             } );
@@ -385,7 +381,7 @@ public class AccountController(
     ) {
         // Handle authorization errors
         if (!string.IsNullOrEmpty( error )) {
-            logger.LogWarning( "ATProto OAuth error: {Error} - {Description}", error, error_description );
+            LogAtProtoOAuthError( error, error_description );
             return RedirectToAction( nameof( LoginPage ), new {
                 error = error_description ?? error
             } );
@@ -427,17 +423,13 @@ public class AccountController(
                 IdentityResult createResult = await userManager.CreateAsync( user );
                 if (!createResult.Succeeded) {
                     string errors = string.Join( ", ", createResult.Errors.Select( e => e.Description ) );
-                    logger.LogError( "Failed to create ATProto user: {Errors}", errors );
+                    LogAtProtoUserCreateFailed( errors );
                     return RedirectToAction( nameof( LoginPage ), new {
                         error = "Failed to create account. Please try again."
                     } );
                 }
 
-                logger.LogInformation(
-                    "Created new user for ATProto DID {Did}, handle {Handle}",
-                    result.Did,
-                    result.Handle
-                );
+                LogAtProtoUserCreated( result.Did, result.Handle );
             } else {
                 // Update tokens for existing user
                 user.AtProtoHandle = result.Handle;
@@ -448,21 +440,17 @@ public class AccountController(
 
                 _ = await userManager.UpdateAsync( user );
 
-                logger.LogInformation(
-                    "Updated tokens for ATProto user DID {Did}, handle {Handle}",
-                    result.Did,
-                    result.Handle
-                );
+                LogAtProtoTokensUpdated( result.Did, result.Handle );
             }
 
             // Sign in the user
             await signInManager.SignInAsync( user, isPersistent: false );
 
-            logger.LogInformation( "ATProto user logged in: {UserId}", user.Id );
+            LogAtProtoLoggedIn( user.Id );
 
             return Redirect( "/" );
         } catch (Exception ex) {
-            logger.LogError( ex, "Failed to complete ATProto OAuth callback" );
+            LogAtProtoCallbackFailed( ex );
             return RedirectToAction( nameof( LoginPage ), new {
                 error = $"Login failed: {ex.Message}"
             } );

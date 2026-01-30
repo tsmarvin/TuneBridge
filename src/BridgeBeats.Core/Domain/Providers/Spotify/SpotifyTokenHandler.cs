@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using BridgeBeats.Core.Infrastructure.Logging;
 
 namespace BridgeBeats.Core.Domain.Providers.Spotify {
 
@@ -15,7 +16,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
     /// Tokens are cached until 30 seconds before expiration, at which point a new token is automatically
     /// requested on the next call to avoid using expired tokens during API requests.
     /// </remarks>
-    public sealed class SpotifyTokenHandler(
+    public sealed partial class SpotifyTokenHandler(
         SpotifyCredentials auth,
         IHttpClientFactory factory,
         ILogger<SpotifyTokenHandler> logger
@@ -43,7 +44,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                 return _cachedToken;
             }
 
-            logger.LogDebug( "Spotify token is expired or unset. Generating a new token." );
+            LogTokenExpiredOrUnset( logger );
             HttpClient client = factory.CreateClient("spotify-auth");
             using HttpRequestMessage req = new(HttpMethod.Post, "api/token") {
                 Content = new FormUrlEncodedContent(new Dictionary<string, string> {
@@ -105,6 +106,19 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
             public int expires_in { get; set; }
 #pragma warning restore IDE1006 // Naming Styles - these match the json values returned by spotify.
         }
+
+        #region LoggerMessage Methods
+
+        /// <summary>
+        /// Logs that the Spotify token is expired or unset and a new token will be generated.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.TokenExpiredOrUnset,
+            Level = LogLevel.Debug,
+            Message = "Spotify token is expired or unset. Generating a new token." )]
+        internal static partial void LogTokenExpiredOrUnset( ILogger logger );
+
+        #endregion LoggerMessage Methods
     }
 
 }

@@ -11,7 +11,7 @@ namespace BridgeBeats.Web.Controllers;
 /// Controller for managing and displaying playlists of music cards.
 /// </summary>
 [Route( "playlist" )]
-public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCardService? cardService, IMediaLinkService? mediaLinkService, IQrCodeService qrCodeService, ILogger<PlaylistController>? logger = null ) : Controller {
+public partial class PlaylistController( IPlaylistService? playlistService, IOpenGraphCardService? cardService, IMediaLinkService? mediaLinkService, IQrCodeService qrCodeService, ILogger<PlaylistController>? logger = null ) : Controller {
 
     private readonly IPlaylistService? _playlistService = playlistService;
     private readonly IOpenGraphCardService? _cardService = cardService;
@@ -64,7 +64,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
         } catch (ArgumentException ex) {
             return BadRequest( new { error = ex.Message } );
         } catch (Exception ex) {
-            _logger?.LogError( ex, "Error creating playlist" );
+            LogCreateError( ex );
             return StatusCode( 500, new { error = "Failed to create playlist" } );
         }
     }
@@ -93,10 +93,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
 
         // Ensure we have matching counts
         if (cardIds.Length != cardRkeys.Length) {
-            _logger?.LogWarning(
-                "Playlist {PlaylistId} has mismatched card IDs ({CardIdCount}) and rkeys ({RkeyCount})",
-                id.SanitizeForLogging( ), cardIds.Length, cardRkeys.Length
-            );
+            LogMismatchedCards( id.SanitizeForLogging( ), cardIds.Length, cardRkeys.Length );
         }
 
         for (int i = 0; i < Math.Min( cardIds.Length, cardRkeys.Length ); i++) {
@@ -122,17 +119,13 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
                     // If we successfully recreated the result, store it back in the card service
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
-                        _logger?.LogInformation( "Regenerated card {CardId} from rkey {Rkey} for playlist {PlaylistId}",
-                            cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( ) );
+                        LogCardRegenerated( cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( ) );
                     }
                 }
             }
 
             if (result == null) {
-                _logger?.LogWarning(
-                    "Unable to load or regenerate card {CardId} (rkey: {Rkey}) for playlist {PlaylistId}",
-                    cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( )
-                );
+                LogCardLoadFailed( cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( ) );
                 continue;
             }
 
@@ -207,19 +200,13 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
 
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
-                        _logger?.LogInformation(
-                            "Regenerated card {CardId} for playlist embed {PlaylistId}",
-                            cardId.SanitizeForLogging( ), id.SanitizeForLogging( )
-                        );
+                        LogEmbedCardRegenerated( cardId.SanitizeForLogging( ), id.SanitizeForLogging( ) );
                     }
                 }
             }
 
             if (result == null) {
-                _logger?.LogWarning(
-                    "Unable to load or regenerate card {CardId} for playlist embed {PlaylistId}",
-                    cardId.SanitizeForLogging( ), id.SanitizeForLogging( )
-                );
+                LogEmbedCardLoadFailed( cardId.SanitizeForLogging( ), id.SanitizeForLogging( ) );
                 continue;
             }
 

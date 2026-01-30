@@ -20,7 +20,7 @@ namespace BridgeBeats.Core.Infrastructure.Storage;
 /// on user PDSs rather than the server's PDS, and uses OAuth tokens
 /// instead of app passwords.
 /// </remarks>
-public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
+public partial class UserPlaylistATProtoService : IUserPlaylistATProtoService {
 
     /// <summary>
     /// The NSID (Namespaced Identifier) for the BridgeBeats playlist lexicon.
@@ -98,16 +98,11 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
                 throw new InvalidOperationException( $"Failed to create playlist on user's PDS: {errorMsg}" );
             }
 
-            _logger.LogInformation(
-                "Successfully created playlist '{Title}' for user {UserDid}: {Uri}",
-                playlist.Title,
-                userDid,
-                createResult.Result.Uri
-            );
+            LogPlaylistCreated( playlist.Title, userDid, createResult.Result.Uri.ToString( ) );
 
             return createResult.Result.Uri.ToString( );
         } catch (Exception ex) when (ex is not InvalidOperationException) {
-            _logger.LogError( ex, "Failed to create playlist for user {UserDid}", userDid );
+            LogCreateFailed( ex, userDid );
             throw;
         }
     }
@@ -134,7 +129,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
             if (!getResult.Succeeded || getResult.Result?.Value is null) {
                 if (!getResult.Succeeded) {
                     string errorMsg = getResult.AtErrorDetail?.Message ?? $"HTTP {getResult.StatusCode}";
-                    _logger.LogWarning( "Failed to get playlist from PDS: {Error}", errorMsg );
+                    LogGetFailed( errorMsg );
                 }
                 return null;
             }
@@ -145,7 +140,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
 
             return dto;
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to retrieve playlist from PDS: {Uri}", playlistUri );
+            LogRetrieveError( ex, playlistUri );
             return null;
         }
     }
@@ -191,16 +186,11 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
                 throw new InvalidOperationException( $"Failed to update playlist on user's PDS: {errorMsg}" );
             }
 
-            _logger.LogInformation(
-                "Successfully updated playlist '{Title}' for user {UserDid}: {Uri}",
-                playlist.Title,
-                userDid,
-                putResult.Result.Uri
-            );
+            LogPlaylistUpdated( playlist.Title, userDid, putResult.Result.Uri.ToString( ) );
 
             return putResult.Result.Uri.ToString( );
         } catch (Exception ex) when (ex is not InvalidOperationException) {
-            _logger.LogError( ex, "Failed to update playlist for user {UserDid}", userDid );
+            LogUpdateFailed( ex, userDid );
             throw;
         }
     }
@@ -230,14 +220,14 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
 
             if (!deleteResult.Succeeded) {
                 string errorMsg = deleteResult.AtErrorDetail?.Message ?? $"HTTP {deleteResult.StatusCode}";
-                _logger.LogWarning( "Failed to delete playlist for user {UserDid}: {Error}", userDid, errorMsg );
+                LogDeleteWarning( userDid, errorMsg );
                 return false;
             }
 
-            _logger.LogInformation( "Successfully deleted playlist {Rkey} for user {UserDid}", rkey, userDid );
+            LogPlaylistDeleted( rkey, userDid );
             return true;
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to delete playlist {Rkey} for user {UserDid}", rkey, userDid );
+            LogDeleteError( ex, rkey, userDid );
             return false;
         }
     }
@@ -268,7 +258,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
 
             if (!listResult.Succeeded || listResult.Result is null) {
                 string errorMsg = listResult.AtErrorDetail?.Message ?? $"HTTP {listResult.StatusCode}";
-                _logger.LogError( "Failed to list playlists for user {UserDid}: {Error}", userDid, errorMsg );
+                LogListFailed( userDid, errorMsg );
                 yield break;
             }
 
@@ -323,7 +313,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
 
         // Check if tokens need refresh
         if (_oauthService is not null && !_oauthService.IsTokenValid( user.AtProtoTokenExpiration )) {
-            _logger.LogDebug( "ATProto tokens expired for user {UserDid}, attempting refresh", userDid );
+            LogRefreshingTokens( userDid );
 
             ATProtoOAuthResult? refreshResult = await _oauthService.RefreshTokensAsync(
                 user.AtProtoDid!,
@@ -340,7 +330,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
                 user.AtProtoTokenExpiration = refreshResult.TokenExpiration;
                 _ = await dbContext.SaveChangesAsync( cancellationToken );
 
-                _logger.LogInformation( "Successfully refreshed ATProto tokens for user {UserDid}", userDid );
+                LogTokensRefreshed( userDid );
             } else {
                 throw new InvalidOperationException(
                     $"Failed to refresh ATProto tokens for user '{userDid}'. Please log in again with Bluesky."
@@ -387,7 +377,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
             createdBy: dto.CreatedBy,
             updatedAt: dto.UpdatedAt,
             lookupRepository: dto.LookupRepository,
-            tracks: dto.Tracks.ToList( ),
+            tracks: [.. dto.Tracks],
             description: dto.Description,
             substitutions: substitutions
         );
@@ -421,7 +411,7 @@ public class UserPlaylistATProtoService : IUserPlaylistATProtoService {
             CreatedBy = record.CreatedBy,
             UpdatedAt = record.UpdatedAt,
             LookupRepository = record.LookupRepository,
-            Tracks = record.Tracks.ToList( ),
+            Tracks = [.. record.Tracks],
             Substitutions = substitutions
         };
     }

@@ -3,8 +3,9 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Tidal.Models;
-using BridgeBeats.Providers.Common;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Providers.Tidal;
 
 namespace BridgeBeats.Core.Domain.Providers.Tidal {
@@ -198,7 +199,7 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while extracting single resource from Tidal response." );
+                LogExtractSingleResourceError( Logger, ex );
             }
 
             return (null, null);
@@ -218,8 +219,8 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
                     return await ParseTidalResponse( data, included, lookupKey, kind, isPrimary );
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from tidal.", lookupKey );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
+                LogParseResponseError( Logger, ex, lookupKey );
+                LogResponseBodySerialized( Logger, body, SerializerOptions );
             }
             return null;
         }
@@ -262,9 +263,9 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from tidal.", lookupKey );
-                Logger.LogTrace( "Data: {Data}", JsonSerializer.Serialize( data, SerializerOptions ) );
-                Logger.LogTrace( "Included: {Included}", JsonSerializer.Serialize( included, SerializerOptions ) );
+                LogParseResponseError( Logger, ex, lookupKey );
+                LogDataSerialized( Logger, data, SerializerOptions );
+                LogIncludedSerialized( Logger, included, SerializerOptions );
                 return null;
             }
         }
@@ -360,8 +361,8 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
                 }
                 return null;
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the artist list json response from tidal." );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
+                LogParseArtistListError( Logger, ex );
+                LogResponseBodySerialized( Logger, body, SerializerOptions );
                 return null;
             }
         }
@@ -409,10 +410,104 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
                 try {
                     await genreCache.SetGenresAsync( SupportedProviders.Tidal, data.Id, genreNames );
                 } catch (Exception ex) {
-                    Logger.LogWarning( ex, "Failed to cache genres for Tidal resource {ResourceId}", data.Id );
+                    LogCacheGenresFailed( Logger, ex, data.Id );
                 }
             } );
         }
+
+        #region LoggerMessage Methods
+
+        /// <summary>
+        /// Logs an error extracting single resource from Tidal response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Tidal.ExtractSingleResourceError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while extracting single resource from Tidal response." )]
+        internal static partial void LogExtractSingleResourceError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs an error parsing the JSON response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Tidal.ParseResponseError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing the {LookupKey} json response from tidal." )]
+        internal static partial void LogParseResponseError( ILogger logger, Exception ex, LookupRequestType lookupKey );
+
+        /// <summary>
+        /// Logs an error parsing the artist list response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Tidal.ParseArtistListError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing the artist list json response from tidal." )]
+        internal static partial void LogParseArtistListError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs failure to cache genres.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Tidal.CacheGenresFailed,
+            Level = LogLevel.Warning,
+            Message = "Failed to cache genres for Tidal resource {ResourceId}" )]
+        internal static partial void LogCacheGenresFailed( ILogger logger, Exception ex, string resourceId );
+
+        /// <summary>
+        /// Logs the response body for trace level debugging.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Tidal.ResponseBodyTrace,
+            Level = LogLevel.Trace,
+            Message = "{ResponseBody}" )]
+        internal static partial void LogResponseBody( ILogger logger, string? responseBody );
+
+        /// <summary>
+        /// Logs the serialized data for trace level debugging.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Tidal.DataTrace,
+            Level = LogLevel.Trace,
+            Message = "Data: {Data}" )]
+        internal static partial void LogDataTrace( ILogger logger, string? data );
+
+        /// <summary>
+        /// Logs the serialized included array for trace level debugging.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Tidal.IncludedTrace,
+            Level = LogLevel.Trace,
+            Message = "Included: {Included}" )]
+        internal static partial void LogIncludedTrace( ILogger logger, string? included );
+
+        /// <summary>
+        /// Logs the serialized response body for trace level debugging.
+        /// </summary>
+        private static void LogResponseBodySerialized( ILogger logger, string? body, JsonSerializerOptions options ) {
+            if (logger.IsEnabled( LogLevel.Trace )) {
+                LogResponseBody( logger, JsonSerializer.Serialize( body, options ) );
+            }
+        }
+
+        /// <summary>
+        /// Logs the serialized data for trace level debugging.
+        /// </summary>
+        private static void LogDataSerialized( ILogger logger, TidalResource data, JsonSerializerOptions options ) {
+            if (logger.IsEnabled( LogLevel.Trace )) {
+                LogDataTrace( logger, JsonSerializer.Serialize( data, options ) );
+            }
+        }
+
+        /// <summary>
+        /// Logs the serialized included array for trace level debugging.
+        /// </summary>
+        private static void LogIncludedSerialized( ILogger logger, List<TidalResource> included, JsonSerializerOptions options ) {
+            if (logger.IsEnabled( LogLevel.Trace )) {
+                LogIncludedTrace( logger, JsonSerializer.Serialize( included, options ) );
+            }
+        }
+
+        #endregion LoggerMessage Methods
 
     }
 }

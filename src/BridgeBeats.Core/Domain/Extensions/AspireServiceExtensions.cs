@@ -64,16 +64,16 @@ public static class AspireServiceExtensions {
                     double retryAfterSeconds = retryAfter?.TotalSeconds ?? 0;
 
                     if (retryAfterSeconds > 0) {
-                        logger.LogWarning(
-                            "HTTP request failed (Attempt {AttemptNumber}/{MaxAttempts}). Retrying after {RetryAfterSeconds} seconds due to Retry-After header. Uri: {Uri}",
+                        AspireServiceExtensionsLog.LogRetryWithRetryAfterHeader(
+                            logger,
                             args.AttemptNumber,
                             options.Retry.MaxRetryAttempts,
                             retryAfterSeconds,
                             args.Outcome.Result?.RequestMessage?.RequestUri
                         );
                     } else {
-                        logger.LogWarning(
-                            "HTTP request failed (Attempt {AttemptNumber}/{MaxAttempts}). Retrying with exponential backoff. Uri: {Uri}",
+                        AspireServiceExtensionsLog.LogRetryWithExponentialBackoff(
+                            logger,
                             args.AttemptNumber,
                             options.Retry.MaxRetryAttempts,
                             args.Outcome.Result?.RequestMessage?.RequestUri

@@ -3,8 +3,9 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Spotify.Models;
-using BridgeBeats.Providers.Common;
+using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Providers.Spotify;
 
 namespace BridgeBeats.Core.Domain.Providers.Spotify {
@@ -70,7 +71,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
 
                         SpotifyAlbum? fullAlbum = JsonSerializer.Deserialize<SpotifyAlbum>( body, SerializerOptions );
                         if (fullAlbum == null) {
-                            Logger.LogError( "Failed to deserialize full album data from Spotify response for AlbumIdLookup." );
+                            LogDeserializeAlbumFailed( Logger, LookupRequestType.AlbumIdLookup );
                         }
                         album.ExternalId = fullAlbum?.ExternalIds?.Upc ?? string.Empty;
 
@@ -134,7 +135,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// </remarks>
         /// <exception cref="ArgumentException">Thrown when more than 50 track IDs are provided.</exception>
         public async Task<Dictionary<string, MusicLookupResult?>> GetTracksByIdsAsync( IEnumerable<string> trackIds ) {
-            List<string> idList = trackIds.ToList( );
+            List<string> idList = [.. trackIds];
 
             if (idList.Count == 0) {
                 return [];
@@ -161,7 +162,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                 SpotifyTracksResponse? response = JsonSerializer.Deserialize<SpotifyTracksResponse>( body, SerializerOptions );
 
                 if (response?.Tracks == null) {
-                    Logger.LogError( "Failed to deserialize bulk tracks response from Spotify." );
+                    LogDeserializeBulkTracksFailed( Logger );
                     return results;
                 }
 
@@ -187,8 +188,8 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing bulk tracks response from Spotify." );
-                Logger.LogTrace( "{ResponseBody}", body );
+                LogParseBulkTracksError( Logger, ex );
+                LogResponseBody( Logger, body );
             }
 
             return results;
@@ -208,7 +209,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// </remarks>
         /// <exception cref="ArgumentException">Thrown when more than 20 album IDs are provided.</exception>
         public async Task<Dictionary<string, MusicLookupResult?>> GetAlbumsByIdsAsync( IEnumerable<string> albumIds ) {
-            List<string> idList = albumIds.ToList( );
+            List<string> idList = [.. albumIds];
 
             if (idList.Count == 0) {
                 return [];
@@ -235,7 +236,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                 SpotifyAlbumsResponse? response = JsonSerializer.Deserialize<SpotifyAlbumsResponse>( body, SerializerOptions );
 
                 if (response?.Albums == null) {
-                    Logger.LogError( "Failed to deserialize bulk albums response from Spotify." );
+                    LogDeserializeBulkAlbumsFailed( Logger );
                     return results;
                 }
 
@@ -258,8 +259,8 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                     }
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing bulk albums response from Spotify." );
-                Logger.LogTrace( "{ResponseBody}", body );
+                LogParseBulkAlbumsError( Logger, ex );
+                LogResponseBody( Logger, body );
             }
 
             return results;
@@ -280,7 +281,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// </remarks>
         /// <exception cref="ArgumentException">Thrown when more than 50 artist IDs are provided.</exception>
         public async Task<Dictionary<string, List<string>?>> GetArtistsByIdsAsync( IEnumerable<string> artistIds ) {
-            List<string> idList = artistIds.ToList( );
+            List<string> idList = [.. artistIds];
 
             if (idList.Count == 0) {
                 return [];
@@ -307,7 +308,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                 SpotifyArtistsResponse? response = JsonSerializer.Deserialize<SpotifyArtistsResponse>( body, SerializerOptions );
 
                 if (response?.Artists == null) {
-                    Logger.LogError( "Failed to deserialize bulk artists response from Spotify." );
+                    LogDeserializeBulkArtistsFailed( Logger );
                     return results;
                 }
 
@@ -318,8 +319,8 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                     results[idList[i]] = artist?.Genres;
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing bulk artists response from Spotify." );
-                Logger.LogTrace( "{ResponseBody}", body );
+                LogParseBulkArtistsError( Logger, ex );
+                LogResponseBody( Logger, body );
             }
 
             return results;
@@ -342,11 +343,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
             // Handle rate limiting with custom endpoint key
             if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests) {
                 TimeSpan retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds( 30 );
-                Logger.LogWarning(
-                    "Rate limited on bulk endpoint {Endpoint}, retry after {RetryAfter}",
-                    endpointKey,
-                    retryAfter
-                );
+                LogBulkRateLimited( Logger, endpointKey, retryAfter );
                 // Use the standard threshold - bulk requests are always thrown for requeue
                 throw new Contracts.Exceptions.RetryAfterExceededException(
                     retryAfter,
@@ -356,11 +353,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                 );
             }
 
-            Logger.LogWarning(
-                "Bulk API request to {Endpoint} failed with status {StatusCode}",
-                endpointKey,
-                response.StatusCode
-            );
+            LogBulkRequestFailed( Logger, endpointKey, (int)response.StatusCode );
             return null;
         }
 
@@ -383,8 +376,8 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                     return ParseSpotifyResponse( element, lookupKey, kind, isPrimary );
                 }
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from spotify.", lookupKey );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( body, SerializerOptions ) );
+                LogParseResponseError( Logger, ex, lookupKey );
+                LogResponseBodySerialized( Logger, body, SerializerOptions );
             }
             return null;
         }
@@ -433,7 +426,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                     case SpotifyEntity.Album:
                         SpotifyAlbum? albumData = element.Deserialize<SpotifyAlbum>( SerializerOptions );
                         if (albumData == null) {
-                            Logger.LogError( "Failed to deserialize album data from Spotify response for {LookupKey}.", lookupKey );
+                            LogDeserializeAlbumFailed( Logger, lookupKey );
                             return null;
                         }
                         result.Artist = albumData.Artists != null && albumData.Artists.Count > 0
@@ -449,7 +442,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                     case SpotifyEntity.Track:
                         SpotifyTrack? trackData = element.Deserialize<SpotifyTrack>( SerializerOptions );
                         if (trackData == null) {
-                            Logger.LogError( "Failed to deserialize track data from Spotify response for {LookupKey}.", lookupKey );
+                            LogDeserializeTrackFailed( Logger, lookupKey );
                             return null;
                         }
                         result.Artist = trackData.Artists != null && trackData.Artists.Count > 0
@@ -471,8 +464,8 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
 
                 return result;
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the {LookupKey} json response from spotify.", lookupKey );
-                Logger.LogTrace( "{ResponseBody}", JsonSerializer.Serialize( element, SerializerOptions ) );
+                LogParseResponseError( Logger, ex, lookupKey );
+                LogJsonElementSerialized( Logger, element, SerializerOptions );
                 return null;
             }
         }
@@ -503,7 +496,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                     }
                 } while (response?.Artists?.Next != null);
             } catch (Exception ex) {
-                Logger.LogError( ex, "An error occurred while parsing the artist list json response from spotify." );
+                LogParseArtistListError( Logger, ex );
             }
 
             return null;
@@ -564,7 +557,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
 
                         SpotifyTrack? fullTrack = JsonSerializer.Deserialize<SpotifyTrack>( trackBody );
                         if (fullTrack == null) {
-                            Logger.LogError( "Failed to deserialize full track data from Spotify response for SongIdLookup." );
+                            LogDeserializeTrackFailed( Logger, LookupRequestType.SongIdLookup );
                             return null;
                         }
                         return new MusicLookupResult {
@@ -596,10 +589,9 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                 return;
             }
 
-            List<string> artistIds = artists
+            List<string> artistIds = [.. artists
                 .Where( a => !string.IsNullOrWhiteSpace( a.Id ) )
-                .Select( a => a.Id )
-                .ToList( );
+                .Select( a => a.Id )];
 
             if (artistIds.Count == 0) { return; }
 
@@ -609,10 +601,158 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                     await genreCache.SetTrackArtistMappingAsync( SupportedProviders.Spotify, trackId, artistIds );
                     await genreCache.EnqueueArtistsForRefreshAsync( SupportedProviders.Spotify, artistIds );
                 } catch (Exception ex) {
-                    Logger.LogWarning( ex, "Failed to cache track→artist mapping for Spotify track {TrackId}", trackId );
+                    LogCacheTrackMappingFailed( Logger, ex, trackId );
                 }
             } );
         }
+
+        #region LoggerMessage Methods
+
+        /// <summary>
+        /// Logs that album deserialization failed.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.DeserializeAlbumFailed,
+            Level = LogLevel.Error,
+            Message = "Failed to deserialize album data from Spotify response for {LookupKey}." )]
+        internal static partial void LogDeserializeAlbumFailed( ILogger logger, LookupRequestType lookupKey );
+
+        /// <summary>
+        /// Logs that track deserialization failed.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.DeserializeTrackFailed,
+            Level = LogLevel.Error,
+            Message = "Failed to deserialize track data from Spotify response for {LookupKey}." )]
+        internal static partial void LogDeserializeTrackFailed( ILogger logger, LookupRequestType lookupKey );
+
+        /// <summary>
+        /// Logs that bulk tracks deserialization failed.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.DeserializeBulkTracksFailed,
+            Level = LogLevel.Error,
+            Message = "Failed to deserialize bulk tracks response from Spotify." )]
+        internal static partial void LogDeserializeBulkTracksFailed( ILogger logger );
+
+        /// <summary>
+        /// Logs that bulk albums deserialization failed.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.DeserializeBulkAlbumsFailed,
+            Level = LogLevel.Error,
+            Message = "Failed to deserialize bulk albums response from Spotify." )]
+        internal static partial void LogDeserializeBulkAlbumsFailed( ILogger logger );
+
+        /// <summary>
+        /// Logs that bulk artists deserialization failed.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.DeserializeBulkArtistsFailed,
+            Level = LogLevel.Error,
+            Message = "Failed to deserialize bulk artists response from Spotify." )]
+        internal static partial void LogDeserializeBulkArtistsFailed( ILogger logger );
+
+        /// <summary>
+        /// Logs an error parsing bulk tracks response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.ParseBulkTracksError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing bulk tracks response from Spotify." )]
+        internal static partial void LogParseBulkTracksError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs an error parsing bulk albums response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.ParseBulkAlbumsError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing bulk albums response from Spotify." )]
+        internal static partial void LogParseBulkAlbumsError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs an error parsing bulk artists response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.ParseBulkArtistsError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing bulk artists response from Spotify." )]
+        internal static partial void LogParseBulkArtistsError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs rate limiting on bulk endpoint.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.BulkRateLimited,
+            Level = LogLevel.Warning,
+            Message = "Rate limited on bulk endpoint {Endpoint}, retry after {RetryAfter}" )]
+        internal static partial void LogBulkRateLimited( ILogger logger, string endpoint, TimeSpan retryAfter );
+
+        /// <summary>
+        /// Logs bulk API request failure.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.BulkRequestFailed,
+            Level = LogLevel.Warning,
+            Message = "Bulk API request to {Endpoint} failed with status {StatusCode}" )]
+        internal static partial void LogBulkRequestFailed( ILogger logger, string endpoint, int statusCode );
+
+        /// <summary>
+        /// Logs an error parsing the JSON response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.ParseResponseError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing the {LookupKey} json response from spotify." )]
+        internal static partial void LogParseResponseError( ILogger logger, Exception ex, LookupRequestType lookupKey );
+
+        /// <summary>
+        /// Logs an error parsing the artist list response.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.ParseArtistListError,
+            Level = LogLevel.Error,
+            Message = "An error occurred while parsing the artist list json response from spotify." )]
+        internal static partial void LogParseArtistListError( ILogger logger, Exception ex );
+
+        /// <summary>
+        /// Logs failure to cache track artist mapping.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.CacheTrackMappingFailed,
+            Level = LogLevel.Warning,
+            Message = "Failed to cache track→artist mapping for Spotify track {TrackId}" )]
+        internal static partial void LogCacheTrackMappingFailed( ILogger logger, Exception ex, string trackId );
+
+        /// <summary>
+        /// Logs the response body for trace level debugging.
+        /// </summary>
+        [LoggerMessage(
+            EventId = LogEventIds.Providers.Spotify.ResponseBodyTrace,
+            Level = LogLevel.Trace,
+            Message = "{ResponseBody}" )]
+        internal static partial void LogResponseBody( ILogger logger, string? responseBody );
+
+        /// <summary>
+        /// Logs the serialized response body for trace level debugging.
+        /// </summary>
+        private static void LogResponseBodySerialized( ILogger logger, string? body, JsonSerializerOptions options ) {
+            if (logger.IsEnabled( LogLevel.Trace )) {
+                LogResponseBody( logger, JsonSerializer.Serialize( body, options ) );
+            }
+        }
+
+        /// <summary>
+        /// Logs the serialized JSON element for trace level debugging.
+        /// </summary>
+        private static void LogJsonElementSerialized( ILogger logger, JsonElement element, JsonSerializerOptions options ) {
+            if (logger.IsEnabled( LogLevel.Trace )) {
+                LogResponseBody( logger, JsonSerializer.Serialize( element, options ) );
+            }
+        }
+
+        #endregion LoggerMessage Methods
 
     }
 }
