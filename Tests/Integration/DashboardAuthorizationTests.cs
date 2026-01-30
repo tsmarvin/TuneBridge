@@ -25,6 +25,11 @@ public class DashboardAuthorizationTests : IDisposable {
     private const string TestUserPassword = "TestPassword123!";
 
     /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Initializes the test factory and HTTP client before each test.
     /// </summary>
     [TestInitialize]
@@ -95,12 +100,13 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Tests that unauthenticated requests to dashboard authorization endpoint return 401.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DashboardAuthorize_UnauthenticatedUser_Returns401( ) {
         // Arrange
         using HttpClient client = _factory!.CreateClient( );
 
         // Act
-        HttpResponseMessage response = await client.GetAsync( "/api/dashboard/authorize" );
+        HttpResponseMessage response = await client.GetAsync( "/api/dashboard/authorize", TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.Unauthorized, response.StatusCode );
@@ -110,13 +116,14 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Tests that authenticated users without the AspireDashboardAccess role return 403.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DashboardAuthorize_UserWithoutRole_Returns403( ) {
         // Arrange
         await CreateTestUserAsync( hasRole: false );
         _client!.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue( "TestScheme" );
 
         // Act
-        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize" );
+        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize", TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.Forbidden, response.StatusCode );
@@ -126,13 +133,14 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Tests that authenticated users with the AspireDashboardAccess role return 200.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DashboardAuthorize_UserWithRole_Returns200( ) {
         // Arrange
         await CreateTestUserAsync( hasRole: true );
         _client!.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue( "TestScheme" );
 
         // Act
-        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize" );
+        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize", TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
@@ -142,6 +150,7 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Tests that the AspireDashboardAccess role is created on application startup.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DatabaseInitialization_CreatesAspireDashboardAccessRole( ) {
         // Arrange
         using IServiceScope scope = _factory!.Services.CreateScope( );

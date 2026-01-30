@@ -24,6 +24,11 @@ public class RedisRequestQueueTests {
     private RedisRequestQueue<QueuedLookupRequest> _queue = null!;
 
     /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Initializes the shared Redis connection for all tests in this class.
     /// </summary>
     /// <param name="_">The test context provided by MSTest (unused).</param>
@@ -67,22 +72,23 @@ public class RedisRequestQueueTests {
         );
 
         // Ensure consumer groups exist
-        await _queue.EnsureConsumerGroupsAsync( );
+        await _queue.EnsureConsumerGroupsAsync( CancellationToken.None );
     }
 
     /// <summary>
     /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the interactive priority stream.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task EnqueueAsync_AddsMessageToInteractiveStream( ) {
         // Arrange
         QueuedLookupRequest request = CreateTestRequest( );
 
         // Act
-        await _queue.EnqueueAsync( request, QueuePriority.Interactive );
+        await _queue.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
         // Assert
-        QueueDepth depth = await _queue.GetDepthAsync( );
+        QueueDepth depth = await _queue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 1, depth.Interactive );
         Assert.AreEqual( 0, depth.Background );
         Assert.AreEqual( 0, depth.Bulk );
@@ -93,15 +99,16 @@ public class RedisRequestQueueTests {
     /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the background priority stream.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task EnqueueAsync_AddsMessageToBackgroundStream( ) {
         // Arrange
         QueuedLookupRequest request = CreateTestRequest( );
 
         // Act
-        await _queue.EnqueueAsync( request, QueuePriority.Background );
+        await _queue.EnqueueAsync( request, QueuePriority.Background, TestContext.CancellationToken );
 
         // Assert
-        QueueDepth depth = await _queue.GetDepthAsync( );
+        QueueDepth depth = await _queue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 0, depth.Interactive );
         Assert.AreEqual( 1, depth.Background );
         Assert.AreEqual( 0, depth.Bulk );
@@ -111,15 +118,16 @@ public class RedisRequestQueueTests {
     /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the bulk priority stream.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task EnqueueAsync_AddsMessageToBulkStream( ) {
         // Arrange
         QueuedLookupRequest request = CreateTestRequest( );
 
         // Act
-        await _queue.EnqueueAsync( request, QueuePriority.Bulk );
+        await _queue.EnqueueAsync( request, QueuePriority.Bulk, TestContext.CancellationToken );
 
         // Assert
-        QueueDepth depth = await _queue.GetDepthAsync( );
+        QueueDepth depth = await _queue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 0, depth.Interactive );
         Assert.AreEqual( 0, depth.Background );
         Assert.AreEqual( 1, depth.Bulk );
@@ -129,13 +137,14 @@ public class RedisRequestQueueTests {
     /// Verifies that DequeueAsync returns a message when one is available.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DequeueAsync_ReturnsMessage_WhenAvailable( ) {
         // Arrange
         QueuedLookupRequest request = CreateTestRequest( );
-        await _queue.EnqueueAsync( request, QueuePriority.Interactive );
+        await _queue.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
         // Act
-        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.IsNotNull( message );
@@ -148,9 +157,10 @@ public class RedisRequestQueueTests {
     /// Verifies that DequeueAsync returns null when the queue is empty.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DequeueAsync_ReturnsNull_WhenQueueEmpty( ) {
         // Act
-        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.IsNull( message );
@@ -160,19 +170,20 @@ public class RedisRequestQueueTests {
     /// Verifies that <see cref="RedisRequestQueue{T}.AcknowledgeAsync"/> removes the message from the stream.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task AcknowledgeAsync_RemovesMessageFromStream( ) {
         // Arrange
         QueuedLookupRequest request = CreateTestRequest( );
-        await _queue.EnqueueAsync( request, QueuePriority.Interactive );
+        await _queue.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( TestContext.CancellationToken );
         Assert.IsNotNull( message );
 
         // Act
-        await _queue.AcknowledgeAsync( message.MessageId );
+        await _queue.AcknowledgeAsync( message.MessageId, TestContext.CancellationToken );
 
         // Assert - queue should be empty after ack
-        QueueDepth depth = await _queue.GetDepthAsync( );
+        QueueDepth depth = await _queue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 0, depth.Total );
     }
 
@@ -180,22 +191,23 @@ public class RedisRequestQueueTests {
     /// Verifies that <see cref="RedisRequestQueue{T}.MoveToDlqAsync"/> moves the message to the dead letter queue.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task MoveToDlqAsync_MovesMessageToDlq( ) {
         // Arrange
         QueuedLookupRequest request = CreateTestRequest( );
-        await _queue.EnqueueAsync( request, QueuePriority.Interactive );
+        await _queue.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( TestContext.CancellationToken );
         Assert.IsNotNull( message );
 
         // Act
-        await _queue.MoveToDlqAsync( message.MessageId, "Test failure reason" );
+        await _queue.MoveToDlqAsync( message.MessageId, "Test failure reason", TestContext.CancellationToken );
 
         // Assert - main queue empty, DLQ has message
-        QueueDepth depth = await _queue.GetDepthAsync( );
+        QueueDepth depth = await _queue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 0, depth.Total );
 
-        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> dlqMessages = await _queue.GetDlqMessagesAsync( 10 );
+        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> dlqMessages = await _queue.GetDlqMessagesAsync( 10, TestContext.CancellationToken );
         Assert.HasCount( 1, dlqMessages );
         Assert.AreEqual( request.RequestId, dlqMessages[0].Payload.RequestId );
     }
@@ -204,27 +216,28 @@ public class RedisRequestQueueTests {
     /// Verifies that <see cref="RedisRequestQueue{T}.RequeueFromDlqAsync"/> moves the message back from DLQ to the main queue.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task RequeueFromDlqAsync_MovesMessageBackToQueue( ) {
         // Arrange
         QueuedLookupRequest request = CreateTestRequest( );
-        await _queue.EnqueueAsync( request, QueuePriority.Interactive );
+        await _queue.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( TestContext.CancellationToken );
         Assert.IsNotNull( message );
 
-        await _queue.MoveToDlqAsync( message.MessageId, "Test failure" );
+        await _queue.MoveToDlqAsync( message.MessageId, "Test failure", TestContext.CancellationToken );
 
-        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> dlqMessages = await _queue.GetDlqMessagesAsync( 10 );
+        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> dlqMessages = await _queue.GetDlqMessagesAsync( 10, TestContext.CancellationToken );
         Assert.HasCount( 1, dlqMessages );
 
         // Act
-        await _queue.RequeueFromDlqAsync( dlqMessages[0].MessageId, QueuePriority.Background );
+        await _queue.RequeueFromDlqAsync( dlqMessages[0].MessageId, QueuePriority.Background, TestContext.CancellationToken );
 
         // Assert - DLQ empty, background queue has message
-        dlqMessages = await _queue.GetDlqMessagesAsync( 10 );
+        dlqMessages = await _queue.GetDlqMessagesAsync( 10, TestContext.CancellationToken );
         Assert.IsEmpty( dlqMessages );
 
-        QueueDepth depth = await _queue.GetDepthAsync( );
+        QueueDepth depth = await _queue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 1, depth.Background );
     }
 
@@ -232,26 +245,27 @@ public class RedisRequestQueueTests {
     /// Verifies that <see cref="RedisRequestQueue{T}.DeleteFromDlqAsync"/> permanently removes the message from the DLQ.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DeleteFromDlqAsync_RemovesMessageFromDlq( ) {
         // Arrange - use Interactive priority to avoid bulk gating
         QueuedLookupRequest request = CreateTestRequest( );
-        await _queue.EnqueueAsync( request, QueuePriority.Interactive );
+        await _queue.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( TestContext.CancellationToken );
         Assert.IsNotNull( message );
 
-        await _queue.MoveToDlqAsync( message.MessageId, "Test failure" );
+        await _queue.MoveToDlqAsync( message.MessageId, "Test failure", TestContext.CancellationToken );
 
-        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> dlqMessages = await _queue.GetDlqMessagesAsync( 10 );
+        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> dlqMessages = await _queue.GetDlqMessagesAsync( 10, TestContext.CancellationToken );
         Assert.HasCount( 1, dlqMessages );
 
         // Act
-        bool deleted = await _queue.DeleteFromDlqAsync( dlqMessages[0].MessageId );
+        bool deleted = await _queue.DeleteFromDlqAsync( dlqMessages[0].MessageId, TestContext.CancellationToken );
 
         // Assert
         Assert.IsTrue( deleted );
 
-        dlqMessages = await _queue.GetDlqMessagesAsync( 10 );
+        dlqMessages = await _queue.GetDlqMessagesAsync( 10, TestContext.CancellationToken );
         Assert.IsEmpty( dlqMessages );
     }
 
@@ -259,6 +273,7 @@ public class RedisRequestQueueTests {
     /// Verifies that queues for different providers are isolated and do not share messages.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task MultipleProviderQueues_AreIsolated( ) {
         // Arrange
         RedisRequestQueue<QueuedLookupRequest> spotifyQueue = _queue;
@@ -270,29 +285,29 @@ public class RedisRequestQueueTests {
             _settings,
             SupportedProviders.AppleMusic
         );
-        await appleQueue.EnsureConsumerGroupsAsync( );
+        await appleQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
         QueuedLookupRequest spotifyRequest = CreateTestRequest( provider: SupportedProviders.Spotify );
         QueuedLookupRequest appleRequest = CreateTestRequest( provider: SupportedProviders.AppleMusic );
 
         // Act
-        await spotifyQueue.EnqueueAsync( spotifyRequest, QueuePriority.Interactive );
-        await appleQueue.EnqueueAsync( appleRequest, QueuePriority.Interactive );
+        await spotifyQueue.EnqueueAsync( spotifyRequest, QueuePriority.Interactive, TestContext.CancellationToken );
+        await appleQueue.EnqueueAsync( appleRequest, QueuePriority.Interactive, TestContext.CancellationToken );
 
         // Assert - each queue has its own message
-        QueueDepth spotifyDepth = await spotifyQueue.GetDepthAsync( );
-        QueueDepth appleDepth = await appleQueue.GetDepthAsync( );
+        QueueDepth spotifyDepth = await spotifyQueue.GetDepthAsync( TestContext.CancellationToken );
+        QueueDepth appleDepth = await appleQueue.GetDepthAsync( TestContext.CancellationToken );
 
         Assert.AreEqual( 1, spotifyDepth.Interactive );
         Assert.AreEqual( 1, appleDepth.Interactive );
 
         // Dequeue from Spotify should get Spotify request
-        QueuedMessage<QueuedLookupRequest>? spotifyMessage = await spotifyQueue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? spotifyMessage = await spotifyQueue.DequeueAsync( TestContext.CancellationToken );
         Assert.IsNotNull( spotifyMessage );
         Assert.AreEqual( SupportedProviders.Spotify, spotifyMessage.Payload.Provider );
 
         // Dequeue from Apple should get Apple request
-        QueuedMessage<QueuedLookupRequest>? appleMessage = await appleQueue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? appleMessage = await appleQueue.DequeueAsync( TestContext.CancellationToken );
         Assert.IsNotNull( appleMessage );
         Assert.AreEqual( SupportedProviders.AppleMusic, appleMessage.Payload.Provider );
     }
@@ -301,6 +316,7 @@ public class RedisRequestQueueTests {
     /// Verifies that weighted priority selection processes all messages across all priority levels.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task WeightedPrioritySelection_ProcessesAllMessages( ) {
         // Arrange - add multiple messages to each priority
         const int messagesPerPriority = 10;
@@ -316,12 +332,12 @@ public class RedisRequestQueueTests {
             testSettings,
             SupportedProviders.Spotify
         );
-        await testQueue.EnsureConsumerGroupsAsync( );
+        await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
         for (int i = 0; i < messagesPerPriority; i++) {
-            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Interactive );
-            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Background );
-            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Bulk );
+            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Interactive, TestContext.CancellationToken );
+            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Background, TestContext.CancellationToken );
+            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Bulk, TestContext.CancellationToken );
         }
 
         // Act - dequeue all and track which priorities are drained first
@@ -329,15 +345,15 @@ public class RedisRequestQueueTests {
         int totalDequeued = 0;
 
         QueuedMessage<QueuedLookupRequest>? message;
-        while ((message = await testQueue.DequeueAsync( )) is not null) {
-            await testQueue.AcknowledgeAsync( message.MessageId );
+        while ((message = await testQueue.DequeueAsync( TestContext.CancellationToken )) is not null) {
+            await testQueue.AcknowledgeAsync( message.MessageId, TestContext.CancellationToken );
             totalDequeued++;
         }
 
         // Assert - all messages should be processed
         Assert.AreEqual( messagesPerPriority * 3, totalDequeued, "All messages should be dequeued" );
 
-        QueueDepth depth = await testQueue.GetDepthAsync( );
+        QueueDepth depth = await testQueue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 0, depth.Total, "Queue should be empty after processing all messages" );
     }
 
@@ -345,6 +361,7 @@ public class RedisRequestQueueTests {
     /// Verifies that Redis consumer groups allow multiple worker instances to process messages without duplication.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ConsumerGroups_AllowMultipleWorkerInstances( ) {
         // Arrange - create two queue instances (simulating two workers)
         Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> logger2 = new( );
@@ -354,12 +371,12 @@ public class RedisRequestQueueTests {
             _settings,
             SupportedProviders.Spotify
         );
-        await worker2Queue.EnsureConsumerGroupsAsync( );
+        await worker2Queue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
         // Enqueue multiple messages
         const int messageCount = 10;
         for (int i = 0; i < messageCount; i++) {
-            await _queue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Interactive );
+            await _queue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Interactive, TestContext.CancellationToken );
         }
 
         // Act - both workers dequeue concurrently
@@ -369,16 +386,16 @@ public class RedisRequestQueueTests {
         for (int i = 0; i < messageCount; i++) {
             // Alternate between workers
             if (i % 2 == 0) {
-                QueuedMessage<QueuedLookupRequest>? msg = await _queue.DequeueAsync( );
+                QueuedMessage<QueuedLookupRequest>? msg = await _queue.DequeueAsync( TestContext.CancellationToken );
                 if (msg is not null) {
                     worker1Count++;
-                    await _queue.AcknowledgeAsync( msg.MessageId );
+                    await _queue.AcknowledgeAsync( msg.MessageId, TestContext.CancellationToken );
                 }
             } else {
-                QueuedMessage<QueuedLookupRequest>? msg = await worker2Queue.DequeueAsync( );
+                QueuedMessage<QueuedLookupRequest>? msg = await worker2Queue.DequeueAsync( TestContext.CancellationToken );
                 if (msg is not null) {
                     worker2Count++;
-                    await worker2Queue.AcknowledgeAsync( msg.MessageId );
+                    await worker2Queue.AcknowledgeAsync( msg.MessageId, TestContext.CancellationToken );
                 }
             }
         }
@@ -389,7 +406,7 @@ public class RedisRequestQueueTests {
         Assert.IsGreaterThan( 0, worker2Count, "Worker 2 should have processed at least one message" );
 
         // Queue should be empty
-        QueueDepth depth = await _queue.GetDepthAsync( );
+        QueueDepth depth = await _queue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 0, depth.Total );
     }
 
@@ -397,23 +414,24 @@ public class RedisRequestQueueTests {
     /// Verifies that <see cref="RedisRequestQueue{T}.RequeueAsync"/> puts the message back in the queue for retry.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task RequeueAsync_PutsMessageBackForRetry( ) {
         // Arrange
         QueuedLookupRequest request = CreateTestRequest( );
-        await _queue.EnqueueAsync( request, QueuePriority.Interactive );
+        await _queue.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? message = await _queue.DequeueAsync( TestContext.CancellationToken );
         Assert.IsNotNull( message );
 
         // Simulate temporary failure - requeue with delay
-        await _queue.RequeueAsync( message.MessageId, TimeSpan.FromMilliseconds( 100 ) );
+        await _queue.RequeueAsync( message.MessageId, TimeSpan.FromMilliseconds( 100 ), TestContext.CancellationToken );
 
         // Assert - message should be back in queue
-        QueueDepth depth = await _queue.GetDepthAsync( );
+        QueueDepth depth = await _queue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 1, depth.Total );
 
         // Should be able to dequeue again
-        QueuedMessage<QueuedLookupRequest>? requeued = await _queue.DequeueAsync( );
+        QueuedMessage<QueuedLookupRequest>? requeued = await _queue.DequeueAsync( TestContext.CancellationToken );
         Assert.IsNotNull( requeued );
         Assert.AreEqual( request.RequestId, requeued.Payload.RequestId );
     }

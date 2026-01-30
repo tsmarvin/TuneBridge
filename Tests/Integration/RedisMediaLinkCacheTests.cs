@@ -29,6 +29,11 @@ public class RedisMediaLinkCacheTests {
     private const string UserDID = "did:plc:testuser123";
 
     /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Initializes the shared Redis connection for all tests in this class.
     /// </summary>
     /// <param name="_">The test context provided by MSTest (unused).</param>
@@ -77,6 +82,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that <see cref="RedisMediaLinkCache.CacheResultAsync"/> stores lookup keys in Redis.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task CacheResultAsync_StoresLookupKeys_InRedis( ) {
         // Arrange
         MediaLinkResult result = CreateTestResult( "USRC12345678", false );
@@ -107,6 +113,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByISRCAsync"/> returns the cached result.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryGetCachedResultByISRCAsync_ReturnsResult_WhenCached( ) {
         // Arrange
         MediaLinkResult result = CreateTestResult( "ISRC999888777", false );
@@ -136,6 +143,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByUPCAsync"/> returns the cached result.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryGetCachedResultByUPCAsync_ReturnsResult_WhenCached( ) {
         // Arrange
         MediaLinkResult result = CreateTestResult( "123456789012", true );
@@ -164,6 +172,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultAsync"/> returns the cached result by URL.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryGetCachedResultAsync_ReturnsResult_WhenUrlCached( ) {
         // Arrange
         string inputUrl = "https://open.spotify.com/track/abc123";
@@ -195,6 +204,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByCardIdAsync"/> returns the cached result by card ID.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryGetCachedResultByCardIdAsync_ReturnsResult_WhenCached( ) {
         // Arrange
         MediaLinkResult result = CreateTestResult( "CARDTEST123", false );
@@ -227,6 +237,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByProviderIdAsync"/> returns the cached result by provider ID.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryGetCachedResultByProviderIdAsync_ReturnsResult_WhenCached( ) {
         // Arrange
         MediaLinkResult result = CreateTestResult( "PROVIDERTEST", false );
@@ -255,6 +266,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that <see cref="RedisMediaLinkCache.CacheResultAsync"/> cleans up old URL keys when refreshing a cached result.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task CacheResultAsync_CleansUpOldKeys_OnRefresh( ) {
         // Arrange
         MediaLinkResult result1 = CreateTestResult( "REFRESHTEST1", false );
@@ -302,6 +314,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByISRCAsync"/> returns null when the ISRC is not cached.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryGetCachedResultByISRCAsync_ReturnsNull_WhenNotCached( ) {
         // Act
         (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
@@ -315,6 +328,7 @@ public class RedisMediaLinkCacheTests {
     /// Verifies that the cache marks results as stale when they are older than the configured cache duration.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task CheckRecordFreshness_ReturnsStale_WhenOlderThanCacheDays( ) {
         // Arrange
         // Create a result with LookedUpAt set to 8 days ago (older than CacheDays=7)
@@ -346,6 +360,7 @@ public class RedisMediaLinkCacheTests {
     /// already exists with the same RecordUri, avoiding unnecessary Redis writes during cache bootstrap.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task AddInputLinksAsync_SkipsWrite_WhenRecordAlreadyExistsWithSameUri( ) {
         // Arrange
         MediaLinkResult result = CreateTestResult( "SKIPTEST123", false );
@@ -368,7 +383,7 @@ public class RedisMediaLinkCacheTests {
         Assert.IsNotNull( ttlBefore, "ISRC key should exist after first write" );
 
         // Wait a brief moment to ensure TTL would be different if re-written
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
 
         // Second call with same result and recordUri - should skip write but refresh TTL
         await _cache.AddInputLinksAsync( recordUri, result );

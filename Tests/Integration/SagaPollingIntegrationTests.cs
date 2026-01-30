@@ -28,6 +28,11 @@ public class SagaPollingIntegrationTests {
     private RedisSagaStateManager _sagaManager = null!;
 
     /// <summary>
+    /// Gets or sets the test context for the current test.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Initializes the Redis connection for all tests in the class.
     /// </summary>
     /// <param name="_">The test context provided by the test framework (unused).</param>
@@ -75,6 +80,7 @@ public class SagaPollingIntegrationTests {
     /// that are complete but have not had their final result URI set.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetCompletedButUnfinalizedAsync_ReturnsCompleteSagasWithNoFinalUri( ) {
         // Arrange - Create a saga that is complete but not finalized
         string lookupKey = "isrc:USRC12345678";
@@ -84,7 +90,8 @@ public class SagaPollingIntegrationTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Mark provider as complete
@@ -95,7 +102,7 @@ public class SagaPollingIntegrationTests {
             ResultJson: """{"trackId": "abc123"}""",
             CompletedAt: DateTimeOffset.UtcNow,
             ErrorMessage: null
-        ) );
+        ), TestContext.CancellationToken );
 
         // Backdate the saga by modifying the createdAt directly in Redis
         IDatabase db = s_redis!.GetDatabase( );
@@ -108,7 +115,8 @@ public class SagaPollingIntegrationTests {
         // Act - Query for unfinalized sagas with minimum age of 0 seconds
         IReadOnlyList<LookupSagaState> results = await _sagaManager.GetCompletedButUnfinalizedAsync(
             minimumAge: TimeSpan.Zero,
-            limit: 100
+            limit: 100,
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert
@@ -123,6 +131,7 @@ public class SagaPollingIntegrationTests {
     /// that have already had their final result URI set.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetCompletedButUnfinalizedAsync_ExcludesSagasWithFinalUri( ) {
         // Arrange - Create a finalized saga
         string lookupKey = "isrc:USRC12345678";
@@ -132,20 +141,22 @@ public class SagaPollingIntegrationTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
             SupportedProviders.Spotify, true, true, "{}", DateTimeOffset.UtcNow, null
-        ) );
+        ), TestContext.CancellationToken );
 
         // Set final result URI - this should exclude it from polling
-        await _sagaManager.SetFinalResultUriAsync( sagaId, "at://did:plc:test/link/abc" );
+        await _sagaManager.SetFinalResultUriAsync( sagaId, "at://did:plc:test/link/abc", TestContext.CancellationToken );
 
         // Act
         IReadOnlyList<LookupSagaState> results = await _sagaManager.GetCompletedButUnfinalizedAsync(
             minimumAge: TimeSpan.Zero,
-            limit: 100
+            limit: 100,
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert - Should be empty since saga was finalized
@@ -157,6 +168,7 @@ public class SagaPollingIntegrationTests {
     /// that have not yet completed all provider lookups.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetCompletedButUnfinalizedAsync_ExcludesIncompleteSagas( ) {
         // Arrange - Create an incomplete saga
         string lookupKey = "isrc:USRC12345678";
@@ -166,18 +178,20 @@ public class SagaPollingIntegrationTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Add provider but don't complete it
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
             SupportedProviders.Spotify, false, false, null, null, null
-        ) );
+        ), TestContext.CancellationToken );
 
         // Act
         IReadOnlyList<LookupSagaState> results = await _sagaManager.GetCompletedButUnfinalizedAsync(
             minimumAge: TimeSpan.Zero,
-            limit: 100
+            limit: 100,
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert - Should be empty since saga is incomplete
@@ -189,6 +203,7 @@ public class SagaPollingIntegrationTests {
     /// minimum age parameter to avoid processing very recently created sagas.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetCompletedButUnfinalizedAsync_RespectsMinimumAge( ) {
         // Arrange - Create a saga that was just created
         string lookupKey = "isrc:USRC12345678";
@@ -198,17 +213,19 @@ public class SagaPollingIntegrationTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
             SupportedProviders.Spotify, true, true, "{}", DateTimeOffset.UtcNow, null
-        ) );
+        ), TestContext.CancellationToken );
 
         // Act - Query with 15-second minimum age (saga is too young)
         IReadOnlyList<LookupSagaState> results = await _sagaManager.GetCompletedButUnfinalizedAsync(
             minimumAge: TimeSpan.FromSeconds( 15 ),
-            limit: 100
+            limit: 100,
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert - Should be empty since saga is too young
@@ -220,6 +237,7 @@ public class SagaPollingIntegrationTests {
     /// limit parameter to control the number of results returned.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetCompletedButUnfinalizedAsync_RespectsLimit( ) {
         // Arrange - Create multiple sagas
         for (int i = 0; i < 5; i++) {
@@ -230,12 +248,13 @@ public class SagaPollingIntegrationTests {
                 sagaId,
                 lookupKey,
                 LookupRequestType.IsrcLookup,
-                $"USRC{i:D10}"
+                $"USRC{i:D10}",
+                TestContext.CancellationToken
             );
 
             await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
                 SupportedProviders.Spotify, true, true, "{}", DateTimeOffset.UtcNow, null
-            ) );
+            ), TestContext.CancellationToken );
 
             // Backdate the saga
             IDatabase db = s_redis!.GetDatabase( );
@@ -249,7 +268,8 @@ public class SagaPollingIntegrationTests {
         // Act - Query with limit of 3
         IReadOnlyList<LookupSagaState> results = await _sagaManager.GetCompletedButUnfinalizedAsync(
             minimumAge: TimeSpan.Zero,
-            limit: 3
+            limit: 3,
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert - Should only return 3 despite 5 being available
@@ -261,6 +281,7 @@ public class SagaPollingIntegrationTests {
     /// orphaned saga IDs from the pending index when the underlying saga data is missing.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetCompletedButUnfinalizedAsync_CleansUpExpiredSagasFromIndex( ) {
         // Arrange - Add a saga ID to the pending index but don't create the saga itself
         IDatabase db = s_redis!.GetDatabase( );
@@ -271,9 +292,10 @@ public class SagaPollingIntegrationTests {
         Assert.IsTrue( pendingBefore.Any( v => v.ToString( ) == "expired-saga-id" ) );
 
         // Act - Query should clean up the orphaned index entry
-        IReadOnlyList<LookupSagaState> results = await _sagaManager.GetCompletedButUnfinalizedAsync(
+        _ = await _sagaManager.GetCompletedButUnfinalizedAsync(
             minimumAge: TimeSpan.Zero,
-            limit: 100
+            limit: 100,
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert - Orphaned entry should be removed from index
@@ -286,12 +308,13 @@ public class SagaPollingIntegrationTests {
     /// to the pending index set in Redis.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task AddToPendingIndexAsync_AddsSagaToSet( ) {
         // Arrange
         string sagaId = "test-saga-id";
 
         // Act
-        await _sagaManager.AddToPendingIndexAsync( sagaId );
+        await _sagaManager.AddToPendingIndexAsync( sagaId, TestContext.CancellationToken );
 
         // Assert
         IDatabase db = s_redis!.GetDatabase( );
@@ -304,6 +327,7 @@ public class SagaPollingIntegrationTests {
     /// from the pending index set in Redis.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task RemoveFromPendingIndexAsync_RemovesSagaFromSet( ) {
         // Arrange
         string sagaId = "test-saga-id";
@@ -311,7 +335,7 @@ public class SagaPollingIntegrationTests {
         _ = await db.SetAddAsync( "saga:pending", sagaId );
 
         // Act
-        await _sagaManager.RemoveFromPendingIndexAsync( sagaId );
+        await _sagaManager.RemoveFromPendingIndexAsync( sagaId, TestContext.CancellationToken );
 
         // Assert
         RedisValue[] members = await db.SetMembersAsync( "saga:pending" );
@@ -323,6 +347,7 @@ public class SagaPollingIntegrationTests {
     /// created sagas to the pending index for polling discovery.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetOrCreateAsync_AutomaticallyAddsToPendingIndex( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -333,7 +358,8 @@ public class SagaPollingIntegrationTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Assert - Should be in pending index
@@ -347,6 +373,7 @@ public class SagaPollingIntegrationTests {
     /// from the pending index since it no longer needs polling.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task SetFinalResultUriAsync_RemovesFromPendingIndex( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -356,7 +383,8 @@ public class SagaPollingIntegrationTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Verify it's in the index
@@ -365,7 +393,7 @@ public class SagaPollingIntegrationTests {
         Assert.IsTrue( membersBefore.Any( m => m.ToString( ) == sagaId ) );
 
         // Act
-        await _sagaManager.SetFinalResultUriAsync( sagaId, "at://did:plc:test/link/abc" );
+        await _sagaManager.SetFinalResultUriAsync( sagaId, "at://did:plc:test/link/abc", TestContext.CancellationToken );
 
         // Assert - Should be removed from pending index
         RedisValue[] membersAfter = await db.SetMembersAsync( "saga:pending" );
@@ -377,6 +405,7 @@ public class SagaPollingIntegrationTests {
     /// index when deleting the saga state.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DeleteAsync_RemovesFromPendingIndex( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -386,7 +415,8 @@ public class SagaPollingIntegrationTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Verify it's in the index
@@ -395,7 +425,7 @@ public class SagaPollingIntegrationTests {
         Assert.IsTrue( membersBefore.Any( m => m.ToString( ) == sagaId ) );
 
         // Act
-        _ = await _sagaManager.DeleteAsync( sagaId );
+        _ = await _sagaManager.DeleteAsync( sagaId, TestContext.CancellationToken );
 
         // Assert - Should be removed from pending index
         RedisValue[] membersAfter = await db.SetMembersAsync( "saga:pending" );

@@ -6,6 +6,8 @@ using BridgeBeats.Services.LinkResolver;
 using Microsoft.Extensions.Logging;
 using Moq;
 
+#pragma warning disable MSTEST0049 // ILookupOrchestrator methods do not have CancellationToken overloads
+
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
@@ -29,6 +31,11 @@ public class LookupOrchestratorTests {
     private const string TestTitle = "Test Song";
     private const string TestArtist = "Test Artist";
     private const string TestRecordUri = "at://did:plc:test/com.bridgebeats.media.link/123abc";
+
+    /// <summary>
+    /// Gets or sets the test context for the current test.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
     /// Initializes mocks and test dependencies before each test.
@@ -208,6 +215,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync returns an empty result when ISRC is null.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WithNullIsrc_ShouldReturnEmptyResult( ) {
         // Act
         LookupResult result = await _orchestrator.LookupByIsrcAsync( null! );
@@ -221,6 +229,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync returns an empty result when ISRC is empty.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WithEmptyIsrc_ShouldReturnEmptyResult( ) {
         // Act
         LookupResult result = await _orchestrator.LookupByIsrcAsync( string.Empty );
@@ -234,6 +243,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync returns an empty result when ISRC contains only whitespace.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WithWhitespaceIsrc_ShouldReturnEmptyResult( ) {
         // Act
         LookupResult result = await _orchestrator.LookupByIsrcAsync( "   " );
@@ -247,6 +257,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync returns cached result when cache hit occurs.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WithCacheHit_ShouldReturnCachedResult( ) {
         // Arrange
         MediaLinkResult cachedResult = CreateMediaLinkResult( );
@@ -270,6 +281,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync creates a saga and enqueues request when cache misses and deduplication is acquired.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WithCacheMissAndDeduplicationAcquired_ShouldCreateSagaAndEnqueue( ) {
         // Arrange
         SetupCacheMiss( );
@@ -303,6 +315,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync waits for completion when request is already in-flight.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WithInFlightRequest_ShouldWaitForCompletion( ) {
         // Arrange
         SetupCacheMiss( );
@@ -332,6 +345,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync retries cache check when in-flight request times out.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WithInFlightRequestAndTimeout_ShouldRetryCache( ) {
         // Arrange
         MediaLinkResult cachedResult = CreateMediaLinkResult( );
@@ -362,6 +376,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByUpcAsync returns an empty result when UPC is null.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByUpcAsync_WithNullUpc_ShouldReturnEmptyResult( ) {
         // Act
         LookupResult result = await _orchestrator.LookupByUpcAsync( null! );
@@ -375,6 +390,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByUpcAsync returns cached result when cache hit occurs.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByUpcAsync_WithCacheHit_ShouldReturnCachedResult( ) {
         // Arrange
         MediaLinkResult cachedResult = CreateMediaLinkResult( );
@@ -394,6 +410,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByUpcAsync queues the request with IsAlbum set to true when cache misses.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByUpcAsync_WithCacheMiss_ShouldQueueWithIsAlbumTrue( ) {
         // Arrange
         SetupCacheMissForUpc( );
@@ -424,6 +441,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByMetadataAsync returns an empty result when title is null.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByMetadataAsync_WithNullTitle_ShouldReturnEmptyResult( ) {
         // Act
         LookupResult result = await _orchestrator.LookupByMetadataAsync( null!, TestArtist );
@@ -436,6 +454,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByMetadataAsync returns an empty result when artist is null.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByMetadataAsync_WithNullArtist_ShouldReturnEmptyResult( ) {
         // Act
         LookupResult result = await _orchestrator.LookupByMetadataAsync( TestTitle, null! );
@@ -448,6 +467,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByMetadataAsync returns cached result when cache hit occurs.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByMetadataAsync_WithCacheHit_ShouldReturnCachedResult( ) {
         // Arrange
         MediaLinkResult cachedResult = CreateMediaLinkResult( );
@@ -466,6 +486,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByMetadataAsync queues the request with title and artist metadata when cache misses.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByMetadataAsync_WithCacheMiss_ShouldQueueWithTitleAndArtist( ) {
         // Arrange
         SetupCacheMissForMetadata( );
@@ -500,6 +521,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByProviderIdAsync returns an empty result when provider ID is null.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByProviderIdAsync_WithNullProviderId_ShouldReturnEmptyResult( ) {
         // Act
         LookupResult result = await _orchestrator.LookupByProviderIdAsync( null!, SupportedProviders.Spotify, false );
@@ -512,6 +534,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByProviderIdAsync uses SongIdLookup type for track lookups.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByProviderIdAsync_ForTrack_ShouldUseSongIdLookupType( ) {
         // Arrange
         SetupCacheMissForProviderId( );
@@ -538,6 +561,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByProviderIdAsync uses AlbumIdLookup type for album lookups.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByProviderIdAsync_ForAlbum_ShouldUseAlbumIdLookupType( ) {
         // Arrange
         SetupCacheMissForProviderId( );
@@ -568,6 +592,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByContentAsync returns an empty collection when content is null.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByContentAsync_WithNullContent_ShouldReturnEmpty( ) {
         // Act
         List<LookupResult> results = [];
@@ -583,6 +608,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByContentAsync returns an empty collection when content is empty.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByContentAsync_WithEmptyContent_ShouldReturnEmpty( ) {
         // Act
         List<LookupResult> results = [];
@@ -598,6 +624,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByContentAsync returns a result when content contains a Spotify URL.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByContentAsync_WithSpotifyUrl_ShouldReturnResult( ) {
         // Arrange
         string content = "Check out this song: https://open.spotify.com/track/abc123";
@@ -626,6 +653,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByContentAsync returns a result when content contains an Apple Music URL.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByContentAsync_WithAppleMusicUrl_ShouldReturnResult( ) {
         // Arrange
         string content = "Check out: https://music.apple.com/us/album/test/12345";
@@ -653,6 +681,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByContentAsync returns a result when content contains a Tidal URL.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByContentAsync_WithTidalUrl_ShouldReturnResult( ) {
         // Arrange
         string content = "Listen here: https://tidal.com/browse/track/12345";
@@ -680,6 +709,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByContentAsync deduplicates identical URLs in the content.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByContentAsync_WithMultipleUrls_ShouldDeduplicateSameLinks( ) {
         // Arrange
         string url = "https://open.spotify.com/track/abc123";
@@ -708,6 +738,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByContentAsync returns an empty collection when content has no music URLs.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByContentAsync_WithNoMusicUrls_ShouldReturnEmpty( ) {
         // Arrange
         string content = "Check out https://example.com and https://github.com";
@@ -730,6 +761,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync returns a partial result with rate limit info when saga indicates partial completion.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WhenSagaReturnsPartialResult_ShouldReturnPartialWithInfo( ) {
         // Arrange
         SetupCacheMiss( );
@@ -778,6 +810,7 @@ public class LookupOrchestratorTests {
     /// Verifies that LookupByIsrcAsync releases the deduplication lock when an error occurs.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_OnError_ShouldReleaseDeduplicationLock( ) {
         // Arrange
         SetupCacheMiss( );

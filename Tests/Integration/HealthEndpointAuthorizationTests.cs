@@ -61,12 +61,13 @@ public class HealthEndpointAuthorizationTests {
     /// In production, this would be restricted to internal Docker network IPs.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task HealthEndpoint_FromTestClient_ReturnsOk( ) {
         // Arrange
         // The test client appears as localhost/internal to the middleware
 
         // Act
-        HttpResponseMessage response = await s_client!.GetAsync( "/health" );
+        HttpResponseMessage response = await s_client!.GetAsync( "/health", TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
@@ -76,10 +77,11 @@ public class HealthEndpointAuthorizationTests {
     /// Tests that the health endpoint returns JSON with expected structure.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task HealthEndpoint_ReturnsValidJson( ) {
         // Arrange & Act
-        HttpResponseMessage response = await s_client!.GetAsync( "/health" );
-        string content = await response.Content.ReadAsStringAsync( );
+        HttpResponseMessage response = await s_client!.GetAsync( "/health", TestContext.CancellationToken );
+        string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
@@ -91,6 +93,7 @@ public class HealthEndpointAuthorizationTests {
     /// Tests that non-health endpoints are not affected by the health endpoint middleware.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task NonHealthEndpoint_NotAffectedByMiddleware( ) {
         // Arrange & Act
         HttpResponseMessage response = await s_client!.GetAsync( "/", TestContext.CancellationToken );

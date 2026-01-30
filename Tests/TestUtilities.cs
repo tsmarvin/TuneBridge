@@ -90,7 +90,7 @@ public static class SharedTestInfrastructure {
     [AssemblyCleanup]
     public static async Task AssemblyCleanup( ) {
         if (s_redisContainer is not null) {
-            await s_redisContainer.StopAsync( );
+            await s_redisContainer.StopAsync( CancellationToken.None );
             await s_redisContainer.DisposeAsync( );
         }
     }

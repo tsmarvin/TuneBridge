@@ -33,6 +33,11 @@ public class SagaCoordinatorBackgroundServiceTests {
     private const string TestRecordUri = "at://did:plc:test/com.bridgebeats.medialink/abc123";
 
     /// <summary>
+    /// Gets or sets the test context for the current test run.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Initializes mocks before each test.
     /// </summary>
     [TestInitialize]
@@ -221,6 +226,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     /// Verifies that the service processes unfinalized sagas during polling.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task Polling_WhenUnfinalizedSagasExist_ShouldProcessThem( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
@@ -242,7 +248,7 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Act - Start and quickly cancel after one poll cycle
         using CancellationTokenSource cts = new( );
         _ = service.StartAsync( cts.Token );
-        await Task.Delay( 100 ); // Give time for initial poll
+        await Task.Delay( 100, TestContext.CancellationToken ); // Give time for initial poll
         await cts.CancelAsync( );
 
         try {
@@ -266,6 +272,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     /// Verifies that the service does not write anything when no unfinalized sagas exist.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task Polling_WhenNoUnfinalizedSagas_ShouldNotWriteAnything( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
@@ -280,7 +287,7 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         _ = service.StartAsync( cts.Token );
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
         await cts.CancelAsync( );
 
         try {
@@ -300,6 +307,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     /// Verifies that the service writes final results when sagas are complete.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task Polling_WhenSagaIsComplete_ShouldWriteFinalResult( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
@@ -321,7 +329,7 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         _ = service.StartAsync( cts.Token );
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
         await cts.CancelAsync( );
 
         try {
@@ -359,6 +367,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     /// Verifies that the service writes partial results first when sagas are partial.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task Polling_WhenSagaIsPartialWithNoPartialUri_ShouldWritePartialFirst( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
@@ -383,7 +392,7 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         _ = service.StartAsync( cts.Token );
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
         await cts.CancelAsync( );
 
         try {
@@ -409,6 +418,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     /// Verifies that the service continues processing when a write fails.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task Polling_WhenWriteFails_ShouldContinueToNextSaga( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
@@ -436,7 +446,7 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         _ = service.StartAsync( cts.Token );
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
         await cts.CancelAsync( );
 
         try {
@@ -457,6 +467,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     /// Verifies that failed sagas release the lock with null and delete the saga.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task WriteFinalResult_WhenNoSuccessfulResults_ShouldReleaseWithNullAndDeleteSaga( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
@@ -486,7 +497,7 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         _ = service.StartAsync( cts.Token );
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
         await cts.CancelAsync( );
 
         try {
