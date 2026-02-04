@@ -64,7 +64,7 @@ foreach ($Project in $Projects) {
     Copy-Item -Path $ProjLock -Destination $LockBackup
 
     # Regenerate lock files
-    dotnet restore $ProjLock.FullName --force-evaluate -r $Runtime
+    dotnet restore $Project.FullName --force-evaluate -r $Runtime
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     # Validate only platform-specific packages changed using the validation script
@@ -85,7 +85,7 @@ foreach ($Project in $Projects) {
 }
 
 # Copy entrypoint script
-$EntrypointSrc = Join-Path -Path $ScriptDir -ChildPath 'entrypoint.sh'
+$EntrypointSrc = Join-Path -Path $PSScriptRoot -ChildPath 'entrypoint.sh'
 $EntrypointDst = Join-Path -Path $PublishDir -ChildPath 'entrypoint.sh'
 Copy-Item $EntrypointSrc $EntrypointDst
 
