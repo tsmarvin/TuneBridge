@@ -320,6 +320,7 @@ public partial class AccountController(
     /// <param name="atProtoOAuth">The ATProto OAuth service.</param>
     /// <returns>Redirect to authorization server or error.</returns>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "account/login-atproto" )]
     public async Task<IActionResult> LoginWithAtProto(
         [FromBody] AtProtoLoginRequest request,
