@@ -7,6 +7,7 @@ using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewEngines;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
@@ -466,5 +467,84 @@ namespace BridgeBeats.Web.Controllers {
         public IActionResult Error( ) {
             return View( new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier } );
         }
+
+        /// <summary>
+        /// Browser-friendly JSON endpoint for logged-in users to lookup by ISRC.
+        /// Uses cookie authentication and requires antiforgery token in X-XSRF-TOKEN header.
+        /// </summary>
+        /// <param name="req">ISRC code to look up.</param>
+        /// <returns>JSON response with lookup results.</returns>
+        [Authorize]
+        [HttpPost( "/lookup/browser/isrc" )]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BrowserLookupByIsrc( [FromBody] BrowserIsrcRequest req ) {
+            if (mediaLinkService == null) {
+                return BadRequest( new { error = "Music lookup service not available" } );
+            }
+
+            if (string.IsNullOrWhiteSpace( req.Isrc )) {
+                return BadRequest( new { error = "ISRC is required" } );
+            }
+
+            MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( req.Isrc );
+            return Ok( result ?? new MediaLinkResult { Messages = ["No results found for ISRC."] } );
+        }
+
+        /// <summary>
+        /// Browser-friendly JSON endpoint for logged-in users to lookup by UPC.
+        /// Uses cookie authentication and requires antiforgery token in X-XSRF-TOKEN header.
+        /// </summary>
+        /// <param name="req">UPC code to look up.</param>
+        /// <returns>JSON response with lookup results.</returns>
+        [Authorize]
+        [HttpPost( "/lookup/browser/upc" )]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BrowserLookupByUpc( [FromBody] BrowserUpcRequest req ) {
+            if (mediaLinkService == null) {
+                return BadRequest( new { error = "Music lookup service not available" } );
+            }
+
+            if (string.IsNullOrWhiteSpace( req.Upc )) {
+                return BadRequest( new { error = "UPC is required" } );
+            }
+
+            MediaLinkResult? result = await mediaLinkService.GetInfoByUPCAsync( req.Upc );
+            return Ok( result ?? new MediaLinkResult { Messages = ["No results found for UPC."] } );
+        }
+
+        /// <summary>
+        /// Browser-friendly JSON endpoint for logged-in users to lookup by title/artist.
+        /// Uses cookie authentication and requires antiforgery token in X-XSRF-TOKEN header.
+        /// </summary>
+        /// <param name="req">Title and artist to search for.</param>
+        /// <returns>JSON response with lookup results.</returns>
+        [Authorize]
+        [HttpPost( "/lookup/browser/title" )]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BrowserLookupByTitle( [FromBody] BrowserTitleRequest req ) {
+            if (mediaLinkService == null) {
+                return BadRequest( new { error = "Music lookup service not available" } );
+            }
+
+            if (string.IsNullOrWhiteSpace( req.Title ) || string.IsNullOrWhiteSpace( req.Artist )) {
+                return BadRequest( new { error = "Title and artist are required" } );
+            }
+
+            MediaLinkResult? result = await mediaLinkService.GetInfoAsync( req.Title, req.Artist );
+            return Ok( result ?? new MediaLinkResult { Messages = ["No results found."] } );
+        }
     }
+
+    /// <summary>Request for browser-based ISRC lookup.</summary>
+    /// <param name="Isrc">ISRC code.</param>
+    public record BrowserIsrcRequest( string Isrc );
+
+    /// <summary>Request for browser-based UPC lookup.</summary>
+    /// <param name="Upc">UPC code.</param>
+    public record BrowserUpcRequest( string Upc );
+
+    /// <summary>Request for browser-based title/artist lookup.</summary>
+    /// <param name="Title">Track or album title.</param>
+    /// <param name="Artist">Artist name.</param>
+    public record BrowserTitleRequest( string Title, string Artist );
 }
