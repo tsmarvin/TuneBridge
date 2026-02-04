@@ -33,9 +33,12 @@ RUN DOTNET_RID="linux-x64"; \
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
+ARG TARGETARCH
 
 # Publish the AppHost (orchestrator) - this includes all referenced projects
-RUN dotnet publish "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -o /app/publish/apphost
+RUN DOTNET_RID="linux-x64"; \
+    if [ "$TARGETARCH" = "arm64" ]; then DOTNET_RID="linux-arm64"; fi; \
+    dotnet publish "BridgeBeats.AppHost/BridgeBeats.AppHost.csproj" -c $BUILD_CONFIGURATION -r $DOTNET_RID --self-contained -o /app/publish/apphost
 
 # Also publish individual projects for direct execution by Aspire
 RUN dotnet publish "BridgeBeats.Web/BridgeBeats.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish/web
