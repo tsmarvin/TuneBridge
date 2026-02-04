@@ -25,6 +25,7 @@ public partial class PlaylistController( IPlaylistService? playlistService, IOpe
     /// <param name="request">Request containing card IDs and optional metadata.</param>
     /// <returns>JSON response with the playlist URL.</returns>
     [HttpPost( "create" )]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlaylist( [FromBody] CreatePlaylistRequest request ) {
         if (_playlistService?.IsEnabled != true) {
             return BadRequest( new { error = "Playlist service not available" } );

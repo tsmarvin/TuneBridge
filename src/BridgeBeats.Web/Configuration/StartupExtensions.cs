@@ -103,6 +103,11 @@ namespace BridgeBeats.Web.Configuration {
                 config.GetSection( "BridgeBeats:Queue" )
             );
 
+            // Configure antiforgery to accept tokens in headers for JSON requests
+            _ = services.AddAntiforgery( options => {
+                options.HeaderName = "X-XSRF-TOKEN";
+            } );
+
             ConfigureDatabases( services, settings );
             ConfigureIdentity( services );
             ConfigureApiKeyAuth( services, settings );

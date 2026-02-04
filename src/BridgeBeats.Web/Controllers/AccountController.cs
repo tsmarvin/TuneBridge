@@ -3,6 +3,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Identity;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -64,6 +65,7 @@ public partial class AccountController(
     /// <response code="200">User successfully registered.</response>
     /// <response code="400">Registration failed (validation errors or duplicate user).</response>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "account/register" )]
     public async Task<IActionResult> Register( [FromBody] RegisterRequest request ) {
         if (!ModelState.IsValid) {
@@ -110,6 +112,7 @@ public partial class AccountController(
     /// <response code="200">Login successful.</response>
     /// <response code="401">Invalid credentials.</response>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "account/login" )]
     public async Task<IActionResult> Login( [FromBody] LoginRequest request ) {
         if (!ModelState.IsValid) {
@@ -161,10 +164,24 @@ public partial class AccountController(
     /// Logs out the currently authenticated user.
     /// </summary>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "account/logout" )]
     public async Task<IActionResult> Logout( ) {
         await signInManager.SignOutAsync( );
         return Ok( new { message = "Logged out successfully" } );
+    }
+
+    /// <summary>
+    /// Gets an antiforgery token for JavaScript requests.
+    /// This endpoint allows browser-based JavaScript to obtain a CSRF token
+    /// that must be included in the X-XSRF-TOKEN header for POST requests.
+    /// </summary>
+    /// <returns>Antiforgery token for use in headers.</returns>
+    [HttpGet]
+    [Route( "account/antiforgery-token" )]
+    public IActionResult GetAntiforgeryToken( [FromServices] Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery ) {
+        AntiforgeryTokenSet tokens = antiforgery.GetAndStoreTokens( HttpContext );
+        return Ok( new { token = tokens.RequestToken } );
     }
 
     /// <summary>
@@ -192,6 +209,7 @@ public partial class AccountController(
     /// <response code="401">User not authenticated.</response>
     [Authorize]
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "account/regenerate-api-key" )]
     public async Task<IActionResult> RegenerateApiKey( ) {
         ApplicationUser? user = await userManager.GetUserAsync( User );
@@ -224,6 +242,7 @@ public partial class AccountController(
     /// <response code="401">User not authenticated.</response>
     [Authorize]
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "account/download-data" )]
     public async Task<IActionResult> DownloadPersonalData( [FromServices] IPlaylistService? playlistService ) {
         ApplicationUser? user = await userManager.GetUserAsync( User );
@@ -285,6 +304,7 @@ public partial class AccountController(
     /// <response code="400">Failed to delete account.</response>
     [Authorize]
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "account/delete" )]
     public async Task<IActionResult> DeleteAccount( ) {
         ApplicationUser? user = await userManager.GetUserAsync( User );

@@ -63,6 +63,7 @@ public partial class PlaylistsController( IPlaylistService? playlistService, ILo
     /// </summary>
     /// <param name="id">The playlist ID to delete.</param>
     [HttpPost( "{id}/delete" )]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete( string id ) {
         if (_playlistService?.IsEnabled != true) {
             return BadRequest( new { error = "Playlist service not available" } );

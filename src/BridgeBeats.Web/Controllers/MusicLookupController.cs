@@ -1,3 +1,4 @@
+using AspNetCore.Authentication.ApiKey;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -8,10 +9,12 @@ namespace BridgeBeats.Web.Controllers;
 /// <summary>
 /// REST API endpoints for cross-platform music lookup and link translation. These endpoints enable
 /// clients to convert music links between services (Spotify ↔ Apple Music) or search for tracks/albums
-/// by metadata. Used by the web interface and can be consumed by third-party integrations.
+/// by metadata. Requires API key authentication via X-API-Key header.
 /// </summary>
 /// <param name="svc">Injected service that handles provider queries and result aggregation.</param>
 [ApiController]
+[Authorize( AuthenticationSchemes = ApiKeyDefaults.AuthenticationScheme )]
+[IgnoreAntiforgeryToken]
 [Route( "music/lookup" )]
 public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
 
@@ -46,8 +49,7 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Successfully parsed and looked up all URLs.</response>
     /// <response code="400">Invalid request body or malformed URLs.</response>
-    /// <response code="401">Unauthorized - authentication required.</response>
-    [Authorize]
+    /// <response code="401">Unauthorized - API key required.</response>
     [HttpPost( "urlList" )]
     public async Task<IActionResult> ByUrlList( [FromBody] UrlReq req ) {
         List<MediaLinkResult> results = [];
@@ -87,8 +89,7 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Lookup completed.</response>
     /// <response code="400">Invalid ISRC format in request body.</response>
-    /// <response code="401">Unauthorized - authentication required.</response>
-    [Authorize]
+    /// <response code="401">Unauthorized - API key required.</response>
     [HttpPost( "isrc" )]
     public async Task<IActionResult> ByIsrc( [FromBody] IsrcReq req ) {
         MediaLinkResult? result = await _svc.GetInfoByISRCAsync( req.Isrc );
@@ -107,8 +108,7 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Lookup completed.</response>
     /// <response code="400">Invalid UPC format in request body.</response>
-    /// <response code="401">Unauthorized - authentication required.</response>
-    [Authorize]
+    /// <response code="401">Unauthorized - API key required.</response>
     [HttpPost( "upc" )]
     public async Task<IActionResult> ByUpc( [FromBody] UpcReq req ) {
         MediaLinkResult? result = await _svc.GetInfoByUPCAsync( req.Upc );
@@ -126,8 +126,7 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Search completed.</response>
     /// <response code="400">Missing or invalid title/artist in request body.</response>
-    /// <response code="401">Unauthorized - authentication required.</response>
-    [Authorize]
+    /// <response code="401">Unauthorized - API key required.</response>
     [HttpPost( "title" )]
     public async Task<IActionResult> ByTitle( [FromBody] TitleReq req ) {
         MediaLinkResult? result = await _svc.GetInfoAsync( req.Title, req.Artist );
