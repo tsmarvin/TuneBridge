@@ -15,6 +15,10 @@ read_secret() {
 export DOTNET_ENVIRONMENT="${DOTNET_ENVIRONMENT:-Production}"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-$DOTNET_ENVIRONMENT}"
 
+# ---- Configure Aspire Dashboard endpoints ----
+export ASPNETCORE_URLS="${ASPNETCORE_URLS:-http://+:18888}"
+export ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL="${ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL:-http://+:18889}"
+
 # ---- Configure defaults ----
 BASEURL="${BASEURL:-"bridgebeats.link"}"
 NODE_NUMBER="${NODE_NUMBER:-0}"
