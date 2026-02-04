@@ -62,9 +62,11 @@ Write-Host "Platform transition: $FromPlatform -> $ToPlatform"
 # Platform-specific package patterns that are allowed to differ
 # These packages have platform-specific variants that will change when switching RIDs
 # We allow any valid platform suffix since we support multiple target platforms
+# Microsoft.NET.ILLink.Tasks is implicitly added by .NET 10 SDK when PublishSingleFile+SelfContained are enabled
 $AllowedPackagePatterns = @(
     '^Aspire\.Dashboard\.Sdk\.(linux|win|osx)-(x64|x86|arm64|arm)$',
-    '^Aspire\.Hosting\.Orchestration\.(linux|win|osx)-(x64|x86|arm64|arm)$'
+    '^Aspire\.Hosting\.Orchestration\.(linux|win|osx)-(x64|x86|arm64|arm)$',
+    '^Microsoft\.NET\.ILLink\.Tasks$'
 )
 
 function Test-AllowedPackage {
