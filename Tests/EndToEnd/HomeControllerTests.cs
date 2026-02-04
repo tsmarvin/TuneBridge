@@ -11,6 +11,7 @@ namespace BridgeBeats.Tests.EndToEnd;
 public class HomeControllerTests {
     private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
+    private static string? s_antiforgeryToken;
 
     /// <summary>
     /// Initializes the test factory and HTTP client for all tests in this class.
@@ -47,6 +48,9 @@ public class HomeControllerTests {
 
         // Initialize databases after services are configured
         await s_factory.InitializeDatabasesAsync( );
+
+        // Fetch antiforgery token for POST requests
+        s_antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync( s_client );
     }
 
     /// <summary>
@@ -136,7 +140,8 @@ public class HomeControllerTests {
         } );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsync("/Home/LookupResults", formData, TestContext.CancellationToken );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            s_client!, "/Home/LookupResults", formData, s_antiforgeryToken!, TestContext.CancellationToken );
         string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
@@ -156,7 +161,8 @@ public class HomeControllerTests {
         } );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsync("/Home/LookupResultsByIsrc", formData, TestContext.CancellationToken );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            s_client!, "/Home/LookupResultsByIsrc", formData, s_antiforgeryToken!, TestContext.CancellationToken );
         string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
@@ -176,7 +182,8 @@ public class HomeControllerTests {
         } );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsync("/Home/LookupResultsByUpc", formData, TestContext.CancellationToken );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            s_client!, "/Home/LookupResultsByUpc", formData, s_antiforgeryToken!, TestContext.CancellationToken );
         string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
@@ -197,7 +204,8 @@ public class HomeControllerTests {
         } );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsync("/Home/LookupResultsByTitle", formData, TestContext.CancellationToken );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            s_client!, "/Home/LookupResultsByTitle", formData, s_antiforgeryToken!, TestContext.CancellationToken );
         string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
@@ -218,7 +226,8 @@ public class HomeControllerTests {
         } );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsync("/Home/LookupResultsByIsrc", formData, TestContext.CancellationToken );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            s_client!, "/Home/LookupResultsByIsrc", formData, s_antiforgeryToken!, TestContext.CancellationToken );
         string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
@@ -242,7 +251,8 @@ public class HomeControllerTests {
         } );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsync("/Home/LookupResultsByUpc", formData, TestContext.CancellationToken );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            s_client!, "/Home/LookupResultsByUpc", formData, s_antiforgeryToken!, TestContext.CancellationToken );
         string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
@@ -267,7 +277,8 @@ public class HomeControllerTests {
         } );
 
         // Act
-        HttpResponseMessage response = await s_client!.PostAsync("/Home/LookupResultsByTitle", formData, TestContext.CancellationToken );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            s_client!, "/Home/LookupResultsByTitle", formData, s_antiforgeryToken!, TestContext.CancellationToken );
         string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert

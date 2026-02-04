@@ -65,23 +65,13 @@ public class MusicLookupControllerTests {
         string testEmail = $"musiclookup-test-{Guid.NewGuid():N}@test.com";
         string testPassword = "TestPassword123!";
 
-        // Get antiforgery token for registration
-        HttpResponseMessage tokenResponse = await registrationClient.GetAsync( "/account/antiforgery-token", context.CancellationToken );
-        JsonElement? tokenResult = await tokenResponse.Content.ReadFromJsonAsync<JsonElement>( context.CancellationToken );
-        string? antiforgeryToken = tokenResult?.GetProperty( "token" ).GetString( );
-
-        if (string.IsNullOrEmpty( antiforgeryToken )) {
-            throw new Exception( "Failed to obtain antiforgery token" );
-        }
+        // Get antiforgery token for registration using shared helper
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync( registrationClient, context.CancellationToken );
 
         // Register user via the actual API endpoint with antiforgery token
         var registerRequest = new { Email = testEmail, Password = testPassword };
-        var request = new HttpRequestMessage( HttpMethod.Post, "/account/register" ) {
-            Content = JsonContent.Create( registerRequest )
-        };
-        request.Headers.Add( "X-XSRF-TOKEN", antiforgeryToken );
-
-        HttpResponseMessage registerResponse = await registrationClient.SendAsync( request, context.CancellationToken );
+        HttpResponseMessage registerResponse = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            registrationClient, "/account/register", JsonContent.Create( registerRequest ), antiforgeryToken, context.CancellationToken );
 
         if (!registerResponse.IsSuccessStatusCode) {
             string errorContent = await registerResponse.Content.ReadAsStringAsync( context.CancellationToken );
