@@ -11,6 +11,10 @@ read_secret() {
     fi
 }
 
+# ---- Configure .NET environment (Production if not set) ----
+export DOTNET_ENVIRONMENT="${DOTNET_ENVIRONMENT:-Production}"
+export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-$DOTNET_ENVIRONMENT}"
+
 # ---- Configure defaults ----
 BASEURL="${BASEURL:-"bridgebeats.link"}"
 NODE_NUMBER="${NODE_NUMBER:-0}"
@@ -164,5 +168,5 @@ export Parameters__ResilienceTotalTimeoutMinutes="$RESILIENCE_TOTAL_TIMEOUT_MINU
 export Parameters__ResilienceAttemptTimeoutSeconds="$RESILIENCE_ATTEMPT_TIMEOUT_SECONDS"
 
 # 4) Launch the BridgeBeats AppHost (orchestrator)
-echo "Starting BridgeBeats AppHost..."
-exec dotnet /app/apphost/BridgeBeats.AppHost.dll
+echo "Starting BridgeBeats AppHost (Environment: $DOTNET_ENVIRONMENT)..."
+exec dotnet /src/BridgeBeats.AppHost/BridgeBeats.AppHost.dll

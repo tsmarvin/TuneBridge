@@ -24,9 +24,9 @@ FROM base AS final
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/data && chown -R $APP_UID:$APP_UID /app/data
 
-# Copy application files
-WORKDIR /app
-COPY --from=build /src/publish .
+# Copy published application (publish/src/* -> /src/*, publish/entrypoint.sh -> /entrypoint.sh)
+COPY --from=build /src/publish/src /src
+COPY --from=build /src/publish/entrypoint.sh /entrypoint.sh
 
 # Expose ports
 # 10000: BridgeBeats main web application
@@ -35,4 +35,4 @@ EXPOSE 10000
 EXPOSE 15000-15099
 
 # Set the AppHost as the entrypoint via the startup script
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]

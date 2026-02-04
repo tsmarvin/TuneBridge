@@ -41,42 +41,31 @@ if (Test-Path (Join-Path -Path $RepoRoot -ChildPath 'BridgeBeats.AppHost')) {
     $PublishDir = Join-Path -Path $RepoRoot -ChildPath 'publish'
 }
 
-# Clean and create publish directory
+# Clean and create publish directory with src subdirectory
 if (Test-Path $PublishDir) {
     Remove-Item -Path $PublishDir -Recurse -Force
 }
-New-Item -Path $PublishDir -ItemType Directory | Out-Null
+$PublishSrcDir = Join-Path -Path $PublishDir -ChildPath 'src'
+New-Item -Path $PublishSrcDir -ItemType Directory -Force | Out-Null
 
-# Project definitions: [ProjectName, OutputFolder]
-# Note: AppHost is handled separately due to Aspire.AppHost.Sdk special behavior
-$Projects = @(
-    @('BridgeBeats.Web', 'web'),
-    @('BridgeBeats.Worker.Spotify', 'worker-spotify'),
-    @('BridgeBeats.Worker.AppleMusic', 'worker-applemusic'),
-    @('BridgeBeats.Worker.Tidal', 'worker-tidal'),
-    @('BridgeBeats.Worker.Discord', 'worker-discord'),
-    @('BridgeBeats.Worker.SagaCoordinator', 'worker-sagacoordinator'),
-    @('BridgeBeats.Worker.JetStreamWatcher', 'worker-jetstreamwatcher'),
-    @('BridgeBeats.Worker.CacheBootstrap', 'worker-cachebootstrap')
-)
-
-$AppHostProj = Join-Path $SrcDir 'BridgeBeats.AppHost' 'BridgeBeats.AppHost.csproj'
+# Find the first .csproj to use for restore (AppHost references all projects)
+$AppHostProj = Get-ChildItem -Path $SrcDir -Filter 'BridgeBeats.AppHost.csproj' -Recurse | Select-Object -First 1
 
 # Try locked-mode restore first; if it fails due to RID mismatch, regenerate and validate
 Write-Host 'Restoring packages (locked-mode)...' -ForegroundColor Cyan
-$restoreResult = dotnet restore $AppHostProj --locked-mode -r $Runtime 2>&1
+$restoreResult = dotnet restore $AppHostProj.FullName --locked-mode -r $Runtime 2>&1
 if ($LASTEXITCODE -ne 0) {
     # Check if failure is due to RID mismatch in lock files
     if ($restoreResult -match 'runtime identifiers have changed') {
         Write-Host 'Lock files were generated for a different RID. Regenerating...' -ForegroundColor Yellow
 
         # Detect the original RID from the AppHost lock file
-        $AppHostLock = Join-Path -Path $SrcDir -ChildPath 'BridgeBeats.AppHost' -AdditionalChildPath 'packages.lock.json'
+        $AppHostLock = Join-Path -Path $AppHostProj.DirectoryName -ChildPath 'packages.lock.json'
         $LockContent = Get-Content $AppHostLock -Raw | ConvertFrom-Json -AsHashtable
         $OriginalRid = $LockContent.dependencies.Keys
-                     | Where-Object { $_ -match '^net\d+\.\d+/(linux|win|osx)-(x64|x86|arm64|arm)$' }
-                     | ForEach-Object { $_ -replace '^net\d+\.\d+/', '' }
-                     | Select-Object -First 1
+        | Where-Object { $_ -match '^net\d+\.\d+/(linux|win|osx)-(x64|x86|arm64|arm)$' }
+        | ForEach-Object { $_ -replace '^net\d+\.\d+/', '' }
+        | Select-Object -First 1
         if (-not $OriginalRid) { $OriginalRid = 'linux-x64' }
 
         # Find all lock files and back them up
@@ -86,13 +75,13 @@ if ($LASTEXITCODE -ne 0) {
         }
 
         # Regenerate lock files
-        dotnet restore $AppHostProj --force-evaluate -r $Runtime
+        dotnet restore $AppHostProj.FullName --force-evaluate -r $Runtime
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         # Validate only platform-specific packages changed using the validation script
         $TestScript = Join-Path -Path $ScriptDir -ChildPath 'Test-LockFileChanges.ps1'
-        $AppHostLockBackup = Join-Path -Path $SrcDir -ChildPath 'BridgeBeats.AppHost' -AdditionalChildPath 'packages.lock.json.backup'
-        $AppHostLockCurrent = Join-Path -Path $SrcDir -ChildPath 'BridgeBeats.AppHost' -AdditionalChildPath 'packages.lock.json'
+        $AppHostLockBackup = Join-Path -Path $AppHostProj.DirectoryName -ChildPath 'packages.lock.json.backup'
+        $AppHostLockCurrent = Join-Path -Path $AppHostProj.DirectoryName -ChildPath 'packages.lock.json'
         & $TestScript -BackupPath $AppHostLockBackup -CurrentPath $AppHostLockCurrent -FromPlatform $OriginalRid -ToPlatform $Runtime
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -108,26 +97,14 @@ if ($LASTEXITCODE -ne 0) {
     }
 }
 
-# Build AppHost
-Write-Host 'Building BridgeBeats.AppHost...' -ForegroundColor Cyan
-dotnet build $AppHostProj -c Release -r $Runtime
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-# Copy AppHost build output to publish directory
-$AppHostBuildDir = Join-Path -Path $SrcDir -ChildPath 'BridgeBeats.AppHost' -AdditionalChildPath 'bin', 'Release', 'net10.0', $Runtime
-$AppHostPublishDir = Join-Path -Path $PublishDir -ChildPath 'apphost'
-Copy-Item -Path $AppHostBuildDir -Destination $AppHostPublishDir -Recurse
-Write-Host 'Copied AppHost build output -> apphost/' -ForegroundColor Cyan
-
-# Publish each project (publish includes build)
+# Find and publish all projects to publish/src/{ProjectName}/
+$Projects = Get-ChildItem -Path $SrcDir -Filter '*.csproj' -Recurse
 foreach ($Project in $Projects) {
-    $ProjectName = $Project[0]
-    $OutputFolder = $Project[1]
-    $ProjectPath = Join-Path -Path $SrcDir -ChildPath $ProjectName -AdditionalChildPath "$ProjectName.csproj"
-    $OutputPath = Join-Path -Path $PublishDir -ChildPath $OutputFolder
+    $ProjectName = $Project.Directory.Name
+    $OutputPath = Join-Path -Path $PublishSrcDir -ChildPath $ProjectName
 
-    Write-Host "Publishing $ProjectName -> $OutputFolder/" -ForegroundColor Cyan
-    dotnet publish $ProjectPath -c Release -r $Runtime -o $OutputPath
+    Write-Host "Publishing $ProjectName..." -ForegroundColor Cyan
+    dotnet publish $Project.FullName -c Release -r $Runtime -o $OutputPath
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
