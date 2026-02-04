@@ -29,7 +29,21 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore --locked-mode -r linux-x64
+        run: |
+          # Backup lock files before restore
+          find . -name "packages.lock.json" -exec cp {} {}.backup \;
+
+          # Restore with force-evaluate for linux-x64
+          dotnet restore --force-evaluate -r linux-x64
+
+          # Validate lock file changes
+          for lockfile in $(find . -name "packages.lock.json" ! -name "*.backup"); do
+            backup="${lockfile}.backup"
+            if [ -f "$backup" ]; then
+              pwsh containers/Test-LockFileChanges.ps1 -BackupPath "$backup" -CurrentPath "$lockfile" -ToPlatform "linux-x64"
+              rm -f "$backup"
+            fi
+          done
 
       - name: Build
         run: dotnet build --no-restore --configuration Release

@@ -84,10 +84,10 @@ bool HasDiscordCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:
 // In production, we use AddExecutable() with pre-published DLLs at /src/{ProjectName}/
 // In development, we use AddProject<T>() for hot reload and debugging.
 
-IResourceBuilder<ExecutableResource> AddProductionExecutable( string name, string projectName )
+IResourceBuilder<ExecutableResource> AddProductionExecutable( string name, string projectName, string workingDirectory = "/app/data" )
 {
     string dllPath = $"/src/{projectName}/{projectName}.dll";
-    return builder.AddExecutable( name, "dotnet", "/src", dllPath );
+    return builder.AddExecutable( name, "dotnet", workingDirectory, dllPath );
 }
 
 // ============================================================================
@@ -252,7 +252,7 @@ IResourceBuilder<ProjectResource>? bridgebeatsWebProject = null;
 IResourceBuilder<IResourceWithEnvironment> bridgebeatsWeb;
 
 if (isProduction) {
-    bridgebeatsWeb = AddProductionExecutable( "bridgebeats", "BridgeBeats.Web" )
+    bridgebeatsWeb = AddProductionExecutable( "bridgebeats", "BridgeBeats.Web", "/src/BridgeBeats.Web" )
         .WithHttpEndpoint( port: 10000, name: "bridgebeats-http" );
 } else {
     bridgebeatsWebProject = builder.AddProject<Projects.BridgeBeats_Web>( "bridgebeats" )
