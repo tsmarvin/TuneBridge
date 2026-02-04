@@ -27,8 +27,7 @@ $ErrorActionPreference = 'Stop'
 # Script is in containers/ - parent is either:
 #   - Repo root (local): projects are in src/ subdirectory
 #   - /src in Docker: projects are directly here (COPY src/ .)
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoRoot = Split-Path -Parent $ScriptDir
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 
 # Check if we're in Docker context (projects directly in parent) or local (projects in src/)
 if (Test-Path (Join-Path -Path $RepoRoot -ChildPath 'BridgeBeats.AppHost')) {
@@ -48,63 +47,40 @@ if (Test-Path $PublishDir) {
 $PublishSrcDir = Join-Path -Path $PublishDir -ChildPath 'src'
 New-Item -Path $PublishSrcDir -ItemType Directory -Force | Out-Null
 
-# Find the first .csproj to use for restore (AppHost references all projects)
-$AppHostProj = Get-ChildItem -Path $SrcDir -Filter 'BridgeBeats.AppHost.csproj' -Recurse | Select-Object -First 1
-
-# Try locked-mode restore first; if it fails due to RID mismatch, regenerate and validate
-Write-Host 'Restoring packages (locked-mode)...' -ForegroundColor Cyan
-$restoreResult = dotnet restore $AppHostProj.FullName --locked-mode -r $Runtime 2>&1
-if ($LASTEXITCODE -ne 0) {
-    # Check if failure is due to RID mismatch in lock files
-    if ($restoreResult -match 'runtime identifiers have changed') {
-        Write-Host 'Lock files were generated for a different RID. Regenerating...' -ForegroundColor Yellow
-
-        # Detect the original RID from the AppHost lock file
-        $AppHostLock = Join-Path -Path $AppHostProj.DirectoryName -ChildPath 'packages.lock.json'
-        $LockContent = Get-Content $AppHostLock -Raw | ConvertFrom-Json -AsHashtable
-        $OriginalRid = $LockContent.dependencies.Keys
-        | Where-Object { $_ -match '^net\d+\.\d+/(linux|win|osx)-(x64|x86|arm64|arm)$' }
-        | ForEach-Object { $_ -replace '^net\d+\.\d+/', '' }
-        | Select-Object -First 1
-        if (-not $OriginalRid) { $OriginalRid = 'linux-x64' }
-
-        # Find all lock files and back them up
-        $LockFiles = Get-ChildItem -Path $SrcDir -Recurse -Filter 'packages.lock.json'
-        foreach ($LockFile in $LockFiles) {
-            Copy-Item -Path $LockFile.FullName -Destination "$($LockFile.FullName).backup"
-        }
-
-        # Regenerate lock files
-        dotnet restore $AppHostProj.FullName --force-evaluate -r $Runtime
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-        # Validate only platform-specific packages changed using the validation script
-        $TestScript = Join-Path -Path $ScriptDir -ChildPath 'Test-LockFileChanges.ps1'
-        $AppHostLockBackup = Join-Path -Path $AppHostProj.DirectoryName -ChildPath 'packages.lock.json.backup'
-        $AppHostLockCurrent = Join-Path -Path $AppHostProj.DirectoryName -ChildPath 'packages.lock.json'
-        & $TestScript -BackupPath $AppHostLockBackup -CurrentPath $AppHostLockCurrent -FromPlatform $OriginalRid -ToPlatform $Runtime
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-        # Clean up backup files
-        foreach ($LockFile in $LockFiles) {
-            Remove-Item -Path "$($LockFile.FullName).backup" -ErrorAction SilentlyContinue
-        }
-
-        Write-Host "Lock files regenerated and validated for $Runtime" -ForegroundColor Green
-    } else {
-        Write-Error "Restore failed: $restoreResult"
-        exit 1
-    }
-}
-
 # Find and publish all projects to publish/src/{ProjectName}/
+$TestScript = Join-Path -Path $PSScriptRoot -ChildPath 'Test-LockFileChanges.ps1'
 $Projects = Get-ChildItem -Path $SrcDir -Filter '*.csproj' -Recurse
 foreach ($Project in $Projects) {
+    # Detect the original RID from the AppHost lock file
+    $ProjLock    = Join-Path -Path $Project.DirectoryName -ChildPath 'packages.lock.json'
+    $LockBackup  = Join-Path -Path $Project.DirectoryName -ChildPath 'packages.lock.json.backup'
+    $LockContent = Get-Content -Path $ProjLock -Raw | ConvertFrom-Json -AsHashtable
+    $OriginalRid = $LockContent.dependencies.Keys
+                    | Where-Object { $_ -match '^net\d+\.\d+/(linux|win|osx)-(x64|x86|arm64|arm)$' }
+                    | ForEach-Object { $_ -replace '^net\d+\.\d+/', '' }
+                    | Select-Object -First 1
+    if (-not $OriginalRid) { $OriginalRid = 'linux-x64' }
+
+    Copy-Item -Path $ProjLock -Destination $LockBackup
+
+    # Regenerate lock files
+    dotnet restore $ProjLock.FullName --force-evaluate -r $Runtime
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    # Validate only platform-specific packages changed using the validation script
+    & $TestScript -BackupPath $LockBackup -CurrentPath $ProjLock -FromPlatform $OriginalRid -ToPlatform $Runtime
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    # Clean up backup file
+    Remove-Item -Path $LockBackup -ErrorAction SilentlyContinue
+
     $ProjectName = $Project.Directory.Name
+    Write-Host "$ProjectName lock file regenerated and validated for $Runtime" -ForegroundColor Green
+
     $OutputPath = Join-Path -Path $PublishSrcDir -ChildPath $ProjectName
 
     Write-Host "Publishing $ProjectName..." -ForegroundColor Cyan
-    dotnet publish $Project.FullName -c Release -r $Runtime -o $OutputPath
+    dotnet publish $Project.FullName -c Release -r $Runtime -o $OutputPath -p:IsPublishable=true
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
