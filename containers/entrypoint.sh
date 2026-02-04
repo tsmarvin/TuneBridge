@@ -16,6 +16,8 @@ export DOTNET_ENVIRONMENT="${DOTNET_ENVIRONMENT:-Production}"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-$DOTNET_ENVIRONMENT}"
 
 # ---- Configure Aspire Dashboard endpoints ----
+# Allow unsecured transport since containers use HTTP behind a reverse proxy
+export ASPIRE_ALLOW_UNSECURED_TRANSPORT="${ASPIRE_ALLOW_UNSECURED_TRANSPORT:-true}"
 export ASPNETCORE_URLS="${ASPNETCORE_URLS:-http://+:18888}"
 export ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL="${ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL:-http://+:18889}"
 

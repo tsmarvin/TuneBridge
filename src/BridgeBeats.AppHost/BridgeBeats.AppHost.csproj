@@ -16,8 +16,12 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.Redis" Version="13.1.0" />
-  </ItemGroup>
-  <ItemGroup>
+    <PackageReference Include="Aspire.Dashboard.Sdk.linux-x64" Version="13.1.0" Condition="'$(RuntimeIdentifier)' == 'linux-x64' Or '$(RuntimeIdentifier)' == ''" />
+    <PackageReference Include="Aspire.Dashboard.Sdk.linux-arm64" Version="13.1.0" Condition="'$(RuntimeIdentifier)' == 'linux-arm64'" />
+    <PackageReference Include="Aspire.Dashboard.Sdk.win-x64" Version="13.1.0" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+    <PackageReference Include="Aspire.Dashboard.Sdk.win-arm64" Version="13.1.0" Condition="'$(RuntimeIdentifier)' == 'win-arm64'" />
+    <PackageReference Include="Aspire.Dashboard.Sdk.osx-arm64" Version="13.1.0" Condition="'$(RuntimeIdentifier)' == 'osx-arm64'" />
+    <PackageReference Include="Aspire.Dashboard.Sdk.osx-x64" Version="13.1.0" Condition="'$(RuntimeIdentifier)' == 'osx-x64'" />
     <ProjectReference Include="..\BridgeBeats.Web\BridgeBeats.Web.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.Discord\BridgeBeats.Worker.Discord.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.Spotify\BridgeBeats.Worker.Spotify.csproj" />

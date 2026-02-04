@@ -16,7 +16,13 @@ COPY containers/ containers/
 RUN DOTNET_RID="linux-x64"; \
     if [ "$TARGETARCH" = "arm64" ]; then DOTNET_RID="linux-arm64"; fi; \
     pwsh containers/Build-Publish.ps1 -Runtime $DOTNET_RID; \
-    chmod +x publish/entrypoint.sh
+    chmod +x publish/entrypoint.sh; \
+    mkdir -p /nuget-dashboard; \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+    cp -r /root/.nuget/packages/aspire.dashboard.sdk.linux-arm64 /nuget-dashboard/; \
+    else \
+    cp -r /root/.nuget/packages/aspire.dashboard.sdk.linux-x64 /nuget-dashboard/; \
+    fi
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
@@ -28,10 +34,18 @@ RUN mkdir -p /app/data && chown -R $APP_UID:$APP_UID /app/data
 COPY --from=build /src/publish/src /src
 COPY --from=build /src/publish/entrypoint.sh /entrypoint.sh
 
+# Copy the Aspire Dashboard SDK from NuGet packages cache
+# The dashboard looks for its DLL in the NuGet packages folder at runtime
+COPY --from=build /nuget-dashboard /root/.nuget/packages
+
 # Expose ports
 # 10000: BridgeBeats main web application
+# 18888: Aspire Dashboard web UI
+# 18889: Aspire Dashboard OTLP endpoint
 # 15000-15099: Internal worker ports (managed by Aspire)
 EXPOSE 10000
+EXPOSE 18888
+EXPOSE 18889
 EXPOSE 15000-15099
 
 # Set the AppHost as the entrypoint via the startup script
