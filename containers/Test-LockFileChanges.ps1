@@ -84,13 +84,21 @@ $current = Get-Content $CurrentPath -Raw | ConvertFrom-Json -AsHashtable
 $unexpectedChanges = @()
 $expectedChanges = @()
 
+function Test-PlatformFramework {
+    param([string]$Framework)
+    # Framework entries like "net10.0/linux-x64" or "net10.0/win-arm64" are platform-specific
+    return $Framework -match '^net\d+\.\d+/(linux|win|osx)-(x64|x86|arm64|arm)$'
+}
+
 # Compare each target framework
 foreach ($framework in $current.dependencies.Keys) {
     $backupDeps = $backup.dependencies[$framework]
     $currentDeps = $current.dependencies[$framework]
 
     if ($null -eq $backupDeps) {
-        $unexpectedChanges += "New framework added: $framework"
+        if (-not (Test-PlatformFramework $framework)) {
+            $unexpectedChanges += "New framework added: $framework"
+        }
         continue
     }
 
@@ -146,7 +154,9 @@ foreach ($framework in $current.dependencies.Keys) {
 # Check for removed frameworks
 foreach ($framework in $backup.dependencies.Keys) {
     if (-not $current.dependencies.ContainsKey($framework)) {
-        $unexpectedChanges += "Framework removed: $framework"
+        if (-not (Test-PlatformFramework $framework)) {
+            $unexpectedChanges += "Framework removed: $framework"
+        }
     }
 }
 
@@ -156,11 +166,8 @@ if ($expectedChanges.Count -gt 0) {
     foreach ($change in $expectedChanges) {
         $versionInfo = ''
         if ($change.Type -eq 'Modified') {
-            $backupVersion = $backupDeps[$change.Package].resolved
-            # Allow platform-specific framework entries to be removed (e.g., net10.0/linux-x64)
-            if (-not (Test-PlatformFramework $framework)) {
-                $unexpectedChanges += "Framework removed: $framework"
-            }esolesolvedved
+            $backupVersion = $backup.dependencies[$change.Framework][$change.Package].resolved
+            $currentVersion = $current.dependencies[$change.Framework][$change.Package].resolvedvedved
             $versionInfo = " (version: $backupVersion -> $currentVersion)"
         } elseif ($change.Type -eq 'Removed') {
             $backupVersion = $backup.dependencies[$change.Framework][$change.Package].resolved
