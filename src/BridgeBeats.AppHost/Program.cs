@@ -139,6 +139,20 @@ if (HasDiscordCredentials( )) {
 // The saga coordinator monitors for completed multi-provider lookups and
 // writes final results to ATProto. It uses Redis Pub/Sub for event-driven
 // coordination and polling as a fallback.
+
+// Build list of enabled providers for the saga coordinator
+List<string> enabledProvidersList = [];
+if (HasSpotifyCredentials( )) {
+    enabledProvidersList.Add( "Spotify" );
+}
+if (HasAppleMusicCredentials( )) {
+    enabledProvidersList.Add( "AppleMusic" );
+}
+if (HasTidalCredentials( )) {
+    enabledProvidersList.Add( "Tidal" );
+}
+string enabledProvidersValue = string.Join( ",", enabledProvidersList );
+
 _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" )
     .WithReference( redis )
     .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
@@ -147,7 +161,9 @@ _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coord
     .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
     .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
     // Cache configuration
-    .WithEnvironment( "BridgeBeats__CacheDays", cacheDays );
+    .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+    // Enabled providers (comma-separated list)
+    .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue );
 
 // ============================================================================
 // JetStream Watcher Worker

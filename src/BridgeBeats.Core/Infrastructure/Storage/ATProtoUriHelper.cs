@@ -4,9 +4,70 @@ using BridgeBeats.Contracts.Interfaces;
 namespace BridgeBeats.Core.Infrastructure.Storage;
 
 /// <summary>
-/// Helper class for retrieving ATProto URIs from cache.
+/// Helper class for ATProto URI operations including validation and construction.
 /// </summary>
 public static class ATProtoUriHelper {
+
+    /// <summary>
+    /// The ATProto lexicon namespace for BridgeBeats lookup records.
+    /// </summary>
+    public const string LookupCollection = "link.bridgebeats.lookup";
+
+    /// <summary>
+    /// Validates that a DID (Decentralized Identifier) has a valid format.
+    /// </summary>
+    /// <remarks>
+    /// Valid DIDs must start with "did:plc:" or "did:web:".
+    /// Empty or null DIDs are considered valid (meaning ATProto is disabled).
+    /// </remarks>
+    /// <param name="did">The DID to validate.</param>
+    /// <returns>True if the DID is valid or empty/null, false otherwise.</returns>
+    public static bool IsValidDid( string? did ) {
+        if (string.IsNullOrWhiteSpace( did )) {
+            return true; // Empty/null means ATProto is disabled, which is valid
+        }
+
+        return did.StartsWith( "did:plc:", StringComparison.OrdinalIgnoreCase ) ||
+               did.StartsWith( "did:web:", StringComparison.OrdinalIgnoreCase );
+    }
+
+    /// <summary>
+    /// Validates that a DID has a valid format, throwing an exception if invalid.
+    /// </summary>
+    /// <param name="did">The DID to validate.</param>
+    /// <param name="paramName">The parameter name to include in the exception message.</param>
+    /// <exception cref="ArgumentException">Thrown when the DID has an invalid format.</exception>
+    public static void ValidateDid( string? did, string paramName = "did" ) {
+        if (!IsValidDid( did )) {
+            throw new ArgumentException(
+                $"Invalid DID format: '{did}'. DIDs must start with 'did:plc:' or 'did:web:' prefix. " +
+                "Example: did:plc:abc123xyz or did:web:example.com",
+                paramName
+            );
+        }
+    }
+
+    /// <summary>
+    /// Builds an ATProto URI for a lookup record.
+    /// </summary>
+    /// <param name="did">The DID of the repository owner.</param>
+    /// <param name="rkey">The record key.</param>
+    /// <returns>The complete AT URI for the lookup record.</returns>
+    /// <exception cref="ArgumentException">Thrown when the DID has an invalid format.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when did or rkey is null/empty.</exception>
+    public static string BuildLookupRecordUri( string did, string rkey ) {
+        if (string.IsNullOrWhiteSpace( did )) {
+            throw new ArgumentNullException( nameof( did ), "DID cannot be null or empty when building a record URI." );
+        }
+
+        if (string.IsNullOrWhiteSpace( rkey )) {
+            throw new ArgumentNullException( nameof( rkey ), "Record key cannot be null or empty." );
+        }
+
+        ValidateDid( did, nameof( did ) );
+
+        return $"at://{did}/{LookupCollection}/{rkey}";
+    }
 
     /// <summary>
     /// Attempts to retrieve the ATProto URI for a MediaLinkResult from the cache.

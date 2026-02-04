@@ -152,12 +152,21 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
             ["BridgeBeats:ATProtoIdentifier"] = "",
             ["BridgeBeats:ATProtoPassword"] = "",
+            ["BridgeBeats:ATProtoUserDID"] = "", // Disable ATProto by default in tests
             ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source={_linkCacheDbPath}",
             // Redis connection from shared test infrastructure (captured AFTER initialization)
             // Set both keys to ensure Aspire can find the connection string
             ["ConnectionStrings:redis"] = redisConnectionString,
             ["Aspire:StackExchange:Redis:ConnectionString"] = redisConnectionString,
         };
+
+        // CRITICAL: Set environment variables for ATProto settings to ensure they override user secrets.
+        // The WebApplicationFactory's ConfigureAppConfiguration runs AFTER the app binds configuration,
+        // but environment variables are loaded via AddEnvironmentVariables() which runs during app startup.
+        // This ensures test overrides take effect before DID validation runs.
+        Environment.SetEnvironmentVariable( "BridgeBeats__ATProtoIdentifier", "" );
+        Environment.SetEnvironmentVariable( "BridgeBeats__ATProtoPassword", "" );
+        Environment.SetEnvironmentVariable( "BridgeBeats__ATProtoUserDID", "" );
 
         // Merge overrides onto defaults (overrides win), EXCEPT for critical test infrastructure keys
         // that must always use the test container connection

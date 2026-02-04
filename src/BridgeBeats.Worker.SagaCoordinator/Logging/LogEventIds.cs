@@ -226,16 +226,6 @@ public static class LogEventIds {
     public const int CacheHitForExternalId = 5043;
 
     /// <summary>
-    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogSkippingProviderCached"/>.
-    /// </summary>
-    public const int SkippingProviderCached = 5044;
-
-    /// <summary>
-    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogSagaAlreadyExists"/>.
-    /// </summary>
-    public const int SagaAlreadyExists = 5045;
-
-    /// <summary>
     /// EventId for <see cref="SagaCoordinatorBackgroundService.LogQueuedSecondaryLookup"/>.
     /// </summary>
     public const int QueuedSecondaryLookup = 5046;
@@ -244,4 +234,19 @@ public static class LogEventIds {
     /// EventId for <see cref="SagaCoordinatorBackgroundService.LogFailedToQueueSecondary"/>.
     /// </summary>
     public const int FailedToQueueSecondary = 5047;
+
+    /// <summary>
+    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogAllProvidersInCache"/>.
+    /// </summary>
+    public const int AllProvidersInCache = 5048;
+
+    /// <summary>
+    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogAddedProvidersToSaga"/>.
+    /// </summary>
+    public const int AddedProvidersToSaga = 5049;
+
+    /// <summary>
+    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogWaitingForSecondaryLookups"/>.
+    /// </summary>
+    public const int WaitingForSecondaryLookups = 5050;
 }

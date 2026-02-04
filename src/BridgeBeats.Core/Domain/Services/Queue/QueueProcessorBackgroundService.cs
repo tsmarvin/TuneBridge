@@ -124,6 +124,19 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
 
         LogProcessingMessage( _logger, message.MessageId, request.SagaId, request.LookupType );
 
+        // Ensure saga exists before processing. This handles JetStream bulk lookups where
+        // the saga ID is set but the saga hasn't been created yet (fire-and-forget pattern).
+        // For web lookups, this will return the existing saga.
+        _ = await _sagaManager.GetOrCreateAsync(
+            request.SagaId,
+            $"{request.LookupType}:{request.LookupValue}",
+            request.LookupType,
+            request.LookupValue
+        );
+
+        // Initialize provider state for this provider if not already done
+        await _sagaManager.InitializeProviderStatesAsync( request.SagaId, [_provider] );
+
         // Check if the endpoint for this lookup type is rate-limited
         string endpoint = request.LookupType.ToString( );
         RateLimitState rateLimitState = await _rateLimitTracker.GetStateAsync( _provider, endpoint, ct );

@@ -10,6 +10,21 @@ using StackExchange.Redis;
 namespace BridgeBeats.Core.Infrastructure.Queue;
 
 /// <summary>
+/// Helper class containing shared regex patterns for Redis queue operations.
+/// Separate from generic <see cref="RedisRequestQueue{T}"/> to avoid static field in generic type warning.
+/// </summary>
+internal static partial class RedisQueuePatterns {
+    /// <summary>
+    /// Regex pattern to match Redis stream ID format (timestamp-sequence) at the end of a composite ID.
+    /// Stream name must contain at least one character (pattern matches everything before last colon-delimited Redis ID).
+    /// </summary>
+    internal static readonly Regex RedisStreamIdPattern = GenerateRedisStreamIdPattern( );
+
+    [GeneratedRegex( @"^(.+):(\d+-\d+)$" )]
+    private static partial Regex GenerateRedisStreamIdPattern( );
+}
+
+/// <summary>
 /// Redis Streams-based implementation of <see cref="IRequestQueue{T}"/> for a specific music provider.
 /// </summary>
 /// <remarks>
@@ -67,7 +82,8 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     ) {
         _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-        _settings = settings?.Value ?? throw new ArgumentNullException( nameof( settings ) );
+        ArgumentNullException.ThrowIfNull( settings );
+        _settings = settings.Value;
         _provider = provider;
 
         string providerName = provider.ToString( ).ToLowerInvariant( );
@@ -179,6 +195,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         // with bulk gating until minimum queue depth is reached
         string[] streamOrder = await GetWeightedStreamOrderWithBulkGatingAsync( );
 
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            LogDequeueStarting( _logger, blockedEndpoints.Count, streamOrder.Length );
+        }
+
         foreach (string stream in streamOrder) {
             // Peek at pending messages to find one that's not rate-limited
             QueuedMessage<T>? eligibleMessage = await FindEligibleMessageAsync( db, stream, blockedEndpoints, cancellationToken );
@@ -190,12 +210,16 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
             }
         }
 
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            LogDequeueNoEligibleMessages( _logger, streamOrder.Length );
+        }
+
         return null;
     }
 
     /// <summary>
     /// Finds the first eligible message in the stream that is not rate-limited.
-    /// Scans pending messages without claiming them, then claims the first eligible one.
+    /// First processes pending messages (recovery scenario), then reads new messages via XREADGROUP.
     /// </summary>
     private async Task<QueuedMessage<T>?> FindEligibleMessageAsync(
         IDatabase db,
@@ -203,6 +227,12 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         HashSet<string> blockedEndpoints,
         CancellationToken cancellationToken
     ) {
+        _ = cancellationToken; // Reserved for future async cancellation support
+        int pendingCount = 0;
+        int blockedPendingCount = 0;
+        int newMessagesRead = 0;
+        int blockedNewCount = 0;
+
         // First, check for any pending messages already claimed by this consumer
         // that may need to be processed (recovery scenario)
         StreamPendingMessageInfo[]? pendingMessages = null;
@@ -213,6 +243,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
                 count: 50, // Check a reasonable batch
                 _consumerId
             );
+            pendingCount = pendingMessages.Length;
         } catch (RedisServerException) {
             // Consumer group may not exist yet or no pending messages
         }
@@ -230,9 +261,14 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
                 // Check if this message's endpoint is blocked
                 if (!IsMessageBlocked( message.Payload, blockedEndpoints )) {
+                    if (_logger.IsEnabled( LogLevel.Debug )) {
+                        string msgId = pending.MessageId.ToString( );
+                        LogFoundEligibleMessage( _logger, msgId, stream );
+                    }
                     return message;
                 }
 
+                blockedPendingCount++;
                 // Message is blocked - leave it pending, don't acknowledge
                 if (_logger.IsEnabled( LogLevel.Debug )) {
                     string msgIdString = pending.MessageId.ToString( );
@@ -241,71 +277,62 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
             }
         }
 
-        // No eligible pending messages, try to read new messages
-        // Use XRANGE to peek at the stream without claiming
-        StreamEntry[] newEntries = await db.StreamRangeAsync(
-            stream,
-            "-", // Start from beginning
-            "+", // To end
-            count: 50 // Reasonable batch to scan
-        );
+        // No eligible pending messages, read new messages using XREADGROUP
+        // This properly claims messages from the stream (unlike XCLAIM which only works for pending messages)
+        // Read a batch and check each for rate limiting
+        const int maxNewMessagesToRead = 50;
+        int messagesChecked = 0;
 
-        foreach (StreamEntry entry in newEntries) {
-            QueuedMessage<T>? parsed = ParseStreamEntryForPeek( entry, stream );
-            if (parsed is null) { continue; }
-
-            // Check if this message's endpoint is blocked
-            if (IsMessageBlocked( parsed.Payload, blockedEndpoints )) {
-                if (_logger.IsEnabled( LogLevel.Debug )) {
-                    string entryIdString = entry.Id.ToString( );
-                    LogSkippingRateLimitedMessage( _logger, entryIdString, stream );
-                }
-                continue;
-            }
-
-            // Found an eligible message - claim it with XREADGROUP using specific ID
-            // We need to use XCLAIM to claim a specific message
-            StreamEntry[] claimed = await db.StreamClaimAsync(
+        while (messagesChecked < maxNewMessagesToRead) {
+            // Read one message at a time so we can check rate limits and leave blocked ones pending
+            StreamEntry[] newEntries = await db.StreamReadGroupAsync(
                 stream,
                 _consumerGroup,
                 _consumerId,
-                minIdleTimeInMs: 0, // Claim immediately regardless of idle time
-                messageIds: [entry.Id]
+                position: StreamPosition.NewMessages, // ">" - only new messages
+                count: 1,
+                noAck: false // Message becomes pending until acknowledged
             );
 
-            if (claimed.Length > 0) {
-                return ParseStreamEntry( claimed[0], stream );
+            if (newEntries.Length == 0) {
+                // No more new messages in stream
+                if (messagesChecked == 0 && _logger.IsEnabled( LogLevel.Debug )) {
+                    LogNoNewMessagesInStream( _logger, stream );
+                }
+                break;
             }
+
+            newMessagesRead++;
+            messagesChecked++;
+
+            StreamEntry entry = newEntries[0];
+            QueuedMessage<T>? message = ParseStreamEntry( entry, stream );
+            if (message is null) { continue; }
+
+            // Check if this message's endpoint is blocked
+            if (!IsMessageBlocked( message.Payload, blockedEndpoints )) {
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string msgId = entry.Id.ToString( );
+                    LogFoundEligibleMessage( _logger, msgId, stream );
+                }
+                return message;
+            }
+
+            // Message is blocked by rate limiting - leave it pending for later retry
+            blockedNewCount++;
+            if (_logger.IsEnabled( LogLevel.Debug )) {
+                string entryIdString = entry.Id.ToString( );
+                LogSkippingRateLimitedMessage( _logger, entryIdString, stream );
+            }
+            // Continue to check next message
+        }
+
+        // Log summary of what we scanned
+        if (_logger.IsEnabled( LogLevel.Debug ) && (pendingCount > 0 || newMessagesRead > 0)) {
+            LogStreamScanSummary( _logger, stream, pendingCount, newMessagesRead, blockedPendingCount + blockedNewCount );
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Parses a stream entry for peeking (without the composite ID format used for claimed messages).
-    /// </summary>
-    private QueuedMessage<T>? ParseStreamEntryForPeek( StreamEntry entry, string stream ) {
-        string? payload = entry[MessagePayloadField];
-        string? enqueuedAtStr = entry[MessageEnqueuedAtField];
-
-        if (string.IsNullOrEmpty( payload )) {
-            return null;
-        }
-
-        try {
-            T? request = JsonSerializer.Deserialize<T>( payload, _jsonOptions );
-            if (request is null) { return null; }
-
-            DateTimeOffset enqueuedAt = !string.IsNullOrEmpty( enqueuedAtStr )
-                ? DateTimeOffset.Parse( enqueuedAtStr )
-                : DateTimeOffset.UtcNow;
-
-            // Composite message ID includes stream for ack/requeue
-            string compositeId = $"{stream}:{entry.Id}";
-            return new QueuedMessage<T>( compositeId, request, enqueuedAt );
-        } catch (JsonException) {
-            return null;
-        }
     }
 
     /// <summary>
@@ -587,15 +614,6 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         }
     }
 
-    /// <summary>
-    /// Regex pattern to match Redis stream ID format (timestamp-sequence) at the end of a composite ID.
-    /// Stream name must contain at least one character (pattern matches everything before last colon-delimited Redis ID).
-    /// </summary>
-    private static readonly Regex s_redisStreamIdPattern = RedisStreamIdPattern( );
-
-    [GeneratedRegex( @"^(.+):(\d+-\d+)$" )]
-    private static partial Regex RedisStreamIdPattern( );
-
     private static (string stream, string id) ParseMessageId( string compositeId ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( compositeId );
 
@@ -604,7 +622,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         // Use regex to parse: everything before the last colon is the stream name,
         // and the last part should match the Redis ID pattern (digits-digits)
 
-        Match match = s_redisStreamIdPattern.Match( compositeId );
+        Match match = RedisQueuePatterns.RedisStreamIdPattern.Match( compositeId );
         if (!match.Success) {
             throw new ArgumentException(
                 $"Invalid composite message ID format. Expected 'stream:timestamp-sequence', got: {compositeId}",
@@ -720,6 +738,42 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         Level = LogLevel.Error,
         Message = "Failed to deserialize message {Id} from {Stream}" )]
     internal static partial void LogDeserializationError( ILogger logger, Exception ex, string id, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDequeueStarting,
+        Level = LogLevel.Debug,
+        Message = "Rate-limit-aware dequeue starting with {BlockedCount} blocked endpoints, searching {StreamCount} streams" )]
+    internal static partial void LogDequeueStarting( ILogger logger, int blockedCount, int streamCount );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDequeueNoEligibleMessages,
+        Level = LogLevel.Debug,
+        Message = "Dequeue completed with no eligible messages after searching {StreamCount} streams" )]
+    internal static partial void LogDequeueNoEligibleMessages( ILogger logger, int streamCount );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueStreamScanSummary,
+        Level = LogLevel.Debug,
+        Message = "Stream {Stream} scan: {PendingCount} pending, {NewCount} new entries, {BlockedCount} blocked" )]
+    internal static partial void LogStreamScanSummary( ILogger logger, string stream, int pendingCount, int newCount, int blockedCount );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueClaimFailed,
+        Level = LogLevel.Warning,
+        Message = "XCLAIM failed for message {MessageId} in stream {Stream} - message may not be pending (new messages cannot be claimed with XCLAIM)" )]
+    internal static partial void LogClaimFailed( ILogger logger, string messageId, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueFoundEligibleMessage,
+        Level = LogLevel.Debug,
+        Message = "Found eligible message {MessageId} in stream {Stream}" )]
+    internal static partial void LogFoundEligibleMessage( ILogger logger, string messageId, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueNoNewMessagesInStream,
+        Level = LogLevel.Debug,
+        Message = "No messages found in stream {Stream}" )]
+    internal static partial void LogNoNewMessagesInStream( ILogger logger, string stream );
 
     #endregion
 }

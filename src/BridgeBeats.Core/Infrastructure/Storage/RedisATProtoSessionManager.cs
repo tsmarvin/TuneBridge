@@ -32,6 +32,7 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     private const string SessionKeyPrefix = "atproto:session:";
     private const string LockKeyPrefix = "atproto:auth:lock:";
     private static readonly TimeSpan s_lockExpiry = TimeSpan.FromSeconds( 30 );
+    private readonly SemaphoreSlim _agentLock = new( 1, 1 );
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisATProtoSessionManager> _logger;
@@ -75,18 +76,31 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     public async Task<BlueskyAgent> GetAuthenticatedAgentAsync( CancellationToken cancellationToken = default ) {
         ObjectDisposedException.ThrowIf( _disposed, this );
 
-        // Fast path: return existing authenticated agent
-        if (_agent is { IsAuthenticated: true }) {
-            return _agent;
+        // Fast path: return existing authenticated agent (no lock needed for read)
+        BlueskyAgent? currentAgent = _agent;
+        if (currentAgent is { IsAuthenticated: true }) {
+            return currentAgent;
         }
 
-        // Try to restore session from Redis first
-        if (await TryRestoreSessionAsync( cancellationToken )) {
-            return _agent!;
-        }
+        // Slow path: acquire lock before attempting to create/restore agent
+        await _agentLock.WaitAsync( cancellationToken );
+        try {
+            // Double-check after acquiring lock
+            currentAgent = _agent;
+            if (currentAgent is { IsAuthenticated: true }) {
+                return currentAgent;
+            }
 
-        // No stored session or restoration failed - perform fresh login
-        return await PerformFreshLoginAsync( cancellationToken );
+            // Try to restore session from Redis first
+            if (await TryRestoreSessionAsync( cancellationToken )) {
+                return _agent!;
+            }
+
+            // No stored session or restoration failed - perform fresh login
+            return await PerformFreshLoginAsync( cancellationToken );
+        } finally {
+            _ = _agentLock.Release( );
+        }
     }
 
     /// <inheritdoc/>
@@ -265,9 +279,20 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
         LogCredentialsUpdated( _identifier );
 
         if (sender is BlueskyAgent agent) {
+            // Check if this agent is still the current agent before persisting
+            // This prevents ObjectDisposedException when a stale agent fires events
+            if (!ReferenceEquals( agent, _agent )) {
+                return;
+            }
+
             // Fire and forget - don't block the event
             _ = Task.Run( async ( ) => {
                 try {
+                    // Double-check inside the task in case agent was swapped during scheduling
+                    if (!ReferenceEquals( agent, _agent )) {
+                        return;
+                    }
+
                     await PersistCredentialsFromAgentAsync( agent );
                 } catch (Exception ex) {
                     LogPersistUpdateFailed( ex, _identifier );
@@ -362,6 +387,7 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
 
         _agent?.Dispose( );
         _agent = null;
+        _agentLock.Dispose( );
         _disposed = true;
     }
 

@@ -371,7 +371,7 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
     ) {
         try {
             string rkey = RecordKeyGenerator.GenerateRkey( externalId, isAlbum );
-            string recordUri = $"at://{_userDID}/link.bridgebeats.lookup/{rkey}";
+            string recordUri = ATProtoUriHelper.BuildLookupRecordUri( _userDID, rkey );
 
             MediaLinkResult? pdsResult = await _atprotoStorage.GetMediaLinkResultAsync( recordUri );
             if (pdsResult != null) {

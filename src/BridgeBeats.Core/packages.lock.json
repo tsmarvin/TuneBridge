@@ -197,8 +197,8 @@
       },
       "idunno.AtProto": {
         "type": "Transitive",
-        "resolved": "1.4.0",
-        "contentHash": "sCd4QLsAbhztnWFCV62RuG+lcQf1+PrR6UAz92ZJoLsYipG9k4XxZznThqZFujqSN+qhzzJl4TrXQxDZoTh0jg==",
+        "resolved": "1.5.0",
+        "contentHash": "ctQsZoi8FRnYlpqiAtlLuhDf2YdwI6N4+G1cSk7T7QSENYL/C6pTzldx0R4a+rZOsCx3GqOE8HjVGzJzDxWxpg==",
         "dependencies": {
           "DnsClient": "1.8.0",
           "Duende.IdentityModel.OidcClient": "7.0.0",
@@ -207,23 +207,23 @@
           "PeterO.Cbor": "4.5.5",
           "SimpleBase": "5.6.0",
           "ZstdSharp.Port": "0.8.7",
-          "idunno.AtProto.Types": "1.4.0"
+          "idunno.AtProto.Types": "1.5.0"
         }
       },
       "idunno.AtProto.Types": {
         "type": "Transitive",
-        "resolved": "1.4.0",
-        "contentHash": "rcu45B4llwtb3uwOFTfh5c2lI+0VMgEoIL9KCelRnTfqPp6ogjkbr4CuXY2ppeuDBuestMiYy3xo3SuB3LYvdA==",
+        "resolved": "1.5.0",
+        "contentHash": "hfc+WglMmBQ88V2QFNtXMnFZTqgx4iKsv/Te+ueZd8NY9U72jTDQ5ZEiK2mbqzRzFETEYqrFrDDnL3NwCM/mrw==",
         "dependencies": {
           "SimpleBase": "5.6.0"
         }
       },
       "idunno.Bluesky": {
         "type": "Transitive",
-        "resolved": "1.4.0",
-        "contentHash": "oApaK4L5oojupmj94t1fX/jkQ+U0SnB/IRrq81rqZj+OyS3s1aGbSi46PtYjf2rkaLO1s8n5HVxg/CW6JnP2cg==",
+        "resolved": "1.5.0",
+        "contentHash": "8C693spW8INrt8WX2hbq+6Uqw7aQpX0rvypgUUtz/2IQBFVc1B998u8X04uCAr3osfH02jV1MI63sTp9YwDZ6Q==",
         "dependencies": {
-          "idunno.AtProto": "1.4.0"
+          "idunno.AtProto": "1.5.0"
         }
       },
       "Microsoft.Build.Framework": {
@@ -695,8 +695,8 @@
       "bridgebeats.contracts": {
         "type": "Project",
         "dependencies": {
-          "idunno.AtProto": "[1.4.0, )",
-          "idunno.Bluesky": "[1.4.0, )"
+          "idunno.AtProto": "[1.5.0, )",
+          "idunno.Bluesky": "[1.5.0, )"
         }
       }
     }

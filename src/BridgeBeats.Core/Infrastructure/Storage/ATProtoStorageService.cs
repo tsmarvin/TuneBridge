@@ -250,30 +250,18 @@ public partial class ATProtoStorageService(
             && s_providerStringToEnum.Value.TryGetValue( providerString, out provider );
     }
 
-    /// <summary>
-    /// Normalizes a DID string to ensure it has the proper "did:plc:" prefix.
-    /// </summary>
-    /// <param name="userDid">The DID string which may or may not have the prefix.</param>
-    /// <returns>A properly formatted DID string with the "did:plc:" prefix.</returns>
-    private static string NormalizeDid( string userDid ) {
-        const string DIDPlcPrefix = "did:plc:";
-        return string.IsNullOrWhiteSpace( userDid )
-            ? userDid
-            : (userDid.StartsWith( DIDPlcPrefix, StringComparison.OrdinalIgnoreCase ) ||
-               userDid.StartsWith( "did:web:", StringComparison.OrdinalIgnoreCase ))
-                ? userDid
-                : $"{DIDPlcPrefix}{userDid}";
-    }
-
     /// <inheritdoc/>
     public async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ListAllRecordsAsync(
         Uri pdsUri,
         string userDid,
         [EnumeratorCancellation] CancellationToken cancellationToken = default
     ) {
+        // Validate DID format before using it
+        ATProtoUriHelper.ValidateDid( userDid, nameof( userDid ) );
+
         // Use unauthenticated agent for public record access
         BlueskyAgent unauthenticatedAgent = new( );
-        Did repo = new( NormalizeDid( userDid ) );
+        Did repo = new( userDid );
         string? cursor = null;
 
         do {

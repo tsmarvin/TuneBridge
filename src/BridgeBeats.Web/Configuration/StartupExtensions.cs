@@ -9,6 +9,7 @@ using BridgeBeats.Core.Domain.Services;
 using BridgeBeats.Core.Infrastructure.Cache;
 using BridgeBeats.Core.Infrastructure.Extensions;
 using BridgeBeats.Core.Infrastructure.Identity;
+using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Web.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
@@ -274,13 +275,22 @@ namespace BridgeBeats.Web.Configuration {
         private static IConfigurationBuilder ConfigureAppSettings(
             this IConfigurationBuilder config,
             string[] args
-        ) => config.AddJsonFile(
-                    path: "appsettings.json",
-                    optional: false,
-                    reloadOnChange: false
-                ).AddUserSecrets<Program>( optional: true )
+        ) {
+            _ = config.AddJsonFile(
+                path: "appsettings.json",
+                optional: false,
+                reloadOnChange: false
+            );
+
+            // Always load user secrets in non-production environments
+            // Tests use WebApplicationFactory.ConfigureAppConfiguration to inject test config
+            // which overrides user secrets values for test-specific settings
+            _ = config.AddUserSecrets<Program>( optional: true );
+
+            return config
                 .AddCommandLine( args )
                 .AddEnvironmentVariables( );
+        }
 
         /// <summary>
         /// Validates Redis connectivity for caching. Redis is registered via Aspire.
@@ -409,6 +419,9 @@ namespace BridgeBeats.Web.Configuration {
                 string.IsNullOrWhiteSpace( settings.ATProtoPassword )) {
                 return;
             }
+
+            // Validate DID format if provided (must start with did:plc: or did:web:)
+            ATProtoUriHelper.ValidateDid( settings.ATProtoUserDID, "ATProtoUserDID" );
 
             // Register ATProto session manager and storage service (centralized authentication)
             _ = services.AddATProtoSessionManager( settings.ATProtoIdentifier, settings.ATProtoPassword );

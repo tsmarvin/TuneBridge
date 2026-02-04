@@ -185,6 +185,17 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 return;
             }
 
+            // Extract the result to check for external ID and queue secondary lookups
+            MediaLinkResult? result = _resultCombiner.CombineResults( saga );
+            if (result is not null) {
+                bool queuedSecondaryLookups = await CheckCacheAndQueueSecondaryLookupsAsync( result, saga, ct );
+                if (queuedSecondaryLookups) {
+                    // Secondary lookups were queued - don't finalize yet, wait for them to complete
+                    LogWaitingForSecondaryLookups( _logger, sagaId );
+                    return;
+                }
+            }
+
             await WriteFinalResultAsync( saga, ct );
         } catch (Exception ex) {
             LogFailedToProcessSaga( _logger, ex, sagaId );
@@ -217,7 +228,12 @@ public sealed partial class SagaCoordinatorBackgroundService(
 
                 if (result is not null) {
                     // Check cache for related data and queue secondary lookups for missing providers
-                    await CheckCacheAndQueueSecondaryLookupsAsync( result, saga, ct );
+                    bool queuedSecondaryLookups = await CheckCacheAndQueueSecondaryLookupsAsync( result, saga, ct );
+                    if (queuedSecondaryLookups) {
+                        // Secondary lookups were queued - don't finalize yet, wait for them to complete
+                        LogWaitingForSecondaryLookups( _logger, sagaId );
+                        return;
+                    }
                 }
 
                 if (string.IsNullOrEmpty( saga.FinalResultUri )) {
@@ -393,20 +409,27 @@ public sealed partial class SagaCoordinatorBackgroundService(
     /// <list type="bullet">
     ///   <item>Extracts the ISRC (tracks) or UPC (albums) from the result</item>
     ///   <item>Checks the cache for existing data from other providers</item>
-    ///   <item>For providers not in cache, queues new lookup requests using the external ID</item>
+    ///   <item>For providers not in cache, adds them to the original saga and queues lookup requests</item>
     /// </list>
-    /// Each secondary provider lookup creates its own separate saga.
+    /// Secondary lookups are added to the original saga, not separate sagas.
     /// </remarks>
-    private async Task CheckCacheAndQueueSecondaryLookupsAsync(
+    /// <returns>True if secondary lookups were queued (caller should wait), false if ready to finalize.</returns>
+    private async Task<bool> CheckCacheAndQueueSecondaryLookupsAsync(
         MediaLinkResult result,
         LookupSagaState originalSaga,
         CancellationToken ct
     ) {
+        // Don't trigger secondary lookups from secondary lookups (ISRC/UPC lookups)
+        // Only provider-specific lookups (SpotifyLookup, AppleMusicLookup, TidalLookup) should trigger secondary lookups
+        if (originalSaga.LookupType is LookupRequestType.IsrcLookup or LookupRequestType.UpcLookup) {
+            return false;
+        }
+
         // Get the first result to extract external ID
         MusicLookupResult? firstResult = result.Results.Values.FirstOrDefault();
         if (firstResult is null || string.IsNullOrWhiteSpace( firstResult.ExternalId )) {
             LogNoExternalId( _logger, originalSaga.SagaId );
-            return;
+            return false;
         }
 
         string externalId = firstResult.ExternalId;
@@ -414,12 +437,13 @@ public sealed partial class SagaCoordinatorBackgroundService(
         SupportedProviders initialProvider = result.Results.Keys.First();
 
         // Determine which providers still need lookups (not the initial provider)
-        IEnumerable<SupportedProviders> otherProviders = _enabledProviders
-            .Where(p => p != initialProvider && !result.Results.ContainsKey(p));
+        List<SupportedProviders> otherProviders = _enabledProviders
+            .Where(p => p != initialProvider && !result.Results.ContainsKey(p))
+            .ToList();
 
-        if (!otherProviders.Any( )) {
+        if (otherProviders.Count == 0) {
             LogNoOtherProviders( _logger, originalSaga.SagaId );
-            return;
+            return false;
         }
 
         // Check cache for existing data using ISRC/UPC
@@ -428,8 +452,15 @@ public sealed partial class SagaCoordinatorBackgroundService(
             ? await _cacheRepository.TryGetCachedResultByUPCAsync(externalId)
             : await _cacheRepository.TryGetCachedResultByISRCAsync(externalId);
 
-        // Determine which providers we already have data for
+        // Determine which providers we already have data for (from result, cache, or already in saga)
         HashSet<SupportedProviders> providersWithData = [initialProvider];
+
+        // Add providers already initialized in the saga
+        foreach (SupportedProviders provider in originalSaga.ProviderStates.Keys) {
+            _ = providersWithData.Add( provider );
+        }
+
+        // Add providers with cached data
         if (cached.HasValue && !cached.Value.isStale) {
             foreach (SupportedProviders provider in cached.Value.cachedResult.Results.Keys) {
                 _ = providersWithData.Add( provider );
@@ -441,43 +472,32 @@ public sealed partial class SagaCoordinatorBackgroundService(
             }
         }
 
-        // Queue lookups for providers we don't have data for
-        foreach (SupportedProviders provider in otherProviders) {
-            if (providersWithData.Contains( provider )) {
-                if (_logger.IsEnabled( LogLevel.Trace )) {
-                    string providerStr = provider.ToString( );
-                    LogSkippingProviderCached( _logger, providerStr, externalId );
-                }
-                continue;
-            }
+        // Find providers that need lookups (not already in saga or cache)
+        List<SupportedProviders> providersToQueue = otherProviders
+            .Where(p => !providersWithData.Contains(p))
+            .ToList();
 
-            // Generate a unique lookup key for this secondary lookup
-            string lookupKey = $"{lookupType}:{externalId}:{provider}";
-            string sagaId = ISagaStateManager.GenerateSagaId(lookupKey);
+        if (providersToQueue.Count == 0) {
+            LogAllProvidersInCache( _logger, originalSaga.SagaId, externalId );
+            return false;
+        }
 
-            // Check if there's already a saga for this lookup
-            LookupSagaState? existingSaga = await _sagaManager.GetAsync(sagaId, ct);
-            if (existingSaga is not null) {
-                if (_logger.IsEnabled( LogLevel.Debug )) {
-                    string providerStr = provider.ToString( );
-                    LogSagaAlreadyExists( _logger, sagaId, providerStr, externalId );
-                }
-                continue;
-            }
+        // Add the new providers to the ORIGINAL saga (don't create separate sagas)
+        await _sagaManager.InitializeProviderStatesAsync( originalSaga.SagaId, providersToQueue );
+        LogAddedProvidersToSaga( _logger, originalSaga.SagaId, string.Join( ", ", providersToQueue ) );
 
+        // Queue lookups for each provider using the ORIGINAL saga ID
+        int queuedCount = 0;
+        foreach (SupportedProviders provider in providersToQueue) {
             try {
-                // Create a new saga for this secondary lookup
-                _ = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, externalId );
-                await _sagaManager.InitializeProviderStatesAsync( sagaId, [provider] );
-
-                // Create and queue the lookup request
+                // Create and queue the lookup request using the ORIGINAL saga ID
                 QueuedLookupRequest secondaryRequest = new()
                 {
                     RequestId = Guid.NewGuid().ToString("N"),
                     Provider = provider,
                     LookupType = lookupType,
                     LookupValue = externalId,
-                    SagaId = sagaId,
+                    SagaId = originalSaga.SagaId,  // Use original saga ID!
                     IsAlbum = isAlbum,
                     Title = firstResult.Title,
                     Artist = firstResult.Artist
@@ -486,19 +506,19 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue(provider);
                 await queue.EnqueueAsync( secondaryRequest, QueuePriority.Background, ct );
 
-                if (_logger.IsEnabled( LogLevel.Debug )) {
-                    string lookupTypeStr = lookupType.ToString( );
-                    string providerStr = provider.ToString( );
-                    LogQueuedSecondaryLookup( _logger, lookupTypeStr, providerStr, externalId, sagaId );
-                }
+                string lookupTypeStr = lookupType.ToString( );
+                string providerStr = provider.ToString( );
+                LogQueuedSecondaryLookup( _logger, lookupTypeStr, providerStr, externalId, originalSaga.SagaId );
+                queuedCount++;
             } catch (Exception ex) {
-                if (_logger.IsEnabled( LogLevel.Warning )) {
-                    string providerStr = provider.ToString( );
-                    LogFailedToQueueSecondary( _logger, ex, providerStr, externalId );
-                }
+                string providerStr = provider.ToString( );
+                LogFailedToQueueSecondary( _logger, ex, providerStr, externalId );
                 // Continue with other providers - don't fail the entire operation
             }
         }
+
+        // Return true if we queued any secondary lookups (caller should wait for completion)
+        return queuedCount > 0;
     }
 
     #region LoggerMessage Methods
@@ -793,14 +813,14 @@ public sealed partial class SagaCoordinatorBackgroundService(
     /// <summary>Logs that no external ID is in the result.</summary>
     [LoggerMessage(
         EventId = LogEventIds.NoExternalId,
-        Level = LogLevel.Debug,
+        Level = LogLevel.Information,
         Message = "No external ID in result for saga {SagaId}, skipping secondary lookups" )]
     private static partial void LogNoExternalId( ILogger logger, string sagaId );
 
     /// <summary>Logs that no other enabled providers exist.</summary>
     [LoggerMessage(
         EventId = LogEventIds.NoOtherProviders,
-        Level = LogLevel.Debug,
+        Level = LogLevel.Information,
         Message = "No other enabled providers for saga {SagaId}, skipping secondary lookups" )]
     private static partial void LogNoOtherProviders( ILogger logger, string sagaId );
 
@@ -811,19 +831,19 @@ public sealed partial class SagaCoordinatorBackgroundService(
         Message = "Cache hit for {ExternalId}, found data for providers: {Providers}" )]
     private static partial void LogCacheHitForExternalId( ILogger logger, string externalId, string providers );
 
-    /// <summary>Logs that a provider lookup is being skipped because data is cached.</summary>
+    /// <summary>Logs that all providers already have data in cache.</summary>
     [LoggerMessage(
-        EventId = LogEventIds.SkippingProviderCached,
-        Level = LogLevel.Debug,
-        Message = "Skipping {Provider} lookup for {ExternalId} - data already in cache" )]
-    private static partial void LogSkippingProviderCached( ILogger logger, string provider, string externalId );
+        EventId = LogEventIds.AllProvidersInCache,
+        Level = LogLevel.Information,
+        Message = "All providers already in cache for saga {SagaId} with external ID {ExternalId}, no secondary lookups needed" )]
+    private static partial void LogAllProvidersInCache( ILogger logger, string sagaId, string externalId );
 
-    /// <summary>Logs that a saga already exists for a lookup.</summary>
+    /// <summary>Logs that providers were added to an existing saga.</summary>
     [LoggerMessage(
-        EventId = LogEventIds.SagaAlreadyExists,
-        Level = LogLevel.Debug,
-        Message = "Saga {SagaId} already exists for {Provider} lookup of {ExternalId}, skipping" )]
-    private static partial void LogSagaAlreadyExists( ILogger logger, string sagaId, string provider, string externalId );
+        EventId = LogEventIds.AddedProvidersToSaga,
+        Level = LogLevel.Information,
+        Message = "Added providers [{Providers}] to existing saga {SagaId} for secondary lookups" )]
+    private static partial void LogAddedProvidersToSaga( ILogger logger, string sagaId, string providers );
 
     /// <summary>Logs that a secondary lookup was queued.</summary>
     [LoggerMessage(
@@ -838,6 +858,13 @@ public sealed partial class SagaCoordinatorBackgroundService(
         Level = LogLevel.Error,
         Message = "Failed to queue secondary lookup for {Provider} with external ID {ExternalId}" )]
     private static partial void LogFailedToQueueSecondary( ILogger logger, Exception ex, string provider, string externalId );
+
+    /// <summary>Logs that the saga coordinator is waiting for secondary lookups to complete.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.WaitingForSecondaryLookups,
+        Level = LogLevel.Information,
+        Message = "Waiting for secondary lookups to complete for saga {SagaId}, deferring finalization" )]
+    private static partial void LogWaitingForSecondaryLookups( ILogger logger, string sagaId );
 
     #endregion
 }

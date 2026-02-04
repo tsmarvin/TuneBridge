@@ -2,6 +2,7 @@ using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Extensions;
 using BridgeBeats.Core.Infrastructure.Cache;
 using BridgeBeats.Core.Infrastructure.Extensions;
+using BridgeBeats.Core.Infrastructure.Storage;
 using Serilog;
 using StackExchange.Redis;
 
@@ -95,15 +96,19 @@ public static class Program {
         int cacheDays = builder.Configuration.GetValue("BridgeBeats:CacheDays", 30);
         int bootstrapIntervalHours = builder.Configuration.GetValue("BridgeBeats:BootstrapIntervalHours", 6);
 
-        return string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
+        if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
             string.IsNullOrWhiteSpace( atProtoPassword ) ||
-            string.IsNullOrWhiteSpace( atProtoUserDID )
-            ? throw new InvalidOperationException(
+            string.IsNullOrWhiteSpace( atProtoUserDID )) {
+            throw new InvalidOperationException(
                 "ATProto credentials are required. Set BridgeBeats:ATProtoIdentifier, " +
                 "BridgeBeats:ATProtoPassword, and BridgeBeats:ATProtoUserDID."
-            )
-            : ((string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID, string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours))(atProtoIdentifier, atProtoPassword, atProtoUserDID,
-            atProtoPdsUri, cacheDays, bootstrapIntervalHours);
+            );
+        }
+
+        // Validate DID format (must start with did:plc: or did:web:)
+        ATProtoUriHelper.ValidateDid( atProtoUserDID, "BridgeBeats:ATProtoUserDID" );
+
+        return (atProtoIdentifier, atProtoPassword, atProtoUserDID, atProtoPdsUri, cacheDays, bootstrapIntervalHours);
     }
 
     /// <summary>

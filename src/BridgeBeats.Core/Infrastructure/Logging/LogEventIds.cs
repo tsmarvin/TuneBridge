@@ -411,6 +411,36 @@ public static class LogEventIds {
             /// </summary>
             public const int RedisRequestQueueDeserializationError = 1266;
 
+            /// <summary>
+            /// EventId for <see cref="RedisRequestQueue.LogDequeueStarting"/>.
+            /// </summary>
+            public const int RedisRequestQueueDequeueStarting = 1267;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestQueue.LogDequeueNoEligibleMessages"/>.
+            /// </summary>
+            public const int RedisRequestQueueDequeueNoEligibleMessages = 1268;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestQueue.LogStreamScanSummary"/>.
+            /// </summary>
+            public const int RedisRequestQueueStreamScanSummary = 1269;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestQueue.LogClaimFailed"/>.
+            /// </summary>
+            public const int RedisRequestQueueClaimFailed = 1270;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestQueue.LogFoundEligibleMessage"/>.
+            /// </summary>
+            public const int RedisRequestQueueFoundEligibleMessage = 1271;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestQueue.LogNoNewMessagesInStream"/>.
+            /// </summary>
+            public const int RedisRequestQueueNoNewMessagesInStream = 1272;
+
             // RedisSagaStateManager (1300-1349)
 
             /// <summary>

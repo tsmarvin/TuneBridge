@@ -273,7 +273,7 @@ public sealed partial class JetStreamWatcherService(
             return;
         }
 
-        // Create the lookup request
+        // Create the lookup request with a saga ID for coordinating cross-provider lookups
         QueuedLookupRequest request = new( ) {
             RequestId = Guid.NewGuid( ).ToString( "N" ),
             Provider = provider.Value,
