@@ -91,7 +91,10 @@ foreach ($framework in $current.dependencies.Keys) {
     $currentDeps = $current.dependencies[$framework]
 
     if ($null -eq $backupDeps) {
-        $unexpectedChanges += "New framework added: $framework"
+        # Allow the target platform framework to be newly added when switching platforms
+        if ($framework -ne $ToPlatform) {
+            $unexpectedChanges += "New framework added: $framework"
+        }
         continue
     }
 
