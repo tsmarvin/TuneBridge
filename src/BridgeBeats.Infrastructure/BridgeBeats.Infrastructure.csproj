@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <!-- ATProto storage -->
-    <PackageReference Include="idunno.AtProto" Version="1.3.0" />
+    <PackageReference Include="idunno.AtProto" Version="1.5.0" />
     <PackageReference Include="idunno.Bluesky" Version="1.3.0" />
 
     <!-- ASP.NET Identity -->
