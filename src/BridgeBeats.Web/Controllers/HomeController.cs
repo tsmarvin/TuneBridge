@@ -43,6 +43,7 @@ namespace BridgeBeats.Web.Controllers {
         /// <param name="uri">Music URL(s) to look up.</param>
         /// <returns>Partial view with lookup results.</returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> LookupResults( string uri ) {
             if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
@@ -113,6 +114,7 @@ namespace BridgeBeats.Web.Controllers {
         /// <param name="isrc">ISRC code to look up.</param>
         /// <returns>Partial view with lookup results.</returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> LookupResultsByIsrc( string isrc ) {
             if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
@@ -136,6 +138,7 @@ namespace BridgeBeats.Web.Controllers {
         /// <param name="upc">UPC code to look up.</param>
         /// <returns>Partial view with lookup results.</returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> LookupResultsByUpc( string upc ) {
             if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
@@ -160,6 +163,7 @@ namespace BridgeBeats.Web.Controllers {
         /// <param name="artist">Artist name.</param>
         /// <returns>Partial view with lookup results.</returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> LookupResultsByTitle( string title, string artist ) {
             if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
@@ -284,6 +288,7 @@ namespace BridgeBeats.Web.Controllers {
         /// <param name="req">Request containing the music URL(s) to look up.</param>
         /// <returns>JSON response with array of card URLs and results.</returns>
         [HttpPost( "/lookup/web" )]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> WebLookup( [FromBody] WebLookupRequest req ) {
             if (mediaLinkService == null) {
                 return BadRequest( new { error = "Music lookup service not available" } );
@@ -326,6 +331,7 @@ namespace BridgeBeats.Web.Controllers {
         /// <response code="400">Invalid or missing URI.</response>
         /// <response code="503">Music lookup service not available.</response>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         [Route( "/Home/LookupResultsStream" )]
         public async Task LookupResultsStream( string uri ) {
             if (mediaLinkService == null) {

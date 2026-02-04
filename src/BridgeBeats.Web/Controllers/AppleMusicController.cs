@@ -76,6 +76,7 @@ public partial class AppleMusicController(
     /// <response code="400">Invalid request.</response>
     /// <response code="401">User not authenticated.</response>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "applemusic/store-token" )]
     public async Task<IActionResult> StoreToken( [FromBody] StoreTokenRequest request ) {
         if (!ModelState.IsValid) {
@@ -176,6 +177,7 @@ public partial class AppleMusicController(
     /// <param name="songIds">Array of Apple Music song IDs to retrieve.</param>
     /// <returns>List of MediaLinkResult objects for the requested songs.</returns>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "applemusic/getsongsbyid" )]
     public async Task<IActionResult> GetSongsByID( [FromBody] string[] songIds ) {
         ApplicationUser? user = await userManager.GetUserAsync( User );
@@ -250,6 +252,7 @@ public partial class AppleMusicController(
     /// <response code="401">User not authenticated or token expired.</response>
     /// <response code="500">Failed to process playlist.</response>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "applemusic/process-playlist" )]
     public async Task<IActionResult> ProcessPlaylist( [FromBody] ProcessPlaylistRequest request ) {
         if (!ModelState.IsValid) {
@@ -361,6 +364,7 @@ public partial class AppleMusicController(
     /// <response code="401">User not authenticated or token expired.</response>
     /// <response code="500">Failed to process request.</response>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route( "applemusic/playlist-results-stream" )]
     public async Task PlaylistResultsStream( [FromBody] string[] songIds ) {
         ApplicationUser? user = await userManager.GetUserAsync( User );
