@@ -3,6 +3,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Identity;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -168,6 +169,19 @@ public partial class AccountController(
     public async Task<IActionResult> Logout( ) {
         await signInManager.SignOutAsync( );
         return Ok( new { message = "Logged out successfully" } );
+    }
+
+    /// <summary>
+    /// Gets an antiforgery token for JavaScript requests.
+    /// This endpoint allows browser-based JavaScript to obtain a CSRF token
+    /// that must be included in the X-XSRF-TOKEN header for POST requests.
+    /// </summary>
+    /// <returns>Antiforgery token for use in headers.</returns>
+    [HttpGet]
+    [Route( "account/antiforgery-token" )]
+    public IActionResult GetAntiforgeryToken( [FromServices] Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery ) {
+        AntiforgeryTokenSet tokens = antiforgery.GetAndStoreTokens( HttpContext );
+        return Ok( new { token = tokens.RequestToken } );
     }
 
     /// <summary>
