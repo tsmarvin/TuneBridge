@@ -12,6 +12,7 @@ namespace BridgeBeats.Web.Controllers;
 /// </summary>
 /// <param name="svc">Injected service that handles provider queries and result aggregation.</param>
 [ApiController]
+[IgnoreAntiforgeryToken]
 [Route( "music/lookup" )]
 public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
 
@@ -49,7 +50,6 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// <response code="401">Unauthorized - authentication required.</response>
     [Authorize]
     [HttpPost( "urlList" )]
-    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> ByUrlList( [FromBody] UrlReq req ) {
         List<MediaLinkResult> results = [];
         await foreach (MediaLinkResult result in _svc.GetInfoAsync( req.Uri )) {
@@ -70,7 +70,6 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// have been processed.
     /// </returns>
     [HttpPost( "url" )]
-    [IgnoreAntiforgeryToken]
     public async IAsyncEnumerable<MediaLinkResult> ByUrl( [FromBody] UrlReq req ) {
         await foreach (MediaLinkResult result in _svc.GetInfoAsync( req.Uri )) {
             yield return result;
@@ -92,7 +91,6 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// <response code="401">Unauthorized - authentication required.</response>
     [Authorize]
     [HttpPost( "isrc" )]
-    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> ByIsrc( [FromBody] IsrcReq req ) {
         MediaLinkResult? result = await _svc.GetInfoByISRCAsync( req.Isrc );
         return Ok( result ?? new MediaLinkResult { Messages = ["No results found for ISRC."] } );
@@ -113,7 +111,6 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// <response code="401">Unauthorized - authentication required.</response>
     [Authorize]
     [HttpPost( "upc" )]
-    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> ByUpc( [FromBody] UpcReq req ) {
         MediaLinkResult? result = await _svc.GetInfoByUPCAsync( req.Upc );
         return Ok( result ?? new MediaLinkResult { Messages = ["No results found for UPC."] } );
@@ -133,7 +130,6 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// <response code="401">Unauthorized - authentication required.</response>
     [Authorize]
     [HttpPost( "title" )]
-    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> ByTitle( [FromBody] TitleReq req ) {
         MediaLinkResult? result = await _svc.GetInfoAsync( req.Title, req.Artist );
         return Ok( result ?? new MediaLinkResult { Messages = ["No results found for title/artist."] } );
