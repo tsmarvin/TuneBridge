@@ -34,6 +34,7 @@ public class CardApiController( IOpenGraphCardService cardService ) : Controller
     /// <response code="400">Invalid request body.</response>
     /// <response code="503">Card service is not enabled.</response>
     [HttpPost( "store" )]
+    [IgnoreAntiforgeryToken]
     public IActionResult Store( [FromBody] MediaLinkResult result ) {
         if (!_cardService.IsEnabled) {
             return StatusCode( 503, new StoreCardResponse( null ) );
