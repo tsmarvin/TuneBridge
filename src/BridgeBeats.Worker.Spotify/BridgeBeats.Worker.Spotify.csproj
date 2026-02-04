@@ -15,11 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Services\BridgeBeats.Services.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Worker.Common\BridgeBeats.Worker.Common.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Core\BridgeBeats.Core.csproj" />
   </ItemGroup>
 
 </Project>

@@ -5,7 +5,8 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Providers.Spotify;
+using BridgeBeats.Core.Domain.Providers.Spotify;
+using BridgeBeats.Worker.Spotify.Logging;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Worker.Spotify;
@@ -29,7 +30,7 @@ namespace BridgeBeats.Worker.Spotify;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class SpotifyBulkProcessorService : BackgroundService {
+public sealed partial class SpotifyBulkProcessorService : BackgroundService {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly SpotifyBatchQueueHelper _batchHelper;
@@ -70,7 +71,7 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
-        _logger.LogInformation( "Spotify bulk processor service starting" );
+        LogServiceStarting( _logger );
 
         // Ensure consumer groups exist for type-specific streams
         await _batchHelper.EnsureConsumerGroupsAsync( stoppingToken );
@@ -92,12 +93,12 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
             } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
                 break;
             } catch (Exception ex) {
-                _logger.LogError( ex, "Error in bulk processor loop" );
+                LogProcessorLoopError( _logger, ex );
                 await Task.Delay( s_errorDelay, stoppingToken );
             }
         }
 
-        _logger.LogInformation( "Spotify bulk processor service stopping" );
+        LogServiceStopping( _logger );
     }
 
     /// <summary>
@@ -112,10 +113,10 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
         );
 
         if (rateLimitState.IsRateLimited) {
-            _logger.LogDebug(
-                "Bulk tracks endpoint is rate-limited until {RetryAfter}",
-                rateLimitState.RetryAfter
-            );
+            if (_logger.IsEnabled( LogLevel.Warning )) {
+                string retryAfterStr = rateLimitState.RetryAfter?.ToString( ) ?? "unknown";
+                LogRateLimited( _logger, "Bulk tracks", retryAfterStr );
+            }
             return false;
         }
 
@@ -134,10 +135,10 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
         );
 
         if (rateLimitState.IsRateLimited) {
-            _logger.LogDebug(
-                "Bulk albums endpoint is rate-limited until {RetryAfter}",
-                rateLimitState.RetryAfter
-            );
+            if (_logger.IsEnabled( LogLevel.Warning )) {
+                string retryAfterStr = rateLimitState.RetryAfter?.ToString( ) ?? "unknown";
+                LogRateLimited( _logger, "Bulk albums", retryAfterStr );
+            }
             return false;
         }
 
@@ -148,7 +149,7 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
     /// Processes a batch of track ID lookups.
     /// </summary>
     private async Task ProcessBulkTrackLookupsAsync( CancellationToken ct ) {
-        _logger.LogInformation( "Processing bulk track lookups" );
+        LogProcessingBulkTracks( _logger );
 
         // Collect messages from type-specific bulk stream first
         List<QueuedMessage<QueuedLookupRequest>> messages = [];
@@ -163,11 +164,11 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
         }
 
         if (messages.Count == 0) {
-            _logger.LogDebug( "No track ID lookups to process" );
+            LogNoTrackLookups( _logger );
             return;
         }
 
-        _logger.LogInformation( "Processing {Count} track ID lookups in bulk", messages.Count );
+        LogProcessingTrackCount( _logger, messages.Count );
 
         // Extract track IDs and create a mapping
         Dictionary<string, List<QueuedMessage<QueuedLookupRequest>>> idToMessages = [];
@@ -193,11 +194,11 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
                 }
             }
 
-            _logger.LogInformation( "Successfully processed {Count} track ID lookups", messages.Count );
+            LogTrackLookupsSuccess( _logger, messages.Count );
         } catch (RetryAfterExceededException ex) {
             await HandleBulkRateLimitAsync( messages, SpotifyConstants.BulkTracksEndpoint, ex, ct );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error processing bulk track lookups" );
+            LogTrackLookupsError( _logger, ex );
             await RequeueAllAsync( messages, ct );
         }
     }
@@ -206,7 +207,7 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
     /// Processes a batch of album ID lookups.
     /// </summary>
     private async Task ProcessBulkAlbumLookupsAsync( CancellationToken ct ) {
-        _logger.LogInformation( "Processing bulk album lookups" );
+        LogProcessingBulkAlbums( _logger );
 
         // Collect messages from type-specific bulk stream first
         List<QueuedMessage<QueuedLookupRequest>> messages = [];
@@ -221,11 +222,11 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
         }
 
         if (messages.Count == 0) {
-            _logger.LogDebug( "No album ID lookups to process" );
+            LogNoAlbumLookups( _logger );
             return;
         }
 
-        _logger.LogInformation( "Processing {Count} album ID lookups in bulk", messages.Count );
+        LogProcessingAlbumCount( _logger, messages.Count );
 
         // Extract album IDs and create a mapping
         Dictionary<string, List<QueuedMessage<QueuedLookupRequest>>> idToMessages = [];
@@ -251,11 +252,11 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
                 }
             }
 
-            _logger.LogInformation( "Successfully processed {Count} album ID lookups", messages.Count );
+            LogAlbumLookupsSuccess( _logger, messages.Count );
         } catch (RetryAfterExceededException ex) {
             await HandleBulkRateLimitAsync( messages, SpotifyConstants.BulkAlbumsEndpoint, ex, ct );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error processing bulk album lookups" );
+            LogAlbumLookupsError( _logger, ex );
             await RequeueAllAsync( messages, ct );
         }
     }
@@ -294,13 +295,9 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
             // Acknowledge the message
             await _batchHelper.AcknowledgeAsync( message.MessageId, ct );
 
-            _logger.LogDebug(
-                "Processed bulk result for saga {SagaId}: {Result}",
-                request.SagaId,
-                result is not null ? "found" : "not found"
-            );
+            LogBulkResultProcessed( _logger, request.SagaId, result is not null ? "found" : "not found" );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Error processing bulk result for saga {SagaId}", request.SagaId );
+            LogBulkResultError( _logger, ex, request.SagaId );
             await _batchHelper.RequeueAsync( message.MessageId, ct );
         }
     }
@@ -314,11 +311,7 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
         RetryAfterExceededException ex,
         CancellationToken ct
     ) {
-        _logger.LogWarning(
-            "Rate limit encountered on bulk endpoint {Endpoint}, retry after {RetryAfter}",
-            endpoint,
-            ex.RetryAfterValue
-        );
+        LogRateLimitEncountered( _logger, endpoint, ex.RetryAfterValue.ToString( ) );
 
         // Record the rate limit state
         DateTimeOffset retryAfter = DateTimeOffset.UtcNow.Add( ex.RetryAfterValue );
@@ -339,7 +332,7 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
             try {
                 await _batchHelper.RequeueAsync( message.MessageId, ct );
             } catch (Exception ex) {
-                _logger.LogError( ex, "Error requeuing message {MessageId}", message.MessageId );
+                LogRequeueError( _logger, ex, message.MessageId );
             }
         }
     }
@@ -355,12 +348,12 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
                 return;
             }
 
-            _logger.LogInformation( "Saga {SagaId} is complete, publishing completion event", sagaId );
+            LogSagaComplete( _logger, sagaId );
 
             ISubscriber subscriber = _redis.GetSubscriber( );
             _ = await subscriber.PublishAsync( RedisChannel.Literal( SagaCompletedChannel ), sagaId );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to check/publish saga completion for {SagaId}", sagaId );
+            LogSagaCompletionCheckError( _logger, ex, sagaId );
         }
     }
 
@@ -382,7 +375,158 @@ public sealed class SpotifyBulkProcessorService : BackgroundService {
                 saga.PartialResultUri ?? saga.FinalResultUri ?? string.Empty
             );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to publish lookup completion for {SagaId}", sagaId );
+            LogPublishCompletionError( _logger, ex, sagaId );
         }
     }
+
+    #region LoggerMessage Methods
+
+    /// <summary>Logs that the service is starting.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BulkProcessorStarting,
+        Level = LogLevel.Information,
+        Message = "Spotify bulk processor service starting" )]
+    private static partial void LogServiceStarting( ILogger logger );
+
+    /// <summary>Logs an error in the processor loop.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BulkProcessorLoopError,
+        Level = LogLevel.Error,
+        Message = "Error in bulk processor loop" )]
+    private static partial void LogProcessorLoopError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that the service is stopping.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BulkProcessorStopping,
+        Level = LogLevel.Information,
+        Message = "Spotify bulk processor service stopping" )]
+    private static partial void LogServiceStopping( ILogger logger );
+
+    /// <summary>Logs that an endpoint is rate limited.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BulkRateLimited,
+        Level = LogLevel.Debug,
+        Message = "{Endpoint} endpoint is rate-limited until {RetryAfter}" )]
+    private static partial void LogRateLimited( ILogger logger, string endpoint, string retryAfter );
+
+    /// <summary>Logs that bulk track lookups are being processed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ProcessingBulkTracks,
+        Level = LogLevel.Information,
+        Message = "Processing bulk track lookups" )]
+    private static partial void LogProcessingBulkTracks( ILogger logger );
+
+    /// <summary>Logs that there are no track lookups to process.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.NoTrackLookups,
+        Level = LogLevel.Debug,
+        Message = "No track ID lookups to process" )]
+    private static partial void LogNoTrackLookups( ILogger logger );
+
+    /// <summary>Logs the number of track lookups being processed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ProcessingTrackCount,
+        Level = LogLevel.Information,
+        Message = "Processing {Count} track ID lookups in bulk" )]
+    private static partial void LogProcessingTrackCount( ILogger logger, int count );
+
+    /// <summary>Logs that track lookups were successful.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.TrackLookupsSuccess,
+        Level = LogLevel.Information,
+        Message = "Successfully processed {Count} track ID lookups" )]
+    private static partial void LogTrackLookupsSuccess( ILogger logger, int count );
+
+    /// <summary>Logs an error processing track lookups.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.TrackLookupsError,
+        Level = LogLevel.Error,
+        Message = "Error processing bulk track lookups" )]
+    private static partial void LogTrackLookupsError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that bulk album lookups are being processed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ProcessingBulkAlbums,
+        Level = LogLevel.Information,
+        Message = "Processing bulk album lookups" )]
+    private static partial void LogProcessingBulkAlbums( ILogger logger );
+
+    /// <summary>Logs that there are no album lookups to process.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.NoAlbumLookups,
+        Level = LogLevel.Debug,
+        Message = "No album ID lookups to process" )]
+    private static partial void LogNoAlbumLookups( ILogger logger );
+
+    /// <summary>Logs the number of album lookups being processed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ProcessingAlbumCount,
+        Level = LogLevel.Information,
+        Message = "Processing {Count} album ID lookups in bulk" )]
+    private static partial void LogProcessingAlbumCount( ILogger logger, int count );
+
+    /// <summary>Logs that album lookups were successful.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.AlbumLookupsSuccess,
+        Level = LogLevel.Information,
+        Message = "Successfully processed {Count} album ID lookups" )]
+    private static partial void LogAlbumLookupsSuccess( ILogger logger, int count );
+
+    /// <summary>Logs an error processing album lookups.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.AlbumLookupsError,
+        Level = LogLevel.Error,
+        Message = "Error processing bulk album lookups" )]
+    private static partial void LogAlbumLookupsError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that a bulk result was processed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BulkResultProcessed,
+        Level = LogLevel.Debug,
+        Message = "Processed bulk result for saga {SagaId}: {Result}" )]
+    private static partial void LogBulkResultProcessed( ILogger logger, string sagaId, string result );
+
+    /// <summary>Logs an error processing a bulk result.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BulkResultError,
+        Level = LogLevel.Error,
+        Message = "Error processing bulk result for saga {SagaId}" )]
+    private static partial void LogBulkResultError( ILogger logger, Exception ex, string sagaId );
+
+    /// <summary>Logs that a rate limit was encountered.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RateLimitEncountered,
+        Level = LogLevel.Warning,
+        Message = "Rate limit encountered on bulk endpoint {Endpoint}, retry after {RetryAfter}" )]
+    private static partial void LogRateLimitEncountered( ILogger logger, string endpoint, string retryAfter );
+
+    /// <summary>Logs an error requeuing a message.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RequeueError,
+        Level = LogLevel.Error,
+        Message = "Error requeuing message {MessageId}" )]
+    private static partial void LogRequeueError( ILogger logger, Exception ex, string messageId );
+
+    /// <summary>Logs that a saga is complete.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.SagaComplete,
+        Level = LogLevel.Information,
+        Message = "Saga {SagaId} is complete, publishing completion event" )]
+    private static partial void LogSagaComplete( ILogger logger, string sagaId );
+
+    /// <summary>Logs an error checking saga completion.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.SagaCompletionCheckError,
+        Level = LogLevel.Error,
+        Message = "Failed to check/publish saga completion for {SagaId}" )]
+    private static partial void LogSagaCompletionCheckError( ILogger logger, Exception ex, string sagaId );
+
+    /// <summary>Logs an error publishing lookup completion.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.PublishCompletionError,
+        Level = LogLevel.Error,
+        Message = "Failed to publish lookup completion for {SagaId}" )]
+    private static partial void LogPublishCompletionError( ILogger logger, Exception ex, string sagaId );
+
+    #endregion
 }

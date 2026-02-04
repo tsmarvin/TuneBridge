@@ -4,15 +4,12 @@ using AspNetCore.Authentication.ApiKey;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Cache;
-using BridgeBeats.Infrastructure.Identity;
-using BridgeBeats.Infrastructure.Queue;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.Providers;
-using BridgeBeats.Providers.AppleMusic;
-using BridgeBeats.ServiceDefaults;
-using BridgeBeats.Services;
-using BridgeBeats.Services.Statistics;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Domain.Services;
+using BridgeBeats.Core.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Extensions;
+using BridgeBeats.Core.Infrastructure.Identity;
+using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Web.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
@@ -278,13 +275,22 @@ namespace BridgeBeats.Web.Configuration {
         private static IConfigurationBuilder ConfigureAppSettings(
             this IConfigurationBuilder config,
             string[] args
-        ) => config.AddJsonFile(
-                    path: "appsettings.json",
-                    optional: false,
-                    reloadOnChange: false
-                ).AddUserSecrets<Program>( optional: true )
+        ) {
+            _ = config.AddJsonFile(
+                path: "appsettings.json",
+                optional: false,
+                reloadOnChange: false
+            );
+
+            // Always load user secrets in non-production environments
+            // Tests use WebApplicationFactory.ConfigureAppConfiguration to inject test config
+            // which overrides user secrets values for test-specific settings
+            _ = config.AddUserSecrets<Program>( optional: true );
+
+            return config
                 .AddCommandLine( args )
                 .AddEnvironmentVariables( );
+        }
 
         /// <summary>
         /// Validates Redis connectivity for caching. Redis is registered via Aspire.
@@ -296,7 +302,7 @@ namespace BridgeBeats.Web.Configuration {
                 // Validate Redis connection (fail-fast if unavailable)
                 IConnectionMultiplexer? redis = serviceProvider.GetService<IConnectionMultiplexer>( );
                 if (redis is null) {
-                    logger.LogWarning( "BridgeBeats: Redis not configured - caching will be unavailable" );
+                    StartupExtensionsLog.LogRedisNotConfigured( logger );
                     return;
                 }
 
@@ -304,9 +310,9 @@ namespace BridgeBeats.Web.Configuration {
                     throw new InvalidOperationException( "Redis connection is not established. Check Redis configuration and connectivity." );
                 }
 
-                logger.LogInformation( "BridgeBeats: Redis cache connection established successfully" );
+                StartupExtensionsLog.LogRedisConnected( logger );
             } catch (Exception ex) {
-                logger.LogError( ex, "Failed to initialize Redis cache connection" );
+                StartupExtensionsLog.LogRedisFailed( logger, ex );
                 throw; // Fail-fast on Redis unavailability
             }
         }
@@ -317,33 +323,15 @@ namespace BridgeBeats.Web.Configuration {
             _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
                 options.UseSqlite(
                     settings.IdentityConnectionString,
-                    b => b.MigrationsAssembly( "BridgeBeats.Infrastructure" )
+                    b => b.MigrationsAssembly( "BridgeBeats.Core" )
                 )
             );
         }
 
         private static void ConfigureIdentity( IServiceCollection services ) {
-            _ = services.AddIdentityCore<ApplicationUser>( options => {
-                // Password settings
-                options.Password.RequireDigit = true;
-                options.Password.RequireLowercase = true;
-                options.Password.RequireUppercase = true;
-                options.Password.RequireNonAlphanumeric = true;
-                options.Password.RequiredLength = 14;
-
-                // User settings
-                options.User.RequireUniqueEmail = true;
-            } )
-            .AddRoles<IdentityRole>( )
-            .AddEntityFrameworkStores<ApplicationDbContext>( )
-            .AddSignInManager( )
-            .AddDefaultTokenProviders( );
-
-            // Register scoped ApplicationDbContext for Identity framework using the factory
-            _ = services.AddScoped( sp => {
-                IDbContextFactory<ApplicationDbContext> factory = sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( );
-                return factory.CreateDbContext( );
-            } );
+            // Use the centralized Identity configuration from Infrastructure project
+            // This includes Data Protection configuration for [ProtectedPersonalData] attributes
+            _ = services.AddBridgeBeatsIdentity( );
         }
 
         private static void ConfigureApiKeyAuth( IServiceCollection services, AppSettings settings ) {
@@ -422,12 +410,18 @@ namespace BridgeBeats.Web.Configuration {
                         sp.GetRequiredService<IHttpClientFactory>( )
                     )
                 );
+
+                // Register background service for cleaning up expired OAuth states
+                _ = services.AddHostedService<OAuthStateCleanupService>( );
             }
 
             if (string.IsNullOrWhiteSpace( settings.ATProtoIdentifier ) ||
                 string.IsNullOrWhiteSpace( settings.ATProtoPassword )) {
                 return;
             }
+
+            // Validate DID format if provided (must start with did:plc: or did:web:)
+            ATProtoUriHelper.ValidateDid( settings.ATProtoUserDID, "ATProtoUserDID" );
 
             // Register ATProto session manager and storage service (centralized authentication)
             _ = services.AddATProtoSessionManager( settings.ATProtoIdentifier, settings.ATProtoPassword );

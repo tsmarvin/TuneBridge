@@ -2,7 +2,7 @@ using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Core.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -14,39 +14,19 @@ namespace BridgeBeats.Web.Controllers;
 /// Controller for user authentication and account management.
 /// Provides both API endpoints and web UI for user registration, login, and API key generation.
 /// </summary>
-public class AccountController : Controller {
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly SignInManager<ApplicationUser> _signInManager;
-    private readonly ILogger<AccountController> _logger;
-    private readonly ApiKeyHasher _hasher;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AccountController"/> class.
-    /// </summary>
-    /// <param name="userManager">User manager for ASP.NET Identity.</param>
-    /// <param name="signInManager">Sign-in manager for authentication.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    /// <param name="hasher">API key hasher for secure key generation and validation.</param>
-    public AccountController(
-        UserManager<ApplicationUser> userManager,
-        SignInManager<ApplicationUser> signInManager,
-        ILogger<AccountController> logger,
-        ApiKeyHasher hasher ) {
-        _userManager = userManager;
-        _signInManager = signInManager;
-        _logger = logger;
-        _hasher = hasher;
-    }
-
-    /// <summary>Request for user registration.</summary>
-    /// <param name="Email">User email address (will be used as unique identifier).</param>
-    /// <param name="Password">User password.</param>
-    public record RegisterRequest( string Email, string Password );
-
-    /// <summary>Request for user login.</summary>
-    /// <param name="Email">User email address.</param>
-    /// <param name="Password">User password.</param>
-    public record LoginRequest( string Email, string Password );
+/// <remarks>
+/// Initializes a new instance of the <see cref="AccountController"/> class.
+/// </remarks>
+/// <param name="userManager">User manager for ASP.NET Identity.</param>
+/// <param name="signInManager">Sign-in manager for authentication.</param>
+/// <param name="logger">Logger for diagnostic information.</param>
+/// <param name="hasher">API key hasher for secure key generation and validation.</param>
+public partial class AccountController(
+    UserManager<ApplicationUser> userManager,
+    SignInManager<ApplicationUser> signInManager,
+    ILogger<AccountController> logger,
+    ApiKeyHasher hasher
+) : Controller {
 
     /// <summary>
     /// Displays the registration page.
@@ -92,7 +72,7 @@ public class AccountController : Controller {
 
         // Generate API key
         string apiKey = ApiKeyHasher.GenerateApiKey( );
-        string hashedApiKey = _hasher.HashApiKey( apiKey );
+        string hashedApiKey = hasher.HashApiKey( apiKey );
 
         ApplicationUser user = new() {
             UserName = request.Email,
@@ -101,7 +81,7 @@ public class AccountController : Controller {
             CreatedAt = DateTime.UtcNow
         };
 
-        IdentityResult result = await _userManager.CreateAsync( user, request.Password );
+        IdentityResult result = await userManager.CreateAsync( user, request.Password );
 
         if (!result.Succeeded) {
             foreach (IdentityError error in result.Errors) {
@@ -111,13 +91,13 @@ public class AccountController : Controller {
         }
 
         // Sign in the user automatically with a cookie for web UI
-        await _signInManager.SignInAsync( user, isPersistent: false );
+        await signInManager.SignInAsync( user, isPersistent: false );
 
-        _logger.LogInformation( "User registered successfully with ID: {UserId}", user.Id );
+        LogUserRegistered( user.Id );
 
         return Ok( new {
             userId = user.Id,
-            apiKey = apiKey,
+            apiKey,
             message = "Registration successful. Save your API key - it will not be shown again."
         } );
     }
@@ -136,12 +116,12 @@ public class AccountController : Controller {
             return BadRequest( ModelState );
         }
 
-        ApplicationUser? user = await _userManager.FindByEmailAsync( request.Email );
+        ApplicationUser? user = await userManager.FindByEmailAsync( request.Email );
         if (user == null) {
             return Unauthorized( new { message = "Invalid email or password" } );
         }
 
-        Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.CheckPasswordSignInAsync(
+        Microsoft.AspNetCore.Identity.SignInResult result = await signInManager.CheckPasswordSignInAsync(
             user,
             request.Password,
             lockoutOnFailure: false
@@ -152,25 +132,25 @@ public class AccountController : Controller {
         }
 
         // Sign in the user with a cookie for web UI
-        await _signInManager.SignInAsync( user, isPersistent: false );
+        await signInManager.SignInAsync( user, isPersistent: false );
 
         // Generate new API key only if user doesn't have one
         string apiKey;
         if (string.IsNullOrEmpty( user.ApiKeyHash )) {
             apiKey = ApiKeyHasher.GenerateApiKey( );
-            user.ApiKeyHash = _hasher.HashApiKey( apiKey );
-            _ = await _userManager.UpdateAsync( user );
+            user.ApiKeyHash = hasher.HashApiKey( apiKey );
+            _ = await userManager.UpdateAsync( user );
         } else {
             // Return a message that the API key is already set
             // User should use regenerate-api-key endpoint if they need a new one
             apiKey = "***EXISTING_KEY***";
         }
 
-        _logger.LogInformation( "User logged in successfully with ID: {UserId}", user.Id );
+        LogUserLoggedIn( user.Id );
 
         return Ok( new {
             userId = user.Id,
-            apiKey = apiKey,
+            apiKey,
             message = apiKey == "***EXISTING_KEY***"
                 ? "Login successful. Use /account/regenerate-api-key to get a new API key if needed."
                 : "Login successful. New API key generated."
@@ -183,7 +163,7 @@ public class AccountController : Controller {
     [HttpPost]
     [Route( "account/logout" )]
     public async Task<IActionResult> Logout( ) {
-        await _signInManager.SignOutAsync( );
+        await signInManager.SignOutAsync( );
         return Ok( new { message = "Logged out successfully" } );
     }
 
@@ -194,7 +174,7 @@ public class AccountController : Controller {
     [Route( "account/status" )]
     public async Task<IActionResult> GetAuthStatus( ) {
         if (User.Identity?.IsAuthenticated == true) {
-            ApplicationUser? user = await _userManager.GetUserAsync( User );
+            ApplicationUser? user = await userManager.GetUserAsync( User );
             return Ok( new {
                 isAuthenticated = true,
                 userId = user?.Id,
@@ -214,23 +194,23 @@ public class AccountController : Controller {
     [HttpPost]
     [Route( "account/regenerate-api-key" )]
     public async Task<IActionResult> RegenerateApiKey( ) {
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( );
         }
 
         string apiKey = ApiKeyHasher.GenerateApiKey( );
-        user.ApiKeyHash = _hasher.HashApiKey( apiKey );
-        IdentityResult result = await _userManager.UpdateAsync( user );
+        user.ApiKeyHash = hasher.HashApiKey( apiKey );
+        IdentityResult result = await userManager.UpdateAsync( user );
 
         if (!result.Succeeded) {
             return BadRequest( new { message = "Failed to regenerate API key" } );
         }
 
-        _logger.LogInformation( "User regenerated API key with ID: {UserId}", user.Id );
+        LogApiKeyRegenerated( user.Id );
 
         return Ok( new {
-            apiKey = apiKey,
+            apiKey,
             message = "API key regenerated successfully. Update your applications with the new key."
         } );
     }
@@ -246,7 +226,7 @@ public class AccountController : Controller {
     [HttpPost]
     [Route( "account/download-data" )]
     public async Task<IActionResult> DownloadPersonalData( [FromServices] IPlaylistService? playlistService ) {
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( );
         }
@@ -281,7 +261,7 @@ public class AccountController : Controller {
             } )
         };
 
-        _logger.LogInformation( "User downloaded personal data with ID: {UserId}", user.Id );
+        LogDataDownloaded( user.Id );
 
         string json = JsonSerializer.Serialize(
             personalData,
@@ -307,23 +287,23 @@ public class AccountController : Controller {
     [HttpPost]
     [Route( "account/delete" )]
     public async Task<IActionResult> DeleteAccount( ) {
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
         if (user == null) {
             return Unauthorized( );
         }
 
         // Sign out the user first
-        await _signInManager.SignOutAsync( );
+        await signInManager.SignOutAsync( );
 
         // Delete the user
-        IdentityResult result = await _userManager.DeleteAsync( user );
+        IdentityResult result = await userManager.DeleteAsync( user );
 
         if (!result.Succeeded) {
-            _logger.LogError( "Failed to delete account for user ID: {UserId}", user.Id );
+            LogDeleteFailed( user.Id );
             return BadRequest( new { message = "Failed to delete account. Please try again." } );
         }
 
-        _logger.LogInformation( "User account deleted with ID: {UserId}", user.Id );
+        LogAccountDeleted( user.Id );
 
         return Ok( new {
             message = "Account deleted successfully. All your personal data has been removed."
@@ -331,10 +311,6 @@ public class AccountController : Controller {
     }
 
     #region ATProto OAuth
-
-    /// <summary>Request to start ATProto OAuth login.</summary>
-    /// <param name="Handle">The ATProto handle (e.g., user.bsky.social).</param>
-    public record AtProtoLoginRequest( string Handle );
 
     /// <summary>
     /// Starts the ATProto OAuth login flow.
@@ -368,19 +344,15 @@ public class AccountController : Controller {
                 callbackUri
             );
 
-            _logger.LogInformation(
-                "Started ATProto OAuth for handle {Handle}, redirecting to {AuthUrl}",
-                request.Handle,
-                authUrl.Host
-            );
+            LogAtProtoOAuthStarted( request.Handle, authUrl.Host );
 
             // Return the authorization URL for the client to redirect to
             return Ok( new {
                 authorizationUrl = authUrl.ToString( ),
-                state = state
+                state
             } );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to start ATProto OAuth for handle {Handle}", request.Handle );
+            LogAtProtoOAuthStartFailed( ex, request.Handle );
             return BadRequest( new {
                 message = $"Failed to start login: {ex.Message}"
             } );
@@ -409,7 +381,7 @@ public class AccountController : Controller {
     ) {
         // Handle authorization errors
         if (!string.IsNullOrEmpty( error )) {
-            _logger.LogWarning( "ATProto OAuth error: {Error} - {Description}", error, error_description );
+            LogAtProtoOAuthError( error, error_description );
             return RedirectToAction( nameof( LoginPage ), new {
                 error = error_description ?? error
             } );
@@ -432,7 +404,7 @@ public class AccountController : Controller {
             ATProtoOAuthResult result = await atProtoOAuth.CompleteAuthorizationAsync( state, code, iss );
 
             // Find or create the user
-            ApplicationUser? user = await _userManager.Users
+            ApplicationUser? user = await userManager.Users
                 .FirstOrDefaultAsync( u => u.AtProtoDid == result.Did );
 
             if (user is null) {
@@ -443,50 +415,42 @@ public class AccountController : Controller {
                     AtProtoHandle = result.Handle,
                     AtProtoAccessToken = result.AccessToken,
                     AtProtoRefreshToken = result.RefreshToken,
-                    AtProtoDPoPKey = result.DPoPKeyJwk,
+                    EncryptedAtProtoDPoPKey = result.DPoPKeyJwk,
                     AtProtoTokenExpiration = result.TokenExpiration,
                     CreatedAt = DateTime.UtcNow
                 };
 
-                IdentityResult createResult = await _userManager.CreateAsync( user );
+                IdentityResult createResult = await userManager.CreateAsync( user );
                 if (!createResult.Succeeded) {
                     string errors = string.Join( ", ", createResult.Errors.Select( e => e.Description ) );
-                    _logger.LogError( "Failed to create ATProto user: {Errors}", errors );
+                    LogAtProtoUserCreateFailed( errors );
                     return RedirectToAction( nameof( LoginPage ), new {
                         error = "Failed to create account. Please try again."
                     } );
                 }
 
-                _logger.LogInformation(
-                    "Created new user for ATProto DID {Did}, handle {Handle}",
-                    result.Did,
-                    result.Handle
-                );
+                LogAtProtoUserCreated( result.Did, result.Handle );
             } else {
                 // Update tokens for existing user
                 user.AtProtoHandle = result.Handle;
                 user.AtProtoAccessToken = result.AccessToken;
                 user.AtProtoRefreshToken = result.RefreshToken;
-                user.AtProtoDPoPKey = result.DPoPKeyJwk;
+                user.EncryptedAtProtoDPoPKey = result.DPoPKeyJwk;
                 user.AtProtoTokenExpiration = result.TokenExpiration;
 
-                _ = await _userManager.UpdateAsync( user );
+                _ = await userManager.UpdateAsync( user );
 
-                _logger.LogInformation(
-                    "Updated tokens for ATProto user DID {Did}, handle {Handle}",
-                    result.Did,
-                    result.Handle
-                );
+                LogAtProtoTokensUpdated( result.Did, result.Handle );
             }
 
             // Sign in the user
-            await _signInManager.SignInAsync( user, isPersistent: false );
+            await signInManager.SignInAsync( user, isPersistent: false );
 
-            _logger.LogInformation( "ATProto user logged in: {UserId}", user.Id );
+            LogAtProtoLoggedIn( user.Id );
 
             return Redirect( "/" );
         } catch (Exception ex) {
-            _logger.LogError( ex, "Failed to complete ATProto OAuth callback" );
+            LogAtProtoCallbackFailed( ex );
             return RedirectToAction( nameof( LoginPage ), new {
                 error = $"Login failed: {ex.Message}"
             } );

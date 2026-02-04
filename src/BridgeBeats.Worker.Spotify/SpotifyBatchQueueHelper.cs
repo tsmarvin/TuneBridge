@@ -2,6 +2,7 @@ using System.Text.Json;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Worker.Spotify.Logging;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Worker.Spotify;
@@ -28,7 +29,7 @@ namespace BridgeBeats.Worker.Spotify;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class SpotifyBatchQueueHelper {
+public sealed partial class SpotifyBatchQueueHelper {
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<SpotifyBatchQueueHelper> _logger;
@@ -85,17 +86,9 @@ public sealed class SpotifyBatchQueueHelper {
                     StreamPosition.NewMessages,
                     createStream: true
                 );
-                _logger.LogInformation(
-                    "Created consumer group {Group} for stream {Stream}",
-                    ConsumerGroup,
-                    stream
-                );
+                LogConsumerGroupCreated( _logger, ConsumerGroup, stream );
             } catch (RedisServerException ex) when (ex.Message.Contains( "BUSYGROUP" )) {
-                _logger.LogDebug(
-                    "Consumer group {Group} already exists for stream {Stream}",
-                    ConsumerGroup,
-                    stream
-                );
+                LogConsumerGroupExists( _logger, ConsumerGroup, stream );
             }
         }
     }
@@ -213,11 +206,10 @@ public sealed class SpotifyBatchQueueHelper {
 
         _ = await db.StreamAddAsync( stream, fields );
 
-        _logger.LogDebug(
-            "Enqueued {LookupType} request to type-specific bulk stream {Stream}",
-            request.LookupType,
-            stream
-        );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string lookupTypeStr = request.LookupType.ToString( );
+            LogEnqueuedToBulkStream( _logger, lookupTypeStr, stream );
+        }
 
         return true;
     }
@@ -328,7 +320,7 @@ public sealed class SpotifyBatchQueueHelper {
                 }
             }
         } catch (RedisServerException ex) {
-            _logger.LogWarning( ex, "Error collecting ID lookups from stream {Stream}", stream );
+            LogCollectionWarning( _logger, ex, stream );
         }
 
         return collected;
@@ -371,11 +363,11 @@ public sealed class SpotifyBatchQueueHelper {
                     string compositeId = $"{stream}:{entry.Id}";
                     messages.Add( new QueuedMessage<QueuedLookupRequest>( compositeId, request, enqueuedAt ) );
                 } catch (JsonException ex) {
-                    _logger.LogError( ex, "Failed to deserialize message {Id} from {Stream}", entry.Id, stream );
+                    LogDeserializationError( _logger, ex, entry.Id.ToString( ), stream );
                 }
             }
         } catch (RedisServerException ex) {
-            _logger.LogWarning( ex, "Error reading from stream {Stream}", stream );
+            LogStreamReadWarning( _logger, ex, stream );
         }
 
         return messages;
@@ -393,7 +385,7 @@ public sealed class SpotifyBatchQueueHelper {
         _ = await db.StreamAcknowledgeAsync( stream, ConsumerGroup, id );
         _ = await db.StreamDeleteAsync( stream, [id] );
 
-        _logger.LogDebug( "Acknowledged and deleted message {MessageId} from {Stream}", id, stream );
+        LogMessageAcknowledged( _logger, id, stream );
     }
 
     /// <summary>
@@ -410,7 +402,7 @@ public sealed class SpotifyBatchQueueHelper {
         StreamEntry[] entries = await db.StreamRangeAsync( stream, id, id, count: 1 );
 
         if (entries.Length == 0) {
-            _logger.LogWarning( "Message {MessageId} not found in {Stream} for requeue", id, stream );
+            LogMessageNotFound( _logger, id, stream );
             return;
         }
 
@@ -428,7 +420,7 @@ public sealed class SpotifyBatchQueueHelper {
 
         _ = await db.StreamAddAsync( stream, fields );
 
-        _logger.LogDebug( "Requeued message from {Stream}", stream );
+        LogMessageRequeued( _logger, stream );
     }
 
     private static (string stream, string id) ParseMessageId( string compositeId ) {
@@ -447,6 +439,73 @@ public sealed class SpotifyBatchQueueHelper {
             ? throw new ArgumentException( $"Invalid composite message ID: {compositeId}", nameof( compositeId ) )
             : ((string stream, string id))(compositeId[..lastColon], compositeId[(lastColon + 1)..]);
     }
+
+    #region LoggerMessage Methods
+
+    /// <summary>Logs that a consumer group was created.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ConsumerGroupCreated,
+        Level = LogLevel.Information,
+        Message = "Created consumer group {Group} for stream {Stream}" )]
+    private static partial void LogConsumerGroupCreated( ILogger logger, string group, string stream );
+
+    /// <summary>Logs that a consumer group already exists.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ConsumerGroupExists,
+        Level = LogLevel.Debug,
+        Message = "Consumer group {Group} already exists for stream {Stream}" )]
+    private static partial void LogConsumerGroupExists( ILogger logger, string group, string stream );
+
+    /// <summary>Logs that a request was enqueued to a bulk stream.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.EnqueuedToBulkStream,
+        Level = LogLevel.Debug,
+        Message = "Enqueued {LookupType} request to type-specific bulk stream {Stream}" )]
+    private static partial void LogEnqueuedToBulkStream( ILogger logger, string lookupType, string stream );
+
+    /// <summary>Logs a warning during collection from a stream.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.CollectionWarning,
+        Level = LogLevel.Warning,
+        Message = "Error collecting ID lookups from stream {Stream}" )]
+    private static partial void LogCollectionWarning( ILogger logger, Exception ex, string stream );
+
+    /// <summary>Logs a deserialization error.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.DeserializationError,
+        Level = LogLevel.Error,
+        Message = "Failed to deserialize message {Id} from {Stream}" )]
+    private static partial void LogDeserializationError( ILogger logger, Exception ex, string id, string stream );
+
+    /// <summary>Logs a warning reading from a stream.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.StreamReadWarning,
+        Level = LogLevel.Warning,
+        Message = "Error reading from stream {Stream}" )]
+    private static partial void LogStreamReadWarning( ILogger logger, Exception ex, string stream );
+
+    /// <summary>Logs that a message was acknowledged.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.MessageAcknowledged,
+        Level = LogLevel.Debug,
+        Message = "Acknowledged and deleted message {MessageId} from {Stream}" )]
+    private static partial void LogMessageAcknowledged( ILogger logger, string messageId, string stream );
+
+    /// <summary>Logs that a message was not found for requeue.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.MessageNotFound,
+        Level = LogLevel.Warning,
+        Message = "Message {MessageId} not found in {Stream} for requeue" )]
+    private static partial void LogMessageNotFound( ILogger logger, string messageId, string stream );
+
+    /// <summary>Logs that a message was requeued.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.MessageRequeued,
+        Level = LogLevel.Debug,
+        Message = "Requeued message from {Stream}" )]
+    private static partial void LogMessageRequeued( ILogger logger, string stream );
+
+    #endregion
 }
 
 /// <summary>

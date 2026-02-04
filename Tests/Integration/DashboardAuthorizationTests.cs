@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using BridgeBeats.Contracts.Constants;
-using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Core.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
@@ -25,10 +25,14 @@ public class DashboardAuthorizationTests : IDisposable {
     private const string TestUserPassword = "TestPassword123!";
 
     /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Initializes the test factory and HTTP client before each test.
     /// </summary>
     [TestInitialize]
-    [Obsolete]
     public async Task Setup( ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -45,13 +49,13 @@ public class DashboardAuthorizationTests : IDisposable {
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = "";
+        configData["BridgeBeats:DiscordToken"] = string.Empty;
         // Disable worker services mode - use direct provider implementations
         configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
         // Force ATProto credentials to empty to disable caching service
-        configData["BridgeBeats:ATProtoIdentifier"] = "";
-        configData["BridgeBeats:ATProtoPassword"] = "";
-        configData["BridgeBeats:ATProtoUserDID"] = "";
+        configData["BridgeBeats:ATProtoIdentifier"] = string.Empty;
+        configData["BridgeBeats:ATProtoPassword"] = string.Empty;
+        configData["BridgeBeats:ATProtoUserDID"] = string.Empty;
 
         _factory = new DashboardTestWebApplicationFactory( configData );
         _client = _factory.CreateClient( );
@@ -96,12 +100,13 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Tests that unauthenticated requests to dashboard authorization endpoint return 401.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DashboardAuthorize_UnauthenticatedUser_Returns401( ) {
         // Arrange
         using HttpClient client = _factory!.CreateClient( );
 
         // Act
-        HttpResponseMessage response = await client.GetAsync( "/api/dashboard/authorize" );
+        HttpResponseMessage response = await client.GetAsync( "/api/dashboard/authorize", TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.Unauthorized, response.StatusCode );
@@ -111,13 +116,14 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Tests that authenticated users without the AspireDashboardAccess role return 403.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DashboardAuthorize_UserWithoutRole_Returns403( ) {
         // Arrange
         await CreateTestUserAsync( hasRole: false );
         _client!.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue( "TestScheme" );
 
         // Act
-        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize" );
+        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize", TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.Forbidden, response.StatusCode );
@@ -127,13 +133,14 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Tests that authenticated users with the AspireDashboardAccess role return 200.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DashboardAuthorize_UserWithRole_Returns200( ) {
         // Arrange
         await CreateTestUserAsync( hasRole: true );
         _client!.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue( "TestScheme" );
 
         // Act
-        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize" );
+        HttpResponseMessage response = await _client.GetAsync( "/api/dashboard/authorize", TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
@@ -143,6 +150,7 @@ public class DashboardAuthorizationTests : IDisposable {
     /// Tests that the AspireDashboardAccess role is created on application startup.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DatabaseInitialization_CreatesAspireDashboardAccessRole( ) {
         // Arrange
         using IServiceScope scope = _factory!.Services.CreateScope( );
@@ -192,14 +200,12 @@ public class DashboardAuthorizationTests : IDisposable {
     /// <summary>
     /// Custom factory that adds test authentication scheme.
     /// </summary>
-    private sealed class DashboardTestWebApplicationFactory : CustomWebApplicationFactory {
+    private sealed class DashboardTestWebApplicationFactory(
+        Dictionary<string, string?>? configOverrides
+    ) : CustomWebApplicationFactory( configOverrides ) {
         private string? _testUserId;
         private string? _testUserEmail;
         private bool _testUserHasRole;
-
-        [Obsolete]
-        public DashboardTestWebApplicationFactory( Dictionary<string, string?>? configOverrides )
-            : base( configOverrides ) { }
 
         /// <summary>
         /// Sets the test user information for authentication simulation.

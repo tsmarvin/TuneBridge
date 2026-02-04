@@ -21,6 +21,11 @@ public class CacheBootstrapBackgroundServiceTests {
     private Mock<ILogger<CacheBootstrapBackgroundService>> _loggerMock = null!;
     private CacheBootstrapSettings _settings = null!;
 
+    /// <summary>
+    /// Gets or sets the test context for the current test.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
     private const string TestUserDid = "did:plc:testuser123";
 
@@ -67,6 +72,7 @@ public class CacheBootstrapBackgroundServiceTests {
     /// records from ATProto storage and populating the cache repository on startup.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ExecuteAsync_OnStartup_ShouldBootstrapCache( ) {
         // Arrange
         List<(string AtUri, MediaLinkResult Result)> records = [
@@ -80,7 +86,7 @@ public class CacheBootstrapBackgroundServiceTests {
         // Act - Start and immediately cancel
         using CancellationTokenSource cts = new( );
         Task executeTask = service.StartAsync( cts.Token );
-        await Task.Delay( 100 ); // Give time for bootstrap to complete
+        await Task.Delay( 100, TestContext.CancellationToken ); // Give time for bootstrap to complete
         await cts.CancelAsync( );
         await executeTask;
 
@@ -96,6 +102,7 @@ public class CacheBootstrapBackgroundServiceTests {
     /// the ATProto storage contains no records to bootstrap.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ExecuteAsync_WithEmptyCollection_ShouldCompleteWithoutErrors( ) {
         // Arrange
         SetupEmptyRecordList( );
@@ -104,7 +111,7 @@ public class CacheBootstrapBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task executeTask = service.StartAsync( cts.Token );
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await executeTask;
 
@@ -120,6 +127,7 @@ public class CacheBootstrapBackgroundServiceTests {
     /// records when individual record caching fails, ensuring fault tolerance.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ExecuteAsync_WhenRecordFails_ShouldContinueWithOtherRecords( ) {
         // Arrange
         List<(string AtUri, MediaLinkResult Result)> records = [
@@ -142,7 +150,7 @@ public class CacheBootstrapBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task executeTask = service.StartAsync( cts.Token );
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await executeTask;
 
@@ -158,6 +166,7 @@ public class CacheBootstrapBackgroundServiceTests {
     /// the cancellation token is cancelled.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ExecuteAsync_WhenCancelled_ShouldStopGracefully( ) {
         // Arrange
         SetupEmptyRecordList( );
@@ -177,6 +186,7 @@ public class CacheBootstrapBackgroundServiceTests {
     /// and user DID from settings when listing records from ATProto storage.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ExecuteAsync_ShouldPassCorrectParametersToListAllRecords( ) {
         // Arrange
         SetupEmptyRecordList( );
@@ -185,7 +195,7 @@ public class CacheBootstrapBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task executeTask = service.StartAsync( cts.Token );
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await executeTask;
 

@@ -29,7 +29,7 @@ public enum SupportedProviders {
     /// API Documentation: https://developer.spotify.com/documentation/web-api
     /// Credentials from: https://developer.spotify.com/dashboard
     /// </remarks>
-    Spotify    = 2,
+    Spotify = 2,
 
     /// <summary>
     /// Tidal streaming service. Requires Tidal API credentials (Client ID and Client Secret).
@@ -40,5 +40,5 @@ public enum SupportedProviders {
     /// Credentials from: https://developer.tidal.com/
     /// </remarks>
     [Description("Tidal")]
-    Tidal      = 3,
+    Tidal = 3,
 }

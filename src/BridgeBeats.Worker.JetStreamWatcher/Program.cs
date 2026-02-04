@@ -1,6 +1,6 @@
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Queue;
-using BridgeBeats.ServiceDefaults;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Infrastructure.Extensions;
 using Serilog;
 
 namespace BridgeBeats.Worker.JetStreamWatcher;

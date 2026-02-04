@@ -10,7 +10,14 @@ namespace BridgeBeats.Contracts.Records;
 /// <param name="Payload">The original request payload.</param>
 /// <param name="EnqueuedAt">When the message was added to the queue.</param>
 public sealed record QueuedMessage<T>(
-    [property: JsonPropertyName( "messageId" )] string MessageId,
-    [property: JsonPropertyName( "payload" )] T Payload,
-    [property: JsonPropertyName( "enqueuedAt" )] DateTimeOffset EnqueuedAt
+
+    [property: JsonPropertyName( "messageId" )]
+    string MessageId,
+
+    [property: JsonPropertyName( "payload" )]
+    T Payload,
+
+    [property: JsonPropertyName( "enqueuedAt" )]
+    DateTimeOffset EnqueuedAt
+
 );

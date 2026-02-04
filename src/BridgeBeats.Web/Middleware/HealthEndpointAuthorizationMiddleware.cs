@@ -1,4 +1,5 @@
 using BridgeBeats.Contracts.Constants;
+using BridgeBeats.Web.Logging;
 
 namespace BridgeBeats.Web.Middleware;
 
@@ -6,22 +7,15 @@ namespace BridgeBeats.Web.Middleware;
 /// Middleware to restrict access to the liveness endpoint to internal requests only (localhost and Docker network).
 /// Allows Aspire Dashboard and Caddy to access the liveness endpoint while blocking public access.
 /// </summary>
-public class HealthEndpointAuthorizationMiddleware {
-    private readonly RequestDelegate _next;
-    private readonly ILogger<HealthEndpointAuthorizationMiddleware> _logger;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="HealthEndpointAuthorizationMiddleware"/> class.
-    /// </summary>
-    /// <param name="next">The next middleware in the pipeline.</param>
-    /// <param name="logger">The logger instance.</param>
-    public HealthEndpointAuthorizationMiddleware(
-        RequestDelegate next,
-        ILogger<HealthEndpointAuthorizationMiddleware> logger
-    ) {
-        _next = next;
-        _logger = logger;
-    }
+/// <remarks>
+/// Initializes a new instance of the <see cref="HealthEndpointAuthorizationMiddleware"/> class.
+/// </remarks>
+/// <param name="next">The next middleware in the pipeline.</param>
+/// <param name="logger">The logger instance.</param>
+public partial class HealthEndpointAuthorizationMiddleware(
+    RequestDelegate next,
+    ILogger<HealthEndpointAuthorizationMiddleware> logger
+) {
 
     /// <summary>
     /// Invokes the middleware to check health endpoint access authorization.
@@ -31,7 +25,7 @@ public class HealthEndpointAuthorizationMiddleware {
     public async Task InvokeAsync( HttpContext context ) {
         // Only intercept requests to liveness endpoint
         if (!context.Request.Path.Equals( EndpointPaths.Alive, StringComparison.OrdinalIgnoreCase )) {
-            await _next( context );
+            await next( context );
             return;
         }
 
@@ -41,15 +35,24 @@ public class HealthEndpointAuthorizationMiddleware {
         // Allow localhost and Docker internal IPs (172.x.x.x, 10.x.x.x ranges)
         // Also allow requests from the same host (::1 for IPv6 localhost)
         if (IsInternalRequest( remoteIp )) {
-            await _next( context );
+            await next( context );
             return;
         }
 
         // Block external access
-        _logger.LogWarning( "Blocked external access to liveness endpoint from {IP}", remoteIp );
+        LogBlockedExternalAccess( logger, remoteIp );
         context.Response.StatusCode = 403;
         await context.Response.WriteAsync( "Forbidden: Liveness endpoint is not publicly accessible." );
     }
+
+    /// <summary>
+    /// Logs that external access to the liveness endpoint was blocked.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Middleware.HealthEndpointAuthorizationMiddlewareBlockedExternalAccess,
+        Level = LogLevel.Warning,
+        Message = "Blocked external access to liveness endpoint from {IP}" )]
+    private static partial void LogBlockedExternalAccess( ILogger logger, string? ip );
 
     /// <summary>
     /// Determines if a request is from an internal source.

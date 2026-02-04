@@ -1,7 +1,8 @@
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Cache;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.ServiceDefaults;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Extensions;
+using BridgeBeats.Core.Infrastructure.Storage;
 using Serilog;
 using StackExchange.Redis;
 
@@ -95,15 +96,19 @@ public static class Program {
         int cacheDays = builder.Configuration.GetValue("BridgeBeats:CacheDays", 30);
         int bootstrapIntervalHours = builder.Configuration.GetValue("BridgeBeats:BootstrapIntervalHours", 6);
 
-        return string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
+        if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
             string.IsNullOrWhiteSpace( atProtoPassword ) ||
-            string.IsNullOrWhiteSpace( atProtoUserDID )
-            ? throw new InvalidOperationException(
+            string.IsNullOrWhiteSpace( atProtoUserDID )) {
+            throw new InvalidOperationException(
                 "ATProto credentials are required. Set BridgeBeats:ATProtoIdentifier, " +
                 "BridgeBeats:ATProtoPassword, and BridgeBeats:ATProtoUserDID."
-            )
-            : ((string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID, string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours))(atProtoIdentifier, atProtoPassword, atProtoUserDID,
-            atProtoPdsUri, cacheDays, bootstrapIntervalHours);
+            );
+        }
+
+        // Validate DID format (must start with did:plc: or did:web:)
+        ATProtoUriHelper.ValidateDid( atProtoUserDID, "BridgeBeats:ATProtoUserDID" );
+
+        return (atProtoIdentifier, atProtoPassword, atProtoUserDID, atProtoPdsUri, cacheDays, bootstrapIntervalHours);
     }
 
     /// <summary>
@@ -116,27 +121,30 @@ public static class Program {
         Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger("CacheBootstrap.Startup");
 
         // Log Redis connection details
-        logger.LogInformation(
-            "Redis connection: {Configuration}, IsConnected: {IsConnected}, Database: {Database}",
-            redis.Configuration,
-            redis.IsConnected,
-            redis.GetDatabase( ).Database
-        );
+        if (logger.IsEnabled( LogLevel.Information )) {
+            int databaseNum = redis.GetDatabase( ).Database;
+            ProgramLog.LogRedisConnectionInfo(
+                logger,
+                redis.Configuration,
+                redis.IsConnected,
+                databaseNum
+            );
+        }
 
         // Verify we can actually write to Redis
         IDatabase db = redis.GetDatabase();
         string testKey = "cache-bootstrap:startup-test";
         bool setResult = await db.StringSetAsync(testKey, DateTimeOffset.UtcNow.ToString(), TimeSpan.FromMinutes(1));
         string? getValue = await db.StringGetAsync(testKey);
-        logger.LogInformation(
-            "Redis write test - SetResult: {SetResult}, ReadBack: {ReadBack}",
+        ProgramLog.LogRedisWriteTest(
+            logger,
             setResult,
             getValue
         );
 
         if (!setResult || string.IsNullOrEmpty( getValue )) {
-            logger.LogError(
-                "Redis write verification failed! SetResult: {SetResult}, ReadBack: {ReadBack}",
+            ProgramLog.LogRedisWriteVerificationFailed(
+                logger,
                 setResult,
                 getValue
             );
@@ -146,7 +154,10 @@ public static class Program {
         foreach (System.Net.EndPoint endpoint in redis.GetEndPoints( )) {
             IServer server = redis.GetServer(endpoint);
             long keyCount = server.DatabaseSize();
-            logger.LogInformation( "Redis server {Endpoint} has {KeyCount} keys", endpoint, keyCount );
+            if (logger.IsEnabled( LogLevel.Information )) {
+                string endpointStr = endpoint.ToString( ) ?? "unknown";
+                ProgramLog.LogRedisKeyCount( logger, endpointStr, keyCount );
+            }
         }
     }
 

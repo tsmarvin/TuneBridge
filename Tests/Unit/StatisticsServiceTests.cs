@@ -1,7 +1,8 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Services.Statistics;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Domain.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -20,6 +21,11 @@ public class StatisticsServiceTests {
 
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
     private const string TestUserDid = "did:plc:testuser123";
+
+    /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
     /// Initializes test dependencies before each test method.
@@ -58,13 +64,14 @@ public class StatisticsServiceTests {
     /// collections when the ATProto storage contains no records.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetStatisticsAsync_WithEmptyCollection_ShouldReturnZeroStats( ) {
         // Arrange
         SetupEmptyRecordList( );
         StatisticsService service = CreateService( );
 
         // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( );
+        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( 0, stats.TotalRecords );
@@ -81,6 +88,7 @@ public class StatisticsServiceTests {
     /// for a mix of track and album records, including correct total, album, and track counts.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetStatisticsAsync_WithMixedRecords_ShouldComputeCorrectStats( ) {
         // Arrange
         List<(string AtUri, MediaLinkResult Result)> records = [
@@ -92,7 +100,7 @@ public class StatisticsServiceTests {
         StatisticsService service = CreateService( );
 
         // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( );
+        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( 3, stats.TotalRecords );
@@ -105,6 +113,7 @@ public class StatisticsServiceTests {
     /// of records per music provider.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetStatisticsAsync_ShouldCountProviders( ) {
         // Arrange
         List<(string AtUri, MediaLinkResult Result)> records = [
@@ -116,7 +125,7 @@ public class StatisticsServiceTests {
         StatisticsService service = CreateService( );
 
         // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( );
+        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( 2, stats.ProviderCounts["Spotify"] );
@@ -129,6 +138,7 @@ public class StatisticsServiceTests {
     /// earliest and latest lookup timestamps from the records.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetStatisticsAsync_ShouldTrackDateRange( ) {
         // Arrange
         DateTimeOffset earliest = DateTimeOffset.UtcNow.AddDays( -30 );
@@ -142,7 +152,7 @@ public class StatisticsServiceTests {
         StatisticsService service = CreateService( );
 
         // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( );
+        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.IsNotNull( stats.EarliestLookup );
@@ -156,6 +166,7 @@ public class StatisticsServiceTests {
     /// recent entries in the correct order (newest first).
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetStatisticsAsync_ShouldReturnFiveMostRecentEntries( ) {
         // Arrange
         List<(string AtUri, MediaLinkResult Result)> records = [];
@@ -171,7 +182,7 @@ public class StatisticsServiceTests {
         StatisticsService service = CreateService( );
 
         // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( );
+        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.HasCount( 5, stats.RecentEntries );
@@ -184,6 +195,7 @@ public class StatisticsServiceTests {
     /// for each recent entry, extracted from the ATProto URI.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetStatisticsAsync_ShouldGenerateCardIdForRecentEntries( ) {
         // Arrange
         List<(string AtUri, MediaLinkResult Result)> records = [
@@ -193,7 +205,7 @@ public class StatisticsServiceTests {
         StatisticsService service = CreateService( );
 
         // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( );
+        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.HasCount( 1, stats.RecentEntries );
@@ -210,14 +222,15 @@ public class StatisticsServiceTests {
     /// repeated calls to the ATProto storage service.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetStatisticsAsync_ShouldCacheResults( ) {
         // Arrange
         SetupEmptyRecordList( );
         StatisticsService service = CreateService( );
 
         // Act - Call twice
-        _ = await service.GetStatisticsAsync( );
-        _ = await service.GetStatisticsAsync( );
+        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
+        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
 
         // Assert - ListAllRecordsAsync should only be called once due to caching
         _atProtoStorageMock.Verify(
@@ -231,14 +244,15 @@ public class StatisticsServiceTests {
     /// and fetches fresh data from the ATProto storage service.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task RefreshStatisticsAsync_ShouldBypassCache( ) {
         // Arrange
         SetupEmptyRecordList( );
         StatisticsService service = CreateService( );
 
         // Act - Get stats, then refresh
-        _ = await service.GetStatisticsAsync( );
-        _ = await service.RefreshStatisticsAsync( );
+        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
+        _ = await service.RefreshStatisticsAsync( TestContext.CancellationToken );
 
         // Assert - ListAllRecordsAsync should be called twice (initial + refresh)
         _atProtoStorageMock.Verify(
@@ -252,6 +266,7 @@ public class StatisticsServiceTests {
     /// the ATProto storage service after the cache expires.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetStatisticsAsync_AfterCacheExpiry_ShouldRefetch( ) {
         // Arrange - Use very short cache duration
         StatisticsSettings shortCacheSettings = new(
@@ -267,9 +282,9 @@ public class StatisticsServiceTests {
         );
 
         // Act - Call, wait for expiry, call again
-        _ = await service.GetStatisticsAsync( );
-        await Task.Delay( 10 ); // Wait for cache to expire
-        _ = await service.GetStatisticsAsync( );
+        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
+        await Task.Delay( 10, TestContext.CancellationToken ); // Wait for cache to expire
+        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
 
         // Assert - Should be called twice due to cache expiry
         _atProtoStorageMock.Verify(

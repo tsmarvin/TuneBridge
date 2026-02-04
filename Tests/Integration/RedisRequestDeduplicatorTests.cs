@@ -1,4 +1,4 @@
-using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
@@ -20,12 +20,16 @@ public class RedisRequestDeduplicatorTests {
     private RedisRequestDeduplicator _deduplicator = null!;
 
     /// <summary>
+    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Initializes the Redis connection for all tests in the class.
     /// </summary>
-    /// <param name="context">The test context provided by the test framework.</param>
+    /// <param name="_">The test context provided by the test framework (unused).</param>
     [ClassInitialize]
-    [Obsolete]
-    public static async Task ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
@@ -66,6 +70,7 @@ public class RedisRequestDeduplicatorTests {
     /// when no other request is in flight for the same key.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryAcquireAsync_ReturnsAcquired_WhenNotInFlight( ) {
         // Arrange
         string requestKey = "isrc:USRC12345678";
@@ -73,7 +78,8 @@ public class RedisRequestDeduplicatorTests {
         // Act
         Contracts.Records.DeduplicationResult result = await _deduplicator.TryAcquireAsync(
             requestKey,
-            TimeSpan.FromMinutes( 5 )
+            TimeSpan.FromMinutes( 5 ),
+            TestContext.CancellationToken
         );
 
         // Assert
@@ -87,6 +93,7 @@ public class RedisRequestDeduplicatorTests {
     /// when another instance already holds the lock for the same key.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryAcquireAsync_ReturnsAlreadyInFlight_WhenLockHeld( ) {
         // Arrange
         string requestKey = "isrc:USRC12345678";
@@ -95,7 +102,8 @@ public class RedisRequestDeduplicatorTests {
         // First acquisition
         Contracts.Records.DeduplicationResult firstResult = await _deduplicator.TryAcquireAsync(
             requestKey,
-            TimeSpan.FromMinutes( 5 )
+            TimeSpan.FromMinutes( 5 ),
+            TestContext.CancellationToken
         );
         Assert.IsTrue( firstResult.Acquired );
 
@@ -106,7 +114,8 @@ public class RedisRequestDeduplicatorTests {
         // Act - second acquisition should fail
         Contracts.Records.DeduplicationResult secondResult = await deduplicator2.TryAcquireAsync(
             requestKey,
-            TimeSpan.FromMinutes( 5 )
+            TimeSpan.FromMinutes( 5 ),
+            TestContext.CancellationToken
         );
 
         // Assert
@@ -119,20 +128,22 @@ public class RedisRequestDeduplicatorTests {
     /// allowing a new acquisition of the same key.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ReleaseAsync_RemovesLock( ) {
         // Arrange
         string requestKey = "isrc:USRC12345678";
         string resultUri = "at://did:plc:test/link.bridgebeats.lookup/track:USRC12345678";
 
-        _ = await _deduplicator.TryAcquireAsync( requestKey, TimeSpan.FromMinutes( 5 ) );
+        _ = await _deduplicator.TryAcquireAsync( requestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
 
         // Act
-        await _deduplicator.ReleaseAsync( requestKey, resultUri );
+        await _deduplicator.ReleaseAsync( requestKey, resultUri, TestContext.CancellationToken );
 
         // Assert - lock should be released, can acquire again
         Contracts.Records.DeduplicationResult result = await _deduplicator.TryAcquireAsync(
             requestKey,
-            TimeSpan.FromMinutes( 5 )
+            TimeSpan.FromMinutes( 5 ),
+            TestContext.CancellationToken
         );
         Assert.IsTrue( result.Acquired );
     }
@@ -142,6 +153,7 @@ public class RedisRequestDeduplicatorTests {
     /// when no lock is held (request already completed).
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task WaitForCompletionAsync_ReturnsNull_WhenAlreadyCompleted( ) {
         // Arrange
         string requestKey = "isrc:USRC12345678";
@@ -151,7 +163,8 @@ public class RedisRequestDeduplicatorTests {
         // Act
         string? result = await _deduplicator.WaitForCompletionAsync(
             requestKey,
-            TimeSpan.FromSeconds( 1 )
+            TimeSpan.FromSeconds( 1 ),
+            TestContext.CancellationToken
         );
 
         // Assert
@@ -163,12 +176,13 @@ public class RedisRequestDeduplicatorTests {
     /// when the wait times out before the result is published.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task WaitForCompletionAsync_ReturnsNull_OnTimeout( ) {
         // Arrange
         string requestKey = "isrc:USRC12345678";
 
         // Acquire lock but don't release
-        _ = await _deduplicator.TryAcquireAsync( requestKey, TimeSpan.FromMinutes( 5 ) );
+        _ = await _deduplicator.TryAcquireAsync( requestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
 
         // Create second deduplicator to wait
         Mock<ILogger<RedisRequestDeduplicator>> logger2 = new( );
@@ -177,7 +191,8 @@ public class RedisRequestDeduplicatorTests {
         // Act - wait with short timeout
         string? result = await deduplicator2.WaitForCompletionAsync(
             requestKey,
-            TimeSpan.FromMilliseconds( 100 )
+            TimeSpan.FromMilliseconds( 100 ),
+            TestContext.CancellationToken
         );
 
         // Assert
@@ -189,12 +204,13 @@ public class RedisRequestDeduplicatorTests {
     /// result URI when it is published via <see cref="RedisRequestDeduplicator.ReleaseAsync"/>.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task WaitForCompletionAsync_ReceivesResult_WhenPublished( ) {
         // Arrange
         string requestKey = "isrc:USRC12345678";
         string expectedUri = "at://did:plc:test/link.bridgebeats.lookup/track:USRC12345678";
 
-        _ = await _deduplicator.TryAcquireAsync( requestKey, TimeSpan.FromMinutes( 5 ) );
+        _ = await _deduplicator.TryAcquireAsync( requestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
 
         // Create second deduplicator to wait
         Mock<ILogger<RedisRequestDeduplicator>> logger2 = new( );
@@ -203,14 +219,15 @@ public class RedisRequestDeduplicatorTests {
         // Start waiting in background
         Task<string?> waitTask = deduplicator2.WaitForCompletionAsync(
             requestKey,
-            TimeSpan.FromSeconds( 5 )
+            TimeSpan.FromSeconds( 5 ),
+            TestContext.CancellationToken
         );
 
         // Give subscription time to establish
-        await Task.Delay( 100 );
+        await Task.Delay( 100, TestContext.CancellationToken );
 
         // Act - release with result
-        await _deduplicator.ReleaseAsync( requestKey, expectedUri );
+        await _deduplicator.ReleaseAsync( requestKey, expectedUri, TestContext.CancellationToken );
 
         // Assert
         string? result = await waitTask;

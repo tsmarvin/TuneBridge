@@ -3,8 +3,9 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Storage;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewEngines;
@@ -22,7 +23,7 @@ namespace BridgeBeats.Web.Controllers {
     /// <param name="mediaLinkService">Optional music lookup service.</param>
     /// <param name="cardService">Optional OpenGraph card service.</param>
     /// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
-    public class HomeController(
+    public partial class HomeController(
         ILogger<HomeController> logger,
         ICompositeViewEngine viewEngine,
         IMediaLinkService? mediaLinkService = null,
@@ -243,11 +244,11 @@ namespace BridgeBeats.Web.Controllers {
             try {
                 return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, cacheRepository );
             } catch (InvalidOperationException ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
+                LogCacheInvalidOp( ex );
             } catch (ArgumentException ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
+                LogCacheArgError( ex );
             } catch (Exception ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
+                LogCacheError( ex );
             }
 
             return null;
@@ -314,19 +315,6 @@ namespace BridgeBeats.Web.Controllers {
 
             return Ok( new { hasResults = true, items } );
         }
-
-        /// <summary>
-        /// Request for web-specific lookup.
-        /// </summary>
-        /// <param name="Uri">Music URL(s) to look up (can contain multiple URLs).</param>
-        public record WebLookupRequest( string Uri );
-
-        /// <summary>
-        /// Individual result item with card URL and fallback data.
-        /// </summary>
-        /// <param name="CardUrl">URL to the stored OpenGraph card, if available.</param>
-        /// <param name="FallbackData">The raw result data for fallback display.</param>
-        public record WebLookupResultItem( string? CardUrl, MediaLinkResult FallbackData );
 
         /// <summary>
         /// Streams music lookup results progressively as they're retrieved.
@@ -413,7 +401,7 @@ namespace BridgeBeats.Web.Controllers {
                         processedCount++;
 
                     } catch (Exception ex) {
-                        logger.LogError( ex, "Error processing individual result for URI: {Uri}", uri.SanitizeForLogging( ) );
+                        LogStreamResultError( ex, uri.SanitizeForLogging( ) );
                         errorCount++;
                     }
                 }
@@ -430,7 +418,7 @@ namespace BridgeBeats.Web.Controllers {
                 }
 
             } catch (Exception ex) {
-                logger.LogError( ex, "Error during lookup stream for URI: {Uri}", uri.SanitizeForLogging( ) );
+                LogStreamError( ex, uri.SanitizeForLogging( ) );
                 await Response.WriteAsync( $"<div class=\"alert alert-danger\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount + 1}\">An error occurred during lookup: {ex.Message}</div>" );
             }
         }

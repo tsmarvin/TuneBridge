@@ -19,17 +19,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.OpenApi" Version="3.3.1" />
-    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BridgeBeats.ServiceDefaults\BridgeBeats.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Contracts\BridgeBeats.Contracts.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Services\BridgeBeats.Services.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Core\BridgeBeats.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

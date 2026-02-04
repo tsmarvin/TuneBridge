@@ -1,5 +1,6 @@
 using BridgeBeats.Contracts.Constants;
-using BridgeBeats.Infrastructure.Identity;
+using BridgeBeats.Core.Infrastructure.Identity;
+using BridgeBeats.Web.Logging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -9,24 +10,17 @@ namespace BridgeBeats.Web.Controllers;
 /// <summary>
 /// Controller for Aspire Dashboard authorization checks.
 /// </summary>
+/// <remarks>
+/// Initializes a new instance of the <see cref="DashboardController"/> class.
+/// </remarks>
+/// <param name="userManager">The user manager.</param>
+/// <param name="logger">The logger.</param>
 [ApiController]
 [Route( "api/[controller]" )]
-public class DashboardController : ControllerBase {
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly ILogger<DashboardController> _logger;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DashboardController"/> class.
-    /// </summary>
-    /// <param name="userManager">The user manager.</param>
-    /// <param name="logger">The logger.</param>
-    public DashboardController(
-        UserManager<ApplicationUser> userManager,
-        ILogger<DashboardController> logger
-    ) {
-        _userManager = userManager;
-        _logger = logger;
-    }
+public partial class DashboardController(
+    UserManager<ApplicationUser> userManager,
+    ILogger<DashboardController> logger
+) : ControllerBase {
 
     /// <summary>
     /// Checks if the current user has access to the Aspire Dashboard.
@@ -36,25 +30,48 @@ public class DashboardController : ControllerBase {
     [HttpGet( "authorize" )]
     [Authorize]
     public async Task<IActionResult> Authorize( ) {
-        ApplicationUser? user = await _userManager.GetUserAsync( User );
+        ApplicationUser? user = await userManager.GetUserAsync( User );
 
         if (user == null) {
-            _logger.LogWarning( "Dashboard authorization failed: User not found" );
+            LogAuthorizationFailedUserNotFound( logger );
             return Unauthorized( new { error = "User not authenticated" } );
         }
 
-        bool hasAccess = await _userManager.IsInRoleAsync( user, Roles.AspireDashboardAccess );
+        bool hasAccess = await userManager.IsInRoleAsync( user, Roles.AspireDashboardAccess );
 
         if (!hasAccess) {
-            _logger.LogWarning(
-                "Dashboard authorization denied for user {UserId} - missing {Role} role",
-                user.Id,
-                Roles.AspireDashboardAccess
-            );
+            LogAuthorizationDeniedMissingRole( logger, user.Id, Roles.AspireDashboardAccess );
             return StatusCode( 403, new { error = "Access denied: AspireDashboardAccess role required" } );
         }
 
-        _logger.LogInformation( "Dashboard authorization granted for user {UserId}", user.Id );
+        LogAuthorizationGranted( logger, user.Id );
         return Ok( new { authorized = true } );
     }
+
+    /// <summary>
+    /// Logs that dashboard authorization failed because the user was not found.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Controllers.DashboardControllerAuthorizationFailedUserNotFound,
+        Level = LogLevel.Warning,
+        Message = "Dashboard authorization failed: User not found" )]
+    private static partial void LogAuthorizationFailedUserNotFound( ILogger logger );
+
+    /// <summary>
+    /// Logs that dashboard authorization was denied due to a missing role.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Controllers.DashboardControllerAuthorizationDeniedMissingRole,
+        Level = LogLevel.Warning,
+        Message = "Dashboard authorization denied for user {UserId} - missing {Role} role" )]
+    private static partial void LogAuthorizationDeniedMissingRole( ILogger logger, string userId, string role );
+
+    /// <summary>
+    /// Logs that dashboard authorization was granted.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Controllers.DashboardControllerAuthorizationGranted,
+        Level = LogLevel.Information,
+        Message = "Dashboard authorization granted for user {UserId}" )]
+    private static partial void LogAuthorizationGranted( ILogger logger, string userId );
 }

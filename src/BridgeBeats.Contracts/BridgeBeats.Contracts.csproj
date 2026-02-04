@@ -14,15 +14,13 @@
 
   <!-- Shared package dependency for ATProto records - provides AtProtoRecord base class -->
   <ItemGroup>
-    <PackageReference Include="idunno.AtProto" Version="1.4.0" />
-    <PackageReference Include="idunno.Bluesky" Version="1.4.0" />
+    <PackageReference Include="idunno.AtProto" Version="1.5.0" />
+    <PackageReference Include="idunno.Bluesky" Version="1.5.0" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="BridgeBeats.Web" />
-    <InternalsVisibleTo Include="BridgeBeats.Infrastructure" />
-    <InternalsVisibleTo Include="BridgeBeats.Providers" />
-    <InternalsVisibleTo Include="BridgeBeats.Services" />
+    <InternalsVisibleTo Include="BridgeBeats.Core" />
     <InternalsVisibleTo Include="BridgeBeats.Tests" />
   </ItemGroup>
 

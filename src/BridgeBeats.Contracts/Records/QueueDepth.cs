@@ -10,8 +10,15 @@ namespace BridgeBeats.Contracts.Records;
 /// <param name="Bulk">Count of bulk processing requests.</param>
 /// <param name="Total">Total count across all priority levels.</param>
 public sealed record QueueDepth(
-    [property: JsonPropertyName( "interactive" )] int Interactive,
-    [property: JsonPropertyName( "background" )] int Background,
-    [property: JsonPropertyName( "bulk" )] int Bulk,
-    [property: JsonPropertyName( "total" )] int Total
+    [property: JsonPropertyName( "interactive" )]
+    int Interactive,
+
+    [property: JsonPropertyName( "background" )]
+    int Background,
+
+    [property: JsonPropertyName( "bulk" )]
+    int Bulk,
+
+    [property: JsonPropertyName( "total" )]
+    int Total
 );

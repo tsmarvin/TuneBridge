@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Queue;
 
 namespace BridgeBeats.Tests.Unit;
 

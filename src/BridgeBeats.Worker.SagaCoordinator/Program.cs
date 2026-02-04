@@ -1,11 +1,11 @@
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Cache;
-using BridgeBeats.Infrastructure.Queue;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.ServiceDefaults;
-using BridgeBeats.Services.Queue;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Domain.Services.Queue;
+using BridgeBeats.Core.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Extensions;
+using BridgeBeats.Core.Infrastructure.Storage;
 using Serilog;
 using StackExchange.Redis;
 
@@ -56,6 +56,12 @@ public static class Program {
 
         // Determine which providers are enabled based on configuration
         HashSet<SupportedProviders> enabledProviders = DetectEnabledProviders(builder);
+
+        // Log enabled providers at startup
+        string providersStr = enabledProviders.Count > 0
+            ? string.Join( ", ", enabledProviders )
+            : "(none)";
+        Log.Information( "Enabled providers for secondary lookups: {EnabledProviders}", providersStr );
 
         // Register enabled providers as a singleton
         _ = builder.Services.AddSingleton( enabledProviders );
@@ -111,24 +117,45 @@ public static class Program {
         string? atProtoUserDID = builder.Configuration["BridgeBeats:ATProtoUserDID"];
         int cacheDays = builder.Configuration.GetValue("BridgeBeats:CacheDays", 30);
 
-        return string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
+        if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
             string.IsNullOrWhiteSpace( atProtoPassword ) ||
-            string.IsNullOrWhiteSpace( atProtoUserDID )
-            ? throw new InvalidOperationException(
+            string.IsNullOrWhiteSpace( atProtoUserDID )) {
+            throw new InvalidOperationException(
                 "ATProto credentials are required. Set BridgeBeats:ATProtoIdentifier, " +
                 "BridgeBeats:ATProtoPassword, and BridgeBeats:ATProtoUserDID."
-            )
-            : ((string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID, int CacheDays))(atProtoIdentifier, atProtoPassword, atProtoUserDID, cacheDays);
+            );
+        }
+
+        // Validate DID format (must start with did:plc: or did:web:)
+        ATProtoUriHelper.ValidateDid( atProtoUserDID, "BridgeBeats:ATProtoUserDID" );
+
+        return (atProtoIdentifier, atProtoPassword, atProtoUserDID, cacheDays);
     }
 
     /// <summary>
     /// Detects which music providers are enabled based on configuration.
     /// </summary>
+    /// <remarks>
+    /// Reads the EnabledProviders configuration value which is set by the AppHost.
+    /// Falls back to credential-based detection for standalone deployment.
+    /// </remarks>
     /// <param name="builder">The web application builder.</param>
     /// <returns>A set of enabled providers.</returns>
     private static HashSet<SupportedProviders> DetectEnabledProviders( WebApplicationBuilder builder ) {
         HashSet<SupportedProviders> enabledProviders = [];
 
+        // First, try to read the EnabledProviders list from configuration (set by AppHost)
+        string? enabledProvidersList = builder.Configuration["BridgeBeats:EnabledProviders"];
+        if (!string.IsNullOrWhiteSpace( enabledProvidersList )) {
+            foreach (string providerName in enabledProvidersList.Split( ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries )) {
+                if (Enum.TryParse<SupportedProviders>( providerName, ignoreCase: true, out SupportedProviders provider )) {
+                    _ = enabledProviders.Add( provider );
+                }
+            }
+            return enabledProviders;
+        }
+
+        // Fallback: Check for credentials directly (for standalone deployment)
         if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientId"] ) &&
             !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientSecret"] )) {
             _ = enabledProviders.Add( SupportedProviders.Spotify );

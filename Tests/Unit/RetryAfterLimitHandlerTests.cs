@@ -2,7 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
-using BridgeBeats.Providers.Common;
+using BridgeBeats.Core.Domain.Providers.Common;
+using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -23,6 +24,8 @@ public class RetryAfterLimitHandlerTests {
     [TestInitialize]
     public void Initialize( ) {
         _loggerMock = new Mock<ILogger<RetryAfterLimitHandler>>( );
+        // Enable logging for all log levels so LoggerMessage source-generated methods invoke Log
+        _ = _loggerMock.Setup( x => x.IsEnabled( It.IsAny<LogLevel>( ) ) ).Returns( true );
     }
 
     #region Constructor Tests
@@ -393,12 +396,14 @@ public class RetryAfterLimitHandlerTests {
             // Expected
         }
 
-        // Assert - Verify warning was logged
+        // Assert - Verify warning was logged with the correct EventId
+        // LoggerMessage source-generated methods pass a LoggerMessageState struct to Log,
+        // so we verify by EventId instead of checking message content directly
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Warning,
-                It.IsAny<EventId>( ),
-                It.Is<It.IsAnyType>( ( v, t ) => v.ToString( )!.Contains( "Rate limit exceeded threshold" ) ),
+                It.Is<EventId>( e => e.Id == LogEventIds.Providers.Common.RateLimitExceeded ),
+                It.IsAny<It.IsAnyType>( ),
                 It.IsAny<Exception?>( ),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>( )
             ),

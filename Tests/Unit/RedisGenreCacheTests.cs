@@ -1,5 +1,5 @@
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Infrastructure.Cache;
+using BridgeBeats.Core.Infrastructure.Cache;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
@@ -19,6 +19,11 @@ public class RedisGenreCacheTests {
     private const string TestTrackId = "track123";
     private const string TestArtistId = "artist456";
     private const SupportedProviders TestProvider = SupportedProviders.Spotify;
+
+    /// <summary>
+    /// Gets or sets the test context for the current test.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
     /// Initializes mocks before each test.
@@ -76,12 +81,13 @@ public class RedisGenreCacheTests {
     /// Verifies that GetGenresAsync returns null when the providerId is empty.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetGenresAsync_WithEmptyProviderId_ShouldReturnNull( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
 
         // Act
-        IReadOnlyList<string>? result = await cache.GetGenresAsync( TestProvider, string.Empty );
+        IReadOnlyList<string>? result = await cache.GetGenresAsync( TestProvider, string.Empty, TestContext.CancellationToken );
 
         // Assert
         Assert.IsNull( result );
@@ -91,6 +97,7 @@ public class RedisGenreCacheTests {
     /// Verifies that GetGenresAsync returns null when no cache entry exists.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetGenresAsync_WithNoCacheEntry_ShouldReturnNull( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
@@ -99,7 +106,7 @@ public class RedisGenreCacheTests {
             .ReturnsAsync( [] );
 
         // Act
-        IReadOnlyList<string>? result = await cache.GetGenresAsync( SupportedProviders.AppleMusic, TestTrackId );
+        IReadOnlyList<string>? result = await cache.GetGenresAsync( SupportedProviders.AppleMusic, TestTrackId, TestContext.CancellationToken );
 
         // Assert
         Assert.IsNull( result );
@@ -109,6 +116,7 @@ public class RedisGenreCacheTests {
     /// Verifies that GetGenresAsync returns cached genres when entry exists.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetGenresAsync_WithCachedEntry_ShouldReturnGenres( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
@@ -122,7 +130,7 @@ public class RedisGenreCacheTests {
             .ReturnsAsync( hashEntries );
 
         // Act
-        IReadOnlyList<string>? result = await cache.GetGenresAsync( SupportedProviders.AppleMusic, TestTrackId );
+        IReadOnlyList<string>? result = await cache.GetGenresAsync( SupportedProviders.AppleMusic, TestTrackId, TestContext.CancellationToken );
 
         // Assert
         Assert.IsNotNull( result );
@@ -139,12 +147,13 @@ public class RedisGenreCacheTests {
     /// Verifies that SetGenresAsync does nothing when providerId is empty.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task SetGenresAsync_WithEmptyProviderId_ShouldNotCallRedis( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
 
         // Act
-        await cache.SetGenresAsync( TestProvider, string.Empty, ["Rock"] );
+        await cache.SetGenresAsync( TestProvider, string.Empty, ["Rock"], TestContext.CancellationToken );
 
         // Assert
         _databaseMock.Verify(
@@ -157,13 +166,14 @@ public class RedisGenreCacheTests {
     /// Verifies that SetGenresAsync caches genres correctly.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task SetGenresAsync_WithValidGenres_ShouldCacheGenres( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
         List<string> genres = ["Rock", "Alternative", "Indie"];
 
         // Act
-        await cache.SetGenresAsync( TestProvider, TestTrackId, genres );
+        await cache.SetGenresAsync( TestProvider, TestTrackId, genres, TestContext.CancellationToken );
 
         // Assert
         _databaseMock.Verify(
@@ -184,12 +194,13 @@ public class RedisGenreCacheTests {
     /// Verifies that GetArtistGenresAsync returns null when artistId is empty.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetArtistGenresAsync_WithEmptyArtistId_ShouldReturnNull( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
 
         // Act
-        IReadOnlyList<string>? result = await cache.GetArtistGenresAsync( TestProvider, string.Empty );
+        IReadOnlyList<string>? result = await cache.GetArtistGenresAsync( TestProvider, string.Empty, TestContext.CancellationToken );
 
         // Assert
         Assert.IsNull( result );
@@ -199,6 +210,7 @@ public class RedisGenreCacheTests {
     /// Verifies that GetArtistGenresAsync returns cached genres when entry exists.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetArtistGenresAsync_WithCachedEntry_ShouldReturnGenres( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
@@ -212,7 +224,7 @@ public class RedisGenreCacheTests {
             .ReturnsAsync( hashEntries );
 
         // Act
-        IReadOnlyList<string>? result = await cache.GetArtistGenresAsync( TestProvider, TestArtistId );
+        IReadOnlyList<string>? result = await cache.GetArtistGenresAsync( TestProvider, TestArtistId, TestContext.CancellationToken );
 
         // Assert
         Assert.IsNotNull( result );
@@ -228,13 +240,14 @@ public class RedisGenreCacheTests {
     /// Verifies that SetArtistGenresAsync caches artist genres correctly.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task SetArtistGenresAsync_WithValidGenres_ShouldCacheGenres( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
         List<string> genres = ["Pop", "Dance"];
 
         // Act
-        await cache.SetArtistGenresAsync( TestProvider, TestArtistId, genres );
+        await cache.SetArtistGenresAsync( TestProvider, TestArtistId, genres, TestContext.CancellationToken );
 
         // Assert
         _databaseMock.Verify(
@@ -255,12 +268,13 @@ public class RedisGenreCacheTests {
     /// Verifies that GetTrackArtistMappingAsync returns null when trackId is empty.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetTrackArtistMappingAsync_WithEmptyTrackId_ShouldReturnNull( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
 
         // Act
-        IReadOnlyList<string>? result = await cache.GetTrackArtistMappingAsync( TestProvider, string.Empty );
+        IReadOnlyList<string>? result = await cache.GetTrackArtistMappingAsync( TestProvider, string.Empty, TestContext.CancellationToken );
 
         // Assert
         Assert.IsNull( result );
@@ -270,6 +284,7 @@ public class RedisGenreCacheTests {
     /// Verifies that SetTrackArtistMappingAsync does nothing when artistIds is empty.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task SetTrackArtistMappingAsync_WithEmptyArtistIds_ShouldNotCallRedis( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
@@ -277,7 +292,7 @@ public class RedisGenreCacheTests {
         _ = _databaseMock.Setup( d => d.CreateTransaction( It.IsAny<object>( ) ) ).Returns( transactionMock.Object );
 
         // Act
-        await cache.SetTrackArtistMappingAsync( TestProvider, TestTrackId, [] );
+        await cache.SetTrackArtistMappingAsync( TestProvider, TestTrackId, [], TestContext.CancellationToken );
 
         // Assert
         _databaseMock.Verify( d => d.CreateTransaction( It.IsAny<object>( ) ), Times.Never );
@@ -291,12 +306,13 @@ public class RedisGenreCacheTests {
     /// Verifies that EnqueueArtistsForRefreshAsync filters empty artist IDs.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task EnqueueArtistsForRefreshAsync_WithEmptyArtistIds_ShouldNotCallRedis( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
 
         // Act
-        await cache.EnqueueArtistsForRefreshAsync( TestProvider, [] );
+        await cache.EnqueueArtistsForRefreshAsync( TestProvider, [], TestContext.CancellationToken );
 
         // Assert
         _databaseMock.Verify(
@@ -315,13 +331,14 @@ public class RedisGenreCacheTests {
     /// Verifies that EnqueueArtistsForRefreshAsync enqueues artists correctly.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task EnqueueArtistsForRefreshAsync_WithValidArtistIds_ShouldEnqueue( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
         List<string> artistIds = ["artist1", "artist2"];
 
         // Act
-        await cache.EnqueueArtistsForRefreshAsync( TestProvider, artistIds );
+        await cache.EnqueueArtistsForRefreshAsync( TestProvider, artistIds, TestContext.CancellationToken );
 
         // Assert
         _databaseMock.Verify(
@@ -340,12 +357,13 @@ public class RedisGenreCacheTests {
     /// Verifies that DequeueArtistsForRefreshAsync returns empty list when batchSize is zero.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DequeueArtistsForRefreshAsync_WithZeroBatchSize_ShouldReturnEmptyList( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
 
         // Act
-        IReadOnlyList<string> result = await cache.DequeueArtistsForRefreshAsync( TestProvider, 0 );
+        IReadOnlyList<string> result = await cache.DequeueArtistsForRefreshAsync( TestProvider, 0, TestContext.CancellationToken );
 
         // Assert
         Assert.IsEmpty( result );
@@ -355,6 +373,7 @@ public class RedisGenreCacheTests {
     /// Verifies that DequeueArtistsForRefreshAsync returns artists from queue.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DequeueArtistsForRefreshAsync_WithQueuedArtists_ShouldReturnArtists( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
@@ -367,7 +386,7 @@ public class RedisGenreCacheTests {
             .ReturnsAsync( entries );
 
         // Act
-        IReadOnlyList<string> result = await cache.DequeueArtistsForRefreshAsync( TestProvider, 50 );
+        IReadOnlyList<string> result = await cache.DequeueArtistsForRefreshAsync( TestProvider, 50, TestContext.CancellationToken );
 
         // Assert
         Assert.HasCount( 2, result );
@@ -379,6 +398,7 @@ public class RedisGenreCacheTests {
     /// Verifies that GetArtistRefreshQueueLengthAsync returns the queue length.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetArtistRefreshQueueLengthAsync_ShouldReturnQueueLength( ) {
         // Arrange
         RedisGenreCache cache = CreateCache( );
@@ -387,7 +407,7 @@ public class RedisGenreCacheTests {
             .ReturnsAsync( 42 );
 
         // Act
-        long result = await cache.GetArtistRefreshQueueLengthAsync( TestProvider );
+        long result = await cache.GetArtistRefreshQueueLengthAsync( TestProvider, TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( 42, result );

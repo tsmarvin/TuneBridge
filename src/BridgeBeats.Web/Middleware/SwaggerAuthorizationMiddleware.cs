@@ -3,16 +3,11 @@ namespace BridgeBeats.Web.Middleware;
 /// <summary>
 /// Middleware to restrict access to Swagger UI to authenticated users only.
 /// </summary>
-public class SwaggerAuthorizationMiddleware {
-    private readonly RequestDelegate _next;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="SwaggerAuthorizationMiddleware"/> class.
-    /// </summary>
-    /// <param name="next">The next middleware in the pipeline.</param>
-    public SwaggerAuthorizationMiddleware( RequestDelegate next ) {
-        _next = next;
-    }
+/// <remarks>
+/// Initializes a new instance of the <see cref="SwaggerAuthorizationMiddleware"/> class.
+/// </remarks>
+/// <param name="next">The next middleware in the pipeline.</param>
+public class SwaggerAuthorizationMiddleware( RequestDelegate next ) {
 
     /// <summary>
     /// Invokes the middleware to check Swagger authorization.
@@ -32,6 +27,6 @@ public class SwaggerAuthorizationMiddleware {
             return;
         }
 
-        await _next( context );
+        await next( context );
     }
 }

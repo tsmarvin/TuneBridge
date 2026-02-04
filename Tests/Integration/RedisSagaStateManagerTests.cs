@@ -1,7 +1,7 @@
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -26,12 +26,16 @@ public class RedisSagaStateManagerTests {
     private RedisSagaStateManager _sagaManager = null!;
 
     /// <summary>
+    /// Gets the test context for the current test.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Initializes the Redis connection for all tests in the class.
     /// </summary>
-    /// <param name="context">The test context provided by the test framework.</param>
+    /// <param name="_">The test context provided by the test framework (unused).</param>
     [ClassInitialize]
-    [Obsolete]
-    public static async Task ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
@@ -74,6 +78,7 @@ public class RedisSagaStateManagerTests {
     /// with the correct initial state when the saga does not exist.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetOrCreateAsync_CreatesNewSaga( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -84,7 +89,8 @@ public class RedisSagaStateManagerTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Assert
@@ -103,6 +109,7 @@ public class RedisSagaStateManagerTests {
     /// when called with a saga ID that already exists.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetOrCreateAsync_ReturnsExistingSaga_WhenAlreadyExists( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -112,7 +119,8 @@ public class RedisSagaStateManagerTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Act - try to create again with different values
@@ -120,7 +128,8 @@ public class RedisSagaStateManagerTests {
             sagaId,
             "different-key",
             LookupRequestType.UpcLookup,
-            "DIFFERENT"
+            "DIFFERENT",
+            TestContext.CancellationToken
         );
 
         // Assert - should return original, not new values
@@ -133,9 +142,10 @@ public class RedisSagaStateManagerTests {
     /// Verifies that <see cref="RedisSagaStateManager.GetAsync"/> returns null when the saga does not exist.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetAsync_ReturnsNull_WhenSagaDoesNotExist( ) {
         // Act
-        LookupSagaState? saga = await _sagaManager.GetAsync( "nonexistent-saga-id" );
+        LookupSagaState? saga = await _sagaManager.GetAsync( "nonexistent-saga-id", TestContext.CancellationToken );
 
         // Assert
         Assert.IsNull( saga );
@@ -146,6 +156,7 @@ public class RedisSagaStateManagerTests {
     /// lookup state in Redis and can be retrieved.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task UpdateProviderStateAsync_StoresProviderState( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -155,7 +166,8 @@ public class RedisSagaStateManagerTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         ProviderLookupState providerState = new(
@@ -168,10 +180,10 @@ public class RedisSagaStateManagerTests {
         );
 
         // Act
-        await _sagaManager.UpdateProviderStateAsync( sagaId, providerState );
+        await _sagaManager.UpdateProviderStateAsync( sagaId, providerState, TestContext.CancellationToken );
 
         // Assert
-        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId );
+        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNotNull( saga );
         Assert.HasCount( 1, saga.ProviderStates );
         Assert.IsTrue( saga.ProviderStates.ContainsKey( SupportedProviders.Spotify ) );
@@ -187,6 +199,7 @@ public class RedisSagaStateManagerTests {
     /// multiple provider states for the same saga.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task UpdateProviderStateAsync_UpdatesMultipleProviders( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -196,7 +209,8 @@ public class RedisSagaStateManagerTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         ProviderLookupState spotifyState = new(
@@ -218,11 +232,11 @@ public class RedisSagaStateManagerTests {
         );
 
         // Act
-        await _sagaManager.UpdateProviderStateAsync( sagaId, spotifyState );
-        await _sagaManager.UpdateProviderStateAsync( sagaId, appleState );
+        await _sagaManager.UpdateProviderStateAsync( sagaId, spotifyState, TestContext.CancellationToken );
+        await _sagaManager.UpdateProviderStateAsync( sagaId, appleState, TestContext.CancellationToken );
 
         // Assert
-        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId );
+        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNotNull( saga );
         Assert.HasCount( 2, saga.ProviderStates );
 
@@ -236,6 +250,7 @@ public class RedisSagaStateManagerTests {
     /// result URI without affecting the final result URI.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task SetPartialResultUriAsync_StoresUri( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -246,14 +261,15 @@ public class RedisSagaStateManagerTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Act
-        await _sagaManager.SetPartialResultUriAsync( sagaId, partialUri );
+        await _sagaManager.SetPartialResultUriAsync( sagaId, partialUri, TestContext.CancellationToken );
 
         // Assert
-        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId );
+        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNotNull( saga );
         Assert.AreEqual( partialUri, saga.PartialResultUri );
         Assert.IsNull( saga.FinalResultUri );
@@ -264,6 +280,7 @@ public class RedisSagaStateManagerTests {
     /// result URI in the saga state.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task SetFinalResultUriAsync_StoresUri( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -274,14 +291,15 @@ public class RedisSagaStateManagerTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Act
-        await _sagaManager.SetFinalResultUriAsync( sagaId, finalUri );
+        await _sagaManager.SetFinalResultUriAsync( sagaId, finalUri, TestContext.CancellationToken );
 
         // Assert
-        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId );
+        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNotNull( saga );
         Assert.AreEqual( finalUri, saga.FinalResultUri );
     }
@@ -291,6 +309,7 @@ public class RedisSagaStateManagerTests {
     /// and all associated provider states from Redis.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DeleteAsync_RemovesSagaAndProviderStates( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -300,24 +319,25 @@ public class RedisSagaStateManagerTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
             SupportedProviders.Spotify, true, true, "{}", DateTimeOffset.UtcNow, null
-        ) );
+        ), TestContext.CancellationToken );
 
         // Verify exists
-        LookupSagaState? beforeDelete = await _sagaManager.GetAsync( sagaId );
+        LookupSagaState? beforeDelete = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNotNull( beforeDelete );
 
         // Act
-        bool deleted = await _sagaManager.DeleteAsync( sagaId );
+        bool deleted = await _sagaManager.DeleteAsync( sagaId, TestContext.CancellationToken );
 
         // Assert
         Assert.IsTrue( deleted );
 
-        LookupSagaState? afterDelete = await _sagaManager.GetAsync( sagaId );
+        LookupSagaState? afterDelete = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNull( afterDelete );
     }
 
@@ -326,9 +346,10 @@ public class RedisSagaStateManagerTests {
     /// to delete a saga that does not exist.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DeleteAsync_ReturnsFalse_WhenSagaDoesNotExist( ) {
         // Act
-        bool deleted = await _sagaManager.DeleteAsync( "nonexistent-saga" );
+        bool deleted = await _sagaManager.DeleteAsync( "nonexistent-saga", TestContext.CancellationToken );
 
         // Assert
         Assert.IsFalse( deleted );
@@ -370,6 +391,7 @@ public class RedisSagaStateManagerTests {
     /// have completed their lookups.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task Saga_IsComplete_WhenAllProvidersComplete( ) {
         // Arrange
         string lookupKey = "isrc:USRC12345678";
@@ -379,25 +401,26 @@ public class RedisSagaStateManagerTests {
             sagaId,
             lookupKey,
             LookupRequestType.IsrcLookup,
-            "USRC12345678"
+            "USRC12345678",
+            TestContext.CancellationToken
         );
 
         // Add incomplete provider
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
             SupportedProviders.Spotify, false, false, null, null, null
-        ) );
+        ), TestContext.CancellationToken );
 
-        LookupSagaState? incomplete = await _sagaManager.GetAsync( sagaId );
+        LookupSagaState? incomplete = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNotNull( incomplete );
         Assert.IsFalse( incomplete.IsComplete );
 
         // Act - mark provider as complete
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
             SupportedProviders.Spotify, true, true, "{}", DateTimeOffset.UtcNow, null
-        ) );
+        ), TestContext.CancellationToken );
 
         // Assert
-        LookupSagaState? complete = await _sagaManager.GetAsync( sagaId );
+        LookupSagaState? complete = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNotNull( complete );
         Assert.IsTrue( complete.IsComplete );
     }

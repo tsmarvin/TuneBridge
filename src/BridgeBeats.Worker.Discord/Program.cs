@@ -1,4 +1,4 @@
-using BridgeBeats.ServiceDefaults;
+using BridgeBeats.Core.Domain.Extensions;
 using BridgeBeats.Worker.Discord.Services;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;

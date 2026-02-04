@@ -1,8 +1,8 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.Services.LinkResolver;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Infrastructure.Storage;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;
@@ -11,7 +11,12 @@ namespace BridgeBeats.Web.Controllers;
 /// Controller for serving OpenGraph embeddable cards for music links.
 /// </summary>
 [Route( "card" )]
-public class OpenGraphCardController( IOpenGraphCardService cardService, IQrCodeService qrCodeService, IMediaLinkCacheRepository? cacheRepository = null, ILogger<OpenGraphCardController>? logger = null ) : Controller {
+public partial class OpenGraphCardController(
+    IOpenGraphCardService cardService,
+    IQrCodeService qrCodeService,
+    IMediaLinkCacheRepository? cacheRepository = null,
+    ILogger<OpenGraphCardController>? logger = null
+) : Controller {
 
     private readonly IOpenGraphCardService _cardService = cardService;
     private readonly IQrCodeService _qrCodeService = qrCodeService;
@@ -121,11 +126,11 @@ public class OpenGraphCardController( IOpenGraphCardService cardService, IQrCode
             // Don't include input link strategy for card pages (no input links available)
             return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, _cacheRepository, includeInputLinkStrategy: false );
         } catch (InvalidOperationException ex) {
-            _logger?.LogWarning( ex, "Failed to retrieve ATProto URI from cache for card (InvalidOperationException)" );
+            LogCacheInvalidOp( ex );
         } catch (ArgumentException ex) {
-            _logger?.LogWarning( ex, "Failed to retrieve ATProto URI from cache for card (ArgumentException)" );
+            LogCacheArgError( ex );
         } catch (Exception ex) {
-            _logger?.LogWarning( ex, "Failed to retrieve ATProto URI from cache for card" );
+            LogCacheError( ex );
         }
 
         return null;

@@ -15,10 +15,9 @@ public class HealthEndpointAuthorizationTests {
     /// <summary>
     /// Initializes the test factory and HTTP client for all tests in this class.
     /// </summary>
-    /// <param name="testContext">The test context provided by MSTest.</param>
+    /// <param name="_">The test context provided by MSTest (unused).</param>
     [ClassInitialize]
-    [Obsolete]
-    public static async Task Setup( TestContext testContext ) {
+    public static async Task Setup( TestContext _ ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
             .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
@@ -34,13 +33,13 @@ public class HealthEndpointAuthorizationTests {
             .ToDictionary( kv => kv.Key, kv => kv.Value );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = "";
+        configData["BridgeBeats:DiscordToken"] = string.Empty;
         // Disable worker services mode - use direct provider implementations
         configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
         // Force ATProto credentials to empty to disable caching service
-        configData["BridgeBeats:ATProtoIdentifier"] = "";
-        configData["BridgeBeats:ATProtoPassword"] = "";
-        configData["BridgeBeats:ATProtoUserDID"] = "";
+        configData["BridgeBeats:ATProtoIdentifier"] = string.Empty;
+        configData["BridgeBeats:ATProtoPassword"] = string.Empty;
+        configData["BridgeBeats:ATProtoUserDID"] = string.Empty;
 
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
@@ -62,12 +61,13 @@ public class HealthEndpointAuthorizationTests {
     /// In production, this would be restricted to internal Docker network IPs.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task HealthEndpoint_FromTestClient_ReturnsOk( ) {
         // Arrange
         // The test client appears as localhost/internal to the middleware
 
         // Act
-        HttpResponseMessage response = await s_client!.GetAsync( "/health" );
+        HttpResponseMessage response = await s_client!.GetAsync( "/health", TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
@@ -77,10 +77,11 @@ public class HealthEndpointAuthorizationTests {
     /// Tests that the health endpoint returns JSON with expected structure.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task HealthEndpoint_ReturnsValidJson( ) {
         // Arrange & Act
-        HttpResponseMessage response = await s_client!.GetAsync( "/health" );
-        string content = await response.Content.ReadAsStringAsync( );
+        HttpResponseMessage response = await s_client!.GetAsync( "/health", TestContext.CancellationToken );
+        string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
 
         // Assert
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
@@ -92,6 +93,7 @@ public class HealthEndpointAuthorizationTests {
     /// Tests that non-health endpoints are not affected by the health endpoint middleware.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task NonHealthEndpoint_NotAffectedByMiddleware( ) {
         // Arrange & Act
         HttpResponseMessage response = await s_client!.GetAsync( "/", TestContext.CancellationToken );

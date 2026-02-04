@@ -55,8 +55,8 @@
       },
       "idunno.AtProto": {
         "type": "Transitive",
-        "resolved": "1.4.0",
-        "contentHash": "sCd4QLsAbhztnWFCV62RuG+lcQf1+PrR6UAz92ZJoLsYipG9k4XxZznThqZFujqSN+qhzzJl4TrXQxDZoTh0jg==",
+        "resolved": "1.5.0",
+        "contentHash": "ctQsZoi8FRnYlpqiAtlLuhDf2YdwI6N4+G1cSk7T7QSENYL/C6pTzldx0R4a+rZOsCx3GqOE8HjVGzJzDxWxpg==",
         "dependencies": {
           "DnsClient": "1.8.0",
           "Duende.IdentityModel.OidcClient": "7.0.0",
@@ -65,23 +65,23 @@
           "PeterO.Cbor": "4.5.5",
           "SimpleBase": "5.6.0",
           "ZstdSharp.Port": "0.8.7",
-          "idunno.AtProto.Types": "1.4.0"
+          "idunno.AtProto.Types": "1.5.0"
         }
       },
       "idunno.AtProto.Types": {
         "type": "Transitive",
-        "resolved": "1.4.0",
-        "contentHash": "rcu45B4llwtb3uwOFTfh5c2lI+0VMgEoIL9KCelRnTfqPp6ogjkbr4CuXY2ppeuDBuestMiYy3xo3SuB3LYvdA==",
+        "resolved": "1.5.0",
+        "contentHash": "hfc+WglMmBQ88V2QFNtXMnFZTqgx4iKsv/Te+ueZd8NY9U72jTDQ5ZEiK2mbqzRzFETEYqrFrDDnL3NwCM/mrw==",
         "dependencies": {
           "SimpleBase": "5.6.0"
         }
       },
       "idunno.Bluesky": {
         "type": "Transitive",
-        "resolved": "1.4.0",
-        "contentHash": "oApaK4L5oojupmj94t1fX/jkQ+U0SnB/IRrq81rqZj+OyS3s1aGbSi46PtYjf2rkaLO1s8n5HVxg/CW6JnP2cg==",
+        "resolved": "1.5.0",
+        "contentHash": "8C693spW8INrt8WX2hbq+6Uqw7aQpX0rvypgUUtz/2IQBFVc1B998u8X04uCAr3osfH02jV1MI63sTp9YwDZ6Q==",
         "dependencies": {
-          "idunno.AtProto": "1.4.0"
+          "idunno.AtProto": "1.5.0"
         }
       },
       "Microsoft.AspNetCore.Identity.EntityFrameworkCore": {
@@ -523,11 +523,11 @@
       "bridgebeats.contracts": {
         "type": "Project",
         "dependencies": {
-          "idunno.AtProto": "[1.4.0, )",
-          "idunno.Bluesky": "[1.4.0, )"
+          "idunno.AtProto": "[1.5.0, )",
+          "idunno.Bluesky": "[1.5.0, )"
         }
       },
-      "bridgebeats.infrastructure": {
+      "bridgebeats.core": {
         "type": "Project",
         "dependencies": {
           "AspNetCore.Authentication.ApiKey": "[9.0.0, )",
@@ -535,19 +535,6 @@
           "BridgeBeats.Contracts": "[1.0.0, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.2, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.2, )",
-          "idunno.Bluesky": "[1.4.0, )"
-        }
-      },
-      "bridgebeats.providers": {
-        "type": "Project",
-        "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )"
-        }
-      },
-      "bridgebeats.servicedefaults": {
-        "type": "Project",
-        "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )",
           "Microsoft.Extensions.Http.Resilience": "[10.2.0, )",
           "Microsoft.Extensions.ServiceDiscovery": "[10.2.0, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.15.0, )",
@@ -555,24 +542,29 @@
           "OpenTelemetry.Instrumentation.AspNetCore": "[1.15.0, )",
           "OpenTelemetry.Instrumentation.Http": "[1.15.0, )",
           "OpenTelemetry.Instrumentation.Runtime": "[1.15.0, )",
+          "QRCoder": "[1.7.0, )",
           "Serilog.AspNetCore": "[10.0.0, )",
           "Serilog.Sinks.File": "[7.0.0, )"
         }
+      }
+    },
+    "net10.0/linux-x64": {
+      "Microsoft.Win32.SystemEvents": {
+        "type": "Transitive",
+        "resolved": "6.0.0",
+        "contentHash": "hqTM5628jSsQiv+HGpiq3WKBl2c8v1KZfby2J6Pr7pEPlK9waPdgEO6b8A/+/xn/yZ9ulv8HuqK71ONy2tg67A=="
       },
-      "bridgebeats.services": {
-        "type": "Project",
-        "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )",
-          "BridgeBeats.Infrastructure": "[1.0.0, )",
-          "BridgeBeats.Providers": "[1.0.0, )",
-          "QRCoder": "[1.7.0, )"
-        }
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.11",
+        "contentHash": "Ev2ytaXiOlWZ4b3R67GZBsemTINslLD1DCJr2xiacpn4tbapu0Q4dHEzSvZSMnVWeE5nlObU3VZN2p81q3XOYQ=="
       },
-      "bridgebeats.worker.common": {
-        "type": "Project",
+      "System.Drawing.Common": {
+        "type": "Transitive",
+        "resolved": "6.0.0",
+        "contentHash": "NfuoKUiP2nUWwKZN6twGqXioIe1zVD0RIj2t976A+czLHr2nY454RwwXs6JU9Htc6mwqL6Dn/nEL3dpVf2jOhg==",
         "dependencies": {
-          "BridgeBeats.Contracts": "[1.0.0, )",
-          "BridgeBeats.ServiceDefaults": "[1.0.0, )"
+          "Microsoft.Win32.SystemEvents": "6.0.0"
         }
       }
     }

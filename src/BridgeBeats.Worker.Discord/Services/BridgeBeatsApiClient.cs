@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Worker.Discord.Logging;
 
 namespace BridgeBeats.Worker.Discord.Services {
 
@@ -7,7 +8,7 @@ namespace BridgeBeats.Worker.Discord.Services {
     /// HTTP client for communicating with the BridgeBeats Web API.
     /// Provides methods for music link resolution and OpenGraph card storage.
     /// </summary>
-    public class BridgeBeatsApiClient {
+    public partial class BridgeBeatsApiClient {
 
         private readonly HttpClient _httpClient;
         private readonly ILogger<BridgeBeatsApiClient> _logger;
@@ -49,7 +50,7 @@ namespace BridgeBeats.Worker.Discord.Services {
                 response = await _httpClient.PostAsJsonAsync( "/music/lookup/url", new { Uri = content } );
                 _ = response.EnsureSuccessStatusCode( );
             } catch (HttpRequestException ex) {
-                _logger.LogError( ex, "Failed to call music lookup API" );
+                LogLookupApiError( _logger, ex );
                 yield break;
             }
 
@@ -61,7 +62,7 @@ namespace BridgeBeats.Worker.Discord.Services {
             try {
                 results = await JsonSerializer.DeserializeAsync<MediaLinkResult[]>( stream, _jsonOptions );
             } catch (JsonException ex) {
-                _logger.LogError( ex, "Failed to deserialize lookup response" );
+                LogLookupDeserializeError( _logger, ex );
                 yield break;
             }
 
@@ -89,10 +90,10 @@ namespace BridgeBeats.Worker.Discord.Services {
                 StoreCardResponse? storeResponse = await response.Content.ReadFromJsonAsync<StoreCardResponse>( _jsonOptions );
                 return storeResponse?.CardUrl;
             } catch (HttpRequestException ex) {
-                _logger.LogError( ex, "Failed to store card via API" );
+                LogStoreCardApiError( _logger, ex );
                 return null;
             } catch (JsonException ex) {
-                _logger.LogError( ex, "Failed to deserialize store card response" );
+                LogStoreCardDeserializeError( _logger, ex );
                 return null;
             }
         }
@@ -101,6 +102,38 @@ namespace BridgeBeats.Worker.Discord.Services {
         /// Response from the card storage API endpoint.
         /// </summary>
         private record StoreCardResponse( string? CardUrl );
+
+        #region LoggerMessage Methods
+
+        /// <summary>Logs failure to call music lookup API.</summary>
+        [LoggerMessage(
+            EventId = LogEventIds.LookupApiError,
+            Level = LogLevel.Error,
+            Message = "Failed to call music lookup API" )]
+        private static partial void LogLookupApiError( ILogger logger, Exception ex );
+
+        /// <summary>Logs failure to deserialize lookup response.</summary>
+        [LoggerMessage(
+            EventId = LogEventIds.LookupDeserializeError,
+            Level = LogLevel.Error,
+            Message = "Failed to deserialize lookup response" )]
+        private static partial void LogLookupDeserializeError( ILogger logger, Exception ex );
+
+        /// <summary>Logs failure to store card via API.</summary>
+        [LoggerMessage(
+            EventId = LogEventIds.StoreCardApiError,
+            Level = LogLevel.Error,
+            Message = "Failed to store card via API" )]
+        private static partial void LogStoreCardApiError( ILogger logger, Exception ex );
+
+        /// <summary>Logs failure to deserialize store card response.</summary>
+        [LoggerMessage(
+            EventId = LogEventIds.StoreCardDeserializeError,
+            Level = LogLevel.Error,
+            Message = "Failed to deserialize store card response" )]
+        private static partial void LogStoreCardDeserializeError( ILogger logger, Exception ex );
+
+        #endregion
     }
 
 }

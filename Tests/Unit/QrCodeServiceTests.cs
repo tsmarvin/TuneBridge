@@ -1,5 +1,5 @@
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Services;
+using BridgeBeats.Core.Domain.Services;
 
 namespace BridgeBeats.Tests.Unit;
 
@@ -31,7 +31,7 @@ public class QrCodeServiceTests {
         string result = _service.GenerateQrCodeDataUri( url );
 
         // Assert
-        StringAssert.StartsWith( result, "data:image/png;base64," );
+        Assert.StartsWith( "data:image/png;base64,", result );
         Assert.IsGreaterThan( 100, result.Length, "Base64 PNG should be substantial" );
     }
 

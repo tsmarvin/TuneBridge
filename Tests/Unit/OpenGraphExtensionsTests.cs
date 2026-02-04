@@ -1,11 +1,11 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Services.LinkResolver;
+using BridgeBeats.Core.Domain.Extensions;
 
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="OpenGraphExtensions"/> validating OpenGraph metadata generation.
+/// Unit tests for <see cref="ServiceExtensions"/> validating OpenGraph metadata generation.
 /// </summary>
 [TestClass]
 public class OpenGraphExtensionsTests {

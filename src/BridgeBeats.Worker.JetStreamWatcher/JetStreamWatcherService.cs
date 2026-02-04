@@ -3,11 +3,11 @@ using System.Text.Json;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Infrastructure.Queue;
+using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Providers.AppleMusic;
-using BridgeBeats.Providers.Common;
 using BridgeBeats.Providers.Spotify;
 using BridgeBeats.Providers.Tidal;
+using BridgeBeats.Worker.JetStreamWatcher.Logging;
 using idunno.AtProto;
 using idunno.AtProto.Jetstream;
 using idunno.Bluesky;
@@ -26,22 +26,15 @@ namespace BridgeBeats.Worker.JetStreamWatcher;
 /// validates them against known provider patterns, and enqueues them for processing
 /// without waiting for results. Deduplication is handled by the queue infrastructure.
 /// </remarks>
-public sealed class JetStreamWatcherService : BackgroundService {
-    private readonly ILogger<JetStreamWatcherService> _logger;
-    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="JetStreamWatcherService"/> class.
-    /// </summary>
-    /// <param name="logger">The logger instance.</param>
-    /// <param name="queueResolver">The provider queue resolver for submitting lookup requests.</param>
-    public JetStreamWatcherService(
-        ILogger<JetStreamWatcherService> logger,
-        IProviderQueueResolver<QueuedLookupRequest> queueResolver
-    ) {
-        _logger = logger;
-        _queueResolver = queueResolver;
-    }
+/// <remarks>
+/// Initializes a new instance of the <see cref="JetStreamWatcherService"/> class.
+/// </remarks>
+/// <param name="logger">The logger instance.</param>
+/// <param name="queueResolver">The provider queue resolver for submitting lookup requests.</param>
+public sealed partial class JetStreamWatcherService(
+    ILogger<JetStreamWatcherService> logger,
+    IProviderQueueResolver<QueuedLookupRequest> queueResolver
+) : BackgroundService {
 
     /// <summary>
     /// The main execution loop that connects to Jetstream and processes incoming events.
@@ -49,8 +42,8 @@ public sealed class JetStreamWatcherService : BackgroundService {
     /// <param name="stoppingToken">The cancellation token for graceful shutdown.</param>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
         Console.OutputEncoding = Encoding.UTF8;
-        _logger.LogInformation( "BridgeBeats Jetstream Watcher starting..." );
-        _logger.LogInformation( "Watching for music links in Bluesky posts, reposts, and quote posts." );
+        LogWatcherStarting( logger );
+        LogWatchingForLinks( logger );
 
         while (!stoppingToken.IsCancellationRequested) {
             try {
@@ -59,13 +52,13 @@ public sealed class JetStreamWatcherService : BackgroundService {
                 // Graceful shutdown - expected
                 break;
             } catch (Exception ex) {
-                _logger.LogError( ex, "Jetstream connection error. Reconnecting in 5 seconds..." );
+                LogConnectionError( logger, ex );
                 await Task.Delay( TimeSpan.FromSeconds( 5 ), stoppingToken )
                     .ConfigureAwait( ConfigureAwaitOptions.SuppressThrowing );
             }
         }
 
-        _logger.LogInformation( "JetStream Watcher stopped." );
+        LogWatcherStopped( logger );
     }
 
     /// <summary>
@@ -98,7 +91,7 @@ public sealed class JetStreamWatcherService : BackgroundService {
                 } catch (Exception ex) {
                     // Log unexpected errors but continue processing
                     if (!IsExpectedParsingError( ex )) {
-                        _logger.LogDebug( ex, "Error processing Jetstream record" );
+                        LogRecordProcessingError( logger, ex );
                     }
                 }
             }
@@ -106,7 +99,7 @@ public sealed class JetStreamWatcherService : BackgroundService {
 
         // Connect to jetstream
         await jetStream.ConnectAsync( cancellationToken: stoppingToken );
-        _logger.LogInformation( "Connected to Jetstream." );
+        LogConnected( logger );
 
         // Keep running until cancellation or disconnect
         while (!stoppingToken.IsCancellationRequested && jetStream.IsConnected) {
@@ -114,7 +107,7 @@ public sealed class JetStreamWatcherService : BackgroundService {
         }
 
         await jetStream.CloseAsync( );
-        _logger.LogInformation( "Disconnected from Jetstream." );
+        LogDisconnected( logger );
     }
 
     /// <summary>
@@ -280,7 +273,7 @@ public sealed class JetStreamWatcherService : BackgroundService {
             return;
         }
 
-        // Create the lookup request
+        // Create the lookup request with a saga ID for coordinating cross-provider lookups
         QueuedLookupRequest request = new( ) {
             RequestId = Guid.NewGuid( ).ToString( "N" ),
             Provider = provider.Value,
@@ -292,10 +285,10 @@ public sealed class JetStreamWatcherService : BackgroundService {
 
         // Fire-and-forget: enqueue at bulk priority
         try {
-            IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( provider.Value );
+            IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( provider.Value );
             await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
         } catch (Exception ex) {
-            _logger.LogDebug( ex, "Failed to enqueue music link: {Link}", normalizedLink );
+            LogEnqueueError( logger, ex, normalizedLink );
         }
     }
 
@@ -361,4 +354,64 @@ public sealed class JetStreamWatcherService : BackgroundService {
         string normalized = LinkNormalizer.Normalize( link );
         return $"jetstream:{normalized.GetHashCode( ):X8}:{DateTimeOffset.UtcNow:yyyyMMddHHmm}";
     }
+
+    #region LoggerMessage Methods
+
+    /// <summary>Logs that the watcher service is starting.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.WatcherStarting,
+        Level = LogLevel.Information,
+        Message = "BridgeBeats Jetstream Watcher starting..." )]
+    private static partial void LogWatcherStarting( ILogger logger );
+
+    /// <summary>Logs description of what is being watched.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.WatchingForLinks,
+        Level = LogLevel.Information,
+        Message = "Watching for music links in Bluesky posts, reposts, and quote posts." )]
+    private static partial void LogWatchingForLinks( ILogger logger );
+
+    /// <summary>Logs error in Jetstream connection.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.ConnectionError,
+        Level = LogLevel.Error,
+        Message = "Jetstream connection error. Reconnecting in 5 seconds..." )]
+    private static partial void LogConnectionError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that the watcher has stopped.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.WatcherStopped,
+        Level = LogLevel.Information,
+        Message = "JetStream Watcher stopped." )]
+    private static partial void LogWatcherStopped( ILogger logger );
+
+    /// <summary>Logs error processing a Jetstream record.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RecordProcessingError,
+        Level = LogLevel.Debug,
+        Message = "Error processing Jetstream record" )]
+    private static partial void LogRecordProcessingError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that connection to Jetstream was established.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Connected,
+        Level = LogLevel.Information,
+        Message = "Connected to Jetstream." )]
+    private static partial void LogConnected( ILogger logger );
+
+    /// <summary>Logs that connection to Jetstream was closed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Disconnected,
+        Level = LogLevel.Information,
+        Message = "Disconnected from Jetstream." )]
+    private static partial void LogDisconnected( ILogger logger );
+
+    /// <summary>Logs failure to enqueue a music link.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.EnqueueError,
+        Level = LogLevel.Debug,
+        Message = "Failed to enqueue music link: {Link}" )]
+    private static partial void LogEnqueueError( ILogger logger, Exception ex, string link );
+
+    #endregion
 }

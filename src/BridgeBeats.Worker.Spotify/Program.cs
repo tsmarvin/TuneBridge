@@ -1,10 +1,8 @@
 using System.Text.Json;
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Infrastructure.Cache;
-using BridgeBeats.Providers.Spotify;
-using BridgeBeats.ServiceDefaults;
-using BridgeBeats.Services.Queue;
-using BridgeBeats.Worker.Common;
+using BridgeBeats.Core.Domain.Extensions;
+using BridgeBeats.Core.Domain.Providers.Spotify;
+using BridgeBeats.Core.Infrastructure.Extensions;
 using Serilog;
 
 namespace BridgeBeats.Worker.Spotify;

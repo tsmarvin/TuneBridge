@@ -4,7 +4,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Services.Queue;
+using BridgeBeats.Core.Domain.Services.Queue;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
@@ -26,6 +26,11 @@ public class QueueProcessorBackgroundServiceTests {
     private Mock<ILogger<QueueProcessorBackgroundService>> _loggerMock = null!;
 
     private const SupportedProviders TestProvider = SupportedProviders.Spotify;
+
+    /// <summary>
+    /// Gets or sets the test context for the current test.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -184,6 +189,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that the lookup service is called when the endpoint is not rate limited.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenEndpointNotRateLimited_ShouldCallLookupService( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -202,7 +208,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act - Start and quickly cancel
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 ); // Give time for processing
+        await Task.Delay( 200, TestContext.CancellationToken ); // Give time for processing
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -217,6 +223,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that messages are requeued with delay when the endpoint is rate limited.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenEndpointRateLimited_ShouldRequeueWithDelay( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -233,7 +240,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -253,6 +260,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that saga state is updated after a successful lookup.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WithSuccessfulLookup_ShouldUpdateSagaState( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -270,7 +278,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -293,6 +301,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that messages are acknowledged after a successful lookup.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WithSuccessfulLookup_ShouldAcknowledgeMessage( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -310,7 +319,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -325,6 +334,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that a completion event is published when the saga completes.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenSagaCompletes_ShouldPublishCompletionEvent( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -342,7 +352,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -365,6 +375,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that URI lookups call GetInfoAsync with the correct URI.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WithUriLookup_ShouldCallGetInfoAsyncWithUri( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -384,7 +395,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -396,6 +407,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that UPC lookups call GetInfoByUPCAsync with the correct UPC.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WithUpcLookup_ShouldCallGetInfoByUPCAsync( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -415,7 +427,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -427,6 +439,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that song ID lookups call GetInfoByIDAsync with the correct ID.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WithSongIdLookup_ShouldCallGetInfoByIDAsync( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -446,7 +459,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -458,6 +471,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that AlbumIdLookup calls GetInfoByIDAsync with isAlbum set to true.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WithAlbumIdLookup_ShouldCallGetInfoByIDAsyncWithIsAlbumTrue( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -477,7 +491,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -489,6 +503,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that SongLookup calls GetInfoAsync with the title and artist from the request.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WithSongLookup_ShouldCallGetInfoAsyncWithTitleArtist( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -510,7 +525,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -526,6 +541,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that rate limit exceptions are recorded in the rate limit tracker.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldRecordRateLimit( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -549,7 +565,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -569,6 +585,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that rate-limited messages are acknowledged and re-enqueued with incremented attempt count.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldRequeueMessage( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -592,7 +609,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -620,6 +637,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that rate limit exceptions cause the saga to be marked as partial.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldMarkSagaAsPartial( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -643,7 +661,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -658,6 +676,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that rate limit information is recorded in the saga state.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldRecordRateLimitInfoInSaga( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -681,7 +700,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -704,6 +723,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that rate limit exceptions trigger lookup completion publication for partial result handling.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldPublishLookupCompletion( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -728,7 +748,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -751,6 +771,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that general exceptions update the saga with error state when below max retries.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenExceptionThrown_BelowMaxRetries_ShouldUpdateSagaWithError( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -771,7 +792,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -795,6 +816,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that messages are acknowledged after handling errors below max retries.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenExceptionThrown_BelowMaxRetries_ShouldAcknowledgeMessage( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -815,7 +837,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -830,6 +852,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that messages are moved to DLQ when max retries is reached.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenExceptionThrown_AtMaxRetries_ShouldMoveToDlq( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -850,7 +873,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -865,6 +888,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that messages are not acknowledged when moving to DLQ.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WhenExceptionThrown_AtMaxRetries_ShouldNotAcknowledge( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
@@ -885,7 +909,7 @@ public class QueueProcessorBackgroundServiceTests {
         // Act
         using CancellationTokenSource cts = new( );
         Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 200 );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
@@ -904,26 +928,28 @@ public class QueueProcessorBackgroundServiceTests {
     /// Verifies that the service continues polling when no messages are available.
     /// </summary>
     [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ExecuteAsync_WhenNoMessages_ShouldContinuePolling( ) {
         // Arrange
         QueueProcessorBackgroundService service = CreateService( );
-        int dequeueCallCount = 0;
+        CountdownEvent pollCountdown = new( 2 ); // Wait for 2 poll calls
 
         _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( ( ) => {
-                dequeueCallCount++;
+                if (!pollCountdown.IsSet) {
+                    _ = pollCountdown.Signal( );
+                }
                 return null;
             } );
 
-        // Act
-        using CancellationTokenSource cts = new( );
-        Task serviceTask = service.StartAsync( cts.Token );
-        await Task.Delay( 350 ); // Should allow for multiple poll cycles (100ms delay each)
-        await cts.CancelAsync( );
+        // Act - StartAsync triggers ExecuteAsync but doesn't block
+        _ = service.StartAsync( CancellationToken.None );
+        bool reachedTarget = pollCountdown.Wait( TimeSpan.FromSeconds( 2 ), TestContext.CancellationToken );
         await service.StopAsync( CancellationToken.None );
+        pollCountdown.Dispose( );
 
-        // Assert - Should have polled multiple times
-        Assert.IsGreaterThanOrEqualTo( 2, dequeueCallCount, $"Expected at least 2 dequeue calls, got {dequeueCallCount}" );
+        // Assert
+        Assert.IsTrue( reachedTarget, "Service did not poll at least 2 times within timeout" );
     }
 
     #endregion

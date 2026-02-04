@@ -8,6 +8,11 @@ namespace BridgeBeats.Contracts.Records;
 /// <param name="Endpoint">The API endpoint path that is rate-limited.</param>
 /// <param name="RetryAfter">When the rate limit for this endpoint expires.</param>
 public sealed record RateLimitedEndpoint(
-    [property: JsonPropertyName( "endpoint" )] string Endpoint,
-    [property: JsonPropertyName( "retryAfter" )] DateTimeOffset RetryAfter
+
+    [property: JsonPropertyName( "endpoint" )]
+    string Endpoint,
+
+    [property: JsonPropertyName( "retryAfter" )]
+    DateTimeOffset RetryAfter
+
 );
