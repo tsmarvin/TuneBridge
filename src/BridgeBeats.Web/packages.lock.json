@@ -67,9 +67,9 @@
       },
       "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
-        "requested": "[10.0.2, )",
-        "resolved": "10.0.2",
-        "contentHash": "sXdDtMf2qcnbygw9OdE535c2lxSxrZP8gO4UhDJ0xiJbl1wIqXS1OTcTDFTIJPOFd6Mhcm8gPEthqWGUxBsTqw=="
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "kICGrGYEzCNI3wPzfEXcwNHgTvlvVn9yJDhSdRK+oZQy4jvYH529u7O0xf5ocQKzOMjfS07+3z9PKRIjrFMJDA=="
       },
       "Microsoft.OpenApi": {
         "type": "Direct",
@@ -79,9 +79,9 @@
       },
       "NetCord": {
         "type": "Direct",
-        "requested": "[1.0.0-alpha.455, )",
-        "resolved": "1.0.0-alpha.455",
-        "contentHash": "RHV5OdZ8O5CtDBMjIVS3Aq4JcRtiwSnTtYWbuPUllJUK0nQ+MSSBK2OWnc1iQ/7nu1VWMseh2WgExl5nXMDHLw=="
+        "requested": "[1.0.0-alpha.460, )",
+        "resolved": "1.0.0-alpha.460",
+        "contentHash": "Xm39qtSirfbqaBTTKdQv2NhLr4/gRwQ1l8U+nvK4HUpVw8LsPc10zsjcWHs0rwJLrhB1ZXEvgjsGZvmmd0LeGQ=="
       },
       "NetCord.Hosting": {
         "type": "Direct",
@@ -741,7 +741,7 @@
           "BridgeBeats.Contracts": "[1.0.0, )",
           "BridgeBeats.Infrastructure": "[1.0.0, )",
           "BridgeBeats.Providers": "[1.0.0, )",
-          "NetCord": "[1.0.0-alpha.455, )"
+          "NetCord": "[1.0.0-alpha.460, )"
         }
       }
     },
