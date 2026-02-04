@@ -165,4 +165,4 @@ export Parameters__ResilienceAttemptTimeoutSeconds="$RESILIENCE_ATTEMPT_TIMEOUT_
 
 # 4) Launch the BridgeBeats AppHost (orchestrator)
 echo "Starting BridgeBeats AppHost..."
-exec "/app/apphost/BridgeBeats.AppHost"
+exec dotnet "/app/apphost/BridgeBeats.AppHost.dll"
