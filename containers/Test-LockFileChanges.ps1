@@ -61,11 +61,10 @@ Write-Host "Platform transition: $FromPlatform -> $ToPlatform"
 
 # Platform-specific package patterns that are allowed to differ
 # These packages have platform-specific variants that will change when switching RIDs
+# We allow any valid platform suffix since we support multiple target platforms
 $AllowedPackagePatterns = @(
-    "^Aspire\.Dashboard\.Sdk\.$([regex]::Escape($FromPlatform))$",
-    "^Aspire\.Dashboard\.Sdk\.$([regex]::Escape($ToPlatform))$",
-    "^Aspire\.Hosting\.Orchestration\.$([regex]::Escape($FromPlatform))$",
-    "^Aspire\.Hosting\.Orchestration\.$([regex]::Escape($ToPlatform))$"
+    '^Aspire\.Dashboard\.Sdk\.(linux|win|osx)-(x64|x86|arm64|arm)$',
+    '^Aspire\.Hosting\.Orchestration\.(linux|win|osx)-(x64|x86|arm64|arm)$'
 )
 
 function Test-AllowedPackage {
@@ -91,10 +90,7 @@ foreach ($framework in $current.dependencies.Keys) {
     $currentDeps = $current.dependencies[$framework]
 
     if ($null -eq $backupDeps) {
-        # Allow the target platform framework to be newly added when switching platforms
-        if ($framework -ne $ToPlatform) {
-            $unexpectedChanges += "New framework added: $framework"
-        }
+        $unexpectedChanges += "New framework added: $framework"
         continue
     }
 
@@ -161,7 +157,10 @@ if ($expectedChanges.Count -gt 0) {
         $versionInfo = ''
         if ($change.Type -eq 'Modified') {
             $backupVersion = $backupDeps[$change.Package].resolved
-            $currentVersion = $currentDeps[$change.Package].resolved
+            # Allow platform-specific framework entries to be removed (e.g., net10.0/linux-x64)
+            if (-not (Test-PlatformFramework $framework)) {
+                $unexpectedChanges += "Framework removed: $framework"
+            }esolesolvedved
             $versionInfo = " (version: $backupVersion -> $currentVersion)"
         } elseif ($change.Type -eq 'Removed') {
             $backupVersion = $backup.dependencies[$change.Framework][$change.Package].resolved
