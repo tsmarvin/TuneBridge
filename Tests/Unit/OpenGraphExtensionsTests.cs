@@ -77,7 +77,7 @@ public class OpenGraphExtensionsTests {
     /// Verifies that OpenGraph metadata uses Apple Music's red theme color when Apple Music is primary.
     /// </summary>
     [TestMethod]
-    public void ToOpenGraphMetadata_WithAppleMusicPrimary_HasBlueThemeColor( ) {
+    public void ToOpenGraphMetadata_WithAppleMusicPrimary_HasRedThemeColor( ) {
         // Arrange
         MediaLinkResult result = new( ) {
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
