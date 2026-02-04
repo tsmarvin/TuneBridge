@@ -284,11 +284,12 @@ namespace BridgeBeats.Web.Controllers {
         /// Web-specific lookup endpoint that returns results with card URLs for display.
         /// This endpoint performs the lookup server-side, stores all results in the card service,
         /// and returns multiple card URLs for rendering.
+        /// Note: This endpoint accepts JSON via [FromBody], so CSRF protection is not applicable.
         /// </summary>
         /// <param name="req">Request containing the music URL(s) to look up.</param>
         /// <returns>JSON response with array of card URLs and results.</returns>
         [HttpPost( "/lookup/web" )]
-        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> WebLookup( [FromBody] WebLookupRequest req ) {
             if (mediaLinkService == null) {
                 return BadRequest( new { error = "Music lookup service not available" } );
