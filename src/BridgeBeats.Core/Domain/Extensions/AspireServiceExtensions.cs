@@ -58,7 +58,7 @@ public static class AspireServiceExtensions {
             } );
 
             _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {
-                Microsoft.Extensions.Logging.ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("HttpResilience");
+                ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("HttpResilience");
                 options.Retry.OnRetry = args => {
                     TimeSpan? retryAfter = args.Outcome.Result?.Headers.RetryAfter?.Delta;
                     double retryAfterSeconds = retryAfter?.TotalSeconds ?? 0;
