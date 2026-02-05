@@ -2,7 +2,6 @@ using System.Reflection;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Exceptions;
 using Microsoft.Extensions.Http.Resilience;
-using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -59,7 +58,7 @@ public static class AspireServiceExtensions {
             } );
 
             _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {
-                ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("HttpResilience");
+                Microsoft.Extensions.Logging.ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("HttpResilience");
                 options.Retry.OnRetry = args => {
                     TimeSpan? retryAfter = args.Outcome.Result?.Headers.RetryAfter?.Delta;
                     double retryAfterSeconds = retryAfter?.TotalSeconds ?? 0;
