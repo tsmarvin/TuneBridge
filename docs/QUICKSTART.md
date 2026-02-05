@@ -7,52 +7,105 @@ This guide will get you up and running with BridgeBeats using Docker Compose in 
 - Docker Engine 20.10+ and Docker Compose 2.0+
 - API credentials for at least one music provider (Apple Music, Spotify, or Tidal)
 
-## Step 1: Clone the Repository
+## One-Line Installation
+
+The fastest way to get started is with the installation script. No need to clone the repository.
+
+### Linux / macOS
+
+```bash
+curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.sh | bash
+```
+
+### Windows (PowerShell)
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.ps1 | iex
+```
+
+### Installation Options
+
+You can customize the installation with parameters:
+
+```bash
+# Linux/macOS - specify branch and directory
+curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.sh | bash -s -- --branch main --directory /opt/bridgebeats
+
+# Windows - specify branch and directory
+.\install.ps1 -Branch main -Directory C:\BridgeBeats
+```
+
+The installation script will:
+1. Validate all required dependencies (Docker, Docker Compose, etc.)
+2. Create the installation directory with all necessary files
+3. Download `docker-compose.yml`, `Caddyfile`, and `.env.example`
+4. Set up the `secrets/` directory with placeholder files
+5. Auto-generate random secrets for `api_key_salt.txt` and `redis_password.txt`
+6. Alert you to any secrets or environment variables that need configuration
+7. On updates: back up existing files, log container image SHAs, and detect new environment variables
+
+After installation, follow the prompts to configure your credentials and start the application.
+
+---
+
+## Manual Installation
+
+If you prefer to set things up manually, follow these steps.
+
+### Step 1: Clone the Repository
 
 ```bash
 git clone https://github.com/tsmarvin/BridgeBeats.git
 cd BridgeBeats/containers
 ```
 
-## Step 2: Set Up Secrets
+### Step 2: Set Up Secrets
 
-Run the setup script to create the secrets directory structure:
+Create the secrets directory and placeholder files:
 
 ```bash
-./setup-secrets.sh
+mkdir -p secrets
+chmod 700 secrets
+
+# Create placeholder secret files
+touch secrets/apple_key.p8
+touch secrets/spotify_client_secret.txt
+touch secrets/tidal_client_secret.txt
+touch secrets/discord_token.txt
+touch secrets/atproto_password.txt
+touch secrets/cloudflare_api_token.txt
+
+# Generate random secrets
+openssl rand -base64 32 > secrets/api_key_salt.txt
+openssl rand -base64 32 > secrets/redis_password.txt
+
+# Set permissions
+chmod 600 secrets/*
 ```
 
-This creates a `secrets/` directory with placeholder files for your credentials.
-
-## Step 3: Add Your Credentials
+#### Step 3: Add Your Credentials
 
 Edit the secret files with your actual credentials:
 
-### Apple Music (Option 1)
+#### Apple Music (Option 1)
 ```bash
 # Replace with your actual .p8 private key file
 cp /path/to/your/AuthKey_XXXXX.p8 secrets/apple_key.p8
 ```
 
-### Spotify (Option 2)
+#### Spotify (Option 2)
 ```bash
 # Add your Spotify client secret
 echo "your_spotify_client_secret_here" > secrets/spotify_client_secret.txt
 ```
 
-### Tidal (Option 3)
+#### Tidal (Option 3)
 ```bash
 # Add your Tidal client secret
 echo "your_tidal_client_secret_here" > secrets/tidal_client_secret.txt
 ```
 
-### Required: API Key Salt
-```bash
-# Generate a random salt (already done by setup-secrets.sh)
-# Or manually: openssl rand -base64 32 > secrets/api_key_salt.txt
-```
-
-## Step 4: Configure Environment
+#### Step 4: Configure Environment
 
 Copy the example environment file and edit it:
 
@@ -80,18 +133,18 @@ TIDAL_CLIENT_ID=YOUR_CLIENT_ID
 DOMAIN=localhost
 ```
 
-## Step 5: Start BridgeBeats
+#### Step 5: Start BridgeBeats
 
 ```bash
 docker compose up -d
 ```
 
 This will:
-1. Build the Docker image (first time only)
+1. Pull the Docker images
 2. Start BridgeBeats with Caddy reverse proxy
 3. Set up automatic HTTPS (with self-signed cert for localhost)
 
-## Step 6: Access BridgeBeats
+### Step 6: Access BridgeBeats
 
 - **HTTPS (recommended)**: https://localhost
   - Accept the self-signed certificate warning in your browser

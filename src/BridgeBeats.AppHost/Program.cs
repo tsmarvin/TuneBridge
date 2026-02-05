@@ -60,9 +60,15 @@ IResourceBuilder<ParameterResource> resilienceAttemptTimeoutSeconds = builder.Ad
 // ============================================================================
 // Redis Cache
 // ============================================================================
-// Use external Redis container (start manually: docker run -d -p 6379:6379 redis)
-// Connection string configured in user secrets or appsettings: ConnectionStrings:redis
-IResourceBuilder<IResourceWithConnectionString> redis = builder.AddConnectionString( "redis" );
+// Redis connection string is passed as a parameter (e.g., "localhost:6379" or "redis:6379,password=secret")
+// In Docker: built by entrypoint.sh from REDIS_HOST, REDIS_PORT, and optional REDIS_PASSWORD secret
+// In development: set in user secrets as Parameters:RedisConnectionString
+IResourceBuilder<ParameterResource> redisConnectionString = builder.AddParameter( "RedisConnectionString", secret: true );
+
+// Validate Redis connection string is configured
+if (string.IsNullOrWhiteSpace( config["Parameters:RedisConnectionString"] )) {
+    Console.Error.WriteLine( "ERROR: Redis connection string is required but not configured." );
+}
 
 // Helper to check if a provider is enabled (has credentials)
 // Uses configuration which merges environment variables, appsettings, user secrets, and command line args
@@ -84,8 +90,11 @@ bool HasDiscordCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:
 // In production, we use AddExecutable() with pre-published DLLs at /src/{ProjectName}/
 // In development, we use AddProject<T>() for hot reload and debugging.
 
-IResourceBuilder<ExecutableResource> AddProductionExecutable( string name, string projectName, string workingDirectory = "/app/data" )
-{
+IResourceBuilder<ExecutableResource> AddProductionExecutable(
+    string name,
+    string projectName,
+    string workingDirectory = "/app/data"
+) {
     string dllPath = $"/src/{projectName}/{projectName}.dll";
     return builder.AddExecutable( name, "dotnet", workingDirectory, dllPath );
 }
@@ -113,7 +122,7 @@ if (spotifyWorkerEnabled) {
         : spotifyWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Spotify>( "spotify-worker" );
 
     _ = spotifyWorker
-        .WithReference( redis )
+        .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
         .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )
@@ -132,7 +141,7 @@ if (appleMusicWorkerEnabled) {
         : appleMusicWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_AppleMusic>( "applemusic-worker" );
 
     _ = appleMusicWorker
-        .WithReference( redis )
+        .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
         .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
@@ -152,7 +161,7 @@ if (tidalWorkerEnabled) {
         : tidalWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Tidal>( "tidal-worker" );
 
     _ = tidalWorker
-        .WithReference( redis )
+        .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
         .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret )
@@ -167,7 +176,7 @@ if (tidalWorkerEnabled) {
 // ============================================================================
 // Handles Discord gateway events, detecting music links and calling the
 // BridgeBeats Web API for lookups and card generation.
-if (HasDiscordCredentials()) {
+if (HasDiscordCredentials( )) {
     IResourceBuilder<IResourceWithEnvironment> discordWorker = isProduction
         ? AddProductionExecutable( "discord-worker", "BridgeBeats.Worker.Discord" )
         : discordWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" );
@@ -204,7 +213,7 @@ IResourceBuilder<IResourceWithEnvironment> sagaCoordinator = isProduction
     : builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" );
 
 _ = sagaCoordinator
-    .WithReference( redis )
+    .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
     .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
     .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
     .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
@@ -222,7 +231,7 @@ IResourceBuilder<IResourceWithEnvironment> jetstreamWatcher = isProduction
     : builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" );
 
 _ = jetstreamWatcher
-    .WithReference( redis )
+    .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
     .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
 
 // ============================================================================
@@ -235,7 +244,7 @@ IResourceBuilder<IResourceWithEnvironment> cacheBootstrap = isProduction
     : builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" );
 
 _ = cacheBootstrap
-    .WithReference( redis )
+    .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
     .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
     .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
     .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
@@ -261,7 +270,7 @@ if (isProduction) {
 }
 
 _ = bridgebeatsWeb
-    .WithReference( redis )
+    .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
     .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
     .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
     .WithEnvironment( "BridgeBeats__Workers__AppleMusicWorkerEnabled", appleMusicWorkerEnabled ? "true" : "false" )
@@ -299,4 +308,4 @@ if (!isProduction && bridgebeatsWebProject is not null) {
     }
 }
 
-builder.Build().Run();
+builder.Build( ).Run( );

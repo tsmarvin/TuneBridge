@@ -38,7 +38,7 @@ public static class SharedTestInfrastructure {
             }
 
             try {
-                s_redisContainer = new RedisBuilder( "redis:7-alpine" )
+                s_redisContainer = new RedisBuilder( "redis:8-alpine" )
                     .Build( );
 
                 // Start synchronously to ensure container is ready

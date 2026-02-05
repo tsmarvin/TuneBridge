@@ -4,15 +4,61 @@ BridgeBeats is designed for easy deployment across various platforms. This guide
 
 > **Note**: This guide covers **production deployment**. For local development with the Aspire Dashboard, see the [Local Development Guide](LOCAL_DEVELOPMENT.md).
 
-## Quick Start with Docker Compose
+## Quick Start with Installation Script
 
-The easiest way to deploy BridgeBeats is with Docker Compose, which includes Caddy as a secure reverse proxy with automatic HTTPS.
+The fastest way to deploy BridgeBeats is with the installation script. No need to clone the repository.
+
+### Linux / macOS
+
+```bash
+curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.sh | bash
+```
+
+### Windows (PowerShell)
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.ps1 | iex
+```
+
+### Installation Options
+
+Customize the installation with parameters:
+
+```bash
+# Linux/macOS - specify branch and directory
+curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.sh | bash -s -- --branch main --directory /opt/bridgebeats
+
+# Windows - specify branch and directory
+.\install.ps1 -Branch main -Directory C:\BridgeBeats
+```
+
+### What the Installation Script Does
+
+1. **Validates dependencies** - Checks for Docker, Docker Compose v2+, curl/wget, and optionally openssl
+2. **Downloads configuration files** - Fetches `docker-compose.yml`, `Caddyfile`, and `.env.example` from GitHub
+3. **Sets up secrets** - Creates the `secrets/` directory with placeholder files and auto-generates random secrets for `api_key_salt.txt` and `redis_password.txt`
+4. **Configures environment** - Creates `.env` from `.env.example` if not present
+5. **Handles updates** - On subsequent runs:
+   - Backs up existing `docker-compose.yml` and `Caddyfile` with timestamps
+   - Logs current container image SHAs to `upgrade.log` for rollback reference
+   - Detects new environment variables in `.env.example` and displays them for manual addition
+   - Prompts to pull latest container images
+
+After running the script, edit your secrets and `.env` file, then start with `docker compose up -d`.
+
+---
+
+## Manual Quick Start with Docker Compose
+
+If you prefer manual setup:
 
 ```bash
 git clone https://github.com/tsmarvin/BridgeBeats.git
 cd BridgeBeats/containers
-./setup-secrets.sh
-# Edit secrets/ with your credentials
+mkdir -p secrets && chmod 700 secrets
+openssl rand -base64 32 > secrets/api_key_salt.txt
+openssl rand -base64 32 > secrets/redis_password.txt
+# Create other secret files and add your credentials
 cp .env.example .env
 # Edit .env with your configuration
 docker compose up -d
@@ -20,7 +66,7 @@ docker compose up -d
 
 Visit `https://localhost` (or your configured domain) to access BridgeBeats.
 
-For detailed Docker Compose deployment instructions, see the [Quick Start Guide](QUICKSTART.md).
+For detailed step-by-step instructions, see the [Quick Start Guide](QUICKSTART.md).
 
 ## Docker Deployment
 
@@ -233,7 +279,26 @@ Check:
 
 ## Updates
 
-### Docker
+### Using the Installation Script
+
+The installation script handles updates gracefully:
+
+```bash
+# Navigate to your BridgeBeats installation directory
+cd /path/to/bridgebeats
+
+# Re-run the installation script
+curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.sh | bash -s -- --directory .
+```
+
+The script will:
+- Back up your existing `docker-compose.yml` and `Caddyfile` with timestamps
+- Log current container image SHAs to `upgrade.log` before pulling new images
+- Detect any new environment variables in `.env.example` and show you what to add
+- Prompt whether to pull the latest container images
+- Preserve all your existing secrets and `.env` configuration
+
+### Manual Update
 
 ```bash
 # Pull latest image from Docker Hub
@@ -246,3 +311,11 @@ docker rm bridgebeats
 # Start new container
 docker run -d --name bridgebeats ...
 ```
+
+### Rollback
+
+If you need to rollback after an update:
+
+1. Check `upgrade.log` for the previous container image SHAs
+2. Restore backed-up configuration files (e.g., `docker-compose.yml.bak.20260204-143022`)
+3. Pull the specific image version: `docker pull tsmarvin/bridgebeats:sha-<commit>`

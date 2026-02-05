@@ -56,7 +56,7 @@ services:
           memory: 256M
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: bridgebeats-redis
     restart: unless-stopped
     networks:
@@ -112,7 +112,7 @@ services:
       - LOG_ENABLED=true
 
   bridgebeats-caddy:
-    image: ${DOCKERHUB_USERNAME}/caddy-cloudflare:develop
+    image: tsmarvin/caddy-cloudflare:develop
     container_name: bridgebeats-caddy
     restart: unless-stopped
     ports:

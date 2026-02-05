@@ -166,11 +166,11 @@ export Parameters__ATProtoUserDID="$ATPROTO_USER_DID"
 export Parameters__ATProtoPdsUri="$ATPROTO_PDS_URI"
 export Parameters__ApiKeySalt="$API_KEY_SALT"
 
-# Build Redis connection string with password if set
+# Build Redis connection string with password if set (Aspire parameter format)
 if [ -n "$REDIS_PASSWORD" ]; then
-    export ConnectionStrings__redis="${REDIS_HOST}:${REDIS_PORT},password=${REDIS_PASSWORD}"
+    export Parameters__RedisConnectionString="${REDIS_HOST}:${REDIS_PORT},password=${REDIS_PASSWORD}"
 else
-    export ConnectionStrings__redis="${REDIS_HOST}:${REDIS_PORT}"
+    export Parameters__RedisConnectionString="${REDIS_HOST}:${REDIS_PORT}"
 fi
 export Parameters__NodeNumber="$NODE_NUMBER"
 export Parameters__BaseUrl="$BASEURL"
