@@ -141,7 +141,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
             // it captures configuration before ConfigureAppConfiguration runs.
             _ = services.RemoveAll<IConnectionMultiplexer>( );
             _ = services.AddSingleton<IConnectionMultiplexer>( _ => {
-                string connStr = _configData.TryGetValue( "ConnectionStrings:redis", out string? cs ) && !string.IsNullOrEmpty(cs)
+                string connStr = _configData.TryGetValue( "ConnectionStrings:redis", out string? cs ) && !string.IsNullOrEmpty( cs )
                     ? cs
                     : SharedTestInfrastructure.RedisConnectionString;
                 return ConnectionMultiplexer.Connect( connStr );
