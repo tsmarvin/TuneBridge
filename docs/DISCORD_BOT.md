@@ -12,7 +12,7 @@ The Discord integration runs as a standalone worker service (`BridgeBeats.Worker
 
 This separation allows the Discord bot to scale independently of the web application and enables easy horizontal scaling through sharding.
 
-## 🎯🚀 Getting Started
+## 🚀 Getting Started
 
 ### Adding the Bot to Your Server
 

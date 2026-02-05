@@ -2,6 +2,7 @@ using System.Reflection;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Exceptions;
 using Microsoft.Extensions.Http.Resilience;
+using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
