@@ -169,7 +169,7 @@ if ($expectedChanges.Count -gt 0) {
         $versionInfo = ''
         if ($change.Type -eq 'Modified') {
             $backupVersion = $backup.dependencies[$change.Framework][$change.Package].resolved
-            $currentVersion = $current.dependencies[$change.Framework][$change.Package].resolvedvedved
+            $currentVersion = $current.dependencies[$change.Framework][$change.Package].resolved
             $versionInfo = " (version: $backupVersion -> $currentVersion)"
         } elseif ($change.Type -eq 'Removed') {
             $backupVersion = $backup.dependencies[$change.Framework][$change.Package].resolved
