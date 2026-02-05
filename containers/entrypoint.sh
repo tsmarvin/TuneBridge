@@ -84,9 +84,19 @@ mkdir -p /app/data/logs
 # 1) Remove existing appsettings.json if present
 [ -f /src/BridgeBeats.Web/appsettings.json ] && rm -f /src/BridgeBeats.Web/appsettings.json
 
-# 2) Create new appsettings.json
+# 2) Build Redis connection string for use in appsettings.json and environment variables
+if [ -n "$REDIS_PASSWORD" ]; then
+    REDIS_CONNECTION_STRING="${REDIS_HOST}:${REDIS_PORT},password=${REDIS_PASSWORD}"
+else
+    REDIS_CONNECTION_STRING="${REDIS_HOST}:${REDIS_PORT}"
+fi
+
+# 3) Create new appsettings.json
 cat > /src/BridgeBeats.Web/appsettings.json <<EOF
 {
+  "ConnectionStrings": {
+    "redis": "$REDIS_CONNECTION_STRING"
+  },
   "Kestrel": {
     "Endpoints": {
       "Http": {
@@ -150,7 +160,7 @@ cat > /src/BridgeBeats.Web/appsettings.json <<EOF
 }
 EOF
 
-# 3) Set up environment variables for Aspire AppHost parameters
+# 4) Set up environment variables for Aspire AppHost parameters
 # These are read by the AppHost to configure workers
 export Parameters__SpotifyClientId="$SPOTIFY_CLIENT_ID"
 export Parameters__SpotifyClientSecret="$SPOTIFY_CLIENT_SECRET"
@@ -166,12 +176,9 @@ export Parameters__ATProtoUserDID="$ATPROTO_USER_DID"
 export Parameters__ATProtoPdsUri="$ATPROTO_PDS_URI"
 export Parameters__ApiKeySalt="$API_KEY_SALT"
 
-# Build Redis connection string with password if set (Aspire parameter format)
-if [ -n "$REDIS_PASSWORD" ]; then
-    export Parameters__RedisConnectionString="${REDIS_HOST}:${REDIS_PORT},password=${REDIS_PASSWORD}"
-else
-    export Parameters__RedisConnectionString="${REDIS_HOST}:${REDIS_PORT}"
-fi
+# Export Redis connection string for both AppHost parameters and direct service consumption
+export Parameters__RedisConnectionString="$REDIS_CONNECTION_STRING"
+export ConnectionStrings__redis="$REDIS_CONNECTION_STRING"
 export Parameters__NodeNumber="$NODE_NUMBER"
 export Parameters__BaseUrl="$BASEURL"
 export Parameters__RateLimitRequestsPerHour="$RATE_LIMIT_REQUESTS_PER_HOUR"
@@ -186,10 +193,10 @@ export Parameters__ResilienceMaxRetryAttempts="$RESILIENCE_MAX_RETRY_ATTEMPTS"
 export Parameters__ResilienceTotalTimeoutMinutes="$RESILIENCE_TOTAL_TIMEOUT_MINUTES"
 export Parameters__ResilienceAttemptTimeoutSeconds="$RESILIENCE_ATTEMPT_TIMEOUT_SECONDS"
 
-# 4) Configure Aspire DCP paths (required for containerized deployment)
+# 5) Configure Aspire DCP paths (required for containerized deployment)
 export DcpPublisher__CliPath="/app/tools/dcp/dcp"
 export DcpPublisher__DashboardPath="/app/tools/dashboard/Aspire.Dashboard.dll"
 
-# 5) Launch the BridgeBeats AppHost (orchestrator)
+# 6) Launch the BridgeBeats AppHost (orchestrator)
 echo "Starting BridgeBeats AppHost (Environment: $DOTNET_ENVIRONMENT)..."
 exec /src/BridgeBeats.AppHost/BridgeBeats.AppHost

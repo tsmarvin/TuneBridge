@@ -60,14 +60,16 @@ IResourceBuilder<ParameterResource> resilienceAttemptTimeoutSeconds = builder.Ad
 // ============================================================================
 // Redis Cache
 // ============================================================================
-// Redis connection string is passed as a parameter (e.g., "localhost:6379" or "redis:6379,password=secret")
-// In Docker: built by entrypoint.sh from REDIS_HOST, REDIS_PORT, and optional REDIS_PASSWORD secret
-// In development: set in user secrets as Parameters:RedisConnectionString
-IResourceBuilder<ParameterResource> redisConnectionString = builder.AddParameter( "RedisConnectionString", secret: true );
+// Redis connection string is read from ConnectionStrings:redis in configuration.
+// In Docker: set via entrypoint.sh in appsettings.json and ConnectionStrings__redis env var
+// In development: set in user secrets as ConnectionStrings:redis
+// Using AddConnectionString enables WaitFor() to ensure workers don't start until Redis is available.
+IResourceBuilder<IResourceWithConnectionString> redis = builder.AddConnectionString( "redis" );
 
 // Validate Redis connection string is configured
-if (string.IsNullOrWhiteSpace( config["Parameters:RedisConnectionString"] )) {
+if (string.IsNullOrWhiteSpace( config["ConnectionStrings:redis"] )) {
     Console.Error.WriteLine( "ERROR: Redis connection string is required but not configured." );
+    Console.Error.WriteLine( "       Set ConnectionStrings:redis in appsettings.json or ConnectionStrings__redis environment variable." );
 }
 
 // Helper to check if a provider is enabled (has credentials)
@@ -96,7 +98,9 @@ IResourceBuilder<ExecutableResource> AddProductionExecutable(
     string workingDirectory = "/app/data"
 ) {
     string dllPath = $"/src/{projectName}/{projectName}.dll";
-    return builder.AddExecutable( name, "dotnet", workingDirectory, dllPath );
+    return builder.AddExecutable( name, "dotnet", workingDirectory, dllPath )
+        .WithReference( redis )
+        .WaitFor( redis );
 }
 
 // ============================================================================
@@ -117,58 +121,86 @@ bool tidalWorkerEnabled = HasTidalCredentials();
 // Spotify Worker
 // ============================================================================
 if (spotifyWorkerEnabled) {
-    IResourceBuilder<IResourceWithEnvironment> spotifyWorker = isProduction
-        ? AddProductionExecutable( "spotify-worker", "BridgeBeats.Worker.Spotify" )
-        : spotifyWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Spotify>( "spotify-worker" );
-
-    _ = spotifyWorker
-        .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-        .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
-        .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-        .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-        .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    if (isProduction) {
+        _ = AddProductionExecutable( "spotify-worker", "BridgeBeats.Worker.Spotify" )
+            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+            .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
+            .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    } else {
+        spotifyWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Spotify>( "spotify-worker" );
+        _ = spotifyWorkerProject
+            .WithReference( redis )
+            .WaitFor( redis )
+            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+            .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
+            .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    }
 }
 
 // ============================================================================
 // Apple Music Worker
 // ============================================================================
 if (appleMusicWorkerEnabled) {
-    IResourceBuilder<IResourceWithEnvironment> appleMusicWorker = isProduction
-        ? AddProductionExecutable( "applemusic-worker", "BridgeBeats.Worker.AppleMusic" )
-        : appleMusicWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_AppleMusic>( "applemusic-worker" );
-
-    _ = appleMusicWorker
-        .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-        .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
-        .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
-        .WithEnvironment( "BridgeBeats__AppleKeyPath", appleKeyPath )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-        .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-        .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    if (isProduction) {
+        _ = AddProductionExecutable( "applemusic-worker", "BridgeBeats.Worker.AppleMusic" )
+            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+            .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
+            .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
+            .WithEnvironment( "BridgeBeats__AppleKeyPath", appleKeyPath )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    } else {
+        appleMusicWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_AppleMusic>( "applemusic-worker" );
+        _ = appleMusicWorkerProject
+            .WithReference( redis )
+            .WaitFor( redis )
+            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+            .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
+            .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
+            .WithEnvironment( "BridgeBeats__AppleKeyPath", appleKeyPath )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    }
 }
 
 // ============================================================================
 // Tidal Worker
 // ============================================================================
 if (tidalWorkerEnabled) {
-    IResourceBuilder<IResourceWithEnvironment> tidalWorker = isProduction
-        ? AddProductionExecutable( "tidal-worker", "BridgeBeats.Worker.Tidal" )
-        : tidalWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Tidal>( "tidal-worker" );
-
-    _ = tidalWorker
-        .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-        .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
-        .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-        .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-        .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    if (isProduction) {
+        _ = AddProductionExecutable( "tidal-worker", "BridgeBeats.Worker.Tidal" )
+            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+            .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
+            .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    } else {
+        tidalWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Tidal>( "tidal-worker" );
+        _ = tidalWorkerProject
+            .WithReference( redis )
+            .WaitFor( redis )
+            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+            .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
+            .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    }
 }
 
 // ============================================================================
@@ -208,49 +240,65 @@ if (tidalWorkerEnabled) {
 }
 string enabledProvidersValue = string.Join( ",", enabledProvidersList );
 
-IResourceBuilder<IResourceWithEnvironment> sagaCoordinator = isProduction
-    ? AddProductionExecutable( "saga-coordinator", "BridgeBeats.Worker.SagaCoordinator" )
-    : builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" );
-
-_ = sagaCoordinator
-    .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
-    .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-    .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
-    .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
-    .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
-    .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-    .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue );
+if (isProduction) {
+    _ = AddProductionExecutable( "saga-coordinator", "BridgeBeats.Worker.SagaCoordinator" )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
+        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
+        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue );
+} else {
+    _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" )
+        .WithReference( redis )
+        .WaitFor( redis )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
+        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
+        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue );
+}
 
 // ============================================================================
 // JetStream Watcher Worker
 // ============================================================================
 // Monitors Bluesky Jetstream for music links and submits them to provider
 // queues at bulk priority. Fire-and-forget: no credentials needed.
-IResourceBuilder<IResourceWithEnvironment> jetstreamWatcher = isProduction
-    ? AddProductionExecutable( "jetstream-watcher", "BridgeBeats.Worker.JetStreamWatcher" )
-    : builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" );
-
-_ = jetstreamWatcher
-    .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
-    .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
+if (isProduction) {
+    _ = AddProductionExecutable( "jetstream-watcher", "BridgeBeats.Worker.JetStreamWatcher" )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
+} else {
+    _ = builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" )
+        .WithReference( redis )
+        .WaitFor( redis )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
+}
 
 // ============================================================================
 // Cache Bootstrap Worker
 // ============================================================================
 // Bootstraps Redis cache from ATProto public records on startup and periodically
 // (default: every 6 hours). Uses unauthenticated access for public records.
-IResourceBuilder<IResourceWithEnvironment> cacheBootstrap = isProduction
-    ? AddProductionExecutable( "cache-bootstrap", "BridgeBeats.Worker.CacheBootstrap" )
-    : builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" );
-
-_ = cacheBootstrap
-    .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
-    .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-    .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
-    .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
-    .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
-    .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-    .WithEnvironment( "BridgeBeats__CacheDays", cacheDays );
+if (isProduction) {
+    _ = AddProductionExecutable( "cache-bootstrap", "BridgeBeats.Worker.CacheBootstrap" )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
+        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
+        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
+        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays );
+} else {
+    _ = builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" )
+        .WithReference( redis )
+        .WaitFor( redis )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
+        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
+        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
+        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays );
+}
 
 // ============================================================================
 // Main Web Application
@@ -258,39 +306,57 @@ _ = cacheBootstrap
 // In production, service discovery uses resource names for endpoint resolution.
 // Worker references are registered via WithReference() for service discovery.
 IResourceBuilder<ProjectResource>? bridgebeatsWebProject = null;
-IResourceBuilder<IResourceWithEnvironment> bridgebeatsWeb;
 
 if (isProduction) {
-    bridgebeatsWeb = AddProductionExecutable( "bridgebeats", "BridgeBeats.Web", "/src/BridgeBeats.Web" )
-        .WithHttpEndpoint( port: 10000, name: "bridgebeats-http" );
+    _ = AddProductionExecutable( "bridgebeats", "BridgeBeats.Web", "/src/BridgeBeats.Web" )
+        .WithHttpEndpoint( port: 10000, name: "bridgebeats-http" )
+        .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
+        .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__Workers__AppleMusicWorkerEnabled", appleMusicWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__Workers__TidalWorkerEnabled", tidalWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
+        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
+        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
+        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
+        .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
+        .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
+        .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
+        .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
+        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+        .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+        .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
 } else {
     bridgebeatsWebProject = builder.AddProject<Projects.BridgeBeats_Web>( "bridgebeats" )
         .WithHttpEndpoint( port: 10000, name: "bridgebeats-http" );
-    bridgebeatsWeb = bridgebeatsWebProject;
+    _ = bridgebeatsWebProject
+        .WithReference( redis )
+        .WaitFor( redis )
+        .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
+        .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__Workers__AppleMusicWorkerEnabled", appleMusicWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__Workers__TidalWorkerEnabled", tidalWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
+        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
+        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
+        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
+        .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
+        .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
+        .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
+        .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
+        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+        .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+        .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
 }
-
-_ = bridgebeatsWeb
-    .WithEnvironment( "ConnectionStrings__redis", redisConnectionString )
-    .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
-    .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
-    .WithEnvironment( "BridgeBeats__Workers__AppleMusicWorkerEnabled", appleMusicWorkerEnabled ? "true" : "false" )
-    .WithEnvironment( "BridgeBeats__Workers__TidalWorkerEnabled", tidalWorkerEnabled ? "true" : "false" )
-    .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
-    .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
-    .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
-    .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-    .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
-    .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
-    .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
-    .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-    .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
-    .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-    .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
-    .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
-    .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-    .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-    .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-    .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
 
 // Development mode: Add service discovery references between workers and web app
 if (!isProduction && bridgebeatsWebProject is not null) {

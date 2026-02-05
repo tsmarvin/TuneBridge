@@ -88,7 +88,7 @@ print_section() {
 
 log_upgrade() {
     local message="$1"
-    echo "[${TIMESTAMP}] ${message}" >> "${INSTALL_DIR}/${UPGRADE_LOG}"
+    echo "[${TIMESTAMP}] ${message}" >> "${UPGRADE_LOG}"
 }
 
 # Check if a secret file has content (without reading the actual value)
@@ -260,6 +260,9 @@ print_section "Setting Up Secrets"
 SECRETS_DIR="./secrets"
 secrets_created=false
 
+# UID for the .NET container's non-root user (default APP_UID in .NET containers)
+CONTAINER_UID=1654
+
 if [[ -d "$SECRETS_DIR" ]]; then
     echo "[OK] Secrets directory already exists: ${SECRETS_DIR}"
 else
@@ -313,6 +316,22 @@ EOF
         fi
     fi
 done
+
+# Change ownership of secrets directory to container UID so the non-root container user can read them
+if command -v sudo &> /dev/null; then
+    echo ""
+    echo "Setting ownership of secrets for container access (requires sudo)..."
+    if sudo chown -R "${CONTAINER_UID}:${CONTAINER_UID}" "$SECRETS_DIR" 2>/dev/null; then
+        echo "[OK] Set secrets ownership to UID ${CONTAINER_UID} (container user)"
+    else
+        echo "[WARN] Could not set secrets ownership. You may need to run manually:"
+        echo "       sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/secrets"
+    fi
+else
+    echo ""
+    echo "[WARN] sudo not available. Please set secrets ownership manually:"
+    echo "       sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/secrets"
+fi
 
 # =============================================================================
 # Setup Environment File
