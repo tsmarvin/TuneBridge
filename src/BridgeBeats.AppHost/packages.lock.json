@@ -2,11 +2,11 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
-      "Aspire.Dashboard.Sdk.linux-x64": {
+      "Aspire.Dashboard.Sdk.win-arm64": {
         "type": "Direct",
         "requested": "[13.1.0, )",
         "resolved": "13.1.0",
-        "contentHash": "gIvMR7NdVGw+mUpK9qZsGuuYfDp4CHvBDLlykSSP9pCh5XGlMgDNR3uOMfvKVlqH1hAsOuecvxEcfQ9kjufrWw=="
+        "contentHash": "IArwFpArCawtIgXAfTkS1Tka35WKWg/WDoMYpkEsSYOuEQUV/Cwn44SiCoZYOc/BiBqgzTWP9cRx81BuV0lPgA=="
       },
       "Aspire.Hosting.AppHost": {
         "type": "Direct",
@@ -41,11 +41,11 @@
           "System.IO.Hashing": "9.0.10"
         }
       },
-      "Aspire.Hosting.Orchestration.linux-x64": {
+      "Aspire.Hosting.Orchestration.win-arm64": {
         "type": "Direct",
         "requested": "[13.1.0, )",
         "resolved": "13.1.0",
-        "contentHash": "V8u8ukncoflImciXeHG03x1pWbOiR4z1bIl2lwOKgdy7/JshFrlEaabaNuGmAIZFdWEM/fsc/hVDjecQyHF2aQ=="
+        "contentHash": "jOk7x6Zuvb3nKqSnCNSN5TelDIIA/g9EbMiDMcEHWC2FFq/Gx5fiiKg2nYki29ToDLkR0wwdGqhZChlEpj2zuw=="
       },
       "Aspire.Hosting.Redis": {
         "type": "Direct",
@@ -81,6 +81,12 @@
           "StreamJsonRpc": "2.22.23",
           "System.IO.Hashing": "9.0.10"
         }
+      },
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.2, )",
+        "resolved": "10.0.2",
+        "contentHash": "sXdDtMf2qcnbygw9OdE535c2lxSxrZP8gO4UhDJ0xiJbl1wIqXS1OTcTDFTIJPOFd6Mhcm8gPEthqWGUxBsTqw=="
       },
       "Aspire.Hosting": {
         "type": "Transitive",
@@ -649,7 +655,7 @@
         "contentHash": "SgMOdxbz8X65z8hraIs6hOEdnkH6hESTAIUa7viEngHOYaH+6q5XJmwr1+yb9vJpNQ19hCQY69xbFsLtXpobQA=="
       }
     },
-    "net10.0/linux-x64": {
+    "net10.0/win-arm64": {
       "System.Diagnostics.EventLog": {
         "type": "Transitive",
         "resolved": "10.0.1",
