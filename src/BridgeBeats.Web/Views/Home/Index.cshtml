@@ -524,6 +524,7 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
                   if (completionMarker) {
                     const processed = parseInt(completionMarker.getAttribute('data-processed') || '0');
                     const errors = parseInt(completionMarker.getAttribute('data-errors') || '0');
+                    const rateLimited = parseInt(completionMarker.getAttribute('data-rate-limited') || '0');
 
                     // Remove the completion marker from HTML
                     completionMarker.remove();
@@ -546,12 +547,22 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
                       if (errors > 0) {
                         message += ` (${errors} could not be matched)`;
                       }
+                      if (rateLimited > 0) {
+                        message += ` \u2014 ${rateLimited} track${rateLimited > 1 ? 's were' : ' was'} rate-limited and will be retried`;
+                      }
                       status.textContent = message;
 
                       // Initialize share buttons
                       if (typeof initializeShareButtons === 'function') {
                         setTimeout(initializeShareButtons, 100);
                       }
+                    } else if (rateLimited > 0) {
+                      status.textContent = 'Some providers are temporarily rate-limited. Please try again in a moment.';
+                      cardsContainer.innerHTML = `
+                        <div class="alert alert-warning">
+                          <strong>Rate Limited</strong><br/>
+                          One or more music providers are temporarily rate-limited. Please try again shortly.
+                        </div>`;
                     } else {
                       status.textContent = 'No matches found';
                       cardsContainer.innerHTML = `

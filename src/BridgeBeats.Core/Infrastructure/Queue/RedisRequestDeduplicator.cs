@@ -107,22 +107,21 @@ public sealed partial class RedisRequestDeduplicator(
         IDatabase db = _redis.GetDatabase( );
         ISubscriber subscriber = _redis.GetSubscriber( );
 
-        // Verify we own the lock before releasing (prevent accidental release of another instance's lock)
+        // Only delete the lock if we own it (prevent accidental release of another instance's lock)
         RedisValue currentHolder = await db.StringGetAsync( lockKey );
-        if (currentHolder.HasValue && currentHolder.ToString( ) != _instanceId) {
+        if (!currentHolder.HasValue || currentHolder.ToString( ) == _instanceId) {
+            _ = await db.KeyDeleteAsync( lockKey );
+        } else {
             LogReleaseDenied(
                 _logger,
                 requestKey.SanitizeForLogging( ),
                 currentHolder.ToString( ).SanitizeForLogging( ),
                 _instanceId
             );
-            return;
         }
 
-        // Delete the lock
-        _ = await db.KeyDeleteAsync( lockKey );
-
-        // Publish completion notification (empty string indicates failure/no result)
+        // Always publish completion notification so waiting clients can receive the result
+        // (even if we don't own the lock, the coordinator needs to notify waiters)
         string message = resultUri ?? string.Empty;
         _ = await subscriber.PublishAsync( RedisChannel.Literal( channelKey ), message );
 
@@ -168,11 +167,15 @@ public sealed partial class RedisRequestDeduplicator(
                 return null;
             }
 
-            // Wait for a message or timeout
+            // Wait for a non-empty message or timeout
+            // Workers may publish empty strings before results are assembled;
+            // skip those and keep waiting for a real result URI or sentinel.
             try {
                 await foreach (ChannelMessage message in messageQueue.WithCancellation( cts.Token )) {
                     string result = message.Message.ToString( );
-                    return string.IsNullOrEmpty( result ) ? null : result;
+                    if (!string.IsNullOrEmpty( result )) {
+                        return result;
+                    }
                 }
                 return null;
             } catch (OperationCanceledException) {

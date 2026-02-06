@@ -74,9 +74,30 @@ public sealed partial class CachingMediaLinkService(
 
     /// <summary>
     /// Adds rate limit information to the result's messages if this is a partial result.
+    /// Creates a lightweight result with messages when no data is available but rate limiting occurred.
     /// </summary>
     private MediaLinkResult? AddPartialMessage( LookupResult lookupResult ) {
         if (lookupResult.Result is null) {
+            // If rate-limited with no data, create a lightweight result carrying only messages
+            if (lookupResult.IsPartial && lookupResult.RateLimitedProviders is { Count: > 0 }) {
+                MediaLinkResult rateLimitResult = new( ) {
+                    Messages = [],
+                    IsPartial = true,
+                    RateLimitedProviders = lookupResult.RateLimitedProviders
+                        .Select( r => r.Provider )
+                        .ToList( )
+                };
+
+                foreach (ProviderRateLimitInfo rateLimitInfo in lookupResult.RateLimitedProviders) {
+                    string message = $"{rateLimitInfo.Provider} is temporarily rate-limited. Results will be available shortly (retry after {rateLimitInfo.RetryAfter:u}).";
+                    rateLimitResult.Messages.Add( message );
+
+                    LogPartialResultReturned( _logger, lookupResult.SagaId ?? string.Empty, rateLimitInfo.Provider, rateLimitInfo.RetryAfter );
+                }
+
+                return rateLimitResult;
+            }
+
             return null;
         }
 

@@ -146,7 +146,7 @@ if (spotifyWorkerEnabled) {
     } else {
         spotifyWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Spotify>( "spotify-worker" )
             .WithHttpEndpoint( targetPort: 5100, name: "http" );
-        _ = (IResourceBuilder<ExecutableResource>?)spotifyWorkerProject
+        _ = spotifyWorkerProject
             .WithReference( redis )
             .WaitFor( redis )
             .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5100" )
@@ -178,7 +178,7 @@ if (appleMusicWorkerEnabled) {
     } else {
         appleMusicWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_AppleMusic>( "applemusic-worker" )
             .WithHttpEndpoint( targetPort: 5101, name: "http" );
-        _ = (IResourceBuilder<ExecutableResource>?)appleMusicWorkerProject
+        _ = appleMusicWorkerProject
             .WithReference( redis )
             .WaitFor( redis )
             .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5101" )
@@ -210,7 +210,7 @@ if (tidalWorkerEnabled) {
     } else {
         tidalWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Tidal>( "tidal-worker" )
             .WithHttpEndpoint( targetPort: 5102, name: "http" );
-        _ = (IResourceBuilder<ExecutableResource>?)tidalWorkerProject
+        _ = tidalWorkerProject
             .WithReference( redis )
             .WaitFor( redis )
             .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5102" )
@@ -239,7 +239,7 @@ if (HasDiscordCredentials( )) {
             .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl );
     } else {
         discordWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" );
-        _ = (IResourceBuilder<ExecutableResource>?)discordWorkerProject
+        _ = discordWorkerProject
             .WithReference( redis )
             .WaitFor( redis )
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
@@ -269,15 +269,16 @@ if (tidalWorkerEnabled) {
 }
 string enabledProvidersValue = string.Join( ",", enabledProvidersList );
 
-_ = isProduction
-    ? AddProductionExecutable( "saga-coordinator", "BridgeBeats.Worker.SagaCoordinator" )
+if (isProduction) {
+    _ = AddProductionExecutable( "saga-coordinator", "BridgeBeats.Worker.SagaCoordinator" )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
-    : (IResourceBuilder<ExecutableResource>)builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" )
+        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue );
+} else {
+    _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" )
         .WithReference( redis )
         .WaitFor( redis )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
@@ -286,34 +287,38 @@ _ = isProduction
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue );
+}
 
 // ============================================================================
 // JetStream Watcher Worker
 // ============================================================================
 // Monitors Bluesky Jetstream for music links and submits them to provider
 // queues at bulk priority. Fire-and-forget: no credentials needed.
-_ = isProduction
-    ? AddProductionExecutable( "jetstream-watcher", "BridgeBeats.Worker.JetStreamWatcher" )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-    : (IResourceBuilder<ExecutableResource>)builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" )
+if (isProduction) {
+    _ = AddProductionExecutable( "jetstream-watcher", "BridgeBeats.Worker.JetStreamWatcher" )
+        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
+} else {
+    _ = builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" )
         .WithReference( redis )
         .WaitFor( redis )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
+}
 
 // ============================================================================
 // Cache Bootstrap Worker
 // ============================================================================
 // Bootstraps Redis cache from ATProto public records on startup and periodically
 // (default: every 6 hours). Uses unauthenticated access for public records.
-_ = isProduction
-    ? AddProductionExecutable( "cache-bootstrap", "BridgeBeats.Worker.CacheBootstrap" )
+if (isProduction) {
+    _ = AddProductionExecutable( "cache-bootstrap", "BridgeBeats.Worker.CacheBootstrap" )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-    : (IResourceBuilder<ExecutableResource>)builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" )
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays );
+} else {
+    _ = builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" )
         .WithReference( redis )
         .WaitFor( redis )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
@@ -322,6 +327,7 @@ _ = isProduction
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays );
+}
 
 // ============================================================================
 // Main Web Application
@@ -333,7 +339,7 @@ IResourceBuilder<ProjectResource>? bridgebeatsWebProject = null;
 if (isProduction) {
     bridgebeatsWebExe = AddProductionExecutable( "bridgebeats", "BridgeBeats.Web", httpPort: 10000, workingDirectory: "/src/BridgeBeats.Web" );
     _ = bridgebeatsWebExe
-        .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http", isProxied: false )
+        .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http" )
         .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "10000" )
         .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
         .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
@@ -358,7 +364,7 @@ if (isProduction) {
 } else {
     bridgebeatsWebProject = builder.AddProject<Projects.BridgeBeats_Web>( "bridgebeats" )
         .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http" );
-    _ = (IResourceBuilder<ExecutableResource>)bridgebeatsWebProject
+    _ = bridgebeatsWebProject
         .WithReference( redis )
         .WaitFor( redis )
         .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "10000" )
@@ -408,17 +414,17 @@ if (isProduction) {
     // Development: Wire up project resources
     if (bridgebeatsWebProject is not null) {
         if (spotifyWorkerProject is not null) {
-            _ = (IResourceBuilder<ExecutableResource>)bridgebeatsWebProject.WithReference( spotifyWorkerProject );
+            _ = bridgebeatsWebProject.WithReference( spotifyWorkerProject );
         }
         if (appleMusicWorkerProject is not null) {
-            _ = (IResourceBuilder<ExecutableResource>)bridgebeatsWebProject.WithReference( appleMusicWorkerProject );
+            _ = bridgebeatsWebProject.WithReference( appleMusicWorkerProject );
         }
         if (tidalWorkerProject is not null) {
-            _ = (IResourceBuilder<ExecutableResource>)bridgebeatsWebProject.WithReference( tidalWorkerProject );
+            _ = bridgebeatsWebProject.WithReference( tidalWorkerProject );
         }
     }
     if (discordWorkerProject is not null && bridgebeatsWebProject is not null) {
-        _ = (IResourceBuilder<ExecutableResource>)discordWorkerProject.WithReference( bridgebeatsWebProject );
+        _ = discordWorkerProject.WithReference( bridgebeatsWebProject );
     }
 }
 

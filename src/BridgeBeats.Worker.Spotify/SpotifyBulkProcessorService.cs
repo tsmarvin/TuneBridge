@@ -286,11 +286,11 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
                 ct
             );
 
-            // Publish lookup completion
-            await PublishLookupCompletionAsync( request.SagaId, ct );
-
             // Check if saga is complete
             await CheckAndPublishSagaCompletionAsync( request.SagaId, ct );
+
+            // Publish lookup completion so the SagaCoordinator can process via pattern subscription
+            await PublishLookupCompletionAsync( request.SagaId, ct );
 
             // Acknowledge the message
             await _batchHelper.AcknowledgeAsync( message.MessageId, ct );
@@ -358,7 +358,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     }
 
     /// <summary>
-    /// Publishes a lookup completion event so waiting clients can receive results.
+    /// Publishes a lookup completion event so the SagaCoordinator can process via pattern subscription.
     /// </summary>
     private async Task PublishLookupCompletionAsync( string sagaId, CancellationToken ct ) {
         try {
@@ -368,12 +368,13 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
                 return;
             }
 
+            // Publish current saga result URI (may be empty for in-progress lookups)
+            // Empty publishes trigger the SagaCoordinator's pattern subscription
+            // while WaitForCompletionAsync skips them and waits for a real result
+            string resultUri = saga.PartialResultUri ?? saga.FinalResultUri ?? string.Empty;
             string channel = $"{LookupCompleteChannelPrefix}{saga.LookupKey}";
             ISubscriber subscriber = _redis.GetSubscriber( );
-            _ = await subscriber.PublishAsync(
-                RedisChannel.Literal( channel ),
-                saga.PartialResultUri ?? saga.FinalResultUri ?? string.Empty
-            );
+            _ = await subscriber.PublishAsync( RedisChannel.Literal( channel ), resultUri );
         } catch (Exception ex) {
             LogPublishCompletionError( _logger, ex, sagaId );
         }
@@ -525,7 +526,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     [LoggerMessage(
         EventId = LogEventIds.PublishCompletionError,
         Level = LogLevel.Error,
-        Message = "Failed to publish lookup completion for {SagaId}" )]
+        Message = "Failed to publish lookup completion for saga {SagaId}" )]
     private static partial void LogPublishCompletionError( ILogger logger, Exception ex, string sagaId );
 
     #endregion

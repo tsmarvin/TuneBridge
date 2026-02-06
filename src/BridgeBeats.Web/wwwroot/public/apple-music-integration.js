@@ -199,6 +199,7 @@ async function processSelectedPlaylist() {
                     const completionMarker = tempDiv.querySelector('[data-stream-complete="true"]');
                     if (completionMarker) {
                         const errors = parseInt(completionMarker.getAttribute('data-errors') || '0');
+                        const rateLimited = parseInt(completionMarker.getAttribute('data-rate-limited') || '0');
                         completionMarker.remove();
                         if (tempDiv.children.length > 0) {
                             for (const child of Array.from(tempDiv.children)) {
@@ -216,9 +217,13 @@ async function processSelectedPlaylist() {
                             resultsSummary.className = 'alert alert-success';
                             let message = `Found ${cardCount} result${cardCount > 1 ? 's' : ''} from ${processData.trackCount} tracks`;
                             if (errors > 0) message += ` (${errors} track${errors > 1 ? 's' : ''} could not be matched)`;
+                            if (rateLimited > 0) message += ` \u2014 ${rateLimited} track${rateLimited > 1 ? 's were' : ' was'} rate-limited and will be retried`;
                             resultsSummary.textContent = message;
                             if (typeof initializeShareButtons === 'function') setTimeout(initializeShareButtons, 100);
                             resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        } else if (rateLimited > 0) {
+                            resultsSummary.className = 'alert alert-warning';
+                            resultsSummary.textContent = 'Some providers are temporarily rate-limited. Please try again in a moment.';
                         } else {
                             resultsSummary.className = 'alert alert-warning';
                             resultsSummary.textContent = 'No matching results found for the tracks in this playlist.';

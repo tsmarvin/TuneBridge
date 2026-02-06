@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
@@ -196,6 +197,18 @@ public sealed partial class LookupOrchestrator(
             // Wait for the other instance to complete
             string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, s_defaultTimeout );
 
+            // Check for rate-limited sentinel
+            if (resultUri == LookupConstants.RateLimitedSentinel) {
+                string rateLimitSagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+                LookupSagaState? rateLimitedSaga = await _sagaManager.GetAsync( rateLimitSagaId );
+                return new LookupResult {
+                    Result = null,
+                    IsPartial = true,
+                    SagaId = rateLimitSagaId,
+                    RateLimitedProviders = rateLimitedSaga?.RateLimitInfo
+                };
+            }
+
             if (!string.IsNullOrEmpty( resultUri )) {
                 MediaLinkResult? completedResult = await _atProtoStorage.GetMediaLinkResultAsync( resultUri );
                 return new LookupResult {
@@ -290,6 +303,17 @@ public sealed partial class LookupOrchestrator(
 
         // Wait for initial result via deduplicator subscription
         string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, s_defaultTimeout );
+
+        // Check for rate-limited sentinel
+        if (resultUri == LookupConstants.RateLimitedSentinel) {
+            LookupSagaState? rateLimitedSaga = await _sagaManager.GetAsync( sagaId );
+            return new LookupResult {
+                Result = null,
+                IsPartial = true,
+                SagaId = sagaId,
+                RateLimitedProviders = rateLimitedSaga?.RateLimitInfo
+            };
+        }
 
         if (!string.IsNullOrEmpty( resultUri )) {
             // Initial lookup completed, fetch result

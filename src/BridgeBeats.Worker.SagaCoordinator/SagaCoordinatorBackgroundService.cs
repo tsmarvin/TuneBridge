@@ -190,8 +190,10 @@ public sealed partial class SagaCoordinatorBackgroundService(
             if (result is not null) {
                 bool queuedSecondaryLookups = await CheckCacheAndQueueSecondaryLookupsAsync( result, saga, ct );
                 if (queuedSecondaryLookups) {
-                    // Secondary lookups were queued - don't finalize yet, wait for them to complete
+                    // Write initial result as partial and notify waiters immediately
+                    // while secondary lookups continue in the background
                     LogWaitingForSecondaryLookups( _logger, sagaId );
+                    await WritePartialResultAsync( saga, ct );
                     return;
                 }
             }
@@ -230,8 +232,10 @@ public sealed partial class SagaCoordinatorBackgroundService(
                     // Check cache for related data and queue secondary lookups for missing providers
                     bool queuedSecondaryLookups = await CheckCacheAndQueueSecondaryLookupsAsync( result, saga, ct );
                     if (queuedSecondaryLookups) {
-                        // Secondary lookups were queued - don't finalize yet, wait for them to complete
+                        // Write initial result as partial and notify waiters immediately
+                        // while secondary lookups continue in the background
                         LogWaitingForSecondaryLookups( _logger, sagaId );
+                        await WritePartialResultAsync( saga, ct );
                         return;
                     }
                 }

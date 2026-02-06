@@ -354,12 +354,23 @@ namespace BridgeBeats.Web.Controllers {
 
             int processedCount = 0;
             int errorCount = 0;
+            int rateLimitCount = 0;
 
             try {
                 await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( uri )) {
                     try {
                         if (result.Results.Count == 0) {
-                            errorCount++;
+                            // Check if this is a rate-limited result with messages
+                            if (result.Messages is { Count: > 0 }) {
+                                rateLimitCount++;
+                                string warningHtml = "<div class=\"alert alert-warning\"><strong>Rate Limited</strong><br/>"
+                                    + string.Join( "<br/>", result.Messages )
+                                    + "</div>";
+                                await Response.WriteAsync( warningHtml );
+                                await Response.Body.FlushAsync( );
+                            } else {
+                                errorCount++;
+                            }
                             continue;
                         }
 
@@ -416,13 +427,15 @@ namespace BridgeBeats.Web.Controllers {
 
                 // Send completion status as a hidden data element
                 if (processedCount == 0 && errorCount > 0) {
-                    await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found</div>" );
+                    await Response.WriteAsync( $"<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\">No results found</div>" );
+                } else if (processedCount == 0 && rateLimitCount > 0) {
+                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\"></div>" );
                 } else if (processedCount == 0) {
-                    await Response.WriteAsync( "<div class=\"alert alert-info\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"0\">No results found</div>" );
+                    await Response.WriteAsync( "<div class=\"alert alert-info\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"0\" data-rate-limited=\"0\">No results found</div>" );
                 } else if (errorCount > 0) {
-                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" );
+                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\"></div>" );
                 } else {
-                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" );
+                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\" data-rate-limited=\"{rateLimitCount}\"></div>" );
                 }
 
             } catch (Exception ex) {

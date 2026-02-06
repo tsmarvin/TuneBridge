@@ -383,11 +383,21 @@ public partial class AppleMusicController(
         Response.Headers.Append( "X-Accel-Buffering", "no" );
         int processedCount = 0;
         int errorCount = 0;
+        int rateLimitCount = 0;
         foreach (string songId in songIds) {
             try {
                 MediaLinkResult? lookupResult = await mediaLinkService.GetInfoByProviderIdAsync( songId, SupportedProviders.AppleMusic, false );
                 if (lookupResult == null || lookupResult.Results.Count == 0) {
-                    errorCount++;
+                    if (lookupResult?.Messages is { Count: > 0 }) {
+                        rateLimitCount++;
+                        string warningHtml = "<div class=\"alert alert-warning\"><strong>Rate Limited</strong><br/>"
+                            + string.Join( "<br/>", lookupResult.Messages )
+                            + "</div>";
+                        await Response.WriteAsync( warningHtml );
+                        await Response.Body.FlushAsync( );
+                    } else {
+                        errorCount++;
+                    }
                     continue;
                 }
 
@@ -436,11 +446,13 @@ public partial class AppleMusicController(
             }
         }
         if (processedCount == 0 && errorCount > 0) {
-            await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found for the tracks in this playlist</div>" );
+            await Response.WriteAsync( $"<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\">No results found for the tracks in this playlist</div>" );
+        } else if (processedCount == 0 && rateLimitCount > 0) {
+            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\"></div>" );
         } else if (errorCount > 0) {
-            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" );
+            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\"></div>" );
         } else {
-            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" );
+            await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\" data-rate-limited=\"{rateLimitCount}\"></div>" );
         }
     }
 

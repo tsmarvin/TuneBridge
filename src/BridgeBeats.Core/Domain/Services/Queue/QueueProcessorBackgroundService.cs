@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
@@ -174,11 +175,11 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
                 ct
             );
 
-            // Publish lookup completion so waiting clients can receive the result
-            await PublishLookupCompletionAsync( request.SagaId, ct );
-
             // Check if saga is complete and publish saga completion event for coordinator
             await CheckAndPublishSagaCompletionAsync( request.SagaId, ct );
+
+            // Publish lookup completion so the SagaCoordinator can process via pattern subscription
+            await PublishLookupCompletionAsync( request.SagaId, ct );
 
             // Acknowledge the message - processing complete
             await _queue.AcknowledgeAsync( message.MessageId, ct );
@@ -242,8 +243,8 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
             ct
         );
 
-        // Publish partial completion so waiting clients can receive partial results
-        await PublishLookupCompletionAsync( request.SagaId, ct );
+        // Publish rate-limited sentinel so waiting clients know this is a partial result
+        await PublishRateLimitSentinelAsync( request.SagaId, ct );
 
         // Requeue request - it will be skipped by rate-limit-aware dequeue until rate limit expires
         // The RateLimitedEndpoint field helps track which endpoint triggered the limit
@@ -350,10 +351,33 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
                 return;
             }
 
-            // Publish to the completion channel so waiting clients get notified
+            // Publish current saga result URI (may be empty for in-progress lookups)
+            // Empty publishes trigger the SagaCoordinator's pattern subscription
+            // while WaitForCompletionAsync skips them and waits for a real result
+            string resultUri = saga.PartialResultUri ?? saga.FinalResultUri ?? string.Empty;
             string channel = $"{LookupCompleteChannelPrefix}{saga.LookupKey}";
             ISubscriber subscriber = _redis.GetSubscriber( );
-            _ = await subscriber.PublishAsync( RedisChannel.Literal( channel ), saga.PartialResultUri ?? saga.FinalResultUri ?? string.Empty );
+            _ = await subscriber.PublishAsync( RedisChannel.Literal( channel ), resultUri );
+
+            LogLookupCompletionPublished( _logger, sagaId, channel );
+        } catch (Exception ex) {
+            LogLookupCompletionPublishFailed( _logger, ex, sagaId );
+        }
+    }
+
+    private async Task PublishRateLimitSentinelAsync( string sagaId, CancellationToken ct ) {
+        try {
+            LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, ct );
+
+            if (saga is null) {
+                LogSagaNotFoundForLookupCompletion( _logger, sagaId );
+                return;
+            }
+
+            // Publish rate-limited sentinel so waiting clients know this is a partial result
+            string channel = $"{LookupCompleteChannelPrefix}{saga.LookupKey}";
+            ISubscriber subscriber = _redis.GetSubscriber( );
+            _ = await subscriber.PublishAsync( RedisChannel.Literal( channel ), LookupConstants.RateLimitedSentinel );
 
             LogLookupCompletionPublished( _logger, sagaId, channel );
         } catch (Exception ex) {
