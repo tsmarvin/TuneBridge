@@ -61,10 +61,27 @@ public partial class OpenGraphCardController(
     /// This endpoint is designed for iframe embedding and shows the music lookup card style.
     /// </summary>
     /// <param name="id">The unique identifier of the stored result.</param>
-    /// <param name="qr">When true, replaces the artwork image with a QR code linking to the embed URL.</param>
     /// <returns>A minimal HTML page with just the card suitable for iframe embedding.</returns>
     [HttpGet( "{id}/embed" )]
-    public async Task<IActionResult> Embed( string id, [FromQuery] bool qr = false ) {
+    public async Task<IActionResult> Embed( string id ) {
+        return await RenderEmbed( id, useQrCode: false );
+    }
+
+    /// <summary>
+    /// Displays an embeddable compact card view with a QR code replacing the artwork image.
+    /// The QR code links to the embed URL for easy mobile scanning.
+    /// </summary>
+    /// <param name="id">The unique identifier of the stored result.</param>
+    /// <returns>A minimal HTML page with the card showing a QR code instead of artwork.</returns>
+    [HttpGet( "{id}/embed/qr" )]
+    public async Task<IActionResult> EmbedQr( string id ) {
+        return await RenderEmbed( id, useQrCode: true );
+    }
+
+    /// <summary>
+    /// Shared implementation for rendering embed views with or without QR code.
+    /// </summary>
+    private async Task<IActionResult> RenderEmbed( string id, bool useQrCode ) {
         MediaLinkResult? result = _cardService.GetResult( id );
 
         // Fallback to persistent cache if not in memory
@@ -96,8 +113,7 @@ public partial class OpenGraphCardController(
 
         // Generate QR code data URI if requested
         string? qrCodeDataUri = null;
-        if (qr) {
-            // Use embed URL for QR code - this is the URL users will scan
+        if (useQrCode) {
             string embedUrl = $"https://{_cardService.BaseUrl}/card/{id}/embed";
             qrCodeDataUri = _qrCodeService.GenerateQrCodeDataUri( embedUrl );
         }
@@ -112,7 +128,7 @@ public partial class OpenGraphCardController(
             QrCodeDataUri = qrCodeDataUri
         };
 
-        return View( viewModel );
+        return View( "Embed", viewModel );
     }
 
     /// <summary>
