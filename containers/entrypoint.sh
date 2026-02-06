@@ -77,11 +77,15 @@ CARD_CACHE_CLEANUP_INTERVAL="${CARD_CACHE_CLEANUP_INTERVAL:-500}"
 IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}"
 # Try to read API key salt from Docker secret
 API_KEY_SALT="$(read_secret "api_key_salt")"
-# Internal service key for worker-to-API authentication
-# Read from Docker secret if available, otherwise generate a random one
-INTERNAL_SERVICE_KEY="$(read_secret "internal_service_key")"
+# Internal service key for worker-to-API authentication (must persist across restarts)
+# Read from environment variable or Docker secret (required)
+INTERNAL_SERVICE_KEY="${INTERNAL_SERVICE_KEY:-}"
 if [ -z "$INTERNAL_SERVICE_KEY" ]; then
-    INTERNAL_SERVICE_KEY="$(head -c 32 /dev/urandom | base64)"
+    INTERNAL_SERVICE_KEY="$(read_secret "internal_service_key")"
+fi
+if [ -z "$INTERNAL_SERVICE_KEY" ]; then
+    echo "ERROR: INTERNAL_SERVICE_KEY is not set. Configure it via environment variable or Docker secret 'internal_service_key'." >&2
+    exit 1
 fi
 RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
@@ -100,7 +104,7 @@ escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 # 0) Create logs directory if it doesn't exist
 mkdir -p /app/data/logs
 
-# 1) Remove existing appsettings.json if present
+# 1) Remove existing appsettings.json from /src/BridgeBeats.Web/ if present
 [ -f /src/BridgeBeats.Web/appsettings.json ] && rm -f /src/BridgeBeats.Web/appsettings.json
 
 # 2) Build Redis connection string for use in appsettings.json and environment variables

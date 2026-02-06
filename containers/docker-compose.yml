@@ -41,6 +41,7 @@ services:
       - ./secrets/atproto_oauth_key.json:/run/secrets/atproto_oauth_key:ro
       - ./secrets/api_key_salt.txt:/run/secrets/api_key_salt:ro
       - ./secrets/redis_password.txt:/run/secrets/redis_password:ro
+      - ./secrets/internal_service_key.txt:/run/secrets/internal_service_key:ro
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:10000/health"]
       interval: 30s
@@ -63,8 +64,10 @@ services:
     networks:
       - internal
     command: >
-      sh -c "if [ -f /run/secrets/redis_password ]; then
-        redis-server --appendonly yes --requirepass \"$$(cat /run/secrets/redis_password)\";
+      sh -c "mkdir -p /usr/local/etc/redis &&
+      if [ -f /run/secrets/redis_password ]; then
+        printf 'requirepass %s\nappendonly yes\n' \"$$(cat /run/secrets/redis_password)\" > /usr/local/etc/redis/redis.conf &&
+        redis-server /usr/local/etc/redis/redis.conf;
       else
         redis-server --appendonly yes;
       fi"
