@@ -81,11 +81,14 @@
             registerBtn.disabled = true;
             registerBtn.textContent = 'Creating account...';
             try {
-                const response = await fetch('/account/register', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                const response = await safeFetch('/account/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
                     body: JSON.stringify({ email: email.value, password: password.value })
                 });
-                const data = await response.json();
+                const text = await response.text();
+                const data = text ? JSON.parse(text) : {};
                 if (!response.ok) {
                     let errorMsg = 'Registration failed';
                     if (data.errors) errorMsg = Object.values(data.errors).flat().join('. ');

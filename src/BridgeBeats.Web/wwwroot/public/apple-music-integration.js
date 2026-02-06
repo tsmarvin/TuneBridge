@@ -138,7 +138,7 @@ async function processSelectedPlaylist() {
     resultsSummary.classList.add('d-none');
     cardsContainer.innerHTML = '';
     try {
-        const processResponse = await fetch('/applemusic/process-playlist', {
+        const processResponse = await safeFetch('/applemusic/process-playlist', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
@@ -175,7 +175,7 @@ async function processSelectedPlaylist() {
         resultsSection.classList.remove('d-none');
         cardsContainer.innerHTML = '<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3"></div>';
         const gridContainer = cardsContainer.querySelector('.row');
-        const streamResponse = await fetch('/applemusic/playlist-results-stream', {
+        const streamResponse = await safeFetch('/applemusic/playlist-results-stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
@@ -258,7 +258,7 @@ function initAuthorizationHandler() {
         error.classList.add('d-none');
         try {
             const userToken = await musicKitInstance.authorize();
-            const response = await fetch('/applemusic/store-token', {
+            const response = await safeFetch('/applemusic/store-token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',

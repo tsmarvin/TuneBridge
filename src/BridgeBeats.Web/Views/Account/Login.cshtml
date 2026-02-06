@@ -92,14 +92,15 @@
             loginBtn.textContent = 'Logging in...';
 
             try {
-                const response = await fetch('/account/login', {
+                const response = await safeFetch('/account/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
                     body: JSON.stringify({ email: email.value, password: password.value })
                 });
 
-                const data = await response.json();
+                const text = await response.text();
+                const data = text ? JSON.parse(text) : {};
 
                 if (!response.ok) {
                     error.textContent = data.message || 'Login failed';
@@ -142,14 +143,15 @@
             atprotoLoginBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Connecting...';
 
             try {
-                const response = await fetch('/account/login-atproto', {
+                const response = await safeFetch('/account/login-atproto', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
                     body: JSON.stringify({ handle: atprotoHandle.value })
                 });
 
-                const data = await response.json();
+                const text = await response.text();
+                const data = text ? JSON.parse(text) : {};
 
                 if (!response.ok) {
                     error.textContent = data.message || 'Failed to start Bluesky login';

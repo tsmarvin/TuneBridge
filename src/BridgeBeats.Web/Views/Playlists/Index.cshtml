@@ -120,7 +120,7 @@
                 }
 
                 try {
-                    const response = await fetch(`/playlists/${playlistId}/delete`, {
+                    const response = await safeFetch(`/playlists/${playlistId}/delete`, {
                         method: 'POST',
                         credentials: 'same-origin'
                     });
