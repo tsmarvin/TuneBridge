@@ -51,14 +51,14 @@ $BackupFiles = @('docker-compose.yml', 'Caddyfile')
 
 # Secret files configuration
 $SecretFiles = @(
-    @{ Name = 'apple_key.p8'; Description = 'Apple Music private key (.p8 file)'; AutoGenerate = $false }
-    @{ Name = 'spotify_client_secret.txt'; Description = 'Spotify API client secret'; AutoGenerate = $false }
-    @{ Name = 'tidal_client_secret.txt'; Description = 'Tidal API client secret'; AutoGenerate = $false }
-    @{ Name = 'discord_token.txt'; Description = 'Discord bot token'; AutoGenerate = $false }
-    @{ Name = 'atproto_password.txt'; Description = 'ATProto app password'; AutoGenerate = $false }
-    @{ Name = 'api_key_salt.txt'; Description = 'API key salt'; AutoGenerate = $true }
-    @{ Name = 'redis_password.txt'; Description = 'Redis password'; AutoGenerate = $true }
-    @{ Name = 'cloudflare_api_token.txt'; Description = 'Cloudflare API token (DNS)'; AutoGenerate = $false }
+    @{ Name = 'apple_key.p8';              Description = 'Apple Music private key (.p8 file)'; AutoGenerate = $false }
+    @{ Name = 'spotify_client_secret.txt'; Description = 'Spotify API client secret';          AutoGenerate = $false }
+    @{ Name = 'tidal_client_secret.txt';   Description = 'Tidal API client secret';            AutoGenerate = $false }
+    @{ Name = 'discord_token.txt';         Description = 'Discord bot token';                  AutoGenerate = $false }
+    @{ Name = 'atproto_password.txt';      Description = 'ATProto app password';               AutoGenerate = $false }
+    @{ Name = 'api_key_salt.txt';          Description = 'API key salt';                       AutoGenerate = $true }
+    @{ Name = 'redis_password.txt';        Description = 'Redis password';                     AutoGenerate = $true }
+    @{ Name = 'cloudflare_api_token.txt';  Description = 'Cloudflare API token (DNS)';         AutoGenerate = $false }
 )
 
 # Construct base URL for raw file downloads

@@ -104,7 +104,7 @@ IResourceBuilder<ExecutableResource> AddProductionExecutable(
         .WaitFor( redis );
 
     if (httpPort.HasValue) {
-        _ = resource.WithHttpEndpoint( targetPort: httpPort.Value, name: "http" );
+        resource = resource.WithHttpEndpoint( targetPort: httpPort.Value, name: "http" );
     }
 
     return resource;

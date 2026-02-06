@@ -47,12 +47,17 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "containers", "containers", "{C1D2E3F4-A5B6-47C8-9D0E-1F2A3B4C5D6E}"
 	ProjectSection(SolutionItems) = preProject
 		containers\.env.example = containers\.env.example
+		containers\Build-Publish.ps1 = containers\Build-Publish.ps1
 		containers\Caddyfile = containers\Caddyfile
+		containers\docker-compose.override.yml = containers\docker-compose.override.yml
 		containers\docker-compose.yml = containers\docker-compose.yml
 		containers\Dockerfile = containers\Dockerfile
 		containers\Dockerfile.caddy = containers\Dockerfile.caddy
 		containers\entrypoint.sh = containers\entrypoint.sh
+		containers\install.ps1 = containers\install.ps1
+		containers\install.sh = containers\install.sh
 		containers\setup-secrets.sh = containers\setup-secrets.sh
+		containers\Test-LockFileChanges.ps1 = containers\Test-LockFileChanges.ps1
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{DA4FC95F-B638-4F11-8AD2-C83FE858DAD4}"
