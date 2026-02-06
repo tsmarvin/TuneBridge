@@ -402,7 +402,7 @@ if (isProduction) {
     }
     if (discordWorkerExe is not null) {
         _ = discordWorkerExe
-            .WithEnvironment( "services__bridgebeats-web__http__0", "http://localhost:10000" );
+            .WithEnvironment( "services__bridgebeats__http__0", "http://localhost:10000" );
     }
 } else {
     // Development: Wire up project resources
