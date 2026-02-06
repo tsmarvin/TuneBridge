@@ -114,8 +114,7 @@ public partial class OpenGraphCardController(
         // Generate QR code data URI if requested
         string? qrCodeDataUri = null;
         if (useQrCode) {
-            string embedUrl = $"https://{_cardService.BaseUrl}/card/{id}/embed";
-            qrCodeDataUri = _qrCodeService.GenerateQrCodeDataUri( embedUrl );
+            qrCodeDataUri = _qrCodeService.GenerateQrCodeDataUri( cardUrl );
         }
 
         // Create a view model for the embed view
