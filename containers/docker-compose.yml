@@ -64,9 +64,9 @@ services:
     networks:
       - internal
     command: >
-      sh -c "mkdir -p /usr/local/etc/redis || exit 1;
+      sh -c "mkdir -p /usr/local/etc/redis || { echo 'ERROR: Failed to create Redis config directory' >&2; exit 1; };
       if [ -f /run/secrets/redis_password ]; then
-        head -n 1 /run/secrets/redis_password | awk '{printf \"requirepass %s\\nappendonly yes\\n\", $$0}' > /usr/local/etc/redis/redis.conf &&
+        head -n 1 /run/secrets/redis_password | awk '{print \"requirepass \" $$0 \"\\nappendonly yes\"}' > /usr/local/etc/redis/redis.conf &&
         redis-server /usr/local/etc/redis/redis.conf;
       else
         redis-server --appendonly yes;
