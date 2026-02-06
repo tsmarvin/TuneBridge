@@ -68,6 +68,13 @@ namespace BridgeBeats.Web.Configuration {
         public string ApiKeySalt { get; set; } = string.Empty;
 
         /// <summary>
+        /// Shared secret key for internal service-to-service authentication.
+        /// Used by worker services (e.g., Discord worker) to authenticate with the Web API
+        /// without requiring a user API key.
+        /// </summary>
+        public string InternalServiceKey { get; set; } = string.Empty;
+
+        /// <summary>
         /// Maximum number of requests per hour per user for rate limiting.
         /// </summary>
         public int RateLimitRequestsPerHour { get; set; } = 20;
@@ -106,6 +113,13 @@ namespace BridgeBeats.Web.Configuration {
         /// The base URL for the application (e.g., https://bridgebeats.link). Used for generating OpenGraph card URLs.
         /// </summary>
         public string BaseUrl { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The file path to the ATProto OAuth signing key in JWK format.
+        /// Required for confidential client authentication (private_key_jwt).
+        /// When empty, the ATProto OAuth service operates as a public client (localhost only).
+        /// </summary>
+        public string ATProtoOAuthSigningKeyPath { get; set; } = string.Empty;
 
         /// <summary>
         /// The log directory path for the service. Each project writes to logs/{ProjectName}-.log.

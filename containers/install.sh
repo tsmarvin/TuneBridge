@@ -35,6 +35,7 @@ SECRET_FILES=(
     "tidal_client_secret.txt|Tidal API client secret|false"
     "discord_token.txt|Discord bot token|false"
     "atproto_password.txt|ATProto app password|false"
+    "atproto_oauth_key.json|ATProto OAuth signing key (ES256 JWK)|true"
     "api_key_salt.txt|API key salt (random string for security)|true"
     "redis_password.txt|Redis password (random string for authentication)|true"
     "cloudflare_api_token.txt|Cloudflare API token for DNS challenges|false"
@@ -138,6 +139,91 @@ generate_random_string() {
     else
         # Fallback - not cryptographically secure but better than nothing
         echo "REPLACE_WITH_RANDOM_VALUE_$(date +%s)_$$"
+    fi
+}
+
+# Generate an ES256 (P-256) signing key in JWK format
+generate_es256_jwk() {
+    if command -v openssl &> /dev/null; then
+        # Generate an EC P-256 key pair with openssl
+        local privkey
+        privkey=$(openssl ecparam -genkey -name prime256v1 -noout 2>/dev/null)
+
+        # Export key parameters
+        local params
+        params=$(echo "$privkey" | openssl ec -text -noout 2>/dev/null)
+
+        # Use a small inline Python/Python3 script to parse and emit JWK
+        if command -v python3 &> /dev/null; then
+            echo "$privkey" | python3 -c "
+import sys, json, hashlib, base64, uuid
+from subprocess import run, PIPE
+
+pem = sys.stdin.read()
+# Use openssl to get the raw key bytes
+result = run(['openssl', 'ec', '-text', '-noout'], input=pem, capture_output=True, text=True)
+lines = result.stdout.strip().split('\n')
+
+# Parse the hex bytes from openssl output
+hex_bytes = ''
+in_priv = False
+in_pub = False
+priv_hex = ''
+pub_hex = ''
+for line in lines:
+    line = line.strip()
+    if 'priv:' in line:
+        in_priv = True
+        in_pub = False
+        continue
+    elif 'pub:' in line:
+        in_priv = False
+        in_pub = True
+        continue
+    elif 'ASN1 OID:' in line or 'NIST CURVE:' in line:
+        in_priv = False
+        in_pub = False
+        continue
+    if in_priv:
+        priv_hex += line.replace(':', '')
+    if in_pub:
+        pub_hex += line.replace(':', '')
+
+priv_bytes = bytes.fromhex(priv_hex)
+pub_bytes = bytes.fromhex(pub_hex)
+
+# Public key is 04 || x || y (uncompressed)
+if pub_bytes[0] == 0x04:
+    x = pub_bytes[1:33]
+    y = pub_bytes[33:65]
+else:
+    sys.exit(1)
+
+# Ensure d is exactly 32 bytes (pad with leading zeros if needed)
+d = priv_bytes[-32:] if len(priv_bytes) >= 32 else priv_bytes.rjust(32, b'\x00')
+
+def b64url(b):
+    return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
+
+jwk = {
+    'kty': 'EC',
+    'crv': 'P-256',
+    'x': b64url(x),
+    'y': b64url(y),
+    'd': b64url(d),
+    'kid': uuid.uuid4().hex,
+    'alg': 'ES256',
+    'use': 'sig'
+}
+print(json.dumps(jwk))
+"
+        else
+            echo '{}' # Placeholder if python3 not available
+            echo "[WARN] python3 not found - ATProto OAuth key needs manual generation" >&2
+        fi
+    else
+        echo '{}' # Placeholder if openssl not available
+        echo "[WARN] openssl not found - ATProto OAuth key needs manual generation" >&2
     fi
 }
 
@@ -353,7 +439,11 @@ for secret_config in "${SECRET_FILES[@]}"; do
         else
             if [[ "$auto_generate" == "true" ]]; then
                 # Auto-generate this secret
-                generate_random_string > "$secret_path"
+                if [[ "$secret_name" == "atproto_oauth_key.json" ]]; then
+                    generate_es256_jwk > "$secret_path"
+                else
+                    generate_random_string > "$secret_path"
+                fi
                 chmod 600 "$secret_path"
                 echo "[OK] Auto-generated: ${secret_name}"
             else
@@ -364,7 +454,11 @@ for secret_config in "${SECRET_FILES[@]}"; do
     else
         if [[ "$auto_generate" == "true" ]]; then
             # Auto-generate this secret
-            generate_random_string > "$secret_path"
+            if [[ "$secret_name" == "atproto_oauth_key.json" ]]; then
+                generate_es256_jwk > "$secret_path"
+            else
+                generate_random_string > "$secret_path"
+            fi
             chmod 600 "$secret_path"
             echo "[OK] Auto-generated: ${secret_name}"
         else

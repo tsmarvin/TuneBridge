@@ -38,6 +38,7 @@ services:
       - ./secrets/tidal_client_secret.txt:/run/secrets/tidal_client_secret:ro
       - ./secrets/discord_token.txt:/run/secrets/discord_token:ro
       - ./secrets/atproto_password.txt:/run/secrets/atproto_password:ro
+      - ./secrets/atproto_oauth_key.json:/run/secrets/atproto_oauth_key:ro
       - ./secrets/api_key_salt.txt:/run/secrets/api_key_salt:ro
       - ./secrets/redis_password.txt:/run/secrets/redis_password:ro
     healthcheck:

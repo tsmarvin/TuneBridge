@@ -48,10 +48,14 @@ public static class Program {
 
         // Configure HTTP client for BridgeBeats Web API
         // Uses Aspire service discovery to resolve "bridgebeats" service
+        string? internalServiceKey = builder.Configuration["BridgeBeats:InternalServiceKey"];
         _ = builder.Services.AddHttpClient<BridgeBeatsApiClient>( client => {
             // The base address will be set via Aspire service discovery
             client.BaseAddress = new Uri( "http://bridgebeats" );
             client.DefaultRequestHeaders.Add( "User-Agent", "BridgeBeats-Discord-Worker/1.0" );
+            if (!string.IsNullOrWhiteSpace( internalServiceKey )) {
+                client.DefaultRequestHeaders.Add( "X-Service-Key", internalServiceKey );
+            }
         } ).AddStandardResilienceHandler( );
 
         // Register BridgeBeatsApiClient with base URL for card generation

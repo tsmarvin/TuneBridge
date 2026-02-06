@@ -1,6 +1,7 @@
 using AspNetCore.Authentication.ApiKey;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Web.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,11 +10,11 @@ namespace BridgeBeats.Web.Controllers;
 /// <summary>
 /// REST API endpoints for cross-platform music lookup and link translation. These endpoints enable
 /// clients to convert music links between services (Spotify ↔ Apple Music) or search for tracks/albums
-/// by metadata. Requires API key authentication via X-API-Key header.
+/// by metadata. Requires API key or internal service key authentication.
 /// </summary>
 /// <param name="svc">Injected service that handles provider queries and result aggregation.</param>
 [ApiController]
-[Authorize( AuthenticationSchemes = ApiKeyDefaults.AuthenticationScheme )]
+[Authorize( AuthenticationSchemes = ApiKeyDefaults.AuthenticationScheme + "," + InternalServiceDefaults.AuthenticationScheme )]
 [IgnoreAntiforgeryToken]
 [Route( "music/lookup" )]
 public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {

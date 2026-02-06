@@ -26,8 +26,8 @@ export ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS="true"
 export DASHBOARD__MCP__DISABLED="true"
 
 # ---- Web app port configuration ----
-# Force port 10000 for containerized deployment (.NET 10 base image defaults ASPNETCORE_HTTP_PORTS to 8080)
-WEB_PORT=10000
+# Respect Aspire-assigned port in development, default to 10000 for production
+WEB_PORT="${ASPNETCORE_HTTP_PORTS:-10000}"
 
 # ---- Configure defaults ----
 BASEURL="${BASEURL:-"bridgebeats.link"}"
@@ -59,6 +59,9 @@ ATPROTO_USER_DID="${ATPROTO_USER_DID:-}"
 ATPROTO_PASSWORD="$(read_secret "atproto_password")"
 ATPROTO_PDS_URI="${ATPROTO_PDS_URI:-https://pds.bridgebeats.link}"
 
+# ATProto OAuth signing key path (file-based, read directly by the app)
+ATPROTO_OAUTH_KEY_PATH="/run/secrets/atproto_oauth_key"
+
 # Redis configuration
 REDIS_HOST="${REDIS_HOST:-redis}"
 REDIS_PORT="${REDIS_PORT:-6379}"
@@ -74,6 +77,12 @@ CARD_CACHE_CLEANUP_INTERVAL="${CARD_CACHE_CLEANUP_INTERVAL:-500}"
 IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}"
 # Try to read API key salt from Docker secret
 API_KEY_SALT="$(read_secret "api_key_salt")"
+# Internal service key for worker-to-API authentication
+# Read from Docker secret if available, otherwise generate a random one
+INTERNAL_SERVICE_KEY="$(read_secret "internal_service_key")"
+if [ -z "$INTERNAL_SERVICE_KEY" ]; then
+    INTERNAL_SERVICE_KEY="$(head -c 32 /dev/urandom | base64)"
+fi
 RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 
 # Logging configuration
@@ -126,6 +135,7 @@ cat > /src/BridgeBeats.Web/appsettings.json <<EOF
     "DiscordToken": "$DISCORD_TOKEN",
     "IdentityConnectionString": "$(escape_bs "$IDENTITY_CONNECTION_STRING")",
     "ApiKeySalt": "$API_KEY_SALT",
+    "InternalServiceKey": "$INTERNAL_SERVICE_KEY",
     "RateLimitRequestsPerHour": $RATE_LIMIT_REQUESTS_PER_HOUR,
     "ATProtoIdentifier": "$ATPROTO_IDENTIFIER",
     "ATProtoUserDID": "$ATPROTO_USER_DID",
@@ -133,6 +143,7 @@ cat > /src/BridgeBeats.Web/appsettings.json <<EOF
     "CacheDays": $CACHE_DAYS,
     "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
     "BaseUrl": "$BASEURL",
+    "ATProtoOAuthSigningKeyPath": "$ATPROTO_OAUTH_KEY_PATH",
     "LogDirPath": "$(escape_bs "$LOG_DIR_PATH")",
     "CardCacheExpirationHours": $CARD_CACHE_EXPIRATION_HOURS,
     "CardCacheCleanupInterval": $CARD_CACHE_CLEANUP_INTERVAL,
@@ -184,7 +195,9 @@ export Parameters__ATProtoIdentifier="$ATPROTO_IDENTIFIER"
 export Parameters__ATProtoPassword="$ATPROTO_PASSWORD"
 export Parameters__ATProtoUserDID="$ATPROTO_USER_DID"
 export Parameters__ATProtoPdsUri="$ATPROTO_PDS_URI"
+export Parameters__ATProtoOAuthSigningKeyPath="$ATPROTO_OAUTH_KEY_PATH"
 export Parameters__ApiKeySalt="$API_KEY_SALT"
+export Parameters__InternalServiceKey="$INTERNAL_SERVICE_KEY"
 
 # Export Redis connection string for both AppHost parameters and direct service consumption
 export Parameters__RedisConnectionString="$REDIS_CONNECTION_STRING"

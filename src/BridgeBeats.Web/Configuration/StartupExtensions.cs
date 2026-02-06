@@ -10,6 +10,7 @@ using BridgeBeats.Core.Infrastructure.Cache;
 using BridgeBeats.Core.Infrastructure.Extensions;
 using BridgeBeats.Core.Infrastructure.Identity;
 using BridgeBeats.Core.Infrastructure.Storage;
+using BridgeBeats.Web.Authentication;
 using BridgeBeats.Web.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
@@ -362,15 +363,24 @@ namespace BridgeBeats.Web.Configuration {
                 options.DefaultScheme = "MultiScheme";
                 options.DefaultChallengeScheme = "MultiScheme";
             } )
-            .AddPolicyScheme( "MultiScheme", "API Key or Cookie", options => {
-                options.ForwardDefaultSelector = context => context.Request.Headers.ContainsKey( "X-API-Key" )
-                    ? ApiKeyDefaults.AuthenticationScheme
-                    : IdentityConstants.ApplicationScheme;
+            .AddPolicyScheme( "MultiScheme", "API Key, Service Key, or Cookie", options => {
+                options.ForwardDefaultSelector = context => {
+                    if (context.Request.Headers.ContainsKey( InternalServiceDefaults.HeaderName )) {
+                        return InternalServiceDefaults.AuthenticationScheme;
+                    }
+                    return context.Request.Headers.ContainsKey( "X-API-Key" )
+                        ? ApiKeyDefaults.AuthenticationScheme
+                        : IdentityConstants.ApplicationScheme;
+                };
             } )
             .AddApiKeyInHeader<ApiKeyProvider>( options => {
                 options.Realm = "BridgeBeats API";
                 options.KeyName = "X-API-Key";
             } )
+            .AddScheme<InternalServiceAuthOptions, InternalServiceAuthHandler>(
+                InternalServiceDefaults.AuthenticationScheme,
+                options => { options.ServiceKey = settings.InternalServiceKey; }
+            )
             .AddIdentityCookies( ); // Add cookie authentication for web UI
 
             _ = services.AddAuthorization( );
@@ -413,6 +423,21 @@ namespace BridgeBeats.Web.Configuration {
             if (!string.IsNullOrWhiteSpace( settings.BaseUrl )) {
                 string clientId = $"{settings.BaseUrl.TrimEnd( '/' )}/.well-known/client-metadata.json";
 
+                // Load the OAuth signing key for confidential client authentication if configured
+                ATProtoSigningKeyProvider? signingKeyProvider = null;
+                if (!string.IsNullOrWhiteSpace( settings.ATProtoOAuthSigningKeyPath ) &&
+                    File.Exists( settings.ATProtoOAuthSigningKeyPath )) {
+                    string jwkJson = File.ReadAllText( settings.ATProtoOAuthSigningKeyPath );
+                    if (!string.IsNullOrWhiteSpace( jwkJson ) && jwkJson.Trim( ) != "{}") {
+                        signingKeyProvider = new ATProtoSigningKeyProvider( jwkJson );
+                    }
+                }
+
+                // Register the signing key provider as a singleton (used by WellKnownController for JWKS endpoint)
+                if (signingKeyProvider is not null) {
+                    _ = services.AddSingleton( signingKeyProvider );
+                }
+
                 // Register HTTP client for OAuth token endpoint with standard resilience
                 _ = services.AddHttpClient( "ATProtoOAuth" )
                     .AddStandardResilienceHandler( );
@@ -422,7 +447,8 @@ namespace BridgeBeats.Web.Configuration {
                         sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( ),
                         sp.GetRequiredService<ILogger<ATProtoOAuthService>>( ),
                         clientId,
-                        sp.GetRequiredService<IHttpClientFactory>( )
+                        sp.GetRequiredService<IHttpClientFactory>( ),
+                        signingKeyProvider
                     )
                 );
 

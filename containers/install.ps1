@@ -56,6 +56,7 @@ $SecretFiles = @(
     @{ Name = 'tidal_client_secret.txt';   Description = 'Tidal API client secret';            AutoGenerate = $false }
     @{ Name = 'discord_token.txt';         Description = 'Discord bot token';                  AutoGenerate = $false }
     @{ Name = 'atproto_password.txt';      Description = 'ATProto app password';               AutoGenerate = $false }
+    @{ Name = 'atproto_oauth_key.json';    Description = 'ATProto OAuth signing key (ES256 JWK)'; AutoGenerate = $true }
     @{ Name = 'api_key_salt.txt';          Description = 'API key salt';                       AutoGenerate = $true }
     @{ Name = 'redis_password.txt';        Description = 'Redis password';                     AutoGenerate = $true }
     @{ Name = 'cloudflare_api_token.txt';  Description = 'Cloudflare API token (DNS)';         AutoGenerate = $false }
@@ -146,6 +147,28 @@ function Get-RandomString {
     $rng.GetBytes($bytes)
     $rng.Dispose()
     return [Convert]::ToBase64String($bytes)
+}
+
+function Get-ES256SigningKeyJwk {
+    # Generate an ES256 (P-256) key pair and return it as a JWK JSON string
+    $ecdsa = [System.Security.Cryptography.ECDsa]::Create([System.Security.Cryptography.ECCurve]::CreateFromFriendlyName('nistP256'))
+    try {
+        $params = $ecdsa.ExportParameters($true)
+
+        $b64url = {
+            param([byte[]]$bytes)
+            [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        }
+
+        $kid = [Guid]::NewGuid().ToString('N')
+        $x = & $b64url $params.Q.X
+        $y = & $b64url $params.Q.Y
+        $d = & $b64url $params.D
+
+        return "{`"kty`":`"EC`",`"crv`":`"P-256`",`"x`":`"$x`",`"y`":`"$y`",`"d`":`"$d`",`"kid`":`"$kid`",`"alg`":`"ES256`",`"use`":`"sig`"}"
+    } finally {
+        $ecdsa.Dispose()
+    }
 }
 
 function Get-EnvVarNames {
@@ -329,8 +352,12 @@ foreach ($secret in $SecretFiles) {
         } else {
             if ($secret.AutoGenerate) {
                 # Auto-generate this secret
-                $randomValue = Get-RandomString
-                Set-Content -Path $secretPath -Value $randomValue -NoNewline
+                if ($secret.Name -eq 'atproto_oauth_key.json') {
+                    $generatedValue = Get-ES256SigningKeyJwk
+                } else {
+                    $generatedValue = Get-RandomString
+                }
+                Set-Content -Path $secretPath -Value $generatedValue -NoNewline
                 Write-Ok "Auto-generated: $($secret.Name)"
             } else {
                 $missingSecrets += $secret
@@ -340,8 +367,12 @@ foreach ($secret in $SecretFiles) {
     } else {
         if ($secret.AutoGenerate) {
             # Auto-generate this secret
-            $randomValue = Get-RandomString
-            Set-Content -Path $secretPath -Value $randomValue -NoNewline
+            if ($secret.Name -eq 'atproto_oauth_key.json') {
+                $generatedValue = Get-ES256SigningKeyJwk
+            } else {
+                $generatedValue = Get-RandomString
+            }
+            Set-Content -Path $secretPath -Value $generatedValue -NoNewline
             Write-Ok "Auto-generated: $($secret.Name)"
         } else {
             # Create placeholder

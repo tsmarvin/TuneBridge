@@ -68,6 +68,12 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     private readonly string _clientId;
     private readonly string _baseUrl;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ATProtoSigningKeyProvider? _signingKeyProvider;
+
+    /// <summary>
+    /// The client_assertion_type value for private_key_jwt authentication per RFC 7523.
+    /// </summary>
+    private const string ClientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ATProtoOAuthService"/> class.
@@ -76,16 +82,19 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="clientId">The OAuth client_id URL (must be the client-metadata.json URL).</param>
     /// <param name="httpClientFactory">HTTP client factory for creating clients for token endpoint requests.</param>
+    /// <param name="signingKeyProvider">Optional signing key provider for confidential client assertions. When null, operates as a public client.</param>
     public ATProtoOAuthService(
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
         ILogger<ATProtoOAuthService> logger,
         string clientId,
-        IHttpClientFactory httpClientFactory
+        IHttpClientFactory httpClientFactory,
+        ATProtoSigningKeyProvider? signingKeyProvider = null
     ) {
         _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException( nameof( dbContextFactory ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
         _clientId = clientId ?? throw new ArgumentNullException( nameof( clientId ) );
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException( nameof( httpClientFactory ) );
+        _signingKeyProvider = signingKeyProvider;
 
         // Extract base URL from client ID
         if (!clientId.EndsWith( ClientMetadataPath, StringComparison.OrdinalIgnoreCase )) {
@@ -498,6 +507,9 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             ["login_hint"] = loginHint
         };
 
+        // Add client assertion for confidential client authentication
+        AddClientAssertionIfAvailable( parFormData, metadata.Issuer );
+
         // Execute PAR request with DPoP
         (string responseContent, _) = await ExecuteTokenRequestWithDPoPRetryAsync(
             metadata.PushedAuthorizationRequestEndpoint,
@@ -672,6 +684,9 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             ["code_verifier"] = oauthState.CodeVerifier!
         };
 
+        // Add client assertion for confidential client authentication
+        AddClientAssertionIfAvailable( formData, metadata.Issuer );
+
         // Step 3: Execute token request with DPoP nonce retry logic
         (string responseContent, _) = await ExecuteTokenRequestWithDPoPRetryAsync(
             metadata.TokenEndpoint,
@@ -764,6 +779,9 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             ["client_id"] = _clientId
         };
 
+        // Add client assertion for confidential client authentication
+        AddClientAssertionIfAvailable( formData, metadata.Issuer );
+
         // Step 3: Execute token request with DPoP nonce retry logic
         (string responseContent, _) = await ExecuteTokenRequestWithDPoPRetryAsync(
             metadata.TokenEndpoint,
@@ -814,6 +832,56 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             TokenExpiration = DateTime.UtcNow.AddSeconds( expiresIn ),
             Scope = scope ?? string.Join( " ", s_requiredScopes )
         };
+    }
+
+    /// <summary>
+    /// Adds client assertion fields to the form data for confidential client authentication.
+    /// If no signing key is configured (public client mode), this is a no-op.
+    /// </summary>
+    /// <param name="formData">The form data dictionary to add assertion fields to.</param>
+    /// <param name="audience">The authorization server issuer URI used as the JWT audience.</param>
+    private void AddClientAssertionIfAvailable( Dictionary<string, string> formData, string? audience ) {
+        if (_signingKeyProvider is null || string.IsNullOrWhiteSpace( audience )) {
+            return;
+        }
+
+        string clientAssertion = CreateClientAssertionJwt( audience );
+        formData["client_assertion_type"] = ClientAssertionType;
+        formData["client_assertion"] = clientAssertion;
+    }
+
+    /// <summary>
+    /// Creates a client assertion JWT for private_key_jwt authentication per RFC 7523.
+    /// The JWT is signed with the persistent ES256 signing key and sent to the authorization
+    /// server to prove the client's identity.
+    /// </summary>
+    /// <param name="audience">The authorization server issuer URI used as the JWT audience.</param>
+    /// <returns>A compact-serialized JWT suitable for the client_assertion parameter.</returns>
+    private string CreateClientAssertionJwt( string audience ) {
+        if (_signingKeyProvider is null) {
+            throw new InvalidOperationException( "Cannot create client assertion without a signing key provider." );
+        }
+
+        JwtSecurityTokenHandler handler = new( );
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds( );
+
+        SecurityTokenDescriptor descriptor = new( ) {
+            Claims = new Dictionary<string, object> {
+                ["iss"] = _clientId,
+                ["sub"] = _clientId,
+                ["aud"] = audience,
+                ["jti"] = Guid.NewGuid( ).ToString( "N" ),
+                ["iat"] = now
+            },
+            Expires = DateTimeOffset.FromUnixTimeSeconds( now + 300 ).UtcDateTime, // 5 minute expiry
+            SigningCredentials = new SigningCredentials(
+                new ECDsaSecurityKey( _signingKeyProvider.SigningKey ) { KeyId = _signingKeyProvider.KeyId },
+                SecurityAlgorithms.EcdsaSha256
+            )
+        };
+
+        SecurityToken token = handler.CreateToken( descriptor );
+        return handler.WriteToken( token );
     }
 
     /// <summary>

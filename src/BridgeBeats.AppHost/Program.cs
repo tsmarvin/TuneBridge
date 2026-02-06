@@ -40,6 +40,7 @@ IResourceBuilder<ParameterResource> atProtoPdsUri = builder.AddParameter( "ATPro
 
 // Security Parameters
 IResourceBuilder<ParameterResource> apiKeySalt = builder.AddParameter( "ApiKeySalt", secret: true );
+IResourceBuilder<ParameterResource> internalServiceKey = builder.AddParameter( "InternalServiceKey", secret: true );
 
 // Additional configuration parameters
 IResourceBuilder<ParameterResource> nodeNumber = builder.AddParameter( "NodeNumber" );
@@ -118,8 +119,6 @@ IResourceBuilder<ProjectResource>? spotifyWorkerProject = null;
 IResourceBuilder<ProjectResource>? appleMusicWorkerProject = null;
 IResourceBuilder<ProjectResource>? tidalWorkerProject = null;
 IResourceBuilder<ProjectResource>? discordWorkerProject = null;
-
-IResourceBuilder<ExecutableResource>? _ = null;
 
 IResourceBuilder<ExecutableResource>? discordWorkerExe = null;
 IResourceBuilder<ExecutableResource>? bridgebeatsWebExe = null;
@@ -236,7 +235,8 @@ if (HasDiscordCredentials( )) {
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
             .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
             .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
-            .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl );
+            .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
+            .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey );
     } else {
         discordWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" );
         _ = discordWorkerProject
@@ -245,7 +245,8 @@ if (HasDiscordCredentials( )) {
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
             .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
             .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
-            .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl );
+            .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
+            .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey );
     }
 }
 
@@ -350,6 +351,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
         .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
+        .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey )
         .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
         .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
@@ -377,6 +379,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
         .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
+        .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey )
         .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
         .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
@@ -408,7 +411,7 @@ if (isProduction) {
     }
     if (discordWorkerExe is not null) {
         _ = discordWorkerExe
-            .WithEnvironment( "services__bridgebeats-web__http__0", "http://localhost:10000" );
+            .WithEnvironment( "services__bridgebeats__http__0", "http://localhost:10000" );
     }
 } else {
     // Development: Wire up project resources
