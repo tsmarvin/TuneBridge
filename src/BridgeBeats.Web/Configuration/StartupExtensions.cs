@@ -203,7 +203,12 @@ namespace BridgeBeats.Web.Configuration {
             // Must be placed before the main UseStaticFiles() call (see line 227) to ensure CSP headers are applied to those responses.
             _ = app.Use( async ( ctx, next ) => {
                 string path = ctx.Request.Path.Value ?? string.Empty;
-                bool isEmbed = path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) && (path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase ) || path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase ));
+                bool isEmbed = (
+                    path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase )    ||
+                    path.EndsWith( "/embed/qr", StringComparison.OrdinalIgnoreCase ) ||
+                    path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase )  ||
+                    path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase )
+                );
                 bool isAppleMusic = path.StartsWith( "/applemusic", StringComparison.OrdinalIgnoreCase );
 
                 // Generate a unique nonce for this request to allow inline scripts and styles
@@ -212,9 +217,8 @@ namespace BridgeBeats.Web.Configuration {
 
                 // Build CSP policy
                 // Allow MusicKit JS CDN, Cloudflare analytics, nonce-based inline styles, and API calls to music providers
-                // Allow framing for embed endpoints, Apple Music integration, and playlist pages
-                // Note: frame-ancestors uses https: scheme with 'self' to support HTTPS framing including same-origin
-                string frameAncestors = (isEmbed || isAppleMusic) ? "https: 'self'" : "'self'";
+                // Allow framing for embed endpoints from any origin (purpose of embeds), Apple Music integration uses HTTPS
+                string frameAncestors = isEmbed ? "*" : (isAppleMusic ? "https: 'self'" : "'self'");
 
                 string csp = string.Join( "; ", new[] {
                     "default-src 'self'",
