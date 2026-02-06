@@ -43,6 +43,9 @@ public static class LogEventIds {
     /// <summary>Cache bootstrap completed.</summary>
     public const int BootstrapCompleted = 5511;
 
+    /// <summary>Failed to update status in Redis.</summary>
+    public const int StatusUpdateError = 5512;
+
     #endregion
 
     #region Program Startup (5550-5574)

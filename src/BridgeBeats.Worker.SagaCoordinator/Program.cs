@@ -21,13 +21,11 @@ public static class Program {
     /// </summary>
     /// <param name="args">Command line arguments.</param>
     public static void Main( string[] args ) {
-        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder( args );
 
         ConfigureServices( builder );
 
-        WebApplication app = builder.Build();
-
-        ConfigureEndpoints( app );
+        IHost app = builder.Build( );
 
         try {
             app.Run( );
@@ -39,8 +37,8 @@ public static class Program {
     /// <summary>
     /// Configures the services for the SagaCoordinator worker application.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
-    private static void ConfigureServices( WebApplicationBuilder builder ) {
+    /// <param name="builder">The host application builder.</param>
+    private static void ConfigureServices( HostApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "SagaCoordinator" );
 
@@ -107,11 +105,11 @@ public static class Program {
     /// <summary>
     /// Validates the required configuration for the SagaCoordinator worker.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
+    /// <param name="builder">The host application builder.</param>
     /// <returns>A tuple containing the validated ATProto credentials and cache settings.</returns>
     /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
     private static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID, int CacheDays)
-        ValidateConfiguration( WebApplicationBuilder builder ) {
+        ValidateConfiguration( HostApplicationBuilder builder ) {
         string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
         string? atProtoPassword = builder.Configuration["BridgeBeats:ATProtoPassword"];
         string? atProtoUserDID = builder.Configuration["BridgeBeats:ATProtoUserDID"];
@@ -139,9 +137,9 @@ public static class Program {
     /// Reads the EnabledProviders configuration value which is set by the AppHost.
     /// Falls back to credential-based detection for standalone deployment.
     /// </remarks>
-    /// <param name="builder">The web application builder.</param>
+    /// <param name="builder">The host application builder.</param>
     /// <returns>A set of enabled providers.</returns>
-    private static HashSet<SupportedProviders> DetectEnabledProviders( WebApplicationBuilder builder ) {
+    private static HashSet<SupportedProviders> DetectEnabledProviders( HostApplicationBuilder builder ) {
         HashSet<SupportedProviders> enabledProviders = [];
 
         // First, try to read the EnabledProviders list from configuration (set by AppHost)
@@ -173,21 +171,5 @@ public static class Program {
         }
 
         return enabledProviders;
-    }
-
-    /// <summary>
-    /// Configures the endpoints for the SagaCoordinator worker application.
-    /// </summary>
-    /// <param name="app">The web application.</param>
-    private static void ConfigureEndpoints( WebApplication app ) {
-        // Map Aspire health check endpoints
-        _ = app.MapDefaultEndpoints( );
-
-        // Simple status endpoint
-        _ = app.MapGet( "/status", ( ) => new {
-            Service = "SagaCoordinator",
-            Status = "Running",
-            Timestamp = DateTimeOffset.UtcNow
-        } );
     }
 }

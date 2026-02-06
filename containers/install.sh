@@ -19,8 +19,14 @@ REPO_NAME="BridgeBeats"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 UPGRADE_LOG="upgrade.log"
 
+# UID for the .NET container's non-root user (default APP_UID in .NET containers)
+CONTAINER_UID=1654
+
 # Files to download from the repository
 DOWNLOAD_FILES=("docker-compose.yml" "Caddyfile" ".env.example")
+
+# Files to backup during upgrades (excludes .env.example as it's just a template)
+BACKUP_FILES=("docker-compose.yml" "Caddyfile")
 
 # Secret files configuration: name|description|auto_generate
 SECRET_FILES=(
@@ -92,15 +98,32 @@ log_upgrade() {
 }
 
 # Check if a secret file has content (without reading the actual value)
+# Uses sudo if USE_SUDO is set and file is not readable
 secret_has_content() {
     local file="$1"
     if [[ -f "$file" ]]; then
-        # Use grep to check if file has non-whitespace content
-        if grep -qE '\S' "$file" 2>/dev/null; then
-            # Check it's a placeholder
-            if ! grep -qE '^(your_|REPLACE_|-----BEGIN)' "$file" 2>/dev/null; then
-                return 0
+        # Check if file is readable by current user
+        if [[ -r "$file" ]]; then
+            # Use grep to check if file has non-whitespace content
+            if grep -qE '\S' "$file" 2>/dev/null; then
+                # Check it's not a placeholder
+                if ! grep -qE '^(your_|REPLACE_|-----BEGIN)' "$file" 2>/dev/null; then
+                    return 0
+                fi
             fi
+        elif [[ "$USE_SUDO" == "true" ]]; then
+            # File exists but not readable, use sudo
+            if sudo grep -qE '\S' "$file" 2>/dev/null; then
+                # Check it's not a placeholder
+                if ! sudo grep -qE '^(your_|REPLACE_|-----BEGIN)' "$file" 2>/dev/null; then
+                    return 0
+                fi
+            fi
+        else
+            # File exists but not readable and no sudo - assume it has valid content
+            # to avoid overwriting secrets we can't read
+            echo "[WARN] Cannot read ${file} (permission denied) - assuming valid content"
+            return 0
         fi
     fi
     return 1
@@ -207,6 +230,43 @@ echo ""
 echo "[OK] All required dependencies are available"
 
 # =============================================================================
+# Sudo Consent
+# =============================================================================
+print_section "Privilege Check"
+
+USE_SUDO=false
+SUDO_AVAILABLE=false
+
+# Check if sudo is available
+if command -v sudo &> /dev/null; then
+    SUDO_AVAILABLE=true
+fi
+
+# Explain why sudo is needed
+echo "This script may need elevated privileges (sudo) to:"
+echo "  1. Set ownership of secrets directory for container access (fresh install)"
+echo "  2. Read existing secrets owned by the container user (re-run/upgrade)"
+echo ""
+
+if [[ "$SUDO_AVAILABLE" == "true" ]]; then
+    read -p "Allow this script to use sudo when needed? (Y/n): " sudo_response
+    if [[ ! "$sudo_response" =~ ^[Nn]$ ]]; then
+        USE_SUDO=true
+        echo "[OK] Sudo access granted"
+    else
+        echo "[OK] Sudo declined - manual commands will be shown when needed"
+        echo ""
+        echo "You may need to run these commands manually later:"
+        echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} \$(pwd)/secrets"
+    fi
+else
+    echo "[WARN] sudo not available on this system"
+    echo ""
+    echo "You may need to run these commands manually later:"
+    echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} \$(pwd)/secrets"
+fi
+
+# =============================================================================
 # Create Installation Directory
 # =============================================================================
 print_section "Setting Up Installation Directory"
@@ -226,11 +286,22 @@ echo "[OK] Working directory: $(pwd)"
 # =============================================================================
 print_section "Downloading Configuration Files"
 
+# Helper to check if file should be backed up
+should_backup() {
+    local file="$1"
+    for backup_file in "${BACKUP_FILES[@]}"; do
+        if [[ "$file" == "$backup_file" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 for file in "${DOWNLOAD_FILES[@]}"; do
     source_url="${BASE_URL}/${file}"
 
-    # Backup existing file if present
-    if [[ -f "$file" ]]; then
+    # Backup existing file if it's in the backup list
+    if [[ -f "$file" ]] && should_backup "$file"; then
         backup_name="${file}.bak.${TIMESTAMP}"
         cp "$file" "$backup_name"
         echo "[OK] Backed up existing ${file} to ${backup_name}"
@@ -259,9 +330,6 @@ print_section "Setting Up Secrets"
 
 SECRETS_DIR="./secrets"
 secrets_created=false
-
-# UID for the .NET container's non-root user (default APP_UID in .NET containers)
-CONTAINER_UID=1654
 
 if [[ -d "$SECRETS_DIR" ]]; then
     echo "[OK] Secrets directory already exists: ${SECRETS_DIR}"
@@ -317,20 +385,22 @@ EOF
     fi
 done
 
-# Change ownership of secrets directory to container UID so the non-root container user can read them
-if command -v sudo &> /dev/null; then
-    echo ""
-    echo "Setting ownership of secrets for container access (requires sudo)..."
-    if sudo chown -R "${CONTAINER_UID}:${CONTAINER_UID}" "$SECRETS_DIR" 2>/dev/null; then
-        echo "[OK] Set secrets ownership to UID ${CONTAINER_UID} (container user)"
+# Set ownership of secrets directory to container UID so the non-root container user can read them
+if [[ "$secrets_created" == "true" ]]; then
+    if [[ "$USE_SUDO" == "true" ]]; then
+        echo ""
+        echo "Setting ownership of secrets for container access..."
+        if sudo chown -R "${CONTAINER_UID}:${CONTAINER_UID}" "$SECRETS_DIR" 2>/dev/null; then
+            echo "[OK] Set secrets ownership to UID ${CONTAINER_UID} (container user)"
+        else
+            echo "[WARN] Could not set secrets ownership. Please run manually:"
+            echo "       sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/secrets"
+        fi
     else
-        echo "[WARN] Could not set secrets ownership. You may need to run manually:"
-        echo "       sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/secrets"
+        echo ""
+        echo "[ACTION REQUIRED] Set secrets ownership for container access:"
+        echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/secrets"
     fi
-else
-    echo ""
-    echo "[WARN] sudo not available. Please set secrets ownership manually:"
-    echo "       sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/secrets"
 fi
 
 # =============================================================================
@@ -400,18 +470,29 @@ if [[ "$containers_exist" == "true" ]]; then
         echo "  - ${container}"
     done
 
+    # Log upgrade session header
+    log_upgrade ""
+    log_upgrade "=== Upgrade: $(date '+%Y-%m-%d %H:%M:%S') ==="
+    log_upgrade "Branch: ${BRANCH}"
+
     # Log current container image information
     echo ""
     echo "Current container images:"
-    log_upgrade "=== Pre-update container images ==="
+    log_upgrade "Pre-update images:"
 
     # Get image information for each service
     while IFS= read -r line; do
         if [[ -n "$line" ]]; then
             echo "  ${line}"
-            log_upgrade "${line}"
+            log_upgrade "  ${line}"
         fi
     done < <(docker compose images 2>/dev/null || echo "Unable to retrieve image information")
+
+    # Log rollback info
+    compose_backup="docker-compose.yml.bak.${TIMESTAMP}"
+    if [[ -f "$compose_backup" ]]; then
+        log_upgrade "Rollback: Restore ${compose_backup} and run 'docker compose up -d'"
+    fi
 
     echo ""
     echo "Image information has been logged to ${UPGRADE_LOG} for rollback reference."
@@ -423,9 +504,10 @@ if [[ "$containers_exist" == "true" ]]; then
         echo ""
         echo "Pulling latest images..."
         docker compose pull
-        log_upgrade "Pulled latest images"
+        log_upgrade "Pulled latest images at $(date '+%H:%M:%S')"
         echo "[OK] Images updated"
     else
+        log_upgrade "Image pull skipped by user"
         echo "[OK] Skipping image pull"
     fi
 else

@@ -119,6 +119,110 @@
         </div>
     </div>
 
+    <!-- Cache Bootstrap Status -->
+    <div class="row g-4 mt-2">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Cache Bootstrap Status</h5>
+                    @if (Model.CacheBootstrapStatus?.IsRunning == true)
+                    {
+                        <span class="badge bg-success">
+                            <i class="bi bi-arrow-repeat spin"></i> Running
+                        </span>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (Model.CacheBootstrapStatus != null)
+                    {
+                        var status = Model.CacheBootstrapStatus;
+                        <div class="row">
+                            <div class="col-md-6">
+                                <dl class="row mb-0">
+                                    <dt class="col-sm-5">Last Run</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.LastRunTime.HasValue)
+                                        {
+                                            @status.LastRunTime.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                                            <span class="text-muted">UTC</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Never</span>
+                                        }
+                                    </dd>
+                                    <dt class="col-sm-5">Next Scheduled</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.NextScheduledRun.HasValue)
+                                        {
+                                            @status.NextScheduledRun.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                                            <span class="text-muted">UTC</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </dd>
+                                    <dt class="col-sm-5">Duration</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.LastDurationSeconds.HasValue)
+                                        {
+                                            var duration = TimeSpan.FromSeconds(status.LastDurationSeconds.Value);
+                                            @(duration.TotalMinutes >= 1 ? $"{duration.TotalMinutes:F1} min" : $"{duration.TotalSeconds:F0} sec")
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </dd>
+                                </dl>
+                            </div>
+                            <div class="col-md-6">
+                                <dl class="row mb-0">
+                                    <dt class="col-sm-5">Redis Keys</dt>
+                                    <dd class="col-sm-7">@(status.RedisKeyCount?.ToString("N0") ?? "—")</dd>
+                                    <dt class="col-sm-5">Last Success</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.LastSuccessCount.HasValue)
+                                        {
+                                            <span class="text-success">@status.LastSuccessCount.Value.ToString("N0")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </dd>
+                                    <dt class="col-sm-5">Last Errors</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.LastErrorCount.HasValue)
+                                        {
+                                            if (status.LastErrorCount.Value > 0)
+                                            {
+                                                <span class="text-danger">@status.LastErrorCount.Value.ToString("N0")</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-success">0</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </dd>
+                                </dl>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">Cache bootstrap status unavailable.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Recent Entries -->
     <div class="card mt-4">
         <div class="card-header">

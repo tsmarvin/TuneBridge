@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Worker.CacheBootstrap.Logging;
@@ -26,6 +27,8 @@ public sealed partial class CacheBootstrapBackgroundService(
     ILogger<CacheBootstrapBackgroundService> logger
 ) : BackgroundService {
 
+    private static readonly JsonSerializerOptions s_jsonOptions = new( ) { WriteIndented = false };
+
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
         // Run bootstrap immediately on startup
@@ -36,6 +39,12 @@ public sealed partial class CacheBootstrapBackgroundService(
 
         while (!stoppingToken.IsCancellationRequested) {
             try {
+                // Update status with next scheduled run time
+                await UpdateStatusAsync( new CacheBootstrapStatus {
+                    IsRunning = false,
+                    NextScheduledRun = DateTimeOffset.UtcNow.Add( settings.BootstrapInterval )
+                } );
+
                 _ = await timer.WaitForNextTickAsync( stoppingToken );
                 await RunBootstrapAsync( stoppingToken );
             } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
@@ -50,9 +59,28 @@ public sealed partial class CacheBootstrapBackgroundService(
     }
 
     /// <summary>
+    /// Updates the cache bootstrap status in Redis.
+    /// </summary>
+    private async Task UpdateStatusAsync( CacheBootstrapStatus status ) {
+        try {
+            IDatabase db = redis.GetDatabase( );
+            string json = JsonSerializer.Serialize( status, s_jsonOptions );
+            _ = await db.StringSetAsync( CacheBootstrapStatus.RedisKey, json, TimeSpan.FromDays( 1 ) );
+        } catch (Exception ex) {
+            LogStatusUpdateError( logger, ex );
+        }
+    }
+
+    /// <summary>
     /// Performs a full cache bootstrap by fetching all records from ATProto and populating Redis.
     /// </summary>
     private async Task RunBootstrapAsync( CancellationToken cancellationToken ) {
+        // Update status to show bootstrap is running
+        await UpdateStatusAsync( new CacheBootstrapStatus {
+            IsRunning = true,
+            NextScheduledRun = null
+        } );
+
         // Get Redis key count before bootstrap for comparison
         long keyCountBefore = 0;
         try {
@@ -69,20 +97,14 @@ public sealed partial class CacheBootstrapBackgroundService(
         }
 
         if (logger.IsEnabled( LogLevel.Information )) {
-            string pdsUriStr = settings.PdsUri?.ToString( ) ?? "unknown";
-            string userDidStr = settings.UserDid ?? "unknown";
+            string pdsUriStr = settings.PdsUri.ToString( );
+            string userDidStr = settings.UserDid;
             LogBootstrapStarting( logger, pdsUriStr, userDidStr );
         }
 
         Stopwatch stopwatch = Stopwatch.StartNew( );
         int successCount = 0;
         int errorCount = 0;
-
-        // Validate settings before proceeding
-        if (settings.PdsUri is null || settings.UserDid is null) {
-            LogBootstrapFatalError( logger, new InvalidOperationException( "PdsUri and UserDid must be configured" ) );
-            return;
-        }
 
         try {
             await foreach ((string atUri, MediaLinkResult result) in
@@ -133,6 +155,17 @@ public sealed partial class CacheBootstrapBackgroundService(
             keyCountAfter,
             keyCountAfter - keyCountBefore
         );
+
+        // Update status with completed run information
+        await UpdateStatusAsync( new CacheBootstrapStatus {
+            IsRunning = false,
+            LastRunTime = DateTimeOffset.UtcNow,
+            NextScheduledRun = DateTimeOffset.UtcNow.Add( settings.BootstrapInterval ),
+            LastSuccessCount = successCount,
+            LastErrorCount = errorCount,
+            LastDurationSeconds = stopwatch.Elapsed.TotalSeconds,
+            RedisKeyCount = keyCountAfter
+        } );
     }
 
     #region LoggerMessage Methods
@@ -227,6 +260,13 @@ public sealed partial class CacheBootstrapBackgroundService(
         long keysBefore,
         long keysAfter,
         long netChange );
+
+    /// <summary>Logs failure to update status in Redis.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.StatusUpdateError,
+        Level = LogLevel.Warning,
+        Message = "Failed to update cache bootstrap status in Redis" )]
+    private static partial void LogStatusUpdateError( ILogger logger, Exception ex );
 
     #endregion
 }

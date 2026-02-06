@@ -46,16 +46,19 @@ $UpgradeLog = 'upgrade.log'
 # Files to download from the repository
 $DownloadFiles = @('docker-compose.yml', 'Caddyfile', '.env.example')
 
+# Files to backup during upgrades (excludes .env.example as it's just a template)
+$BackupFiles = @('docker-compose.yml', 'Caddyfile')
+
 # Secret files configuration
 $SecretFiles = @(
-    @{ Name = 'apple_key.p8';              Description = 'Apple Music private key (.p8 file)'; AutoGenerate = $false }
-    @{ Name = 'spotify_client_secret.txt'; Description = 'Spotify API client secret';          AutoGenerate = $false }
-    @{ Name = 'tidal_client_secret.txt';   Description = 'Tidal API client secret';            AutoGenerate = $false }
-    @{ Name = 'discord_token.txt';         Description = 'Discord bot token';                  AutoGenerate = $false }
-    @{ Name = 'atproto_password.txt';      Description = 'ATProto app password';               AutoGenerate = $false }
-    @{ Name = 'api_key_salt.txt';          Description = 'API key salt';                       AutoGenerate = $true }
-    @{ Name = 'redis_password.txt';        Description = 'Redis password';                     AutoGenerate = $true }
-    @{ Name = 'cloudflare_api_token.txt';  Description = 'Cloudflare API token (DNS)';         AutoGenerate = $false }
+    @{ Name = 'apple_key.p8'; Description = 'Apple Music private key (.p8 file)'; AutoGenerate = $false }
+    @{ Name = 'spotify_client_secret.txt'; Description = 'Spotify API client secret'; AutoGenerate = $false }
+    @{ Name = 'tidal_client_secret.txt'; Description = 'Tidal API client secret'; AutoGenerate = $false }
+    @{ Name = 'discord_token.txt'; Description = 'Discord bot token'; AutoGenerate = $false }
+    @{ Name = 'atproto_password.txt'; Description = 'ATProto app password'; AutoGenerate = $false }
+    @{ Name = 'api_key_salt.txt'; Description = 'API key salt'; AutoGenerate = $true }
+    @{ Name = 'redis_password.txt'; Description = 'Redis password'; AutoGenerate = $true }
+    @{ Name = 'cloudflare_api_token.txt'; Description = 'Cloudflare API token (DNS)'; AutoGenerate = $false }
 )
 
 # Construct base URL for raw file downloads
@@ -274,8 +277,8 @@ foreach ($file in $DownloadFiles) {
     $sourceUrl = "$BaseUrl/$file"
     $destPath = Join-Path -Path $Directory -ChildPath $file
 
-    # Backup existing file if present
-    if (Test-Path $destPath) {
+    # Backup existing file if it's in the backup list
+    if ((Test-Path $destPath) -and ($file -in $BackupFiles)) {
         $backupName = "$file.bak.$Timestamp"
         $backupPath = Join-Path -Path $Directory -ChildPath $backupName
         Copy-Item -Path $destPath -Destination $backupPath
@@ -299,6 +302,10 @@ foreach ($file in $DownloadFiles) {
 # Setup Secrets Directory
 # =============================================================================
 Write-Section 'Setting Up Secrets'
+
+# TODO: Test and implement proper Windows ACL permissions for secrets folder
+# The secrets directory should have restricted access similar to Linux (chmod 700)
+# Consider using Set-Acl to restrict access to the current user and container service account
 
 $secretsDir = Join-Path -Path $Directory -ChildPath 'secrets'
 
@@ -432,9 +439,14 @@ if ($containersExist) {
         Write-Host "  - $container"
     }
 
+    # Log upgrade session header
+    Write-UpgradeLog ''
+    Write-UpgradeLog "=== Upgrade: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ==="
+    Write-UpgradeLog "Branch: $Branch"
+
     # Log current container image information
     Write-Host "`nCurrent container images:"
-    Write-UpgradeLog '=== Pre-update container images ==='
+    Write-UpgradeLog 'Pre-update images:'
 
     try {
         $imagesOutput = & docker compose images 2>$null
@@ -442,12 +454,19 @@ if ($containersExist) {
             foreach ($line in $imagesOutput) {
                 if ($line) {
                     Write-Host "  $line"
-                    Write-UpgradeLog $line
+                    Write-UpgradeLog "  $line"
                 }
             }
         }
     } catch {
         Write-Host '  Unable to retrieve image information'
+    }
+
+    # Log rollback info
+    $composeBackup = "docker-compose.yml.bak.$Timestamp"
+    $composeBackupPath = Join-Path -Path $Directory -ChildPath $composeBackup
+    if (Test-Path $composeBackupPath) {
+        Write-UpgradeLog "Rollback: Restore $composeBackup and run 'docker compose up -d'"
     }
 
     Write-Host "`nImage information has been logged to $UpgradeLog for rollback reference.`n"
@@ -457,9 +476,10 @@ if ($containersExist) {
     if ($pullResponse -match '^[Yy]') {
         Write-Host "`nPulling latest images..."
         & docker compose pull
-        Write-UpgradeLog 'Pulled latest images'
+        Write-UpgradeLog "Pulled latest images at $(Get-Date -Format 'HH:mm:ss')"
         Write-Ok 'Images updated'
     } else {
+        Write-UpgradeLog 'Image pull skipped by user'
         Write-Ok 'Skipping image pull'
     }
 } else {

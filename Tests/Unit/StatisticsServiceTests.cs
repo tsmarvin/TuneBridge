@@ -5,6 +5,7 @@ using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
+using StackExchange.Redis;
 
 namespace BridgeBeats.Tests.Unit;
 
@@ -16,6 +17,8 @@ namespace BridgeBeats.Tests.Unit;
 public class StatisticsServiceTests {
 
     private Mock<IATProtoStorageService> _atProtoStorageMock = null!;
+    private Mock<IConnectionMultiplexer> _redisMock = null!;
+    private Mock<IDatabase> _redisDatabaseMock = null!;
     private Mock<ILogger<StatisticsService>> _loggerMock = null!;
     private StatisticsSettings _settings = null!;
 
@@ -33,6 +36,10 @@ public class StatisticsServiceTests {
     [TestInitialize]
     public void Initialize( ) {
         _atProtoStorageMock = new Mock<IATProtoStorageService>( );
+        _redisMock = new Mock<IConnectionMultiplexer>( );
+        _redisDatabaseMock = new Mock<IDatabase>( );
+        _ = _redisMock.Setup( x => x.GetDatabase( It.IsAny<int>( ), It.IsAny<object>( ) ) ).Returns( _redisDatabaseMock.Object );
+        _ = _redisDatabaseMock.Setup( x => x.StringGetAsync( It.IsAny<RedisKey>( ), It.IsAny<CommandFlags>( ) ) ).ReturnsAsync( RedisValue.Null );
         _loggerMock = new Mock<ILogger<StatisticsService>>( );
         _settings = new StatisticsSettings(
             s_testPdsUri,
@@ -277,6 +284,7 @@ public class StatisticsServiceTests {
         SetupEmptyRecordList( );
         StatisticsService service = new(
             _atProtoStorageMock.Object,
+            _redisMock.Object,
             shortCacheSettings,
             _loggerMock.Object
         );
@@ -326,6 +334,7 @@ public class StatisticsServiceTests {
     private StatisticsService CreateService( ) {
         return new StatisticsService(
             _atProtoStorageMock.Object,
+            _redisMock.Object,
             _settings,
             _loggerMock.Object
         );

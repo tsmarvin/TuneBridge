@@ -15,13 +15,11 @@ public static class Program {
     /// </summary>
     /// <param name="args">Command line arguments.</param>
     public static void Main( string[] args ) {
-        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder( args );
 
         ConfigureServices( builder );
 
-        WebApplication app = builder.Build();
-
-        ConfigureEndpoints( app );
+        IHost app = builder.Build();
 
         try {
             app.Run( );
@@ -33,12 +31,12 @@ public static class Program {
     /// <summary>
     /// Configures the services for the JetStreamWatcher worker application.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
-    private static void ConfigureServices( WebApplicationBuilder builder ) {
+    /// <param name="builder">The host application builder.</param>
+    private static void ConfigureServices( HostApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "JetStreamWatcher" );
 
-        // Add Aspire service defaults (health checks, telemetry, resilience)
+        // Add Aspire service defaults (telemetry, resilience)
         _ = builder.AddServiceDefaults( );
 
         // Add Redis client from Aspire (for queue submission)
@@ -50,14 +48,5 @@ public static class Program {
 
         // Register JetStream watcher background service
         _ = builder.Services.AddHostedService<JetStreamWatcherService>( );
-    }
-
-    /// <summary>
-    /// Configures the endpoints for the JetStreamWatcher worker application.
-    /// </summary>
-    /// <param name="app">The web application.</param>
-    private static void ConfigureEndpoints( WebApplication app ) {
-        // Map Aspire health check endpoints
-        _ = app.MapDefaultEndpoints( );
     }
 }

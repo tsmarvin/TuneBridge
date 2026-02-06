@@ -50,22 +50,19 @@ RUN chown -R $APP_UID:$APP_UID /src && \
 
 USER $APP_UID
 
-# Set NUGET_PACKAGES so Aspire finds the dashboard SDK
+# Aspire Dashboard configuration (13.1)
+# Dashboard binds to all interfaces on 18888 for reverse proxy access
+# ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS disables all dashboard auth (Frontend, OTLP, MCP)
+# Auth is handled externally by Caddy forward_auth in production
 ENV ASPNETCORE_URLS=http://+:18888
-ENV ASPIRE_ALLOW_UNSECURED_TRANSPORT=true
-ENV ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL=http://+:18889
-ENV ASPIRE_DASHBOARD_TELEMETRY_OPTOUT=true
-ENV ASPIRE_DASHBOARD_AI_DISABLED=true
+ENV ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true
+ENV DASHBOARD__MCP__DISABLED=true
 
 # Expose ports
 # 10000: BridgeBeats main web application
 # 18888: Aspire Dashboard web UI
-# 18889: Aspire Dashboard OTLP endpoint
-# 15000-15099: Internal worker ports (managed by Aspire)
 EXPOSE 10000
 EXPOSE 18888
-EXPOSE 18889
-EXPOSE 15000-15099
 
 # Set the AppHost as the entrypoint via the startup script
 ENTRYPOINT ["/entrypoint.sh"]

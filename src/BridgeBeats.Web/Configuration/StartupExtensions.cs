@@ -451,6 +451,7 @@ namespace BridgeBeats.Web.Configuration {
             _ = services.AddSingleton( statsSettings );
             _ = services.AddSingleton<IStatisticsService>( s => new StatisticsService(
                 s.GetRequiredService<IATProtoStorageService>( ),
+                s.GetRequiredService<IConnectionMultiplexer>( ),
                 statsSettings,
                 s.GetRequiredService<ILogger<StatisticsService>>( )
             ) );

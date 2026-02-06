@@ -18,15 +18,13 @@ public static class Program {
     /// </summary>
     /// <param name="args">Command line arguments.</param>
     public static async Task Main( string[] args ) {
-        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder( args );
 
         ConfigureServices( builder );
 
-        WebApplication app = builder.Build();
+        IHost app = builder.Build();
 
         await ValidateRedisConnectionAsync( app );
-
-        ConfigureEndpoints( app );
 
         try {
             app.Run( );
@@ -38,12 +36,12 @@ public static class Program {
     /// <summary>
     /// Configures the services for the CacheBootstrap worker application.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
-    private static void ConfigureServices( WebApplicationBuilder builder ) {
+    /// <param name="builder">The host application builder.</param>
+    private static void ConfigureServices( HostApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "CacheBootstrap" );
 
-        // Add Aspire service defaults (health checks, telemetry, resilience)
+        // Add Aspire service defaults (telemetry, resilience)
         _ = builder.AddServiceDefaults( );
 
         // Add Redis client from Aspire
@@ -81,12 +79,12 @@ public static class Program {
     /// <summary>
     /// Validates the required configuration for the CacheBootstrap worker.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
+    /// <param name="builder">The host application builder.</param>
     /// <returns>A tuple containing the validated ATProto credentials and settings.</returns>
     /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
     private static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID,
         string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours) ValidateConfiguration(
-            WebApplicationBuilder builder
+            HostApplicationBuilder builder
     ) {
         string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
         string? atProtoPassword = builder.Configuration["BridgeBeats:ATProtoPassword"];
@@ -114,8 +112,8 @@ public static class Program {
     /// <summary>
     /// Validates the Redis connection on startup by performing test read/write operations.
     /// </summary>
-    /// <param name="app">The web application.</param>
-    private static async Task ValidateRedisConnectionAsync( WebApplication app ) {
+    /// <param name="app">The host application.</param>
+    private static async Task ValidateRedisConnectionAsync( IHost app ) {
         IConnectionMultiplexer redis = app.Services.GetRequiredService<IConnectionMultiplexer>();
         ILoggerFactory loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
         Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger("CacheBootstrap.Startup");
@@ -159,21 +157,5 @@ public static class Program {
                 ProgramLog.LogRedisKeyCount( logger, endpointStr, keyCount );
             }
         }
-    }
-
-    /// <summary>
-    /// Configures the endpoints for the CacheBootstrap worker application.
-    /// </summary>
-    /// <param name="app">The web application.</param>
-    private static void ConfigureEndpoints( WebApplication app ) {
-        // Map Aspire health check endpoints
-        _ = app.MapDefaultEndpoints( );
-
-        // Simple status endpoint
-        _ = app.MapGet( "/status", ( ) => new {
-            Service = "CacheBootstrap",
-            Status = "Running",
-            Timestamp = DateTimeOffset.UtcNow
-        } );
     }
 }

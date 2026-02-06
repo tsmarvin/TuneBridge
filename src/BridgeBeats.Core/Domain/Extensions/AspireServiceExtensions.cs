@@ -1,6 +1,7 @@
 using System.Reflection;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Exceptions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
@@ -103,6 +104,77 @@ public static class AspireServiceExtensions {
         return app;
     }
 
+    /// <summary>
+    /// Adds service discovery, HTTP resilience defaults, and OpenTelemetry exporters for non-web hosts.
+    /// This overload is for background workers that don't need ASP.NET Core instrumentation.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <returns>The configured builder.</returns>
+    public static IHostApplicationBuilder AddServiceDefaults( this IHostApplicationBuilder builder ) {
+        _ = builder.Services.AddServiceDiscovery( );
+
+        // Read resilience configuration with defaults
+        int maxRetryAttempts = builder.Configuration.GetValue( "BridgeBeats:Resilience:MaxRetryAttempts", 5 );
+        int totalTimeoutMinutes = builder.Configuration.GetValue( "BridgeBeats:Resilience:TotalTimeoutMinutes", 10 );
+        int attemptTimeoutSeconds = builder.Configuration.GetValue( "BridgeBeats:Resilience:AttemptTimeoutSeconds", 10 );
+
+        _ = builder.Services.ConfigureHttpClientDefaults( http => {
+            _ = http.AddServiceDiscovery( );
+
+            IHttpStandardResiliencePipelineBuilder resilienceBuilder = http.AddStandardResilienceHandler( options => {
+                options.Retry.BackoffType = DelayBackoffType.Exponential;
+                options.Retry.UseJitter = true;
+                options.Retry.MaxRetryAttempts = maxRetryAttempts;
+                options.Retry.Delay = TimeSpan.FromSeconds( 3 );
+                options.Retry.MaxDelay = TimeSpan.FromMinutes( 5 );
+                options.Retry.ShouldRetryAfterHeader = true;
+                options.Retry.DisableForUnsafeHttpMethods( );
+
+                // Exclude RetryAfterExceededException from retry logic - this is thrown intentionally
+                // to fail fast when Retry-After headers exceed the configured threshold
+                Func<RetryPredicateArguments<HttpResponseMessage>, ValueTask<bool>> originalShouldHandle = options.Retry.ShouldHandle;
+                options.Retry.ShouldHandle = args => {
+                    // If the exception is RetryAfterExceededException, do not retry
+                    return args.Outcome.Exception is RetryAfterExceededException ? ValueTask.FromResult( false ) : originalShouldHandle( args );
+                };
+
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( totalTimeoutMinutes );
+                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( attemptTimeoutSeconds );
+            } );
+
+            _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {
+                Microsoft.Extensions.Logging.ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("HttpResilience");
+                options.Retry.OnRetry = args => {
+                    TimeSpan? retryAfter = args.Outcome.Result?.Headers.RetryAfter?.Delta;
+                    double retryAfterSeconds = retryAfter?.TotalSeconds ?? 0;
+
+                    if (retryAfterSeconds > 0) {
+                        AspireServiceExtensionsLog.LogRetryWithRetryAfterHeader(
+                            logger,
+                            args.AttemptNumber,
+                            options.Retry.MaxRetryAttempts,
+                            retryAfterSeconds,
+                            args.Outcome.Result?.RequestMessage?.RequestUri
+                        );
+                    } else {
+                        AspireServiceExtensionsLog.LogRetryWithExponentialBackoff(
+                            logger,
+                            args.AttemptNumber,
+                            options.Retry.MaxRetryAttempts,
+                            args.Outcome.Result?.RequestMessage?.RequestUri
+                        );
+                    }
+
+                    return default;
+                };
+            } );
+        } );
+
+        ConfigureOpenTelemetryForHost( builder );
+
+        return builder;
+    }
+
     private static void ConfigureOpenTelemetry( WebApplicationBuilder builder ) {
         string? otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
         string? otlpHeaders = builder.Configuration["OpenTelemetry:OtlpHeaders"];
@@ -155,6 +227,79 @@ public static class AspireServiceExtensions {
                 _ = metrics
                     .SetResourceBuilder( resourceBuilder )
                     .AddAspNetCoreInstrumentation( )
+                    .AddHttpClientInstrumentation( )
+                    .AddRuntimeInstrumentation( )
+                    .AddMeter( "BridgeBeats.Queue" )
+                    .AddMeter( "BridgeBeats.Providers" );
+
+                if (hasValidEndpoint) {
+                    _ = metrics.AddOtlpExporter( otlpOptions => {
+                        otlpOptions.Endpoint = otlpUri!;
+                        if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                            otlpOptions.Headers = otlpHeaders;
+                        }
+                    } );
+                }
+            } );
+        }
+    }
+
+    /// <summary>
+    /// Configures OpenTelemetry for non-web hosts (without ASP.NET Core instrumentation).
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    private static void ConfigureOpenTelemetryForHost( IHostApplicationBuilder builder ) {
+        string? otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+        string? otlpHeaders = builder.Configuration["OpenTelemetry:OtlpHeaders"];
+        bool enableTracing = builder.Configuration.GetValue( "OpenTelemetry:EnableTracing", true );
+        bool enableMetrics = builder.Configuration.GetValue( "OpenTelemetry:EnableMetrics", true );
+
+        bool hasValidEndpoint = TryGetOtlpEndpoint( otlpEndpoint, out Uri? otlpUri );
+
+        ResourceBuilder resourceBuilder = ResourceBuilder.CreateDefault( )
+            .AddService(
+                serviceName: builder.Environment.ApplicationName,
+                serviceVersion: GetServiceVersion( )
+            );
+
+        if (hasValidEndpoint) {
+            _ = builder.Logging.AddOpenTelemetry( options => {
+                _ = options.SetResourceBuilder( resourceBuilder );
+                _ = options.AddOtlpExporter( otlpOptions => {
+                    otlpOptions.Endpoint = otlpUri!;
+                    if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                        otlpOptions.Headers = otlpHeaders;
+                    }
+                } );
+            } );
+        }
+
+        OpenTelemetryBuilder openTelemetryBuilder = builder.Services.AddOpenTelemetry( )
+            .ConfigureResource( resource => resource.AddService( builder.Environment.ApplicationName ) );
+
+        if (enableTracing) {
+            _ = openTelemetryBuilder.WithTracing( tracing => {
+                // Note: No AddAspNetCoreInstrumentation() for non-web hosts
+                _ = tracing
+                    .SetResourceBuilder( resourceBuilder )
+                    .AddHttpClientInstrumentation( );
+
+                if (hasValidEndpoint) {
+                    _ = tracing.AddOtlpExporter( otlpOptions => {
+                        otlpOptions.Endpoint = otlpUri!;
+                        if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                            otlpOptions.Headers = otlpHeaders;
+                        }
+                    } );
+                }
+            } );
+        }
+
+        if (enableMetrics) {
+            _ = openTelemetryBuilder.WithMetrics( metrics => {
+                // Note: No AddAspNetCoreInstrumentation() for non-web hosts
+                _ = metrics
+                    .SetResourceBuilder( resourceBuilder )
                     .AddHttpClientInstrumentation( )
                     .AddRuntimeInstrumentation( )
                     .AddMeter( "BridgeBeats.Queue" )
@@ -274,6 +419,50 @@ public static class AspireServiceExtensions {
             .CreateLogger( );
 
         _ = builder.Host.UseSerilog( );
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Configures Serilog for file logging with rotation and retention for non-web hosts.
+    /// Writes logs to logs/{projectName}-.log relative to the application directory.
+    /// </summary>
+    /// <param name="builder">The host application builder to configure.</param>
+    /// <param name="projectName">The name of the project (used for the log file name).</param>
+    /// <returns>The configured builder.</returns>
+    public static IHostApplicationBuilder ConfigureFileLogging( this IHostApplicationBuilder builder, string projectName ) {
+        // Use LogDirPath from configuration or default to ./logs
+        string logDir = builder.Configuration["BridgeBeats:LogDirPath"] ?? "./logs";
+        string logPath = Path.Combine(logDir, $"{projectName}-.log");
+
+        try {
+            if (!string.IsNullOrEmpty( logDir ) && !Directory.Exists( logDir )) {
+                _ = Directory.CreateDirectory( logDir );
+            }
+        } catch (IOException ex) {
+            Console.WriteLine( $"Warning: Failed to validate/create log directory: {ex.Message}" );
+            // Fall back to not configuring file logging
+            return builder;
+        } catch (UnauthorizedAccessException ex) {
+            Console.WriteLine( $"Warning: Failed to validate/create log directory due to insufficient permissions: {ex.Message}" );
+            // Fall back to not configuring file logging
+            return builder;
+        }
+
+        Log.Logger = new LoggerConfiguration( )
+            .ReadFrom.Configuration( builder.Configuration )
+            .WriteTo.Console( )
+            .WriteTo.File(
+                path: logPath,
+                rollingInterval: RollingInterval.Day,
+                fileSizeLimitBytes: 50 * 1024 * 1024, // 50MB
+                retainedFileCountLimit: 5, // 5 days retention
+                rollOnFileSizeLimit: true,
+                shared: false
+            )
+            .CreateLogger( );
+
+        _ = builder.Services.AddSerilog( );
 
         return builder;
     }

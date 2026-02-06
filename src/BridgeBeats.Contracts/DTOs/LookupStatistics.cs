@@ -44,4 +44,9 @@ public sealed class LookupStatistics {
     /// Timestamp when these statistics were generated.
     /// </summary>
     public DateTimeOffset GeneratedAt { get; init; }
+
+    /// <summary>
+    /// Status of the cache bootstrap background service.
+    /// </summary>
+    public CacheBootstrapStatus? CacheBootstrapStatus { get; init; }
 }

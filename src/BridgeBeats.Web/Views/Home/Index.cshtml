@@ -444,7 +444,7 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 
       try {
         let endpoint = '';
-        const formData = new FormData();
+        const formData = new FormData(lookupForm);
 
         switch (mode) {
           case 'url':

@@ -1447,6 +1447,11 @@ public static class LogEventIds {
             /// </summary>
             public const int StatisticsRefreshed = 3751;
 
+            /// <summary>
+            /// EventId for <see cref="StatisticsService.LogCacheBootstrapStatusError"/>.
+            /// </summary>
+            public const int CacheBootstrapStatusReadError = 3752;
+
             // AspireServiceExtensions (3800-3824)
         }
     }

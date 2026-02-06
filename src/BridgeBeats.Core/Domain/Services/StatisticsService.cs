@@ -1,9 +1,11 @@
+using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Storage;
+using StackExchange.Redis;
 
 namespace BridgeBeats.Core.Domain.Services;
 
@@ -14,14 +16,17 @@ namespace BridgeBeats.Core.Domain.Services;
 /// Initializes a new instance of the <see cref="StatisticsService"/> class.
 /// </remarks>
 /// <param name="atProtoStorage">Service for accessing ATProto storage.</param>
+/// <param name="redis">Redis connection multiplexer for reading cache bootstrap status.</param>
 /// <param name="settings">Configuration settings.</param>
 /// <param name="logger">Logger for diagnostic information.</param>
 public sealed partial class StatisticsService(
     IATProtoStorageService atProtoStorage,
+    IConnectionMultiplexer redis,
     StatisticsSettings settings,
     ILogger<StatisticsService> logger
 ) : IStatisticsService {
 
+    private static readonly JsonSerializerOptions s_jsonOptions = new( ) { PropertyNameCaseInsensitive = true };
     private readonly SemaphoreSlim _cacheLock = new( 1, 1 );
     private LookupStatistics? _cachedStats;
     private DateTimeOffset _cacheExpiry = DateTimeOffset.MinValue;
@@ -114,6 +119,9 @@ public sealed partial class StatisticsService(
             .Select( x => CreateRecentEntry( x.AtUri, x.Result ) )
         ];
 
+        // Fetch cache bootstrap status from Redis
+        CacheBootstrapStatus? bootstrapStatus = await GetCacheBootstrapStatusAsync( );
+
         return new LookupStatistics {
             TotalRecords = totalCount,
             AlbumCount = albumCount,
@@ -122,8 +130,24 @@ public sealed partial class StatisticsService(
             RecentEntries = recentEntries,
             EarliestLookup = earliestLookup,
             LatestLookup = latestLookup,
-            GeneratedAt = DateTimeOffset.UtcNow
+            GeneratedAt = DateTimeOffset.UtcNow,
+            CacheBootstrapStatus = bootstrapStatus
         };
+    }
+
+    /// <summary>
+    /// Retrieves the cache bootstrap status from Redis.
+    /// </summary>
+    private async Task<CacheBootstrapStatus?> GetCacheBootstrapStatusAsync( ) {
+        try {
+            IDatabase db = redis.GetDatabase( );
+            RedisValue value = await db.StringGetAsync( CacheBootstrapStatus.RedisKey );
+
+            return value.IsNullOrEmpty ? null : JsonSerializer.Deserialize<CacheBootstrapStatus>( value.ToString( ), s_jsonOptions );
+        } catch (Exception ex) {
+            LogCacheBootstrapStatusError( logger, ex );
+            return null;
+        }
     }
 
     /// <summary>
@@ -170,6 +194,15 @@ public sealed partial class StatisticsService(
         Level = LogLevel.Information,
         Message = "Statistics refreshed: {TotalRecords} total records, cache expires at {CacheExpiry}" )]
     private static partial void LogStatisticsRefreshed( ILogger logger, int totalRecords, DateTimeOffset cacheExpiry );
+
+    /// <summary>
+    /// Logs failure to read cache bootstrap status from Redis.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Other.CacheBootstrapStatusReadError,
+        Level = LogLevel.Warning,
+        Message = "Failed to read cache bootstrap status from Redis" )]
+    private static partial void LogCacheBootstrapStatusError( ILogger logger, Exception ex );
 
     #endregion LoggerMessage Definitions
 }

@@ -16,13 +16,11 @@ public static class Program {
     /// </summary>
     /// <param name="args">Command line arguments.</param>
     public static void Main( string[] args ) {
-        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder( args );
 
         ConfigureServices( builder );
 
-        WebApplication app = builder.Build();
-
-        ConfigureEndpoints( app );
+        IHost app = builder.Build();
 
         try {
             app.Run( );
@@ -34,12 +32,12 @@ public static class Program {
     /// <summary>
     /// Configures the services for the Discord worker application.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
-    private static void ConfigureServices( WebApplicationBuilder builder ) {
+    /// <param name="builder">The host application builder.</param>
+    private static void ConfigureServices( HostApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "Discord" );
 
-        // Add Aspire service defaults (health checks, telemetry, resilience)
+        // Add Aspire service defaults (telemetry, resilience)
         _ = builder.AddServiceDefaults( );
 
         // Read and validate configuration
@@ -77,11 +75,11 @@ public static class Program {
     /// <summary>
     /// Validates the required configuration for the Discord worker.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
+    /// <param name="builder">The host application builder.</param>
     /// <returns>A tuple containing the validated Discord configuration.</returns>
     /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
     private static (string DiscordToken, int NodeNumber, string BaseUrl) ValidateConfiguration(
-        WebApplicationBuilder builder
+        HostApplicationBuilder builder
     ) {
         string? discordToken = builder.Configuration["BridgeBeats:DiscordToken"];
         int nodeNumber = builder.Configuration.GetValue("BridgeBeats:NodeNumber", 0);
@@ -92,14 +90,5 @@ public static class Program {
                 "Discord token is required. Set BridgeBeats:DiscordToken."
             )
             : ((string DiscordToken, int NodeNumber, string BaseUrl))(discordToken, nodeNumber, baseUrl);
-    }
-
-    /// <summary>
-    /// Configures the endpoints for the Discord worker application.
-    /// </summary>
-    /// <param name="app">The web application.</param>
-    private static void ConfigureEndpoints( WebApplication app ) {
-        // Map Aspire health check endpoints
-        _ = app.MapDefaultEndpoints( );
     }
 }

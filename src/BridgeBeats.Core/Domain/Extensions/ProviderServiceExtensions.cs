@@ -296,8 +296,10 @@ namespace BridgeBeats.Core.Domain.Extensions {
             this IServiceCollection services,
             HashSet<SupportedProviders> enabledProviders
         ) {
-            // Register named HTTP client - base address will be set via Aspire service discovery
-            _ = services.AddHttpClient( SpotifyWorkerHttpClientName );
+            // Register named HTTP client with base address for Aspire service discovery
+            _ = services.AddHttpClient( SpotifyWorkerHttpClientName, client => {
+                client.BaseAddress = new Uri( "http://spotify-worker" );
+            } );
 
             // Register the HTTP adapter as the IMusicLookupService for Spotify
             _ = services.AddTransient( sp =>
@@ -321,8 +323,10 @@ namespace BridgeBeats.Core.Domain.Extensions {
             this IServiceCollection services,
             HashSet<SupportedProviders> enabledProviders
         ) {
-            // Register named HTTP client - base address will be set via Aspire service discovery
-            _ = services.AddHttpClient( AppleMusicWorkerHttpClientName );
+            // Register named HTTP client with base address for Aspire service discovery
+            _ = services.AddHttpClient( AppleMusicWorkerHttpClientName, client => {
+                client.BaseAddress = new Uri( "http://applemusic-worker" );
+            } );
 
             // Register the HTTP adapter as the IMusicLookupService for Apple Music
             _ = services.AddTransient( sp =>
@@ -346,8 +350,10 @@ namespace BridgeBeats.Core.Domain.Extensions {
             this IServiceCollection services,
             HashSet<SupportedProviders> enabledProviders
         ) {
-            // Register named HTTP client - base address will be set via Aspire service discovery
-            _ = services.AddHttpClient( TidalWorkerHttpClientName );
+            // Register named HTTP client with base address for Aspire service discovery
+            _ = services.AddHttpClient( TidalWorkerHttpClientName, client => {
+                client.BaseAddress = new Uri( "http://tidal-worker" );
+            } );
 
             // Register the HTTP adapter as the IMusicLookupService for Tidal
             _ = services.AddTransient( sp =>
