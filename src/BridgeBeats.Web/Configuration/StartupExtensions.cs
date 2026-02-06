@@ -217,10 +217,10 @@ namespace BridgeBeats.Web.Configuration {
 
                 // Build CSP policy
                 // Allow MusicKit JS CDN, Cloudflare analytics, nonce-based inline styles, and API calls to music providers
-                // Allow framing for embed endpoints from any origin (purpose of embeds), Apple Music integration uses HTTPS
-                string frameAncestors = isEmbed ? "*" : (isAppleMusic ? "https: 'self'" : "'self'");
-
-                string csp = string.Join( "; ", new[] {
+                // Embed endpoints omit frame-ancestors entirely so they can be framed from any origin including
+                // non-network schemes (file://, blob:, etc.) that the '*' wildcard does not cover per the CSP spec.
+                // Apple Music integration pages allow HTTPS framing; all other pages restrict to same-origin.
+                List<string> directives = [
                     "default-src 'self'",
                     $"script-src 'self' 'nonce-{nonce}' https://js-cdn.music.apple.com https://static.cloudflareinsights.com",
                     $"style-src 'self' 'nonce-{nonce}'",
@@ -228,11 +228,17 @@ namespace BridgeBeats.Web.Configuration {
                     "font-src 'self' data:",
                     "connect-src 'self' https://api.music.apple.com https://accounts.spotify.com https://api.spotify.com https://openapi.tidal.com https://cloudflareinsights.com",
                     "media-src 'self' https:",
-                    "frame-ancestors " + frameAncestors,
                     "object-src 'none'",
                     "base-uri 'self'",
                     "form-action 'self'"
-                } );
+                ];
+
+                if ( !isEmbed ) {
+                    string frameAncestors = isAppleMusic ? "https: 'self'" : "'self'";
+                    directives.Add( "frame-ancestors " + frameAncestors );
+                }
+
+                string csp = string.Join( "; ", directives );
 
                 _ = ctx.Response.Headers.Remove( "Content-Security-Policy" );
                 ctx.Response.Headers.Append( "Content-Security-Policy", csp );
