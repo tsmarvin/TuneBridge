@@ -64,9 +64,9 @@ services:
     networks:
       - internal
     command: >
-      sh -c "mkdir -p /usr/local/etc/redis &&
+      sh -c "mkdir -p /usr/local/etc/redis || exit 1;
       if [ -f /run/secrets/redis_password ]; then
-        printf 'requirepass %s\nappendonly yes\n' \"$$(cat /run/secrets/redis_password)\" > /usr/local/etc/redis/redis.conf &&
+        awk '{printf \"requirepass %s\\nappendonly yes\\n\", $$0}' /run/secrets/redis_password > /usr/local/etc/redis/redis.conf &&
         redis-server /usr/local/etc/redis/redis.conf;
       else
         redis-server --appendonly yes;
