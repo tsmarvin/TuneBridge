@@ -215,7 +215,7 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
 
             LogFreshLogin( _identifier );
 
-            AtProtoHttpResult<bool> loginResult = await agent.Login( _identifier, _password );
+            AtProtoHttpResult<bool> loginResult = await agent.Login( _identifier, _password, cancellationToken: cancellationToken );
 
             if (!loginResult.Succeeded) {
                 string errorMsg = loginResult.AtErrorDetail?.Message ?? $"HTTP {loginResult.StatusCode}";

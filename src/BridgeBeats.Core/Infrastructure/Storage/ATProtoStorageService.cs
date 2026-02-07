@@ -41,8 +41,8 @@ public partial class ATProtoStorageService(
 
 
     /// <inheritdoc/>
-    public async Task<string> StoreMediaLinkResultAsync( MediaLinkResult result ) {
-        BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( );
+    public async Task<string> StoreMediaLinkResultAsync( MediaLinkResult result, CancellationToken cancellationToken = default ) {
+        BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( cancellationToken );
 
         try {
             // Generate deterministic rkey based on externalId or metadata
@@ -57,7 +57,8 @@ public partial class ATProtoStorageService(
                 record: record,
                 collection: s_mediaLinkResultCollection,
                 rKey: recordKey,
-                validate: false // PDS Resolution not enabled yet
+                validate: false, // PDS Resolution not enabled yet
+                cancellationToken: cancellationToken
             );
 
             if (putResult.Succeeded && putResult.Result is not null) {
@@ -73,7 +74,8 @@ public partial class ATProtoStorageService(
                 record: record,
                 collection: s_mediaLinkResultCollection,
                 rKey: recordKey,
-                validate: false // PDS Resolution not enabled yet
+                validate: false, // PDS Resolution not enabled yet
+                cancellationToken: cancellationToken
             );
 
             if (!createResult.Succeeded || createResult.Result is null) {
@@ -273,7 +275,8 @@ public partial class ATProtoStorageService(
                     collection: s_mediaLinkResultCollection,
                     limit: 100,
                     cursor: cursor,
-                    service: pdsUri
+                    service: pdsUri,
+                    cancellationToken: cancellationToken
                 );
 
             if (!listResult.Succeeded || listResult.Result is null) {

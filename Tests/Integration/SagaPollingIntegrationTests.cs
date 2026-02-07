@@ -289,7 +289,7 @@ public class SagaPollingIntegrationTests {
 
         // Verify it's in the index
         RedisValue[] pendingBefore = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsTrue( pendingBefore.Any( v => v.ToString( ) == "expired-saga-id" ) );
+        Assert.Contains<RedisValue>( v => v.ToString( ) == "expired-saga-id", pendingBefore );
 
         // Act - Query should clean up the orphaned index entry
         _ = await _sagaManager.GetCompletedButUnfinalizedAsync(
@@ -300,7 +300,7 @@ public class SagaPollingIntegrationTests {
 
         // Assert - Orphaned entry should be removed from index
         RedisValue[] pendingAfter = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsFalse( pendingAfter.Any( v => v.ToString( ) == "expired-saga-id" ) );
+        Assert.DoesNotContain<RedisValue>( v => v.ToString( ) == "expired-saga-id", pendingAfter );
     }
 
     /// <summary>
@@ -319,7 +319,7 @@ public class SagaPollingIntegrationTests {
         // Assert
         IDatabase db = s_redis!.GetDatabase( );
         RedisValue[] members = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsTrue( members.Any( m => m.ToString( ) == sagaId ) );
+        Assert.Contains<RedisValue>( m => m.ToString( ) == sagaId, members );
     }
 
     /// <summary>
@@ -339,7 +339,7 @@ public class SagaPollingIntegrationTests {
 
         // Assert
         RedisValue[] members = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsFalse( members.Any( m => m.ToString( ) == sagaId ) );
+        Assert.DoesNotContain<RedisValue>( m => m.ToString( ) == sagaId, members );
     }
 
     /// <summary>
@@ -365,7 +365,7 @@ public class SagaPollingIntegrationTests {
         // Assert - Should be in pending index
         IDatabase db = s_redis!.GetDatabase( );
         RedisValue[] members = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsTrue( members.Any( m => m.ToString( ) == sagaId ) );
+        Assert.Contains<RedisValue>( m => m.ToString( ) == sagaId, members );
     }
 
     /// <summary>
@@ -390,14 +390,14 @@ public class SagaPollingIntegrationTests {
         // Verify it's in the index
         IDatabase db = s_redis!.GetDatabase( );
         RedisValue[] membersBefore = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsTrue( membersBefore.Any( m => m.ToString( ) == sagaId ) );
+        Assert.Contains<RedisValue>( m => m.ToString( ) == sagaId, membersBefore );
 
         // Act
         await _sagaManager.SetFinalResultUriAsync( sagaId, "at://did:plc:test/link/abc", TestContext.CancellationToken );
 
         // Assert - Should be removed from pending index
         RedisValue[] membersAfter = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsFalse( membersAfter.Any( m => m.ToString( ) == sagaId ) );
+        Assert.DoesNotContain<RedisValue>( m => m.ToString( ) == sagaId, membersAfter );
     }
 
     /// <summary>
@@ -422,13 +422,13 @@ public class SagaPollingIntegrationTests {
         // Verify it's in the index
         IDatabase db = s_redis!.GetDatabase( );
         RedisValue[] membersBefore = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsTrue( membersBefore.Any( m => m.ToString( ) == sagaId ) );
+        Assert.Contains<RedisValue>( m => m.ToString( ) == sagaId, membersBefore );
 
         // Act
         _ = await _sagaManager.DeleteAsync( sagaId, TestContext.CancellationToken );
 
         // Assert - Should be removed from pending index
         RedisValue[] membersAfter = await db.SetMembersAsync( "saga:pending" );
-        Assert.IsFalse( membersAfter.Any( m => m.ToString( ) == sagaId ) );
+        Assert.DoesNotContain<RedisValue>( m => m.ToString( ) == sagaId, membersAfter );
     }
 }

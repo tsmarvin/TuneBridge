@@ -410,6 +410,20 @@ for file in "${DOWNLOAD_FILES[@]}"; do
 done
 
 # =============================================================================
+# Setup Logs Directory
+# =============================================================================
+print_section "Setting Up Logs"
+
+LOGS_DIR="./logs"
+
+if [[ -d "$LOGS_DIR" ]]; then
+    echo "[OK] Logs directory already exists: ${LOGS_DIR}"
+else
+    mkdir -p "$LOGS_DIR"
+    echo "[OK] Created logs directory: ${LOGS_DIR}"
+fi
+
+# =============================================================================
 # Setup Secrets Directory
 # =============================================================================
 print_section "Setting Up Secrets"

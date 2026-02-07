@@ -9,6 +9,7 @@ using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Logging;
 using idunno.AtProto;
 using idunno.Bluesky;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -69,6 +70,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     private readonly string _baseUrl;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ATProtoSigningKeyProvider? _signingKeyProvider;
+    private readonly IPersonalDataProtector _personalDataProtector;
 
     /// <summary>
     /// The client_assertion_type value for private_key_jwt authentication per RFC 7523.
@@ -82,18 +84,21 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="clientId">The OAuth client_id URL (must be the client-metadata.json URL).</param>
     /// <param name="httpClientFactory">HTTP client factory for creating clients for token endpoint requests.</param>
+    /// <param name="personalDataProtector">Protector for encrypting sensitive OAuth state data at rest.</param>
     /// <param name="signingKeyProvider">Optional signing key provider for confidential client assertions. When null, operates as a public client.</param>
     public ATProtoOAuthService(
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
         ILogger<ATProtoOAuthService> logger,
         string clientId,
         IHttpClientFactory httpClientFactory,
+        IPersonalDataProtector personalDataProtector,
         ATProtoSigningKeyProvider? signingKeyProvider = null
     ) {
         _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException( nameof( dbContextFactory ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
         _clientId = clientId ?? throw new ArgumentNullException( nameof( clientId ) );
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException( nameof( httpClientFactory ) );
+        _personalDataProtector = personalDataProtector ?? throw new ArgumentNullException( nameof( personalDataProtector ) );
         _signingKeyProvider = signingKeyProvider;
 
         // Extract base URL from client ID
@@ -121,10 +126,8 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         using BlueskyAgent agent = new( );
 
         // Step 1: Resolve handle to DID
-        Did? did = await agent.ResolveHandle( handle, cancellationToken );
-        if (did is null) {
-            throw new InvalidOperationException( $"Failed to resolve handle '{handle}' to a DID" );
-        }
+        Did did = await agent.ResolveHandle( handle, cancellationToken )
+            ?? throw new InvalidOperationException( $"Failed to resolve handle '{handle}' to a DID" );
 
         if (_logger.IsEnabled( LogLevel.Debug )) {
             string didString = did.ToString( );
@@ -132,10 +135,8 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         }
 
         // Step 2: Resolve PDS URI
-        Uri? pdsUri = await agent.ResolvePds( did, cancellationToken );
-        if (pdsUri is null) {
-            throw new InvalidOperationException( $"Failed to resolve PDS for DID '{did}'" );
-        }
+        Uri pdsUri = await agent.ResolvePds( did, cancellationToken )
+            ?? throw new InvalidOperationException( $"Failed to resolve PDS for DID '{did}'" );
 
         if (_logger.IsEnabled( LogLevel.Debug )) {
             string didString = did.ToString( );
@@ -144,10 +145,8 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         }
 
         // Step 3: Resolve authorization server
-        Uri? authorizationServer = await agent.ResolveAuthorizationServer( pdsUri, cancellationToken );
-        if (authorizationServer is null) {
-            throw new InvalidOperationException( $"Failed to resolve authorization server for PDS '{pdsUri}'" );
-        }
+        Uri authorizationServer = await agent.ResolveAuthorizationServer( pdsUri, cancellationToken )
+            ?? throw new InvalidOperationException( $"Failed to resolve authorization server for PDS '{pdsUri}'" );
 
         if (_logger.IsEnabled( LogLevel.Debug )) {
             string pdsUriString = pdsUri.ToString( );
@@ -178,15 +177,16 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         string dpoPKeyJwk = GenerateDPoPKey( );
 
         // Step 8: Store the OAuth state for later verification
+        // Encrypt sensitive fields before persisting to the database
         await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
         AtProtoOAuthState oauthState = new( ) {
             State = state,
-            CodeVerifier = codeVerifier,
+            CodeVerifier = _personalDataProtector.Protect( codeVerifier ),
             Handle = handle,
             Did = did.ToString( ),
             PdsUri = pdsUri.ToString( ),
             AuthorizationServerUri = authorizationServer.ToString( ),
-            DPoPKeyJwk = dpoPKeyJwk,
+            DPoPKeyJwk = _personalDataProtector.Protect( dpoPKeyJwk ),
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes( 5 )
         };
@@ -239,12 +239,13 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
 
         // Step 1: Look up the OAuth state
         await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
-        AtProtoOAuthState? oauthState = await dbContext.AtProtoOAuthStates
-            .FirstOrDefaultAsync( s => s.State == state, cancellationToken );
+        AtProtoOAuthState oauthState = await dbContext.AtProtoOAuthStates
+            .FirstOrDefaultAsync( s => s.State == state, cancellationToken )
+            ?? throw new InvalidOperationException( "OAuth state not found. The authorization flow may have expired." );
 
-        if (oauthState is null) {
-            throw new InvalidOperationException( "OAuth state not found. The authorization flow may have expired." );
-        }
+        // Decrypt sensitive fields that were encrypted before storage
+        oauthState.CodeVerifier = _personalDataProtector.Unprotect( oauthState.CodeVerifier )!;
+        oauthState.DPoPKeyJwk = _personalDataProtector.Unprotect( oauthState.DPoPKeyJwk )!;
 
         if (oauthState.ExpiresAt < DateTime.UtcNow) {
             // Clean up expired state
@@ -858,9 +859,8 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     /// <param name="audience">The authorization server issuer URI used as the JWT audience.</param>
     /// <returns>A compact-serialized JWT suitable for the client_assertion parameter.</returns>
     private string CreateClientAssertionJwt( string audience ) {
-        if (_signingKeyProvider is null) {
-            throw new InvalidOperationException( "Cannot create client assertion without a signing key provider." );
-        }
+        _ = _signingKeyProvider
+            ?? throw new InvalidOperationException( "Cannot create client assertion without a signing key provider." );
 
         JwtSecurityTokenHandler handler = new( );
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds( );
@@ -934,50 +934,112 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             D = dBytes
         } );
 
-        // Create the DPoP JWT
-        JwtSecurityTokenHandler handler = new( );
+        // Build the DPoP JWT manually to ensure the jwk header is a proper JSON object.
+        // JwtSecurityTokenHandler strips the jwk from AdditionalHeaderClaims, so we construct
+        // the JWT directly: header.payload.signature (RFC 9449 / RFC 7515 compact serialization).
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds( );
-        DateTime notBefore = DateTimeOffset.FromUnixTimeSeconds( now - 5 ).UtcDateTime;
-        SecurityTokenDescriptor descriptor = new( ) {
-            Claims = new Dictionary<string, object> {
-                ["htm"] = httpMethod,
-                ["htu"] = url,
-                ["jti"] = Guid.NewGuid( ).ToString( "N" ),
-                ["iat"] = now
-            },
-            NotBefore = notBefore,
-            SigningCredentials = new SigningCredentials(
-                new ECDsaSecurityKey( ecdsa ) { KeyId = kid },
-                SecurityAlgorithms.EcdsaSha256
-            )
+        long nbf = now - 5;
+
+        // Build header with jwk as an embedded JSON object (not a string)
+        Dictionary<string, object> header = new( ) {
+            ["typ"] = "dpop+jwt",
+            ["alg"] = "ES256",
+            ["kid"] = kid,
+            ["jwk"] = new Dictionary<string, string> {
+                ["kty"] = "EC",
+                ["crv"] = "P-256",
+                ["x"] = x,
+                ["y"] = y
+            }
+        };
+
+        // Build payload with required DPoP claims
+        Dictionary<string, object> payload = new( ) {
+            ["htm"] = httpMethod,
+            ["htu"] = url,
+            ["jti"] = Guid.NewGuid( ).ToString( "N" ),
+            ["iat"] = now,
+            ["nbf"] = nbf
         };
 
         // Add access token hash if provided
         if (!string.IsNullOrWhiteSpace( accessToken )) {
             byte[] hash = SHA256.HashData( Encoding.ASCII.GetBytes( accessToken ) );
-            descriptor.Claims["ath"] = Base64UrlEncode( hash );
+            payload["ath"] = Base64UrlEncode( hash );
         }
 
         // Add nonce if provided (required for DPoP nonce binding per RFC 9449)
         if (!string.IsNullOrWhiteSpace( nonce )) {
-            descriptor.Claims["nonce"] = nonce;
+            payload["nonce"] = nonce;
         }
 
-        // Set the token type and algorithm in the header
-        descriptor.AdditionalHeaderClaims = new Dictionary<string, object> {
-            ["typ"] = "dpop+jwt",
-            ["alg"] = "ES256",
-            ["jwk"] = new {
-                kty = "EC",
-                crv = "P-256",
-                x,
-                y
-            }
-        };
+        // Encode header and payload
+        string headerJson = JsonSerializer.Serialize( header );
+        string payloadJson = JsonSerializer.Serialize( payload );
+        string headerB64 = Base64UrlEncode( Encoding.UTF8.GetBytes( headerJson ) );
+        string payloadB64 = Base64UrlEncode( Encoding.UTF8.GetBytes( payloadJson ) );
 
-        // Create and write the token while ECDsa is still in scope
-        SecurityToken token = handler.CreateToken( descriptor );
-        return handler.WriteToken( token );
+        // Sign with ES256 (ECDSA using P-256 and SHA-256)
+        string signingInput = $"{headerB64}.{payloadB64}";
+        byte[] signatureBytes = ecdsa.SignData( Encoding.UTF8.GetBytes( signingInput ), HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence );
+
+        // Convert DER-encoded signature to the raw R||S format required by JWS (RFC 7518 Section 3.4)
+        byte[] rawSignature = ConvertDerToRawEcdsaSignature( signatureBytes, 32 );
+        string signatureB64 = Base64UrlEncode( rawSignature );
+
+        return $"{headerB64}.{payloadB64}.{signatureB64}";
+    }
+
+    /// <summary>
+    /// Converts a DER-encoded ECDSA signature to the raw R||S format required by JWS (RFC 7518 Section 3.4).
+    /// </summary>
+    private static byte[] ConvertDerToRawEcdsaSignature( byte[] derSignature, int componentLength ) {
+        // DER format: 0x30 [total-length] 0x02 [r-length] [r-value] 0x02 [s-length] [s-value]
+        int offset = 2; // Skip SEQUENCE tag and length
+        if (derSignature[0] != 0x30) {
+            throw new ArgumentException( "Invalid DER signature format.", nameof( derSignature ) );
+        }
+
+        // Parse R
+        if (derSignature[offset] != 0x02) {
+            throw new ArgumentException( "Invalid DER signature format: expected INTEGER tag for R.", nameof( derSignature ) );
+        }
+        offset++;
+        int rLength = derSignature[offset++];
+        byte[] rBytes = derSignature[offset..(offset + rLength)];
+        offset += rLength;
+
+        // Parse S
+        if (derSignature[offset] != 0x02) {
+            throw new ArgumentException( "Invalid DER signature format: expected INTEGER tag for S.", nameof( derSignature ) );
+        }
+        offset++;
+        int sLength = derSignature[offset++];
+        byte[] sBytes = derSignature[offset..(offset + sLength)];
+
+        // Pad or trim R and S to componentLength bytes
+        byte[] raw = new byte[componentLength * 2];
+        CopyComponentToRaw( rBytes, raw, 0, componentLength );
+        CopyComponentToRaw( sBytes, raw, componentLength, componentLength );
+
+        return raw;
+    }
+
+    /// <summary>
+    /// Copies a DER integer component into a fixed-length raw buffer, handling leading zeros and padding.
+    /// </summary>
+    private static void CopyComponentToRaw( byte[] component, byte[] raw, int targetOffset, int componentLength ) {
+        if (component.Length == componentLength) {
+            Array.Copy( component, 0, raw, targetOffset, componentLength );
+        } else if (component.Length > componentLength) {
+            // Strip leading zero padding (DER adds 0x00 prefix for positive integers with high bit set)
+            int skip = component.Length - componentLength;
+            Array.Copy( component, skip, raw, targetOffset, componentLength );
+        } else {
+            // Left-pad with zeros
+            int pad = componentLength - component.Length;
+            Array.Copy( component, 0, raw, targetOffset + pad, component.Length );
+        }
     }
 
     /// <summary>

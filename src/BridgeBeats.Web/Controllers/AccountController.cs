@@ -29,6 +29,8 @@ public partial class AccountController(
     ApiKeyHasher hasher
 ) : Controller {
 
+    private static readonly JsonSerializerOptions s_indentedJsonOptions = new( ) { WriteIndented = true };
+
     /// <summary>
     /// Displays the registration page.
     /// </summary>
@@ -284,7 +286,7 @@ public partial class AccountController(
 
         string json = JsonSerializer.Serialize(
             personalData,
-            new JsonSerializerOptions { WriteIndented = true }
+            s_indentedJsonOptions
         );
 
         return File(
@@ -436,7 +438,7 @@ public partial class AccountController(
                     AtProtoHandle = result.Handle,
                     AtProtoAccessToken = result.AccessToken,
                     AtProtoRefreshToken = result.RefreshToken,
-                    EncryptedAtProtoDPoPKey = result.DPoPKeyJwk,
+                    AtProtoDPoPKey = result.DPoPKeyJwk,
                     AtProtoTokenExpiration = result.TokenExpiration,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -456,7 +458,7 @@ public partial class AccountController(
                 user.AtProtoHandle = result.Handle;
                 user.AtProtoAccessToken = result.AccessToken;
                 user.AtProtoRefreshToken = result.RefreshToken;
-                user.EncryptedAtProtoDPoPKey = result.DPoPKeyJwk;
+                user.AtProtoDPoPKey = result.DPoPKeyJwk;
                 user.AtProtoTokenExpiration = result.TokenExpiration;
 
                 _ = await userManager.UpdateAsync( user );

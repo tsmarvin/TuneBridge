@@ -322,6 +322,20 @@ foreach ($file in $DownloadFiles) {
 }
 
 # =============================================================================
+# Setup Logs Directory
+# =============================================================================
+Write-Section 'Setting Up Logs'
+
+$logsDir = Join-Path -Path $Directory -ChildPath 'logs'
+
+if (Test-Path $logsDir) {
+    Write-Ok "Logs directory already exists: $logsDir"
+} else {
+    New-Item -Path $logsDir -ItemType Directory -Force | Out-Null
+    Write-Ok "Created logs directory: $logsDir"
+}
+
+# =============================================================================
 # Setup Secrets Directory
 # =============================================================================
 Write-Section 'Setting Up Secrets'

@@ -38,7 +38,7 @@ public class MusicLookupControllerTests {
             .AsEnumerable()
             .Where( kv => kv.Value is not null )
             .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
-            .ToDictionary( kv => kv.Key, kv => kv.Value );
+            .ToDictionary( );
 
         // Force Discord token to null to prevent Discord service registration
         configData["BridgeBeats:DiscordToken"] = string.Empty;
@@ -75,19 +75,19 @@ public class MusicLookupControllerTests {
 
         if (!registerResponse.IsSuccessStatusCode) {
             string errorContent = await registerResponse.Content.ReadAsStringAsync( context.CancellationToken );
-            throw new Exception( $"Failed to register test user: {registerResponse.StatusCode} - {errorContent}" );
+            throw new InvalidOperationException( $"Failed to register test user: {registerResponse.StatusCode} - {errorContent}" );
         }
 
         // Extract API key from response
         JsonElement? registerResult = await registerResponse.Content.ReadFromJsonAsync<JsonElement>( context.CancellationToken );
         if (!registerResult.HasValue) {
-            throw new Exception( "Failed to parse registration response" );
+            throw new InvalidOperationException( "Failed to parse registration response" );
         }
 
         s_apiKey = registerResult.Value.GetProperty( "apiKey" ).GetString( );
 
         if (string.IsNullOrEmpty( s_apiKey )) {
-            throw new Exception( "Failed to extract API key from registration response" );
+            throw new InvalidOperationException( "Failed to extract API key from registration response" );
         }
 
         // Create HTTP client with API key header for actual tests

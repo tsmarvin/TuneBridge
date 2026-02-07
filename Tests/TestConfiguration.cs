@@ -7,7 +7,7 @@ namespace BridgeBeats.Tests;
 /// Loads configuration from appsettings.json and user secrets.
 /// </summary>
 public static class TestConfiguration {
-    private static readonly object s_lock = new( );
+    private static readonly Lock s_lock = new( );
 
     /// <summary>
     /// Gets the shared test configuration loaded from appsettings.json and user secrets.

@@ -9,6 +9,8 @@ namespace BridgeBeats.Core.Infrastructure.Identity;
 /// </summary>
 public sealed class ATProtoSigningKeyProvider : IDisposable {
 
+    private static readonly JsonSerializerOptions s_indentedJsonOptions = new( ) { WriteIndented = true };
+
     /// <summary>
     /// The ECDSA signing key.
     /// </summary>
@@ -101,7 +103,7 @@ public sealed class ATProtoSigningKeyProvider : IDisposable {
             }
         };
 
-        return JsonSerializer.Serialize( jwks, new JsonSerializerOptions { WriteIndented = true } );
+        return JsonSerializer.Serialize( jwks, s_indentedJsonOptions );
     }
 
     /// <summary>

@@ -31,6 +31,7 @@ public class ApplicationUser : IdentityUser {
     /// <summary>
     /// Apple Music user token for accessing the user's library and playlists.
     /// </summary>
+    [ProtectedPersonalData]
     public string? AppleMusicUserToken { get; set; }
 
     /// <summary>
@@ -52,22 +53,22 @@ public class ApplicationUser : IdentityUser {
     /// <summary>
     /// ATProto OAuth access token for accessing the user's PDS.
     /// </summary>
+    [ProtectedPersonalData]
     public string? AtProtoAccessToken { get; set; }
 
     /// <summary>
     /// ATProto OAuth refresh token for obtaining new access tokens.
     /// </summary>
+    [ProtectedPersonalData]
     public string? AtProtoRefreshToken { get; set; }
 
     /// <summary>
     /// ATProto DPoP (Demonstration of Proof-of-Possession) private key in JWK format.
     /// Used to sign requests and prove ownership of OAuth tokens.
-    /// WARNING: Currently stored as plain text in the database. The [ProtectedPersonalData] attribute
-    /// is present but non-functional without IPersonalDataProtector implementation.
-    /// This is a known security issue tracked for resolution.
+    /// Encrypted at rest via the Data Protection personal data protector.
     /// </summary>
     [ProtectedPersonalData]
-    public string? EncryptedAtProtoDPoPKey { get; set; }
+    public string? AtProtoDPoPKey { get; set; }
 
     /// <summary>
     /// Expiration time of the ATProto OAuth access token.

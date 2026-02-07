@@ -48,6 +48,14 @@ public sealed partial class ProviderMetricsHandler : DelegatingHandler {
     [GeneratedRegex( @"(=)([A-Za-z0-9]{15,})", RegexOptions.Compiled )]
     private static partial Regex QueryIdRegex( );
 
+    // Storefront in Apple Music catalog paths
+    [GeneratedRegex( @"catalog/[a-z]{2}/", RegexOptions.Compiled )]
+    private static partial Regex StorefrontRegex( );
+
+    // Multiple consecutive forward slashes
+    [GeneratedRegex( @"/+", RegexOptions.Compiled )]
+    private static partial Regex MultipleSlashRegex( );
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ProviderMetricsHandler"/> class.
     /// </summary>
@@ -148,7 +156,7 @@ public sealed partial class ProviderMetricsHandler : DelegatingHandler {
 
     private static string NormalizeAppleMusicEndpoint( string path ) {
         // Remove storefront from path (e.g., /catalog/us/ -> /catalog/)
-        path = Regex.Replace( path, @"catalog/[a-z]{2}/", "catalog/{storefront}/" );
+        path = StorefrontRegex( ).Replace( path, "catalog/{storefront}/" );
 
         // Replace numeric IDs
         path = AppleMusicIdRegex( ).Replace( path, "/{id}$2" );
@@ -190,7 +198,7 @@ public sealed partial class ProviderMetricsHandler : DelegatingHandler {
 
     private static string CleanupPath( string path ) {
         // Remove multiple consecutive slashes
-        path = Regex.Replace( path, @"/+", "/" );
+        path = MultipleSlashRegex( ).Replace( path, "/" );
 
         // Remove trailing slash
         path = path.TrimEnd( '/' );

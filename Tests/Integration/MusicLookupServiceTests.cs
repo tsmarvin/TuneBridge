@@ -43,7 +43,7 @@ public class MusicLookupServiceTests {
          .AsEnumerable()
          .Where(kv => kv.Value is not null) // filter nulls from section placeholders
          .Where(kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ))
-         .ToDictionary(kv => kv.Key, kv => kv.Value);
+         .ToDictionary();
 
         // ============================================================================
         // CRITICAL: Configure for direct provider mode (not queue-based)

@@ -174,10 +174,12 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         Dictionary<string, List<QueuedMessage<QueuedLookupRequest>>> idToMessages = [];
         foreach (QueuedMessage<QueuedLookupRequest> message in messages) {
             string trackId = message.Payload.LookupValue;
-            if (!idToMessages.ContainsKey( trackId )) {
-                idToMessages[trackId] = [];
+            if (!idToMessages.TryGetValue( trackId, out List<QueuedMessage<QueuedLookupRequest>>? value )) {
+                value = [];
+                idToMessages[trackId] = value;
             }
-            idToMessages[trackId].Add( message );
+
+            value.Add( message );
         }
 
         try {
@@ -232,10 +234,12 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         Dictionary<string, List<QueuedMessage<QueuedLookupRequest>>> idToMessages = [];
         foreach (QueuedMessage<QueuedLookupRequest> message in messages) {
             string albumId = message.Payload.LookupValue;
-            if (!idToMessages.ContainsKey( albumId )) {
-                idToMessages[albumId] = [];
+            if (!idToMessages.TryGetValue( albumId, out List<QueuedMessage<QueuedLookupRequest>>? value )) {
+                value = [];
+                idToMessages[albumId] = value;
             }
-            idToMessages[albumId].Add( message );
+
+            value.Add( message );
         }
 
         try {

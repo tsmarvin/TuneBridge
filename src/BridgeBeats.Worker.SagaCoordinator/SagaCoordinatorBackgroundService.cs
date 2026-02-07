@@ -321,7 +321,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
 
         try {
             // Write to ATProto
-            string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( finalResult );
+            string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( finalResult, ct );
 
             LogWroteFinalToAtProto( _logger, saga.SagaId, recordUri );
 
@@ -329,7 +329,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
             await _sagaManager.SetFinalResultUriAsync( saga.SagaId, recordUri, ct );
 
             // Update Redis cache
-            _ = await _cacheRepository.CacheResultAsync( finalResult );
+            _ = await _cacheRepository.CacheResultAsync( finalResult, ct );
 
             LogCachedFinalResult( _logger, saga.SagaId );
 
@@ -371,7 +371,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
 
         try {
             // Write partial result to ATProto
-            string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( partialResult );
+            string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( partialResult, ct );
 
             LogWrotePartialToAtProto( _logger, saga.SagaId, recordUri );
 
@@ -379,7 +379,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
             await _sagaManager.SetPartialResultUriAsync( saga.SagaId, recordUri, ct );
 
             // Update Redis cache with partial result (can be refreshed later)
-            _ = await _cacheRepository.CacheResultAsync( partialResult );
+            _ = await _cacheRepository.CacheResultAsync( partialResult, ct );
 
             // Release the deduplication lock with the partial result URI
             // This allows waiting clients to receive partial results immediately
@@ -441,9 +441,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
         SupportedProviders initialProvider = result.Results.Keys.First();
 
         // Determine which providers still need lookups (not the initial provider)
-        List<SupportedProviders> otherProviders = _enabledProviders
-            .Where(p => p != initialProvider && !result.Results.ContainsKey(p))
-            .ToList();
+        List<SupportedProviders> otherProviders = [.. _enabledProviders.Where(p => p != initialProvider && !result.Results.ContainsKey(p))];
 
         if (otherProviders.Count == 0) {
             LogNoOtherProviders( _logger, originalSaga.SagaId );
@@ -477,9 +475,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
         }
 
         // Find providers that need lookups (not already in saga or cache)
-        List<SupportedProviders> providersToQueue = otherProviders
-            .Where(p => !providersWithData.Contains(p))
-            .ToList();
+        List<SupportedProviders> providersToQueue = [.. otherProviders.Where(p => !providersWithData.Contains(p))];
 
         if (providersToQueue.Count == 0) {
             LogAllProvidersInCache( _logger, originalSaga.SagaId, externalId );
@@ -487,8 +483,11 @@ public sealed partial class SagaCoordinatorBackgroundService(
         }
 
         // Add the new providers to the ORIGINAL saga (don't create separate sagas)
-        await _sagaManager.InitializeProviderStatesAsync( originalSaga.SagaId, providersToQueue );
-        LogAddedProvidersToSaga( _logger, originalSaga.SagaId, string.Join( ", ", providersToQueue ) );
+        await _sagaManager.InitializeProviderStatesAsync( originalSaga.SagaId, providersToQueue, ct );
+        if (_logger.IsEnabled( LogLevel.Information )) {
+            string providerNames = string.Join( ", ", providersToQueue );
+            LogAddedProvidersToSaga( _logger, originalSaga.SagaId, providerNames );
+        }
 
         // Queue lookups for each provider using the ORIGINAL saga ID
         int queuedCount = 0;

@@ -17,9 +17,10 @@ public class AtProtoOAuthState {
 
     /// <summary>
     /// PKCE code verifier used to prove the callback is from the same client that started the flow.
+    /// Stored encrypted at rest via the Data Protection personal data protector.
     /// </summary>
     [Required]
-    [MaxLength( 128 )]
+    [MaxLength( 512 )]
     public required string CodeVerifier { get; set; }
 
     /// <summary>
@@ -49,6 +50,7 @@ public class AtProtoOAuthState {
 
     /// <summary>
     /// The DPoP private key in JWK format, generated for this OAuth session.
+    /// Stored encrypted at rest via the Data Protection personal data protector.
     /// </summary>
     [Required]
     public required string DPoPKeyJwk { get; set; }

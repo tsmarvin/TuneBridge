@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Queue;
@@ -15,7 +16,7 @@ namespace BridgeBeats.Tests.Integration;
 [TestClass]
 [TestCategory( "Integration" )]
 [TestCategory( "Docker" )]
-public class RedisRequestQueueTests {
+public partial class RedisRequestQueueTests {
 
     private static IConnectionMultiplexer? s_redis;
 
@@ -319,7 +320,7 @@ public class RedisRequestQueueTests {
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task WeightedPrioritySelection_ProcessesAllMessages( ) {
         // Arrange - add multiple messages to each priority
-        const int messagesPerPriority = 10;
+        const int MessagesPerPriority = 10;
 
         // Create a queue with bulk gating disabled for this test
         IOptions<QueueSettings> testSettings = Options.Create( new QueueSettings {
@@ -334,7 +335,7 @@ public class RedisRequestQueueTests {
         );
         await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
-        for (int i = 0; i < messagesPerPriority; i++) {
+        for (int i = 0; i < MessagesPerPriority; i++) {
             await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Interactive, TestContext.CancellationToken );
             await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Background, TestContext.CancellationToken );
             await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Bulk, TestContext.CancellationToken );
@@ -351,7 +352,7 @@ public class RedisRequestQueueTests {
         }
 
         // Assert - all messages should be processed
-        Assert.AreEqual( messagesPerPriority * 3, totalDequeued, "All messages should be dequeued" );
+        Assert.AreEqual( MessagesPerPriority * 3, totalDequeued, "All messages should be dequeued" );
 
         QueueDepth depth = await testQueue.GetDepthAsync( TestContext.CancellationToken );
         Assert.AreEqual( 0, depth.Total, "Queue should be empty after processing all messages" );
@@ -374,8 +375,8 @@ public class RedisRequestQueueTests {
         await worker2Queue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
         // Enqueue multiple messages
-        const int messageCount = 10;
-        for (int i = 0; i < messageCount; i++) {
+        const int MessageCount = 10;
+        for (int i = 0; i < MessageCount; i++) {
             await _queue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Interactive, TestContext.CancellationToken );
         }
 
@@ -383,7 +384,7 @@ public class RedisRequestQueueTests {
         int worker1Count = 0;
         int worker2Count = 0;
 
-        for (int i = 0; i < messageCount; i++) {
+        for (int i = 0; i < MessageCount; i++) {
             // Alternate between workers
             if (i % 2 == 0) {
                 QueuedMessage<QueuedLookupRequest>? msg = await _queue.DequeueAsync( TestContext.CancellationToken );
@@ -401,7 +402,7 @@ public class RedisRequestQueueTests {
         }
 
         // Assert - both workers processed messages, no duplicates
-        Assert.AreEqual( messageCount, worker1Count + worker2Count );
+        Assert.AreEqual( MessageCount, worker1Count + worker2Count );
         Assert.IsGreaterThan( 0, worker1Count, "Worker 1 should have processed at least one message" );
         Assert.IsGreaterThan( 0, worker2Count, "Worker 2 should have processed at least one message" );
 
@@ -497,7 +498,6 @@ public class RedisRequestQueueTests {
             $"Consumer ID '{consumerId3}' should start with 'applemusic-worker-'" );
 
         // Assert - GUID portion should be 32 characters (format N) and be valid hex strings
-        const string GuidHexPattern = "^[0-9a-f]{32}$";
         const string SpotifyPrefix = "spotify-worker-";
         const string AppleMusicPrefix = "applemusic-worker-";
 
@@ -509,11 +509,11 @@ public class RedisRequestQueueTests {
         Assert.AreEqual( 32, guidPart2.Length, "GUID portion should be 32 characters" );
         Assert.AreEqual( 32, guidPart3.Length, "GUID portion should be 32 characters" );
 
-        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart1, GuidHexPattern ),
+        Assert.IsTrue( GuidHexRegex( ).IsMatch( guidPart1 ),
             $"GUID portion '{guidPart1}' should be a valid hex string" );
-        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart2, GuidHexPattern ),
+        Assert.IsTrue( GuidHexRegex( ).IsMatch( guidPart2 ),
             $"GUID portion '{guidPart2}' should be a valid hex string" );
-        Assert.IsTrue( System.Text.RegularExpressions.Regex.IsMatch( guidPart3, GuidHexPattern ),
+        Assert.IsTrue( GuidHexRegex( ).IsMatch( guidPart3 ),
             $"GUID portion '{guidPart3}' should be a valid hex string" );
 
         // Assert - total length should be reasonable (provider name + "-worker-" + 32 char GUID)
@@ -539,4 +539,7 @@ public class RedisRequestQueueTests {
             CreatedAt = DateTimeOffset.UtcNow
         };
     }
+
+    [GeneratedRegex( "^[0-9a-f]{32}$" )]
+    private static partial Regex GuidHexRegex( );
 }

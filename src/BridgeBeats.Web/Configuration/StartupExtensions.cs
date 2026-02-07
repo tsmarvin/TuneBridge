@@ -110,7 +110,7 @@ namespace BridgeBeats.Web.Configuration {
             } );
 
             ConfigureDatabases( services, settings );
-            ConfigureIdentity( services );
+            ConfigureIdentity( services, settings );
             ConfigureApiKeyAuth( services, settings );
             ConfigureSwagger( services );
 
@@ -344,10 +344,10 @@ namespace BridgeBeats.Web.Configuration {
             );
         }
 
-        private static void ConfigureIdentity( IServiceCollection services ) {
+        private static void ConfigureIdentity( IServiceCollection services, AppSettings settings ) {
             // Use the centralized Identity configuration from Infrastructure project
-            // This includes Data Protection configuration for [ProtectedPersonalData] attributes
-            _ = services.AddBridgeBeatsIdentity( );
+            // This includes Data Protection key persistence and [ProtectedPersonalData] encryption
+            _ = services.AddBridgeBeatsIdentity( settings.DataProtectionKeyPath );
         }
 
         private static void ConfigureApiKeyAuth( IServiceCollection services, AppSettings settings ) {
@@ -365,10 +365,9 @@ namespace BridgeBeats.Web.Configuration {
             } )
             .AddPolicyScheme( "MultiScheme", "API Key, Service Key, or Cookie", options => {
                 options.ForwardDefaultSelector = context => {
-                    if (context.Request.Headers.ContainsKey( InternalServiceDefaults.HeaderName )) {
-                        return InternalServiceDefaults.AuthenticationScheme;
-                    }
-                    return context.Request.Headers.ContainsKey( "X-API-Key" )
+                    return context.Request.Headers.ContainsKey( InternalServiceDefaults.HeaderName )
+                        ? InternalServiceDefaults.AuthenticationScheme
+                        : context.Request.Headers.ContainsKey( "X-API-Key" )
                         ? ApiKeyDefaults.AuthenticationScheme
                         : IdentityConstants.ApplicationScheme;
                 };
@@ -448,6 +447,7 @@ namespace BridgeBeats.Web.Configuration {
                         sp.GetRequiredService<ILogger<ATProtoOAuthService>>( ),
                         clientId,
                         sp.GetRequiredService<IHttpClientFactory>( ),
+                        sp.GetRequiredService<IPersonalDataProtector>( ),
                         signingKeyProvider
                     )
                 );
@@ -497,12 +497,6 @@ namespace BridgeBeats.Web.Configuration {
             _ = services.AddQueueInfrastructure( );
             _ = services.AddAllProviderQueues<QueuedLookupRequest>( );
 
-            // Register SQLite to Redis migration service (runs once at startup if SQLite DB exists)
-            _ = services.AddSqliteToRedisMigration(
-                settings.LinkCacheConnectionString,
-                settings.CacheDays,
-                settings.ATProtoUserDID
-            );
         }
 
         private static HashSet<SupportedProviders> RegisterMusicProviders( IServiceCollection services, AppSettings settings ) {

@@ -283,7 +283,9 @@ namespace BridgeBeats.Services.LinkResolver {
                     MusicLookupResult? lookup = await svc.GetInfoAsync( firstValue );
                     if (lookup is not null) { input.Results.Add( provider, lookup ); }
                 } catch (Exception ex) {
-                    LogSecondaryLookupError( Logger, ex, provider, firstValue.Artist, firstValue.Title, firstValue.ExternalId, firstValue.IsAlbum ?? false, string.Join( ", ", completedList.Select( l => l.ToString( ) ) ) );
+                    if (Logger.IsEnabled( LogLevel.Error )) {
+                        LogSecondaryLookupError( Logger, ex, provider, firstValue.Artist, firstValue.Title, firstValue.ExternalId, firstValue.IsAlbum ?? false, string.Join( ", ", completedList.Select( l => l.ToString( ) ) ) );
+                    }
                     if (Logger.IsEnabled( LogLevel.Trace )) {
                         string serializedInput = JsonSerializer.Serialize( input, SerializerOptions );
                         LogSecondaryLookupTrace( Logger, serializedInput );

@@ -280,16 +280,6 @@ DEL keys:track_abc123
 DEL meta:track_abc123
 ```
 
-### Migration from SQLite
-
-The system includes a `SqliteToRedisMigrator` for migrating existing SQLite cache data to Redis:
-
-```bash
-# Run the migration (via CacheBootstrap worker or manual invocation)
-# All SQLite MediaLinkCacheEntry records are migrated to Redis indices
-# ATProto PDS records remain unchanged (source of truth)
-```
-
 ## Limitations
 
 - Redis keys expire after `CacheDays` (stale records are refreshed on access)

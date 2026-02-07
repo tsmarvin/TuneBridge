@@ -32,6 +32,7 @@ FROM base AS final
 
 # Create necessary directories with proper permissions (as root, before switching to app user)
 RUN mkdir -p /app/data && \
+    mkdir -p /app/keys && \
     mkdir -p /src
 
 # Copy published application (publish/src/* -> /src/*, publish/entrypoint.sh -> /entrypoint.sh)

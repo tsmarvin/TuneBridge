@@ -46,7 +46,7 @@ public class DashboardAuthorizationTests : IDisposable {
             .AsEnumerable()
             .Where( kv => kv.Value is not null )
             .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
-            .ToDictionary( kv => kv.Key, kv => kv.Value );
+            .ToDictionary( );
 
         // Force Discord token to null to prevent Discord service registration
         configData["BridgeBeats:DiscordToken"] = string.Empty;

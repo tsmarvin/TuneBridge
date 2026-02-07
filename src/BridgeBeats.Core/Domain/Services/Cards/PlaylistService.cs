@@ -205,7 +205,7 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             }
 
             // Base32 alphabet (RFC 4648)
-            const string base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+            const string Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
             StringBuilder result = new( );
             int bits = 0;
@@ -218,13 +218,13 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
                 while (bits >= 5) {
                     bits -= 5;
                     int index = (value >> bits) & 0x1F;
-                    _ = result.Append( base32Alphabet[index] );
+                    _ = result.Append( Base32Alphabet[index] );
                 }
             }
 
             if (bits > 0) {
                 int index = (value << (5 - bits)) & 0x1F;
-                _ = result.Append( base32Alphabet[index] );
+                _ = result.Append( Base32Alphabet[index] );
             }
 
             // Remove padding ('=') for URL safety

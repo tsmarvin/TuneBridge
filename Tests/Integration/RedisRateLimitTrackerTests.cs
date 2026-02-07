@@ -116,7 +116,7 @@ public class RedisRateLimitTrackerTests {
 
         // RetryAfter should be close to what we set (within a second due to timing)
         TimeSpan diff = (retryAfter - state.RetryAfter.Value).Duration( );
-        Assert.IsTrue( diff < TimeSpan.FromSeconds( 1 ), $"RetryAfter diff was {diff}" );
+        Assert.IsLessThan( diff, TimeSpan.FromSeconds( 1 ), $"RetryAfter diff was {diff}" );
     }
 
     /// <summary>
@@ -209,9 +209,9 @@ public class RedisRateLimitTrackerTests {
         Assert.HasCount( 2, spotifyEndpoints );
         Assert.HasCount( 1, appleEndpoints );
 
-        Assert.IsTrue( spotifyEndpoints.Any( e => e.Endpoint == "/v1/search" ) );
-        Assert.IsTrue( spotifyEndpoints.Any( e => e.Endpoint == "/v1/tracks" ) );
-        Assert.IsTrue( appleEndpoints.Any( e => e.Endpoint == "/v1/catalog" ) );
+        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/search", spotifyEndpoints );
+        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/tracks", spotifyEndpoints );
+        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/catalog", appleEndpoints );
     }
 
     /// <summary>

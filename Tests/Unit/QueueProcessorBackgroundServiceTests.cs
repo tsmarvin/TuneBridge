@@ -197,7 +197,7 @@ public class QueueProcessorBackgroundServiceTests {
         QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
 
         SetupNotRateLimited( );
-        SetupLookupSuccess( request );
+        SetupLookupSuccess( );
         SetupSagaNotComplete( request.SagaId );
 
         // Setup queue to return one message then null (to exit loop)
@@ -268,7 +268,7 @@ public class QueueProcessorBackgroundServiceTests {
         QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
 
         SetupNotRateLimited( );
-        SetupLookupSuccess( request );
+        SetupLookupSuccess( );
         SetupSagaNotComplete( request.SagaId );
 
         int callCount = 0;
@@ -309,7 +309,7 @@ public class QueueProcessorBackgroundServiceTests {
         QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
 
         SetupNotRateLimited( );
-        SetupLookupSuccess( request );
+        SetupLookupSuccess( );
         SetupSagaNotComplete( request.SagaId );
 
         int callCount = 0;
@@ -342,7 +342,7 @@ public class QueueProcessorBackgroundServiceTests {
         QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
 
         SetupNotRateLimited( );
-        SetupLookupSuccess( request );
+        SetupLookupSuccess( );
         SetupSagaComplete( request.SagaId );
 
         int callCount = 0;
@@ -782,7 +782,7 @@ public class QueueProcessorBackgroundServiceTests {
 
         SetupNotRateLimited( );
         _ = _lookupServiceMock.Setup( l => l.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
-            .ThrowsAsync( new Exception( "Test error" ) );
+            .ThrowsAsync( new InvalidOperationException( "Test error" ) );
         SetupSagaNotComplete( request.SagaId );
 
         int callCount = 0;
@@ -827,7 +827,7 @@ public class QueueProcessorBackgroundServiceTests {
 
         SetupNotRateLimited( );
         _ = _lookupServiceMock.Setup( l => l.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
-            .ThrowsAsync( new Exception( "Test error" ) );
+            .ThrowsAsync( new InvalidOperationException( "Test error" ) );
         SetupSagaNotComplete( request.SagaId );
 
         int callCount = 0;
@@ -863,7 +863,7 @@ public class QueueProcessorBackgroundServiceTests {
 
         SetupNotRateLimited( );
         _ = _lookupServiceMock.Setup( l => l.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
-            .ThrowsAsync( new Exception( "Test error" ) );
+            .ThrowsAsync( new InvalidOperationException( "Test error" ) );
         SetupSagaNotComplete( request.SagaId );
 
         int callCount = 0;
@@ -899,7 +899,7 @@ public class QueueProcessorBackgroundServiceTests {
 
         SetupNotRateLimited( );
         _ = _lookupServiceMock.Setup( l => l.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
-            .ThrowsAsync( new Exception( "Test error" ) );
+            .ThrowsAsync( new InvalidOperationException( "Test error" ) );
         SetupSagaNotComplete( request.SagaId );
 
         int callCount = 0;
@@ -1038,8 +1038,7 @@ public class QueueProcessorBackgroundServiceTests {
     /// <summary>
     /// Configures the lookup service mock to return a successful result for all lookup methods.
     /// </summary>
-    /// <param name="request">The request used to determine the lookup context.</param>
-    private void SetupLookupSuccess( QueuedLookupRequest request ) {
+    private void SetupLookupSuccess( ) {
         MusicLookupResult result = CreateLookupResult( );
 
         // Setup based on lookup type

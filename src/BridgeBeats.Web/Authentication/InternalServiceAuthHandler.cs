@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 
 namespace BridgeBeats.Web.Authentication;
 
@@ -9,23 +10,21 @@ namespace BridgeBeats.Web.Authentication;
 /// Authentication handler for internal service-to-service communication.
 /// Validates requests from trusted internal services (e.g., Discord worker) using a shared secret key.
 /// </summary>
-public class InternalServiceAuthHandler : AuthenticationHandler<InternalServiceAuthOptions> {
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="InternalServiceAuthHandler"/> class.
-    /// </summary>
-    public InternalServiceAuthHandler(
-        IOptionsMonitor<InternalServiceAuthOptions> options,
-        ILoggerFactory logger,
-        UrlEncoder encoder
-    ) : base( options, logger, encoder ) { }
+/// <remarks>
+/// Initializes a new instance of the <see cref="InternalServiceAuthHandler"/> class.
+/// </remarks>
+public class InternalServiceAuthHandler(
+    IOptionsMonitor<InternalServiceAuthOptions> options,
+    ILoggerFactory logger,
+    UrlEncoder encoder
+) : AuthenticationHandler<InternalServiceAuthOptions>( options, logger, encoder ) {
 
     /// <summary>
     /// Validates the X-Service-Key header against the configured internal service key.
     /// </summary>
     /// <returns>An <see cref="AuthenticateResult"/> indicating success or failure.</returns>
     protected override Task<AuthenticateResult> HandleAuthenticateAsync( ) {
-        if (!Request.Headers.TryGetValue( InternalServiceDefaults.HeaderName, out Microsoft.Extensions.Primitives.StringValues headerValue )) {
+        if (!Request.Headers.TryGetValue( InternalServiceDefaults.HeaderName, out StringValues headerValue )) {
             return Task.FromResult( AuthenticateResult.NoResult( ) );
         }
 
