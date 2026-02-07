@@ -77,7 +77,7 @@ services:
     healthcheck:
       test: >
         sh -c 'if [ -f /run/secrets/redis_password ]; then
-          redis-cli --no-auth-warning -a "$(cat /run/secrets/redis_password)" ping | grep -q PONG;
+          redis-cli --no-auth-warning -a "$(head -n 1 /run/secrets/redis_password)" ping | grep -q PONG;
         else
           redis-cli ping | grep -q PONG;
         fi'
