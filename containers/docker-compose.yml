@@ -66,16 +66,21 @@ services:
     command: >
       sh -c "mkdir -p /usr/local/etc/redis || { echo 'ERROR: Failed to create Redis config directory' >&2; exit 1; };
       if [ -f /run/secrets/redis_password ]; then
-        head -n 1 /run/secrets/redis_password | awk '{print \"requirepass \" $$0 \"\\nappendonly yes\"}' > /usr/local/etc/redis/redis.conf &&
-        redis-server /usr/local/etc/redis/redis.conf;
+        head -n 1 /run/secrets/redis_password | awk '{print \"requirepass \" $$0; print \"appendonly yes\"}' > /usr/local/etc/redis/redis.conf &&
+        exec redis-server /usr/local/etc/redis/redis.conf;
       else
-        redis-server --appendonly yes;
+        exec redis-server --appendonly yes;
       fi"
     volumes:
       - bridgebeats-redis-data:/data
       - ./secrets/redis_password.txt:/run/secrets/redis_password:ro
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: >
+        sh -c 'if [ -f /run/secrets/redis_password ]; then
+          redis-cli -a "$(cat /run/secrets/redis_password)" ping | grep -q PONG;
+        else
+          redis-cli ping | grep -q PONG;
+        fi'
       interval: 10s
       timeout: 5s
       retries: 5

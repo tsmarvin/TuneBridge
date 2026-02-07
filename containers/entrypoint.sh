@@ -5,7 +5,8 @@ set -eu
 read_secret() {
     secret_path="/run/secrets/$1"
     if [ -f "$secret_path" ]; then
-   cat "$secret_path"
+   # Strip trailing newlines to prevent JSON/config corruption
+   tr -d '\r\n' < "$secret_path"
     else
         echo ""
     fi
