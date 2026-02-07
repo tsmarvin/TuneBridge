@@ -239,10 +239,10 @@ public class SagaCoordinatorBackgroundServiceTests {
             ) )
             .ReturnsAsync( [completeSaga] );
 
-        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
         // Act - Start and quickly cancel after one poll cycle
@@ -298,7 +298,7 @@ public class SagaCoordinatorBackgroundServiceTests {
 
         // Assert - Should not have written anything
         _atProtoStorageMock.Verify(
-            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ),
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never
         );
     }
@@ -320,10 +320,10 @@ public class SagaCoordinatorBackgroundServiceTests {
             ) )
             .ReturnsAsync( [completeSaga] );
 
-        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
         // Act
@@ -340,7 +340,7 @@ public class SagaCoordinatorBackgroundServiceTests {
 
         // Assert - Should have written to ATProto
         _atProtoStorageMock.Verify(
-            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ),
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
 
@@ -352,7 +352,7 @@ public class SagaCoordinatorBackgroundServiceTests {
 
         // Assert - Should have cached the result
         _cacheRepositoryMock.Verify(
-            c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ) ),
+            c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
 
@@ -383,10 +383,10 @@ public class SagaCoordinatorBackgroundServiceTests {
             ) )
             .ReturnsAsync( [partialSaga] );
 
-        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
         // Act
@@ -434,13 +434,13 @@ public class SagaCoordinatorBackgroundServiceTests {
 
         // First saga write fails, second succeeds
         int callCount = 0;
-        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( ( ) => {
                 callCount++;
-                return callCount == 1 ? throw new Exception( "Simulated write failure" ) : TestRecordUri;
+                return callCount == 1 ? throw new InvalidOperationException( "Simulated write failure" ) : TestRecordUri;
             } );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ) ) )
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
         // Act

@@ -23,7 +23,6 @@ using RetryAfterLimitHandler = BridgeBeats.Core.Domain.Providers.Common.RetryAft
 using SagaResultCombiner = BridgeBeats.Core.Domain.Services.Queue.SagaResultCombiner;
 using SpotifyLookupService = BridgeBeats.Core.Domain.Providers.Spotify.SpotifyLookupService;
 using SpotifyTokenHandler = BridgeBeats.Core.Domain.Providers.Spotify.SpotifyTokenHandler;
-using SqliteToRedisMigrator = BridgeBeats.Core.Infrastructure.Cache.SqliteToRedisMigrator;
 using StatisticsService = BridgeBeats.Core.Domain.Services.StatisticsService;
 using TidalLookupService = BridgeBeats.Core.Domain.Providers.Tidal.TidalLookupService;
 using TidalTokenHandler = BridgeBeats.Core.Domain.Providers.Tidal.TidalTokenHandler;
@@ -60,58 +59,6 @@ public static class LogEventIds {
             /// EventId for <see cref="RedisMediaLinkCache.TryGetCachedResultAsync"/>.
             /// </summary>
             public const int RedisMediaLinkCacheGetByUrl = 1000;
-
-            // SqliteToRedisMigrator (1050-1074)
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogStarting"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorStarting = 1050;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogAlreadyComplete"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorAlreadyComplete = 1051;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogNoSqlite"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorNoSqlite = 1052;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogCompleted"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorCompleted = 1053;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogNoTables"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorNoTables = 1054;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogFailed"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorFailed = 1055;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogFoundEntries"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorFoundEntries = 1056;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogEntryFailed"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorEntryFailed = 1057;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogMigrationComplete"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorMigrationComplete = 1058;
-
-            /// <summary>
-            /// EventId for <see cref="SqliteToRedisMigrator.LogProcessedEntry"/>.
-            /// </summary>
-            public const int SqliteToRedisMigratorProcessedEntry = 1059;
 
             // ATProtoStorageService (1075-1099)
 

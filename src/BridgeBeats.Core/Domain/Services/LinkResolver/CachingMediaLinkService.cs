@@ -83,9 +83,7 @@ public sealed partial class CachingMediaLinkService(
                 MediaLinkResult rateLimitResult = new( ) {
                     Messages = [],
                     IsPartial = true,
-                    RateLimitedProviders = lookupResult.RateLimitedProviders
-                        .Select( r => r.Provider )
-                        .ToList( )
+                    RateLimitedProviders = [.. lookupResult.RateLimitedProviders.Select( r => r.Provider )]
                 };
 
                 foreach (ProviderRateLimitInfo rateLimitInfo in lookupResult.RateLimitedProviders) {

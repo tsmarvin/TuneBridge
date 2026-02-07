@@ -58,6 +58,7 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
 
         /// <summary>Logger for recording errors and diagnostic information.</summary>
         protected readonly ILogger<MusicLookupServiceBase> Logger = logger;
+
         /// <summary>JSON serialization options for logging API responses.</summary>
         protected readonly JsonSerializerOptions SerializerOptions = serializerOptions;
 
@@ -76,39 +77,6 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
         }
 
         /// <summary>
-        /// Extracts the external ID (ISRC or UPC) from a JSON element.
-        /// </summary>
-        /// <param name="element">The JSON element to extract from.</param>
-        /// <param name="isAlbum">True to extract UPC (album), false to extract ISRC (track).</param>
-        /// <returns>The external ID if found, otherwise an empty string.</returns>
-        protected static string GetExternalIdFromJson( JsonElement element, bool isAlbum ) {
-            if (element.TryGetProperty( "external_ids", out JsonElement idProps )) {
-                element = idProps;
-            }
-
-            return isAlbum
-                    ? (element.TryGetProperty( "upc", out JsonElement upcProp )
-                            ? upcProp.GetString( ) ?? string.Empty
-                            : element.TryGetProperty( "barcodeId", out JsonElement barcodeProp )
-                                ? barcodeProp.GetString( ) ?? string.Empty
-                                : string.Empty)
-                    : (element.TryGetProperty( "isrc", out JsonElement isrcProp )
-                            ? isrcProp.GetString( ) ?? string.Empty
-                            : string.Empty);
-        }
-
-        /// <summary>
-        /// Validates if an album's title matches the expected title after sanitization.
-        /// </summary>
-        /// <param name="album">The album to validate.</param>
-        /// <param name="title">The expected title.</param>
-        /// <returns>True if the titles match after sanitization.</returns>
-        protected static bool ValidateAlbumTitle( MusicLookupResult? album, string title )
-            => album != null &&
-                SanitizeAlbumTitle( title )
-                .Equals( SanitizeAlbumTitle( album.Title ), StringComparison.InvariantCultureIgnoreCase );
-
-        /// <summary>
         /// Validates if an album's title matches a pre-sanitized title.
         /// </summary>
         /// <param name="albumTitle">The album title to validate.</param>
@@ -117,28 +85,6 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
         protected static bool ValidateSanitizedAlbumTitle( string albumTitle, string sanitizedTitle )
             => sanitizedTitle
                 .Equals( SanitizeAlbumTitle( albumTitle ), StringComparison.InvariantCultureIgnoreCase );
-
-        /// <summary>
-        /// Validates if a song's title matches the expected title after sanitization.
-        /// </summary>
-        /// <param name="song">The song to validate.</param>
-        /// <param name="title">The expected title.</param>
-        /// <returns>True if the titles match after sanitization.</returns>
-        protected static bool ValidateSongTitle( MusicLookupResult? song, string title )
-            => song != null &&
-                SanitizeSongTitle( title )
-                .Equals( SanitizeSongTitle( song.Title ), StringComparison.InvariantCultureIgnoreCase );
-
-        /// <summary>
-        /// Validates if a song's title matches a pre-sanitized title.
-        /// </summary>
-        /// <param name="song">The song to validate.</param>
-        /// <param name="sanitizedTitle">The pre-sanitized expected title.</param>
-        /// <returns>True if the titles match.</returns>
-        protected static bool ValidateSanitizedSongTitle( MusicLookupResult? song, string sanitizedTitle )
-            => song != null &&
-                sanitizedTitle
-                .Equals( SanitizeSongTitle( song.Title ), StringComparison.InvariantCultureIgnoreCase );
 
         /// <summary>
         /// Sanitizes a title string by removing ignored characters for matching.
@@ -195,8 +141,14 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
         [LoggerMessage(
             EventId = LogEventIds.Providers.Common.ApiRequestError,
             Level = LogLevel.Error,
-            Message = "An error occurred while fetching {LookupKey}data from {Provider}: HTTP {StatusCode} {ReasonPhrase}" )]
-        internal static partial void LogApiRequestError( ILogger logger, LookupRequestType lookupKey, string provider, int statusCode, string? reasonPhrase );
+            Message = "An error occurred while fetching {LookupKey} data from {Provider}: HTTP {StatusCode} {ReasonPhrase}" )]
+        internal static partial void LogApiRequestError(
+            ILogger logger,
+            LookupRequestType lookupKey,
+            string provider,
+            int statusCode,
+            string? reasonPhrase
+        );
 
         #endregion LoggerMessage Methods
 

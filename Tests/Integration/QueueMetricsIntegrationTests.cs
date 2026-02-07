@@ -69,11 +69,7 @@ public class QueueMetricsIntegrationTests {
     [TestMethod]
     public void RegisterQueueDepthGauges_DoesNotThrow( ) {
         // Act - Should not throw
-        try {
-            QueueMetrics.RegisterQueueDepthGauges( s_redis! );
-        } catch (Exception ex) {
-            Assert.Fail( $"RegisterQueueDepthGauges should not throw: {ex.Message}" );
-        }
+        QueueMetrics.RegisterQueueDepthGauges( s_redis! );
 
         // Assert - No exception means success
         Assert.IsNotNull( s_redis );

@@ -1,4 +1,5 @@
 using BridgeBeats.Core.Infrastructure.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,20 +11,31 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
     public static class IdentityServiceExtensions {
 
         /// <summary>
-        /// Adds ASP.NET Core Identity services with secure password requirements and Data Protection.
+        /// Adds ASP.NET Core Identity services with secure password requirements, Data Protection
+        /// with persistent key storage, and personal data encryption for <c>[ProtectedPersonalData]</c> fields.
         /// </summary>
         /// <param name="services">The service collection to configure.</param>
+        /// <param name="dataProtectionKeyPath">
+        /// Directory path for persisting Data Protection keys. Defaults to <c>"./keys"</c>.
+        /// In Docker, this should be a mounted volume (e.g., <c>/app/keys</c>).
+        /// </param>
         /// <returns>The configured service collection.</returns>
         /// <remarks>
-        /// Data Protection is configured but [ProtectedPersonalData] attribute will not function
-        /// without implementing and registering IPersonalDataProtector. This is a known limitation.
+        /// Data Protection keys are persisted to the file system at <paramref name="dataProtectionKeyPath"/>.
+        /// The <c>AddPersonalDataProtection</c> call registers <see cref="DataProtectionLookupProtector"/>
+        /// and <see cref="DataProtectionKeyRing"/>, enabling automatic encryption/decryption for all
+        /// Identity fields marked with <c>[ProtectedPersonalData]</c>.
         /// </remarks>
-        public static IServiceCollection AddBridgeBeatsIdentity( this IServiceCollection services ) {
-            // Configure Data Protection for infrastructure
-            // Keys are stored in application data directory by default
-            // Note: [ProtectedPersonalData] attribute requires IPersonalDataProtector to be registered
-            // separately - it is NOT automatically functional with just AddDataProtection().
-            _ = services.AddDataProtection( );
+        public static IServiceCollection AddBridgeBeatsIdentity(
+            this IServiceCollection services,
+            string dataProtectionKeyPath = "./keys"
+        ) {
+            // Configure Data Protection with persistent key storage.
+            // Keys must survive container restarts to decrypt existing data.
+            DirectoryInfo keyDirectory = new( dataProtectionKeyPath );
+            _ = services.AddDataProtection( )
+                .SetApplicationName( "BridgeBeats" )
+                .PersistKeysToFileSystem( keyDirectory );
 
             _ = services.AddIdentityCore<ApplicationUser>( options => {
                 // Password settings
@@ -39,7 +51,8 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
             .AddRoles<IdentityRole>( )
             .AddEntityFrameworkStores<ApplicationDbContext>( )
             .AddSignInManager( )
-            .AddDefaultTokenProviders( );
+            .AddDefaultTokenProviders( )
+            .AddPersonalDataProtection<DataProtectionLookupProtector, DataProtectionKeyRing>( );
 
             // Register scoped ApplicationDbContext for Identity framework using the factory
             _ = services.AddScoped( sp => {

@@ -133,7 +133,7 @@ public static class QueueMetrics {
     #region Observable Gauges
 
     private static bool s_gaugesRegistered;
-    private static readonly object s_gaugesLock = new( );
+    private static readonly Lock s_gaugesLock = new( );
 
     /// <summary>
     /// Registers observable gauges for queue depth metrics.

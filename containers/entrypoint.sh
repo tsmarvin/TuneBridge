@@ -26,8 +26,9 @@ export ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS="true"
 export DASHBOARD__MCP__DISABLED="true"
 
 # ---- Web app port configuration ----
-# Respect Aspire-assigned port in development, default to 10000 for production
-WEB_PORT="${ASPNETCORE_HTTP_PORTS:-10000}"
+# Use explicit WEB_PORT if set, default to 10000 for production.
+# Do not use ASPNETCORE_HTTP_PORTS as the base image sets it to 8080.
+WEB_PORT="${WEB_PORT:-10000}"
 
 # ---- Configure defaults ----
 BASEURL="${BASEURL:-"bridgebeats.link"}"
@@ -69,7 +70,6 @@ REDIS_PORT="${REDIS_PORT:-6379}"
 REDIS_PASSWORD="$(read_secret "redis_password")"
 
 CACHE_DAYS="${CACHE_DAYS:-7}"
-LINK_CACHE_CONNECTION_STRING="${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}"
 CARD_CACHE_EXPIRATION_HOURS="${CARD_CACHE_EXPIRATION_HOURS:-1}"
 CARD_CACHE_CLEANUP_INTERVAL="${CARD_CACHE_CLEANUP_INTERVAL:-500}"
 
@@ -88,6 +88,9 @@ RATE_LIMIT_REQUESTS_PER_HOUR="${RATE_LIMIT_REQUESTS_PER_HOUR:-20}"
 # Logging configuration
 LOG_DIR_PATH="${LOG_DIR_PATH:-/app/data/logs}"
 
+# Data Protection key persistence
+DATA_PROTECTION_KEY_PATH="${DATA_PROTECTION_KEY_PATH:-/app/keys}"
+
 # Resilience configuration
 RESILIENCE_MAX_RETRY_AFTER_SECONDS="${RESILIENCE_MAX_RETRY_AFTER_SECONDS:-120}"
 RESILIENCE_MAX_RETRY_ATTEMPTS="${RESILIENCE_MAX_RETRY_ATTEMPTS:-5}"
@@ -97,8 +100,9 @@ RESILIENCE_ATTEMPT_TIMEOUT_SECONDS="${RESILIENCE_ATTEMPT_TIMEOUT_SECONDS:-10}"
 # escape backslashes (for path safety) ----
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 
-# 0) Create logs directory if it doesn't exist
+# 0) Create required directories
 mkdir -p /app/data/logs
+mkdir -p "$DATA_PROTECTION_KEY_PATH"
 
 # 1) Remove existing appsettings.json if present
 [ -f /src/BridgeBeats.Web/appsettings.json ] && rm -f /src/BridgeBeats.Web/appsettings.json
@@ -141,10 +145,10 @@ cat > /src/BridgeBeats.Web/appsettings.json <<EOF
     "ATProtoUserDID": "$ATPROTO_USER_DID",
     "ATProtoPassword": "$ATPROTO_PASSWORD",
     "CacheDays": $CACHE_DAYS,
-    "LinkCacheConnectionString": "$(escape_bs "$LINK_CACHE_CONNECTION_STRING")",
     "BaseUrl": "$BASEURL",
     "ATProtoOAuthSigningKeyPath": "$ATPROTO_OAUTH_KEY_PATH",
     "LogDirPath": "$(escape_bs "$LOG_DIR_PATH")",
+    "DataProtectionKeyPath": "$(escape_bs "$DATA_PROTECTION_KEY_PATH")",
     "CardCacheExpirationHours": $CARD_CACHE_EXPIRATION_HOURS,
     "CardCacheCleanupInterval": $CARD_CACHE_CLEANUP_INTERVAL,
     "Resilience": {
@@ -206,9 +210,9 @@ export Parameters__NodeNumber="$NODE_NUMBER"
 export Parameters__BaseUrl="$BASEURL"
 export Parameters__RateLimitRequestsPerHour="$RATE_LIMIT_REQUESTS_PER_HOUR"
 export Parameters__CacheDays="$CACHE_DAYS"
-export Parameters__LinkCacheConnectionString="$LINK_CACHE_CONNECTION_STRING"
 export Parameters__IdentityConnectionString="$IDENTITY_CONNECTION_STRING"
 export Parameters__LogDirPath="$LOG_DIR_PATH"
+export Parameters__DataProtectionKeyPath="$DATA_PROTECTION_KEY_PATH"
 export Parameters__CardCacheExpirationHours="$CARD_CACHE_EXPIRATION_HOURS"
 export Parameters__CardCacheCleanupInterval="$CARD_CACHE_CLEANUP_INTERVAL"
 export Parameters__ResilienceMaxRetryAfterSeconds="$RESILIENCE_MAX_RETRY_AFTER_SECONDS"

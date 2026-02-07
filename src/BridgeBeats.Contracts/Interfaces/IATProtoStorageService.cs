@@ -13,9 +13,10 @@ public interface IATProtoStorageService {
     /// If a record with the same rkey exists, it will be updated (upsert).
     /// </summary>
     /// <param name="result">The MediaLinkResult to store.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
     /// <returns>The AT-URI of the created or updated record.</returns>
     /// <exception cref="InvalidOperationException">Thrown if no externalId is found in the result.</exception>
-    Task<string> StoreMediaLinkResultAsync( MediaLinkResult result );
+    Task<string> StoreMediaLinkResultAsync( MediaLinkResult result, CancellationToken cancellationToken = default );
 
     /// <summary>
     /// Retrieves a MediaLinkResult from ATProto PDS by its AT-URI.

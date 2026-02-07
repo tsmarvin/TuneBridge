@@ -326,11 +326,9 @@ public class RetryAfterExceededExceptionTests {
         TimeSpan threshold = TimeSpan.FromSeconds( 120 );
 
         // Act & Assert
-        try {
-            throw new RetryAfterExceededException( retryAfterValue, threshold, null, null );
-        } catch (Exception ex) {
-            _ = Assert.IsInstanceOfType<RetryAfterExceededException>( ex );
-        }
+        _ = Assert.ThrowsExactly<RetryAfterExceededException>(
+            ( ) => throw new RetryAfterExceededException( retryAfterValue, threshold, null, null )
+        );
     }
 
     #endregion
@@ -359,7 +357,7 @@ public class RetryAfterExceededExceptionTests {
 
         // Can calculate when to retry
         DateTimeOffset suggestedRetryTime = DateTimeOffset.UtcNow.Add( exception.RetryAfterValue );
-        Assert.IsTrue( suggestedRetryTime > DateTimeOffset.UtcNow );
+        Assert.IsGreaterThan( suggestedRetryTime, DateTimeOffset.UtcNow );
     }
 
     #endregion

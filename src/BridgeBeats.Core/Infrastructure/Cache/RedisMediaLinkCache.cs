@@ -161,12 +161,12 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
     }
 
     /// <inheritdoc/>
-    public async Task<string> CacheResultAsync( MediaLinkResult result ) {
+    public async Task<string> CacheResultAsync( MediaLinkResult result, CancellationToken cancellationToken = default ) {
         ArgumentNullException.ThrowIfNull( result );
 
         try {
             // Store on ATProto PDS first (creates/updates with deterministic rkey)
-            string recordUri = await _atprotoStorage.StoreMediaLinkResultAsync( result );
+            string recordUri = await _atprotoStorage.StoreMediaLinkResultAsync( result, cancellationToken );
             string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Remove old lookup keys before adding new ones (explicit cleanup on refresh)

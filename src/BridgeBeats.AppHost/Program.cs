@@ -21,41 +21,42 @@ bool isProduction = builder.Environment.IsProduction();
 IConfiguration config = builder.Configuration;
 
 // Music Provider Parameters - At least one music provider is required for the application to function
-IResourceBuilder<ParameterResource> spotifyClientId = builder.AddParameter( "SpotifyClientId", secret: true );
+IResourceBuilder<ParameterResource> spotifyClientId     = builder.AddParameter( "SpotifyClientId", secret: true );
 IResourceBuilder<ParameterResource> spotifyClientSecret = builder.AddParameter( "SpotifyClientSecret", secret: true );
-IResourceBuilder<ParameterResource> appleTeamId = builder.AddParameter( "AppleTeamId", secret: true );
-IResourceBuilder<ParameterResource> appleKeyId = builder.AddParameter( "AppleKeyId", secret: true );
-IResourceBuilder<ParameterResource> appleKeyPath = builder.AddParameter( "AppleKeyPath" );
-IResourceBuilder<ParameterResource> tidalClientId = builder.AddParameter( "TidalClientId", secret: true );
-IResourceBuilder<ParameterResource> tidalClientSecret = builder.AddParameter( "TidalClientSecret", secret: true );
+IResourceBuilder<ParameterResource> appleTeamId         = builder.AddParameter( "AppleTeamId", secret: true );
+IResourceBuilder<ParameterResource> appleKeyId          = builder.AddParameter( "AppleKeyId", secret: true );
+IResourceBuilder<ParameterResource> appleKeyPath        = builder.AddParameter( "AppleKeyPath" );
+IResourceBuilder<ParameterResource> tidalClientId       = builder.AddParameter( "TidalClientId", secret: true );
+IResourceBuilder<ParameterResource> tidalClientSecret   = builder.AddParameter( "TidalClientSecret", secret: true );
 
 // Discord Bot Parameter
 IResourceBuilder<ParameterResource> discordToken = builder.AddParameter( "DiscordToken", secret: true );
 
 // ATProto (Bluesky) Parameters
 IResourceBuilder<ParameterResource> atProtoIdentifier = builder.AddParameter( "ATProtoIdentifier", secret: true );
-IResourceBuilder<ParameterResource> atProtoPassword = builder.AddParameter( "ATProtoPassword", secret: true );
-IResourceBuilder<ParameterResource> atProtoUserDID = builder.AddParameter( "ATProtoUserDID", secret: true );
-IResourceBuilder<ParameterResource> atProtoPdsUri = builder.AddParameter( "ATProtoPdsUri" );
+IResourceBuilder<ParameterResource> atProtoPassword   = builder.AddParameter( "ATProtoPassword", secret: true );
+IResourceBuilder<ParameterResource> atProtoUserDID    = builder.AddParameter( "ATProtoUserDID", secret: true );
+IResourceBuilder<ParameterResource> atProtoPdsUri     = builder.AddParameter( "ATProtoPdsUri" );
 
 // Security Parameters
-IResourceBuilder<ParameterResource> apiKeySalt = builder.AddParameter( "ApiKeySalt", secret: true );
+IResourceBuilder<ParameterResource> apiKeySalt         = builder.AddParameter( "ApiKeySalt", secret: true );
 IResourceBuilder<ParameterResource> internalServiceKey = builder.AddParameter( "InternalServiceKey", secret: true );
 
 // Additional configuration parameters
-IResourceBuilder<ParameterResource> nodeNumber = builder.AddParameter( "NodeNumber" );
-IResourceBuilder<ParameterResource> baseUrl = builder.AddParameter( "BaseUrl" );
+IResourceBuilder<ParameterResource> nodeNumber               = builder.AddParameter( "NodeNumber" );
+IResourceBuilder<ParameterResource> baseUrl                  = builder.AddParameter( "BaseUrl" );
 IResourceBuilder<ParameterResource> rateLimitRequestsPerHour = builder.AddParameter( "RateLimitRequestsPerHour" );
-IResourceBuilder<ParameterResource> cacheDays = builder.AddParameter( "CacheDays" );
+IResourceBuilder<ParameterResource> cacheDays                = builder.AddParameter( "CacheDays" );
 IResourceBuilder<ParameterResource> identityConnectionString = builder.AddParameter( "IdentityConnectionString" );
-IResourceBuilder<ParameterResource> logDirPath = builder.AddParameter( "LogDirPath" );
+IResourceBuilder<ParameterResource> logDirPath               = builder.AddParameter( "LogDirPath" );
 IResourceBuilder<ParameterResource> cardCacheExpirationHours = builder.AddParameter( "CardCacheExpirationHours" );
 IResourceBuilder<ParameterResource> cardCacheCleanupInterval = builder.AddParameter( "CardCacheCleanupInterval" );
+IResourceBuilder<ParameterResource> dataProtectionKeyPath    = builder.AddParameter( "DataProtectionKeyPath" );
 
 // Resilience configuration parameters
-IResourceBuilder<ParameterResource> resilienceMaxRetryAfterSeconds = builder.AddParameter( "ResilienceMaxRetryAfterSeconds" );
-IResourceBuilder<ParameterResource> resilienceMaxRetryAttempts = builder.AddParameter( "ResilienceMaxRetryAttempts" );
-IResourceBuilder<ParameterResource> resilienceTotalTimeoutMinutes = builder.AddParameter( "ResilienceTotalTimeoutMinutes" );
+IResourceBuilder<ParameterResource> resilienceMaxRetryAfterSeconds  = builder.AddParameter( "ResilienceMaxRetryAfterSeconds" );
+IResourceBuilder<ParameterResource> resilienceMaxRetryAttempts      = builder.AddParameter( "ResilienceMaxRetryAttempts" );
+IResourceBuilder<ParameterResource> resilienceTotalTimeoutMinutes   = builder.AddParameter( "ResilienceTotalTimeoutMinutes" );
 IResourceBuilder<ParameterResource> resilienceAttemptTimeoutSeconds = builder.AddParameter( "ResilienceAttemptTimeoutSeconds" );
 
 // ============================================================================
@@ -338,9 +339,9 @@ if (isProduction) {
 IResourceBuilder<ProjectResource>? bridgebeatsWebProject = null;
 
 if (isProduction) {
-    bridgebeatsWebExe = AddProductionExecutable( "bridgebeats", "BridgeBeats.Web", httpPort: 10000, workingDirectory: "/src/BridgeBeats.Web" );
+    bridgebeatsWebExe = AddProductionExecutable( "bridgebeats", "BridgeBeats.Web", workingDirectory: "/src/BridgeBeats.Web" );
     _ = bridgebeatsWebExe
-        .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http" )
+        .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http", isProxied: false )
         .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "10000" )
         .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
         .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
@@ -357,6 +358,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
         .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
@@ -365,7 +367,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
 } else {
     bridgebeatsWebProject = builder.AddProject<Projects.BridgeBeats_Web>( "bridgebeats" )
-        .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http" );
+        .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http", isProxied: false );
     _ = bridgebeatsWebProject
         .WithReference( redis )
         .WaitFor( redis )
@@ -385,6 +387,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
         .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )

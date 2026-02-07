@@ -74,7 +74,7 @@ public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> option
                 .HasMaxLength( 128 );
             _ = entity.Property( e => e.CodeVerifier )
                 .IsRequired( )
-                .HasMaxLength( 128 );
+                .HasMaxLength( 512 );
             _ = entity.Property( e => e.Handle )
                 .IsRequired( )
                 .HasMaxLength( 256 );

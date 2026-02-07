@@ -21,7 +21,7 @@ public static class AntiforgeryTestHelper {
         JsonElement tokenResult = await tokenResponse.Content.ReadFromJsonAsync<JsonElement>( cancellationToken );
         string? token = tokenResult.GetProperty( "token" ).GetString( );
 
-        return string.IsNullOrEmpty( token ) ? throw new Exception( "Failed to obtain antiforgery token" ) : token;
+        return string.IsNullOrEmpty( token ) ? throw new InvalidOperationException( "Failed to obtain antiforgery token" ) : token;
     }
 
     /// <summary>

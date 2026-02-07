@@ -57,8 +57,9 @@ public interface IMediaLinkCacheRepository {
     /// Stores or updates (upserts) a MediaLinkResult in the cache and on ATProto PDS.
     /// </summary>
     /// <param name="result">The MediaLinkResult to cache.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
     /// <returns>The ATProto record URI.</returns>
-    Task<string> CacheResultAsync( MediaLinkResult result );
+    Task<string> CacheResultAsync( MediaLinkResult result, CancellationToken cancellationToken = default );
 
     /// <summary>
     /// Adds additional input links to an existing cache entry.

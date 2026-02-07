@@ -61,7 +61,7 @@ public class WellKnownControllerTests {
         Assert.AreEqual( "private_key_jwt", root.GetProperty( "token_endpoint_auth_method" ).GetString( ) );
         Assert.AreEqual( "ES256", root.GetProperty( "token_endpoint_auth_signing_alg" ).GetString( ) );
         Assert.AreEqual( $"{TestBaseUrl}/.well-known/jwks.json", root.GetProperty( "jwks_uri" ).GetString( ) );
-        Assert.AreEqual( true, root.GetProperty( "dpop_bound_access_tokens" ).GetBoolean( ) );
+        Assert.IsTrue( root.GetProperty( "dpop_bound_access_tokens" ).GetBoolean( ) );
 
         // Verify redirect_uris
         JsonElement redirectUris = root.GetProperty( "redirect_uris" );
@@ -110,7 +110,7 @@ public class WellKnownControllerTests {
         IActionResult result = controller.ClientMetadata( );
 
         // Assert
-        Assert.IsInstanceOfType<NotFoundObjectResult>( result );
+        _ = Assert.IsInstanceOfType<NotFoundObjectResult>( result );
     }
 
     /// <summary>
@@ -184,6 +184,6 @@ public class WellKnownControllerTests {
         IActionResult result = controller.Jwks( );
 
         // Assert
-        Assert.IsInstanceOfType<NotFoundObjectResult>( result );
+        _ = Assert.IsInstanceOfType<NotFoundObjectResult>( result );
     }
 }

@@ -5,7 +5,6 @@ using BridgeBeats.Core.Domain.Providers.AppleMusic;
 using BridgeBeats.Core.Domain.Providers.Spotify;
 using BridgeBeats.Core.Domain.Providers.Tidal;
 using BridgeBeats.Core.Domain.Services.LinkResolver;
-using BridgeBeats.Core.Infrastructure.Cache;
 using BridgeBeats.Core.Infrastructure.Identity;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -27,7 +26,6 @@ namespace BridgeBeats.Tests;
 public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     private readonly Dictionary<string, string?> _configData;
     private readonly string _identityDbPath;
-    private readonly string _linkCacheDbPath;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CustomWebApplicationFactory"/> with default configuration.
@@ -46,7 +44,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
         // Generate unique database file paths for this test instance
         string uniqueId = Guid.NewGuid().ToString( "N" )[..8];
         _identityDbPath = Path.Combine( Path.GetTempPath( ), $"BridgeBeats_Identity_{uniqueId}.db" );
-        _linkCacheDbPath = Path.Combine( Path.GetTempPath( ), $"BridgeBeats_LinkCache_{uniqueId}.db" );
 
         // Get the Redis connection string AFTER RequireRedis() has initialized the container
         string redisConnectionString = SharedTestInfrastructure.RedisConnectionString;
@@ -58,10 +55,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
             ["BridgeBeats:DiscordToken"] = "", // Empty string to prevent Discord service registration
             ["BridgeBeats:IdentityConnectionString"] = $"Data Source={_identityDbPath}",
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:ATProtoIdentifier"] = "",
-            ["BridgeBeats:ATProtoPassword"] = "",
-            ["BridgeBeats:ATProtoUserDID"] = "", // Disable ATProto by default in tests
-            ["BridgeBeats:LinkCacheConnectionString"] = $"Data Source={_linkCacheDbPath}",
             // Redis connection from shared test infrastructure (captured AFTER initialization)
             // Set both keys to ensure Aspire can find the connection string
             ["ConnectionStrings:redis"] = redisConnectionString,
@@ -95,9 +88,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
 
             if (configOverrides.TryGetValue( "BridgeBeats:IdentityConnectionString", out string? identityCs ) && identityCs != null) {
                 _identityDbPath = ExtractDataSource( identityCs );
-            }
-            if (configOverrides.TryGetValue( "BridgeBeats:LinkCacheConnectionString", out string? linkCacheCs ) && linkCacheCs != null) {
-                _linkCacheDbPath = ExtractDataSource( linkCacheCs );
             }
         }
     }
@@ -151,22 +141,14 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
             string identityConnStr = _configData.TryGetValue( "BridgeBeats:IdentityConnectionString", out string? idCs ) && idCs != null
                 ? idCs
                 : $"Data Source={_identityDbPath}";
-            string linkCacheConnStr = _configData.TryGetValue( "BridgeBeats:LinkCacheConnectionString", out string? lcCs ) && lcCs != null
-                ? lcCs
-                : $"Data Source={_linkCacheDbPath}";
 
             // Remove existing DbContext factory registrations
             _ = services.RemoveAll<IDbContextFactory<ApplicationDbContext>>( );
-            _ = services.RemoveAll<IDbContextFactory<MediaLinkCacheDbContext>>( );
             _ = services.RemoveAll<ApplicationDbContext>( );
 
             // Re-register DbContext factories with test connection strings
             _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
                 options.UseSqlite( identityConnStr )
-            );
-
-            _ = services.AddDbContextFactory<MediaLinkCacheDbContext>( options =>
-                options.UseSqlite( linkCacheConnStr )
             );
 
             // Re-register scoped ApplicationDbContext for Identity
@@ -238,15 +220,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
         // Get service provider from the server
         IServiceProvider services = Services;
 
-        // Initialize cache database
-        using (IServiceScope scope = services.CreateScope( )) {
-            IDbContextFactory<MediaLinkCacheDbContext>? cacheFactory = scope.ServiceProvider.GetService<IDbContextFactory<MediaLinkCacheDbContext>>( );
-            if (cacheFactory is not null) {
-                using MediaLinkCacheDbContext cacheContext = cacheFactory.CreateDbContext( );
-                await cacheContext.Database.MigrateAsync( );
-            }
-        }
-
         // Initialize identity database and seed roles
         using (IServiceScope scope = services.CreateScope( )) {
             IDbContextFactory<ApplicationDbContext> identityFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( );
@@ -276,7 +249,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
         if (disposing) {
             // Clean up temp database files
             TryDeleteFile( _identityDbPath );
-            TryDeleteFile( _linkCacheDbPath );
         }
     }
 

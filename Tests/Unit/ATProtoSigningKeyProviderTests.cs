@@ -41,7 +41,7 @@ public class ATProtoSigningKeyProviderTests {
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullJwk_ShouldThrow( ) {
-        Assert.ThrowsExactly<ArgumentNullException>( ( ) => new ATProtoSigningKeyProvider( null! ) );
+        _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) => new ATProtoSigningKeyProvider( null! ) );
     }
 
     /// <summary>
@@ -185,7 +185,7 @@ public class ATProtoSigningKeyProviderTests {
 
         // Assert
         Assert.IsNotNull( signature );
-        Assert.IsTrue( signature.Length > 0 );
+        Assert.IsNotEmpty( signature );
 
         // Verify the signature is valid
         bool isValid = provider.SigningKey.VerifyData( data, signature, HashAlgorithmName.SHA256 );
@@ -200,7 +200,7 @@ public class ATProtoSigningKeyProviderTests {
         // Arrange
         string jwk = CreateTestSigningKeyJwk( );
         ATProtoSigningKeyProvider provider = new( jwk );
-        ECDsa key = provider.SigningKey;
+        _ = provider.SigningKey;
 
         // Act
         provider.Dispose( );

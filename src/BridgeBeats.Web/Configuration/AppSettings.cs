@@ -105,11 +105,6 @@ namespace BridgeBeats.Web.Configuration {
         public int CacheDays { get; set; } = 7;
 
         /// <summary>
-        /// The database connection string for the link cache database (SQLite).
-        /// </summary>
-        public string LinkCacheConnectionString { get; set; } = "Data Source=bridgebeats.db";
-
-        /// <summary>
         /// The base URL for the application (e.g., https://bridgebeats.link). Used for generating OpenGraph card URLs.
         /// </summary>
         public string BaseUrl { get; set; } = string.Empty;
@@ -125,6 +120,13 @@ namespace BridgeBeats.Web.Configuration {
         /// The log directory path for the service. Each project writes to logs/{ProjectName}-.log.
         /// </summary>
         public string LogDirPath { get; set; } = "./logs";
+
+        /// <summary>
+        /// The directory path for persisting Data Protection keys.
+        /// Keys must survive container restarts to decrypt Identity personal data fields.
+        /// In Docker, this should be a mounted volume (e.g., /app/keys).
+        /// </summary>
+        public string DataProtectionKeyPath { get; set; } = "./keys";
 
         /// <summary>
         /// The number of hours to cache OpenGraph cards in memory before expiration. Default is 1 hour.

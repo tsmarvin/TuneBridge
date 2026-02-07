@@ -106,7 +106,7 @@ public sealed partial class JetStreamWatcherService(
             await Task.Delay( 500, stoppingToken ).ConfigureAwait( ConfigureAwaitOptions.SuppressThrowing );
         }
 
-        await jetStream.CloseAsync( );
+        await jetStream.CloseAsync( cancellationToken: stoppingToken );
         LogDisconnected( logger );
     }
 

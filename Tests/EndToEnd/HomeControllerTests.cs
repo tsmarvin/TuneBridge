@@ -16,9 +16,9 @@ public class HomeControllerTests {
     /// <summary>
     /// Initializes the test factory and HTTP client for all tests in this class.
     /// </summary>
-    /// <param name="_">The test context provided by MSTest (unused).</param>
+    /// <param name="context">The test context provided by MSTest.</param>
     [ClassInitialize]
-    public static async Task ClassInitialize( TestContext _ ) {
+    public static async Task ClassInitialize( TestContext context ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
             .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
@@ -31,7 +31,7 @@ public class HomeControllerTests {
             .AsEnumerable()
             .Where( kv => kv.Value is not null )
             .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
-            .ToDictionary( kv => kv.Key, kv => kv.Value );
+            .ToDictionary( );
 
         // Force Discord token to null to prevent Discord service registration
         configData["BridgeBeats:DiscordToken"] = string.Empty;
@@ -50,7 +50,7 @@ public class HomeControllerTests {
         await s_factory.InitializeDatabasesAsync( );
 
         // Fetch antiforgery token for POST requests
-        s_antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync( s_client );
+        s_antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync( s_client, context.CancellationToken );
     }
 
     /// <summary>

@@ -280,10 +280,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         // No eligible pending messages, read new messages using XREADGROUP
         // This properly claims messages from the stream (unlike XCLAIM which only works for pending messages)
         // Read a batch and check each for rate limiting
-        const int maxNewMessagesToRead = 50;
+        const int MaxNewMessagesToRead = 50;
         int messagesChecked = 0;
 
-        while (messagesChecked < maxNewMessagesToRead) {
+        while (messagesChecked < MaxNewMessagesToRead) {
             // Read one message at a time so we can check rate limits and leave blocked ones pending
             StreamEntry[] newEntries = await db.StreamReadGroupAsync(
                 stream,

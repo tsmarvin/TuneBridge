@@ -294,19 +294,16 @@ public partial class UserPlaylistATProtoService(
         await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
 
         // Find the user by their ATProto DID
-        ApplicationUser? user = await dbContext.Users
-            .FirstOrDefaultAsync( u => u.AtProtoDid == userDid, cancellationToken );
-
-        if (user is null) {
-            throw new InvalidOperationException(
+        ApplicationUser user = await dbContext.Users
+            .FirstOrDefaultAsync( u => u.AtProtoDid == userDid, cancellationToken )
+            ?? throw new InvalidOperationException(
                 $"User with ATProto DID '{userDid}' not found. User must be logged in with ATProto OAuth."
             );
-        }
 
         // Check if user has OAuth tokens
         if (string.IsNullOrEmpty( user.AtProtoAccessToken ) ||
             string.IsNullOrEmpty( user.AtProtoRefreshToken ) ||
-            string.IsNullOrEmpty( user.EncryptedAtProtoDPoPKey )) {
+            string.IsNullOrEmpty( user.AtProtoDPoPKey )) {
             throw new InvalidOperationException(
                 $"User '{userDid}' does not have valid ATProto OAuth tokens. Please log in with Bluesky."
             );
@@ -319,7 +316,7 @@ public partial class UserPlaylistATProtoService(
             ATProtoOAuthResult? refreshResult = await oauthService.RefreshTokensAsync(
                 user.AtProtoDid!,
                 user.AtProtoRefreshToken,
-                user.EncryptedAtProtoDPoPKey,
+                user.AtProtoDPoPKey,
                 cancellationToken
             );
 
@@ -327,7 +324,7 @@ public partial class UserPlaylistATProtoService(
                 // Update the stored tokens
                 user.AtProtoAccessToken = refreshResult.AccessToken;
                 user.AtProtoRefreshToken = refreshResult.RefreshToken;
-                user.EncryptedAtProtoDPoPKey = refreshResult.DPoPKeyJwk;
+                user.AtProtoDPoPKey = refreshResult.DPoPKeyJwk;
                 user.AtProtoTokenExpiration = refreshResult.TokenExpiration;
                 _ = await dbContext.SaveChangesAsync( cancellationToken );
 
@@ -345,8 +342,8 @@ public partial class UserPlaylistATProtoService(
         // a way to restore OAuth sessions or until we implement direct HTTP calls to the PDS.
         //
         // Required for implementation:
-        // 1. Retrieve the DPoP key from user.EncryptedAtProtoDPoPKey
-        //    (WARNING: Currently stored as plain text - encryption not yet implemented)
+        // 1. Retrieve the DPoP key from user.AtProtoDPoPKey
+        //    (Encrypted at rest via Data Protection personal data protector)
         // 2. Create an agent with the stored session (access token, refresh token, DPoP key)
         // 3. Use the DPoP key to sign authenticated requests to the PDS
         //

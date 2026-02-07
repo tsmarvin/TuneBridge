@@ -31,7 +31,6 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
             ["BridgeBeats:ATProtoIdentifier"] = string.Empty,
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
         IServiceCollection services = new ServiceCollection( );
         IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
@@ -66,7 +65,6 @@ public class ConfigurationValidationTests {
                 ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
                 ["BridgeBeats:ATProtoIdentifier"] = string.Empty,
                 ["BridgeBeats:ATProtoPassword"] = string.Empty,
-                ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
             };
             IServiceCollection services = new ServiceCollection( );
             IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
@@ -101,7 +99,6 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
             ["BridgeBeats:ATProtoIdentifier"] = string.Empty,
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory;Cache=Shared",
         };
         IServiceCollection services = new ServiceCollection( );
         IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
@@ -133,7 +130,6 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
             ["BridgeBeats:ATProtoIdentifier"] = string.Empty,
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=BridgeBeats;Mode=Memory",
         };
 
         // Act
@@ -159,7 +155,6 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
             ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory",
             ["BridgeBeats:CardCacheExpirationHours"] = "0",
             ["BridgeBeats:CardCacheCleanupInterval"] = "500",
         };
@@ -184,7 +179,6 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
             ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory",
             ["BridgeBeats:CardCacheExpirationHours"] = "-1",
             ["BridgeBeats:CardCacheCleanupInterval"] = "500",
         };
@@ -209,7 +203,6 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
             ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory",
             ["BridgeBeats:CardCacheExpirationHours"] = "1",
             ["BridgeBeats:CardCacheCleanupInterval"] = "0",
         };
@@ -234,7 +227,6 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
             ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory",
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=LinkCache;Mode=Memory",
             ["BridgeBeats:CardCacheExpirationHours"] = "1",
             ["BridgeBeats:CardCacheCleanupInterval"] = "-1",
         };

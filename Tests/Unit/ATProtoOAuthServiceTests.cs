@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Text.Json;
 using BridgeBeats.Core.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -18,6 +19,7 @@ public class ATProtoOAuthServiceTests {
     private Mock<ILogger<ATProtoOAuthService>> _mockLogger = null!;
     private Mock<HttpMessageHandler> _mockHttpMessageHandler = null!;
     private Mock<IHttpClientFactory> _mockHttpClientFactory = null!;
+    private Mock<IPersonalDataProtector> _mockPersonalDataProtector = null!;
     private HttpClient _httpClient = null!;
     private const string TestClientId = "https://example.com/.well-known/client-metadata.json";
     private const string TestBaseUrl = "https://example.com";
@@ -31,6 +33,7 @@ public class ATProtoOAuthServiceTests {
     public void Initialize( ) {
         _mockDbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>( );
         _mockLogger = new Mock<ILogger<ATProtoOAuthService>>( );
+        _mockPersonalDataProtector = new Mock<IPersonalDataProtector>( );
         _mockHttpMessageHandler = new Mock<HttpMessageHandler>( );
         _httpClient = new HttpClient( _mockHttpMessageHandler.Object );
 
@@ -59,7 +62,8 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _mockHttpClientFactory.Object
+            _mockHttpClientFactory.Object,
+            _mockPersonalDataProtector.Object
         );
 
         // Assert
@@ -73,7 +77,7 @@ public class ATProtoOAuthServiceTests {
     public void Constructor_WithNullDbContextFactory_ShouldThrowArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
-            new ATProtoOAuthService( null!, _mockLogger.Object, TestClientId, _mockHttpClientFactory.Object ) );
+            new ATProtoOAuthService( null!, _mockLogger.Object, TestClientId, _mockHttpClientFactory.Object, _mockPersonalDataProtector.Object ) );
     }
 
     /// <summary>
@@ -83,7 +87,7 @@ public class ATProtoOAuthServiceTests {
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
-            new ATProtoOAuthService( _mockDbContextFactory.Object, null!, TestClientId, _mockHttpClientFactory.Object ) );
+            new ATProtoOAuthService( _mockDbContextFactory.Object, null!, TestClientId, _mockHttpClientFactory.Object, _mockPersonalDataProtector.Object ) );
     }
 
     /// <summary>
@@ -93,7 +97,7 @@ public class ATProtoOAuthServiceTests {
     public void Constructor_WithNullClientId_ShouldThrowArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
-            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, null!, _mockHttpClientFactory.Object ) );
+            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, null!, _mockHttpClientFactory.Object, _mockPersonalDataProtector.Object ) );
     }
 
     /// <summary>
@@ -103,7 +107,17 @@ public class ATProtoOAuthServiceTests {
     public void Constructor_WithNullHttpClient_ShouldThrowArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
-            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, TestClientId, null! ) );
+            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, TestClientId, null!, _mockPersonalDataProtector.Object ) );
+    }
+
+    /// <summary>
+    /// Verifies that the constructor throws ArgumentNullException for null personalDataProtector.
+    /// </summary>
+    [TestMethod]
+    public void Constructor_WithNullPersonalDataProtector_ShouldThrowArgumentNullException( ) {
+        // Act & Assert
+        _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
+            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, TestClientId, _mockHttpClientFactory.Object, null! ) );
     }
 
     /// <summary>
@@ -116,7 +130,7 @@ public class ATProtoOAuthServiceTests {
 
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentException>( ( ) =>
-            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, invalidClientId, _mockHttpClientFactory.Object ) );
+            new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, invalidClientId, _mockHttpClientFactory.Object, _mockPersonalDataProtector.Object ) );
     }
 
     /// <summary>
@@ -129,7 +143,8 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _mockHttpClientFactory.Object
+            _mockHttpClientFactory.Object,
+            _mockPersonalDataProtector.Object
         );
         DateTime expiredTime = DateTime.UtcNow.AddMinutes( -5 );
 
@@ -150,7 +165,8 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _mockHttpClientFactory.Object
+            _mockHttpClientFactory.Object,
+            _mockPersonalDataProtector.Object
         );
         DateTime expiringTime = DateTime.UtcNow.AddSeconds( 15 ); // Within 30 second margin
 
@@ -171,7 +187,8 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _mockHttpClientFactory.Object
+            _mockHttpClientFactory.Object,
+            _mockPersonalDataProtector.Object
         );
         DateTime validTime = DateTime.UtcNow.AddHours( 1 );
 
@@ -192,7 +209,8 @@ public class ATProtoOAuthServiceTests {
             _mockDbContextFactory.Object,
             _mockLogger.Object,
             TestClientId,
-            _mockHttpClientFactory.Object
+            _mockHttpClientFactory.Object,
+            _mockPersonalDataProtector.Object
         );
 
         // Act
@@ -259,8 +277,21 @@ public class ATProtoOAuthServiceTests {
         );
         Assert.AreEqual( "ES256", jwt.Header.Alg );
 
-        // Note: The jwk header may not be present when read back due to library limitations
-        // The important part is that it's set in the code (verified by code review)
+        // Verify the jwk header is present in the raw JWT as a proper JSON object.
+        // JwtSecurityTokenHandler.ReadJwtToken() doesn't always populate the jwk in its Header
+        // dictionary, so we decode the raw JWT header to verify it was serialized correctly.
+        string headerSegment = dpopProof.Split( '.' )[0];
+        string paddedHeader = headerSegment.Replace( '-', '+' ).Replace( '_', '/' );
+        paddedHeader = paddedHeader.PadRight( paddedHeader.Length + ((4 - (paddedHeader.Length % 4)) % 4), '=' );
+        string decodedHeader = System.Text.Encoding.UTF8.GetString( Convert.FromBase64String( paddedHeader ) );
+        using JsonDocument headerDoc = JsonDocument.Parse( decodedHeader );
+        JsonElement headerElement = headerDoc.RootElement;
+        Assert.IsTrue( headerElement.TryGetProperty( "jwk", out JsonElement jwkElement ), "JWT header should contain a 'jwk' parameter" );
+        Assert.AreEqual( JsonValueKind.Object, jwkElement.ValueKind, "jwk must be a JSON object, not a string" );
+        Assert.AreEqual( "EC", jwkElement.GetProperty( "kty" ).GetString( ) );
+        Assert.AreEqual( "P-256", jwkElement.GetProperty( "crv" ).GetString( ) );
+        Assert.IsTrue( jwkElement.TryGetProperty( "x", out _ ), "jwk should contain 'x' parameter" );
+        Assert.IsTrue( jwkElement.TryGetProperty( "y", out _ ), "jwk should contain 'y' parameter" );
 
         // Verify claims
         Assert.AreEqual( expectedHttpMethod, jwt.Claims.First( c => c.Type == "htm" ).Value );

@@ -132,11 +132,12 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
             request.SagaId,
             $"{request.LookupType}:{request.LookupValue}",
             request.LookupType,
-            request.LookupValue
+            request.LookupValue,
+            ct
         );
 
         // Initialize provider state for this provider if not already done
-        await _sagaManager.InitializeProviderStatesAsync( request.SagaId, [_provider] );
+        await _sagaManager.InitializeProviderStatesAsync( request.SagaId, [_provider], ct );
 
         // Check if the endpoint for this lookup type is rate-limited
         string endpoint = request.LookupType.ToString( );

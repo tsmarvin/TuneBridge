@@ -1,8 +1,8 @@
-#nullable disable
-
 using Microsoft.EntityFrameworkCore.Migrations;
 
-namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
+#nullable disable
+
+namespace BridgeBeats.Core.Infrastructure.Migrations {
     /// <inheritdoc />
     public partial class InitialCreate : Migration {
         /// <inheritdoc />
@@ -29,6 +29,12 @@ namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
                     RateLimitWindowStart = table.Column<DateTime>( type: "TEXT", nullable: true ),
                     AppleMusicUserToken = table.Column<string>( type: "TEXT", nullable: true ),
                     AppleMusicTokenExpiration = table.Column<DateTime>( type: "TEXT", nullable: true ),
+                    AtProtoDid = table.Column<string>( type: "TEXT", nullable: true ),
+                    AtProtoHandle = table.Column<string>( type: "TEXT", nullable: true ),
+                    AtProtoAccessToken = table.Column<string>( type: "TEXT", nullable: true ),
+                    AtProtoRefreshToken = table.Column<string>( type: "TEXT", nullable: true ),
+                    AtProtoDPoPKey = table.Column<string>( type: "TEXT", nullable: true ),
+                    AtProtoTokenExpiration = table.Column<DateTime>( type: "TEXT", nullable: true ),
                     UserName = table.Column<string>( type: "TEXT", maxLength: 256, nullable: true ),
                     NormalizedUserName = table.Column<string>( type: "TEXT", maxLength: 256, nullable: true ),
                     Email = table.Column<string>( type: "TEXT", maxLength: 256, nullable: true ),
@@ -46,6 +52,23 @@ namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
                 },
                 constraints: table => {
                     _ = table.PrimaryKey( "PK_AspNetUsers", x => x.Id );
+                } );
+
+            _ = migrationBuilder.CreateTable(
+                name: "AtProtoOAuthStates",
+                columns: table => new {
+                    State = table.Column<string>( type: "TEXT", maxLength: 128, nullable: false ),
+                    CodeVerifier = table.Column<string>( type: "TEXT", maxLength: 512, nullable: false ),
+                    Handle = table.Column<string>( type: "TEXT", maxLength: 256, nullable: false ),
+                    Did = table.Column<string>( type: "TEXT", maxLength: 128, nullable: true ),
+                    PdsUri = table.Column<string>( type: "TEXT", maxLength: 512, nullable: true ),
+                    AuthorizationServerUri = table.Column<string>( type: "TEXT", maxLength: 512, nullable: true ),
+                    DPoPKeyJwk = table.Column<string>( type: "TEXT", nullable: false ),
+                    CreatedAt = table.Column<DateTime>( type: "TEXT", nullable: false ),
+                    ExpiresAt = table.Column<DateTime>( type: "TEXT", nullable: false )
+                },
+                constraints: table => {
+                    _ = table.PrimaryKey( "PK_AtProtoOAuthStates", x => x.State );
                 } );
 
             _ = migrationBuilder.CreateTable(
@@ -198,10 +221,22 @@ namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
                 unique: true );
 
             _ = migrationBuilder.CreateIndex(
+                name: "IX_AspNetUsers_AtProtoDid",
+                table: "AspNetUsers",
+                column: "AtProtoDid",
+                unique: true,
+                filter: "[AtProtoDid] IS NOT NULL" );
+
+            _ = migrationBuilder.CreateIndex(
                 name: "UserNameIndex",
                 table: "AspNetUsers",
                 column: "NormalizedUserName",
                 unique: true );
+
+            _ = migrationBuilder.CreateIndex(
+                name: "IX_AtProtoOAuthStates_ExpiresAt",
+                table: "AtProtoOAuthStates",
+                column: "ExpiresAt" );
 
             _ = migrationBuilder.CreateIndex(
                 name: "IX_Playlists_CreatedAt",
@@ -235,6 +270,9 @@ namespace BridgeBeats.Infrastructure.Migrations.ApplicationDb {
 
             _ = migrationBuilder.DropTable(
                 name: "AspNetUserTokens" );
+
+            _ = migrationBuilder.DropTable(
+                name: "AtProtoOAuthStates" );
 
             _ = migrationBuilder.DropTable(
                 name: "Playlists" );

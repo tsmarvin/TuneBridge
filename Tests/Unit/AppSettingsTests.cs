@@ -29,7 +29,6 @@ public class AppSettingsTests {
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
             ["BridgeBeats:ATProtoUserDID"] = string.Empty,
             ["BridgeBeats:CacheDays"] = "7",
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=bridgebeats.db",
             ["BridgeBeats:BaseUrl"] = "localhost",
             ["BridgeBeats:LogDirPath"] = "./logs",
         };
@@ -57,7 +56,6 @@ public class AppSettingsTests {
         Assert.AreEqual( string.Empty, settings.ATProtoPassword );
         Assert.AreEqual( string.Empty, settings.ATProtoUserDID );
         Assert.AreEqual( 7, settings.CacheDays );
-        Assert.AreEqual( "Data Source=bridgebeats.db", settings.LinkCacheConnectionString );
         Assert.AreEqual( "localhost", settings.BaseUrl );
         Assert.AreEqual( "./logs", settings.LogDirPath );
     }

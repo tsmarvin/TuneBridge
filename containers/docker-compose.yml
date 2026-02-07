@@ -13,7 +13,6 @@ services:
       - NODE_NUMBER=${NODE_NUMBER:-100}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
-      - LOG_FILE_PATH=${LOG_FILE_PATH:-/app/data/logs/bridgebeats-.log}
       - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
       - APPLE_KEY_ID=${APPLE_KEY_ID:-}
       - APPLE_KEY_PATH=${APPLE_KEY_PATH:-}
@@ -27,11 +26,12 @@ services:
       - CACHE_DAYS=${CACHE_DAYS:-7}
       - CARD_CACHE_EXPIRATION_HOURS=${CARD_CACHE_EXPIRATION_HOURS:-1}
       - CARD_CACHE_CLEANUP_INTERVAL=${CARD_CACHE_CLEANUP_INTERVAL:-500}
-      - LINK_CACHE_CONNECTION_STRING=${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
       - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
       - RATE_LIMIT_REQUESTS_PER_HOUR=${RATE_LIMIT_REQUESTS_PER_HOUR:-20}
     volumes:
       - bridgebeats-data:/app/data # Persistent data directory
+      - ./logs:/app/data/logs # Logs bind-mounted to host for easy access
+      - bridgebeats-dp-keys:/app/keys # Data Protection key persistence
       # Secret mounts (read-only)
       - ./secrets/apple_key.p8:/run/secrets/apple_key:ro
       - ./secrets/spotify_client_secret.txt:/run/secrets/spotify_client_secret:ro
@@ -136,6 +136,8 @@ services:
 
 volumes:
   bridgebeats-data:
+    driver: local
+  bridgebeats-dp-keys:
     driver: local
   bridgebeats-redis-data:
     driver: local
