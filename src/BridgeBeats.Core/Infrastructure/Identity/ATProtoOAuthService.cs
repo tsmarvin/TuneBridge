@@ -337,6 +337,13 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     public async Task<int> CleanupExpiredStatesAsync( CancellationToken cancellationToken = default ) {
         await using ApplicationDbContext dbContext = await _dbContextFactory.CreateDbContextAsync( cancellationToken );
 
+        // Skip cleanup if database has pending migrations (table may not exist yet)
+        IEnumerable<string> pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync(cancellationToken);
+        if (pendingMigrations.Any())
+        {
+            return 0;
+        }
+
         DateTime cutoff = DateTime.UtcNow;
         int deleted = await dbContext.AtProtoOAuthStates
             .Where( s => s.ExpiresAt < cutoff )

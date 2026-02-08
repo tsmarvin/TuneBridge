@@ -55,12 +55,9 @@ namespace BridgeBeats.Web.Controllers {
                 ["dpop_bound_access_tokens"] = true
             };
 
-            if (signingKeyProvider is null)
-            {
+            if (signingKeyProvider is null) {
                 metadata["token_endpoint_auth_method"] = "none";
-            }
-            else
-            {
+            } else {
                 metadata["token_endpoint_auth_method"] = "private_key_jwt";
                 metadata["token_endpoint_auth_signing_alg"] = "ES256";
                 metadata["jwks_uri"] = $"{baseUrl}/.well-known/jwks.json";

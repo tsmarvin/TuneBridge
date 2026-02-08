@@ -65,9 +65,8 @@ services:
       - internal
     command: >
       sh -c "if [ -f /run/secrets/redis_password ]; then
-        mkdir -p /usr/local/etc/redis &&
-        head -n 1 /run/secrets/redis_password | tr -d '\r\n' | awk '{print \"requirepass \" $$0; print \"appendonly yes\"}' > /usr/local/etc/redis/redis.conf &&
-        exec redis-server /usr/local/etc/redis/redis.conf;
+        head -n 1 /run/secrets/redis_password | tr -d '\r\n' | awk '{print \"requirepass \" $$0; print \"appendonly yes\"}' > /tmp/redis.conf &&
+        exec redis-server /tmp/redis.conf;
       else
         exec redis-server --appendonly yes;
       fi"
