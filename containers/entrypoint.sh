@@ -5,11 +5,11 @@ set -eu
 read_secret() {
     secret_path="/run/secrets/$1"
     if [ -f "$secret_path" ]; then
-   # Strip all newlines/carriage returns to prevent JSON/config corruption
-   # All secrets in this app are single-line values (passwords, tokens, keys)
-   tr -d '\r\n' < "$secret_path"
+      # Strip all newlines/carriage returns to prevent JSON/config corruption
+      # All secrets in this app are single-line values (passwords, tokens, keys)
+      tr -d '\r\n' < "$secret_path"
     else
-        echo ""
+      echo ""
     fi
 }
 

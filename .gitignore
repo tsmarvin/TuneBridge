@@ -54,6 +54,12 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
+# Local Development Feature Documentation
+docs/projects/*
+
+# Github Personal Configurations
+.github/agents/*
+
 # Visual Studio Code Configuration
 .vscode/*
 
