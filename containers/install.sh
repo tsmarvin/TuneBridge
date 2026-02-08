@@ -536,6 +536,11 @@ for secret_config in "${SECRET_FILES[@]}"; do
     IFS='|' read -r secret_name description auto_generate <<< "$secret_config"
     secret_path="${SECRETS_DIR}/${secret_name}"
 
+    if [[ -d "$secret_path" ]]; then
+        rm -rf "$secret_path"
+        echo "[WARN] Removed directory at ${secret_name} (expected file)"
+    fi
+
     if [[ -f "$secret_path" ]]; then
         if secret_has_content "$secret_path"; then
             echo "[OK] Secret exists and has content: ${secret_name}"
