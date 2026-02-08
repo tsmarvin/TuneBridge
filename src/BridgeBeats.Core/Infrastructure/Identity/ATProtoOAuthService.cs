@@ -339,8 +339,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
 
         // Skip cleanup if database has pending migrations (table may not exist yet)
         IEnumerable<string> pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync(cancellationToken);
-        if (pendingMigrations.Any())
-        {
+        if (pendingMigrations.Any( )) {
             return 0;
         }
 

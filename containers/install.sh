@@ -38,6 +38,7 @@ SECRET_FILES=(
     "atproto_oauth_key.json|ATProto OAuth signing key (ES256 JWK)|true"
     "api_key_salt.txt|API key salt (random string for security)|true"
     "redis_password.txt|Redis password (random string for authentication)|true"
+    "internal_service_key.txt|Internal service key (worker/API authentication)|true"
     "cloudflare_api_token.txt|Cloudflare API token for DNS challenges|false"
 )
 
@@ -108,7 +109,7 @@ secret_has_content() {
             # Use grep to check if file has non-whitespace content
             if grep -qE '\S' "$file" 2>/dev/null; then
                 # Check it's not a placeholder
-                if ! grep -qE '^(your_|REPLACE_|-----BEGIN)' "$file" 2>/dev/null; then
+                if ! grep -qE '^(your_|REPLACE_WITH_)' "$file" 2>/dev/null; then
                     return 0
                 fi
             fi
@@ -116,7 +117,7 @@ secret_has_content() {
             # File exists but not readable, use sudo
             if sudo grep -qE '\S' "$file" 2>/dev/null; then
                 # Check it's not a placeholder
-                if ! sudo grep -qE '^(your_|REPLACE_|-----BEGIN)' "$file" 2>/dev/null; then
+                if ! sudo grep -qE '^(your_|REPLACE_WITH_)' "$file" 2>/dev/null; then
                     return 0
                 fi
             fi
@@ -424,11 +425,99 @@ else
 fi
 
 # =============================================================================
+# Check for Existing Containers
+# =============================================================================
+print_section "Checking Existing Deployment"
+
+SECRETS_DIR="./secrets"
+
+# BridgeBeats container names from docker-compose.yml
+BRIDGEBEATS_CONTAINERS=("bridgebeats" "bridgebeats-redis" "bridgebeats-pds" "bridgebeats-caddy")
+
+# Check if any BridgeBeats containers exist
+containers_exist=false
+existing_containers=()
+for container in "${BRIDGEBEATS_CONTAINERS[@]}"; do
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${container}$"; then
+        containers_exist=true
+        existing_containers+=("$container")
+    fi
+done
+
+if [[ "$containers_exist" == "true" ]]; then
+    echo "[OK] Existing BridgeBeats containers detected:"
+    for container in "${existing_containers[@]}"; do
+        echo "  - ${container}"
+    done
+
+    # Log upgrade session header
+    log_upgrade ""
+    log_upgrade "=== Upgrade: $(date '+%Y-%m-%d %H:%M:%S') ==="
+    log_upgrade "Branch: ${BRANCH}"
+
+    # Back up secrets before any modifications
+    if [[ -d "$SECRETS_DIR" ]]; then
+        backup_timestamp=$(date +%Y%m%d_%H%M%S)
+        backup_dir="./secrets_backup_${backup_timestamp}"
+        if cp -r "$SECRETS_DIR" "$backup_dir"; then
+            echo "[OK] Backed up secrets to ${backup_dir}/"
+            log_upgrade "Backed up secrets to ${backup_dir}/"
+        else
+            echo "[WARN] Failed to back up secrets directory"
+            log_upgrade "WARN: Failed to back up secrets directory"
+        fi
+
+        # Prune old backups, keep 3 most recent
+        ls -dt ./secrets_backup_*/ 2>/dev/null | tail -n +4 | xargs rm -rf
+    fi
+
+    # Log current container image information with RepoDigests
+    echo ""
+    echo "Current container images:"
+    log_upgrade "Pre-update images:"
+
+    for container in "${existing_containers[@]}"; do
+        image=$(docker inspect --format="{{.Config.Image}}" "$container" 2>/dev/null || echo "unknown")
+        if [[ -n "$image" && "$image" != "unknown" ]]; then
+            digest=$(docker inspect --format="{{index .RepoDigests 0}}" "$image" 2>/dev/null || echo "unknown")
+        else
+            digest="unknown"
+        fi
+        echo "  ${container}: image=${image} digest=${digest}"
+        log_upgrade "  ${container}: image=${image} digest=${digest}"
+    done
+
+    # Log rollback info
+    compose_backup="docker-compose.yml.bak.${TIMESTAMP}"
+    if [[ -f "$compose_backup" ]]; then
+        log_upgrade "Rollback: Restore ${compose_backup} and run 'docker compose up -d'"
+    fi
+
+    echo ""
+    echo "Image information has been logged to ${UPGRADE_LOG} for rollback reference."
+    echo ""
+
+    # Prompt for pulling new images
+    read -p "Would you like to pull the latest container images? (y/N): " pull_response
+    if [[ "$pull_response" =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "Pulling latest images..."
+        docker compose pull
+        log_upgrade "Pulled latest images at $(date '+%H:%M:%S')"
+        echo "[OK] Images updated"
+    else
+        log_upgrade "Image pull skipped by user"
+        echo "[OK] Skipping image pull"
+    fi
+else
+    echo "[OK] No existing containers found (fresh installation)"
+fi
+
+# =============================================================================
 # Setup Secrets Directory
 # =============================================================================
 print_section "Setting Up Secrets"
 
-SECRETS_DIR="./secrets"
 secrets_created=false
 
 if [[ -d "$SECRETS_DIR" ]]; then
@@ -451,19 +540,7 @@ for secret_config in "${SECRET_FILES[@]}"; do
         if secret_has_content "$secret_path"; then
             echo "[OK] Secret exists and has content: ${secret_name}"
         else
-            if [[ "$auto_generate" == "true" ]]; then
-                # Auto-generate this secret
-                if [[ "$secret_name" == "atproto_oauth_key.json" ]]; then
-                    generate_es256_jwk > "$secret_path"
-                else
-                    generate_random_string > "$secret_path"
-                fi
-                chmod 600 "$secret_path"
-                echo "[OK] Auto-generated: ${secret_name}"
-            else
-                missing_secrets+=("${secret_name}|${description}")
-                echo "[WARN] Secret exists but needs content: ${secret_name}"
-            fi
+            echo "[WARN] Secret exists but appears empty or contains placeholder content: ${secret_name}"
         fi
     else
         if [[ "$auto_generate" == "true" ]]; then
@@ -554,73 +631,6 @@ else
     fi
 fi
 
-# =============================================================================
-# Check for Existing Containers
-# =============================================================================
-print_section "Checking Existing Deployment"
-
-# BridgeBeats container names from docker-compose.yml
-BRIDGEBEATS_CONTAINERS=("bridgebeats" "bridgebeats-redis" "bridgebeats-pds" "bridgebeats-caddy")
-
-# Check if any BridgeBeats containers exist
-containers_exist=false
-existing_containers=()
-for container in "${BRIDGEBEATS_CONTAINERS[@]}"; do
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${container}$"; then
-        containers_exist=true
-        existing_containers+=("$container")
-    fi
-done
-
-if [[ "$containers_exist" == "true" ]]; then
-    echo "[OK] Existing BridgeBeats containers detected:"
-    for container in "${existing_containers[@]}"; do
-        echo "  - ${container}"
-    done
-
-    # Log upgrade session header
-    log_upgrade ""
-    log_upgrade "=== Upgrade: $(date '+%Y-%m-%d %H:%M:%S') ==="
-    log_upgrade "Branch: ${BRANCH}"
-
-    # Log current container image information
-    echo ""
-    echo "Current container images:"
-    log_upgrade "Pre-update images:"
-
-    # Get image information for each service
-    while IFS= read -r line; do
-        if [[ -n "$line" ]]; then
-            echo "  ${line}"
-            log_upgrade "  ${line}"
-        fi
-    done < <(docker compose images 2>/dev/null || echo "Unable to retrieve image information")
-
-    # Log rollback info
-    compose_backup="docker-compose.yml.bak.${TIMESTAMP}"
-    if [[ -f "$compose_backup" ]]; then
-        log_upgrade "Rollback: Restore ${compose_backup} and run 'docker compose up -d'"
-    fi
-
-    echo ""
-    echo "Image information has been logged to ${UPGRADE_LOG} for rollback reference."
-    echo ""
-
-    # Prompt for pulling new images
-    read -p "Would you like to pull the latest container images? (y/N): " pull_response
-    if [[ "$pull_response" =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "Pulling latest images..."
-        docker compose pull
-        log_upgrade "Pulled latest images at $(date '+%H:%M:%S')"
-        echo "[OK] Images updated"
-    else
-        log_upgrade "Image pull skipped by user"
-        echo "[OK] Skipping image pull"
-    fi
-else
-    echo "[OK] No existing containers found (fresh installation)"
-fi
 
 # =============================================================================
 # Summary and Next Steps

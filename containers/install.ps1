@@ -59,6 +59,7 @@ $SecretFiles = @(
     @{ Name = 'atproto_oauth_key.json';    Description = 'ATProto OAuth signing key (ES256 JWK)'; AutoGenerate = $true }
     @{ Name = 'api_key_salt.txt';          Description = 'API key salt';                       AutoGenerate = $true }
     @{ Name = 'redis_password.txt';        Description = 'Redis password';                     AutoGenerate = $true }
+    @{ Name = 'internal_service_key.txt';  Description = 'Internal service key (worker/API authentication)'; AutoGenerate = $true }
     @{ Name = 'cloudflare_api_token.txt';  Description = 'Cloudflare API token (DNS)';         AutoGenerate = $false }
 )
 
@@ -117,7 +118,7 @@ function Test-SecretHasContent {
     }
 
     # Check for placeholder patterns
-    if ($content -match '^(your_|REPLACE_|-----BEGIN)') {
+    if ($content -match '^(your_|REPLACE_WITH_)') {
         return $false
     }
 
@@ -336,6 +337,111 @@ if (Test-Path $logsDir) {
 }
 
 # =============================================================================
+# Check for Existing Containers
+# =============================================================================
+Write-Section 'Checking Existing Deployment'
+
+$secretsDir = Join-Path -Path $Directory -ChildPath 'secrets'
+
+# BridgeBeats container names from docker-compose.yml
+$BridgeBeatsContainers = @('bridgebeats', 'bridgebeats-redis', 'bridgebeats-pds', 'bridgebeats-caddy')
+
+# Check if any BridgeBeats containers exist
+$containersExist = $false
+$existingContainers = @()
+try {
+    $allContainers = & docker ps -a --format '{{.Names}}' 2>$null
+    if ($LASTEXITCODE -eq 0 -and $allContainers) {
+        foreach ($container in $BridgeBeatsContainers) {
+            if ($allContainers -contains $container) {
+                $containersExist = $true
+                $existingContainers += $container
+            }
+        }
+    }
+} catch {
+    # Docker not available or error
+}
+
+if ($containersExist) {
+    Write-Ok 'Existing BridgeBeats containers detected:'
+    foreach ($container in $existingContainers) {
+        Write-Host "  - $container"
+    }
+
+    # Log upgrade session header
+    Write-UpgradeLog ''
+    Write-UpgradeLog "=== Upgrade: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ==="
+    Write-UpgradeLog "Branch: $Branch"
+
+    # Back up secrets before any modifications
+    if (Test-Path $secretsDir) {
+        $backupTimestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+        $backupDir = Join-Path $Directory "secrets_backup_$backupTimestamp"
+        try {
+            Copy-Item -Path $secretsDir -Destination $backupDir -Recurse
+            Write-Ok "Backed up secrets to secrets_backup_$backupTimestamp/"
+            Write-UpgradeLog "Backed up secrets to secrets_backup_$backupTimestamp/"
+        } catch {
+            Write-Warn 'Failed to back up secrets directory'
+            Write-UpgradeLog 'WARN: Failed to back up secrets directory'
+        }
+
+        # Prune old backups, keep 3 most recent
+        Get-ChildItem -Path $Directory -Directory -Filter 'secrets_backup_*' |
+            Sort-Object Name -Descending |
+            Select-Object -Skip 3 |
+            Remove-Item -Recurse -Force
+    }
+
+    # Log current container image information with RepoDigests
+    Write-Host "`nCurrent container images:"
+    Write-UpgradeLog 'Pre-update images:'
+
+    foreach ($container in $existingContainers) {
+        $image = & docker inspect --format '{{.Config.Image}}' $container 2>$null
+        if (-not $image) {
+            $image = 'unknown'
+        }
+
+        if ($image -ne 'unknown') {
+            $digest = & docker inspect --format '{{index .RepoDigests 0}}' $image 2>$null
+            if (-not $digest) {
+                $digest = 'unknown'
+            }
+        } else {
+            $digest = 'unknown'
+        }
+
+        Write-Host "  $container: image=$image digest=$digest"
+        Write-UpgradeLog "  $container: image=$image digest=$digest"
+    }
+
+    # Log rollback info
+    $composeBackup = "docker-compose.yml.bak.$Timestamp"
+    $composeBackupPath = Join-Path -Path $Directory -ChildPath $composeBackup
+    if (Test-Path $composeBackupPath) {
+        Write-UpgradeLog "Rollback: Restore $composeBackup and run 'docker compose up -d'"
+    }
+
+    Write-Host "`nImage information has been logged to $UpgradeLog for rollback reference.`n"
+
+    # Prompt for pulling new images
+    $pullResponse = Read-Host 'Would you like to pull the latest container images? (y/N)'
+    if ($pullResponse -match '^[Yy]') {
+        Write-Host "`nPulling latest images..."
+        & docker compose pull
+        Write-UpgradeLog "Pulled latest images at $(Get-Date -Format 'HH:mm:ss')"
+        Write-Ok 'Images updated'
+    } else {
+        Write-UpgradeLog 'Image pull skipped by user'
+        Write-Ok 'Skipping image pull'
+    }
+} else {
+    Write-Ok 'No existing containers found (fresh installation)'
+}
+
+# =============================================================================
 # Setup Secrets Directory
 # =============================================================================
 Write-Section 'Setting Up Secrets'
@@ -344,13 +450,10 @@ Write-Section 'Setting Up Secrets'
 # The secrets directory should have restricted access similar to Linux (chmod 700)
 # Consider using Set-Acl to restrict access to the current user and container service account
 
-$secretsDir = Join-Path -Path $Directory -ChildPath 'secrets'
-
 if (Test-Path $secretsDir) {
     Write-Ok "Secrets directory already exists: $secretsDir"
 } else {
     New-Item -Path $secretsDir -ItemType Directory -Force | Out-Null
-    $secretsCreated = $true
     Write-Ok "Created secrets directory: $secretsDir"
 }
 
@@ -364,19 +467,7 @@ foreach ($secret in $SecretFiles) {
         if (Test-SecretHasContent $secretPath) {
             Write-Ok "Secret exists and has content: $($secret.Name)"
         } else {
-            if ($secret.AutoGenerate) {
-                # Auto-generate this secret
-                if ($secret.Name -eq 'atproto_oauth_key.json') {
-                    $generatedValue = Get-ES256SigningKeyJwk
-                } else {
-                    $generatedValue = Get-RandomString
-                }
-                Set-Content -Path $secretPath -Value $generatedValue -NoNewline
-                Write-Ok "Auto-generated: $($secret.Name)"
-            } else {
-                $missingSecrets += $secret
-                Write-Warn "Secret exists but needs content: $($secret.Name)"
-            }
+            Write-Warn "Secret exists but appears empty or contains placeholder content: $($secret.Name)"
         }
     } else {
         if ($secret.AutoGenerate) {
@@ -453,83 +544,6 @@ if (Test-Path $envPath) {
     }
 }
 
-# =============================================================================
-# Check for Existing Containers
-# =============================================================================
-Write-Section 'Checking Existing Deployment'
-
-# BridgeBeats container names from docker-compose.yml
-$BridgeBeatsContainers = @('bridgebeats', 'bridgebeats-redis', 'bridgebeats-pds', 'bridgebeats-caddy')
-
-# Check if any BridgeBeats containers exist
-$containersExist = $false
-$existingContainers = @()
-try {
-    $allContainers = & docker ps -a --format '{{.Names}}' 2>$null
-    if ($LASTEXITCODE -eq 0 -and $allContainers) {
-        foreach ($container in $BridgeBeatsContainers) {
-            if ($allContainers -contains $container) {
-                $containersExist = $true
-                $existingContainers += $container
-            }
-        }
-    }
-} catch {
-    # Docker not available or error
-}
-
-if ($containersExist) {
-    Write-Ok 'Existing BridgeBeats containers detected:'
-    foreach ($container in $existingContainers) {
-        Write-Host "  - $container"
-    }
-
-    # Log upgrade session header
-    Write-UpgradeLog ''
-    Write-UpgradeLog "=== Upgrade: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ==="
-    Write-UpgradeLog "Branch: $Branch"
-
-    # Log current container image information
-    Write-Host "`nCurrent container images:"
-    Write-UpgradeLog 'Pre-update images:'
-
-    try {
-        $imagesOutput = & docker compose images 2>$null
-        if ($imagesOutput) {
-            foreach ($line in $imagesOutput) {
-                if ($line) {
-                    Write-Host "  $line"
-                    Write-UpgradeLog "  $line"
-                }
-            }
-        }
-    } catch {
-        Write-Host '  Unable to retrieve image information'
-    }
-
-    # Log rollback info
-    $composeBackup = "docker-compose.yml.bak.$Timestamp"
-    $composeBackupPath = Join-Path -Path $Directory -ChildPath $composeBackup
-    if (Test-Path $composeBackupPath) {
-        Write-UpgradeLog "Rollback: Restore $composeBackup and run 'docker compose up -d'"
-    }
-
-    Write-Host "`nImage information has been logged to $UpgradeLog for rollback reference.`n"
-
-    # Prompt for pulling new images
-    $pullResponse = Read-Host 'Would you like to pull the latest container images? (y/N)'
-    if ($pullResponse -match '^[Yy]') {
-        Write-Host "`nPulling latest images..."
-        & docker compose pull
-        Write-UpgradeLog "Pulled latest images at $(Get-Date -Format 'HH:mm:ss')"
-        Write-Ok 'Images updated'
-    } else {
-        Write-UpgradeLog 'Image pull skipped by user'
-        Write-Ok 'Skipping image pull'
-    }
-} else {
-    Write-Ok 'No existing containers found (fresh installation)'
-}
 
 # =============================================================================
 # Summary and Next Steps
