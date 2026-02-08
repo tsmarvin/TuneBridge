@@ -356,8 +356,9 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Spotify, exception.Provider );
 
         // Can calculate when to retry
-        DateTimeOffset suggestedRetryTime = DateTimeOffset.UtcNow.Add( exception.RetryAfterValue );
-        Assert.IsGreaterThan( suggestedRetryTime, DateTimeOffset.UtcNow );
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset suggestedRetryTime = now.Add(exception.RetryAfterValue);
+        Assert.IsGreaterThan(now, suggestedRetryTime);
     }
 
     #endregion

@@ -41,22 +41,30 @@ namespace BridgeBeats.Web.Controllers {
             string clientId = $"{baseUrl}/.well-known/client-metadata.json";
 
             Dictionary<string, object> metadata = new( ) {
-                ["client_id"]                       = clientId,
-                ["client_name"]                     = "BridgeBeats",
-                ["client_uri"]                      = baseUrl,
-                ["logo_uri"]                        = $"{baseUrl}/images/icon-192.png",
-                ["tos_uri"]                         = $"{baseUrl}/privacy",
-                ["policy_uri"]                      = $"{baseUrl}/privacy",
-                ["application_type"]                = "web",
-                ["grant_types"]                     = new[] { "authorization_code", "refresh_token" },
-                ["response_types"]                  = new[] { "code" },
-                ["scope"]                           = "atproto repo:link.bridgebeats.playlist",
-                ["redirect_uris"]                   = new[] { $"{baseUrl}/account/atproto-callback" },
-                ["token_endpoint_auth_method"]      = "private_key_jwt",
-                ["dpop_bound_access_tokens"]        = true,
-                ["token_endpoint_auth_signing_alg"] = "ES256",
-                ["jwks_uri"]                        = $"{baseUrl}/.well-known/jwks.json"
+                ["client_id"]                = clientId,
+                ["client_name"]              = "BridgeBeats",
+                ["client_uri"]               = baseUrl,
+                ["logo_uri"]                 = $"{baseUrl}/images/icon-192.png",
+                ["tos_uri"]                  = $"{baseUrl}/privacy",
+                ["policy_uri"]               = $"{baseUrl}/privacy",
+                ["application_type"]         = "web",
+                ["grant_types"]              = new[] { "authorization_code", "refresh_token" },
+                ["response_types"]           = new[] { "code" },
+                ["scope"]                    = "atproto repo:link.bridgebeats.playlist",
+                ["redirect_uris"]            = new[] { $"{baseUrl}/account/atproto-callback" },
+                ["dpop_bound_access_tokens"] = true
             };
+
+            if (signingKeyProvider is null)
+            {
+                metadata["token_endpoint_auth_method"] = "none";
+            }
+            else
+            {
+                metadata["token_endpoint_auth_method"] = "private_key_jwt";
+                metadata["token_endpoint_auth_signing_alg"] = "ES256";
+                metadata["jwks_uri"] = $"{baseUrl}/.well-known/jwks.json";
+            }
 
             return Json( metadata );
         }
