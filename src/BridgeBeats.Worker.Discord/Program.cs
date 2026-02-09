@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using BridgeBeats.Core.Domain.Extensions;
 using BridgeBeats.Worker.Discord.Services;
 using NetCord.Gateway;
@@ -56,7 +57,12 @@ public static class Program {
             if (!string.IsNullOrWhiteSpace( internalServiceKey )) {
                 client.DefaultRequestHeaders.Add( "X-Service-Key", internalServiceKey );
             }
-        } ).AddStandardResilienceHandler( );
+        } )
+        .ConfigurePrimaryHttpMessageHandler( ( ) => new SocketsHttpHandler {
+            // Prevent DiagnosticsHandler from injecting non-ASCII trace context headers
+            // (e.g. tracestate, baggage) that cause HttpRequestException at the socket level.
+            ActivityHeadersPropagator = DistributedContextPropagator.CreateNoOutputPropagator( )
+        } );
 
         // Register BridgeBeatsApiClient with base URL for card generation
         _ = builder.Services.AddSingleton( sp => {

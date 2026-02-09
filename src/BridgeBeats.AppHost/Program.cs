@@ -65,7 +65,8 @@ IResourceBuilder<ParameterResource> resilienceAttemptTimeoutSeconds = builder.Ad
 // Redis connection string is read from ConnectionStrings:redis in configuration.
 // In Docker: set via entrypoint.sh in appsettings.json and ConnectionStrings__redis env var
 // In development: set in user secrets as ConnectionStrings:redis
-// Using AddConnectionString enables WaitFor() to ensure workers don't start until Redis is available.
+// Using AddConnectionString registers an external resource reference; Redis availability
+// is ensured by Docker Compose depends_on in production and must be running in development.
 IResourceBuilder<IResourceWithConnectionString> redis = builder.AddConnectionString( "redis" );
 
 // Validate Redis connection string is configured
@@ -102,8 +103,7 @@ IResourceBuilder<ExecutableResource> AddProductionExecutable(
 ) {
     string dllPath = $"/src/{projectName}/{projectName}.dll";
     IResourceBuilder<ExecutableResource> resource = builder.AddExecutable( name, "dotnet", workingDirectory, dllPath )
-        .WithReference( redis )
-        .WaitFor( redis );
+        .WithReference(redis);
 
     if (httpPort.HasValue) {
         resource = resource.WithHttpEndpoint( targetPort: httpPort.Value, name: "http" );
@@ -148,7 +148,6 @@ if (spotifyWorkerEnabled) {
             .WithHttpEndpoint( targetPort: 5100, name: "http" );
         _ = spotifyWorkerProject
             .WithReference( redis )
-            .WaitFor( redis )
             .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5100" )
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
             .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
@@ -180,7 +179,6 @@ if (appleMusicWorkerEnabled) {
             .WithHttpEndpoint( targetPort: 5101, name: "http" );
         _ = appleMusicWorkerProject
             .WithReference( redis )
-            .WaitFor( redis )
             .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5101" )
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
             .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
@@ -212,7 +210,6 @@ if (tidalWorkerEnabled) {
             .WithHttpEndpoint( targetPort: 5102, name: "http" );
         _ = tidalWorkerProject
             .WithReference( redis )
-            .WaitFor( redis )
             .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5102" )
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
             .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
@@ -242,7 +239,6 @@ if (HasDiscordCredentials( )) {
         discordWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" );
         _ = discordWorkerProject
             .WithReference( redis )
-            .WaitFor( redis )
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
             .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
             .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
@@ -282,7 +278,6 @@ if (isProduction) {
 } else {
     _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" )
         .WithReference( redis )
-        .WaitFor( redis )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
@@ -302,7 +297,6 @@ if (isProduction) {
 } else {
     _ = builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" )
         .WithReference( redis )
-        .WaitFor( redis )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
 }
 
@@ -322,7 +316,6 @@ if (isProduction) {
 } else {
     _ = builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" )
         .WithReference( redis )
-        .WaitFor( redis )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
         .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
@@ -370,7 +363,6 @@ if (isProduction) {
         .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http", isProxied: false );
     _ = bridgebeatsWebProject
         .WithReference( redis )
-        .WaitFor( redis )
         .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "10000" )
         .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
         .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )

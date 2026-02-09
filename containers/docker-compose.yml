@@ -43,7 +43,7 @@ services:
       - ./secrets/redis_password.txt:/run/secrets/redis_password:ro
       - ./secrets/internal_service_key.txt:/run/secrets/internal_service_key:ro
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:10000/health"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:10000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -63,24 +63,30 @@ services:
     restart: unless-stopped
     networks:
       - internal
-    command: >
-      sh -c "if [ -f /run/secrets/redis_password ]; then
-        head -n 1 /run/secrets/redis_password | tr -d '\r\n' | awk '{print \"requirepass \" $$0; print \"appendonly yes\"}' > /tmp/redis.conf &&
-        exec redis-server /tmp/redis.conf;
-      else
-        exec redis-server --appendonly yes;
-      fi"
+    command:
+      - sh
+      - -c
+      - |
+        if [ -f /run/secrets/redis_password ]; then
+          password=$$(head -n 1 /run/secrets/redis_password | tr -d '\015\012')
+          printf 'requirepass %s\nappendonly yes\n' "$$password" > /tmp/redis.conf
+          exec redis-server /tmp/redis.conf
+        else
+          exec redis-server --appendonly yes
+        fi
     volumes:
       - bridgebeats-redis-data:/data
       - ./secrets/redis_password.txt:/run/secrets/redis_password:ro
     healthcheck:
-      test: >
-        sh -c "if [ -f /run/secrets/redis_password ]; then
-          password=$$(head -n 1 /run/secrets/redis_password | tr -d '\r\n');
-          REDISCLI_AUTH=\"$$password\" redis-cli --no-auth-warning ping | grep -q PONG;
-        else
-          redis-cli ping | grep -q PONG;
-        fi"
+      test:
+        - CMD-SHELL
+        - |
+          if [ -f /run/secrets/redis_password ]; then
+            password=$$(head -n 1 /run/secrets/redis_password | tr -d '\015\012')
+            REDISCLI_AUTH="$$password" redis-cli --no-auth-warning ping | grep -q PONG
+          else
+            redis-cli ping | grep -q PONG
+          fi
       interval: 10s
       timeout: 5s
       retries: 5

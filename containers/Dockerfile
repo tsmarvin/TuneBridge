@@ -30,6 +30,11 @@ RUN DOTNET_RID="linux-x64"; \
 # Final runtime stage
 FROM base AS final
 
+# Install curl for healthcheck (as root, before switching to app user)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create necessary directories with proper permissions (as root, before switching to app user)
 RUN mkdir -p /app/data && \
     mkdir -p /app/keys && \

@@ -28,16 +28,17 @@ public class InternalServiceAuthHandler(
             return Task.FromResult( AuthenticateResult.NoResult( ) );
         }
 
-        string? providedKey = headerValue.ToString( );
+        string providedKey = headerValue.ToString().Trim('\uFEFF');
         if (string.IsNullOrWhiteSpace( providedKey )) {
             return Task.FromResult( AuthenticateResult.NoResult( ) );
         }
 
-        if (string.IsNullOrWhiteSpace( Options.ServiceKey )) {
+        string configuredKey = Options.ServiceKey.Trim('\uFEFF');
+        if (string.IsNullOrWhiteSpace( configuredKey )) {
             return Task.FromResult( AuthenticateResult.Fail( "Internal service authentication is not configured." ) );
         }
 
-        if (!string.Equals( providedKey, Options.ServiceKey, StringComparison.Ordinal )) {
+        if (!string.Equals( providedKey, configuredKey, StringComparison.Ordinal )) {
             return Task.FromResult( AuthenticateResult.Fail( "Invalid service key." ) );
         }
 
