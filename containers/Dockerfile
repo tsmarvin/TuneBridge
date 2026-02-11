@@ -1,5 +1,5 @@
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
-FROM mcr.microsoft.com/dotnet/runtime:10.0@sha256:d90a4ab2021c4be88de0c7575961baca2ec2e4de0b0d79441782c17cdbe2d0a4 AS base
+FROM mcr.microsoft.com/dotnet/runtime:10.0@sha256:3de49150e48790fa845547e14bff5add0e4194a8901e727cf88f83423bcbe2b0 AS base
 USER $APP_UID
 WORKDIR /app
 
