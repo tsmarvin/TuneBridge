@@ -16,7 +16,7 @@
 
     <!-- ASP.NET Identity -->
     <PackageReference Include="AspNetCore.Authentication.ApiKey" Version="9.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.3" />
 
     <!-- Entity Framework -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2">
