@@ -19,7 +19,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.2" />
 
     <!-- Entity Framework -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
