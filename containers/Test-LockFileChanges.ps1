@@ -38,25 +38,17 @@ param(
     [string]$CurrentPath,
 
     [Parameter()]
+    [ValidatePattern('^((linux|win)-(x64|arm64)|osx-arm64)$')]
     [string]$FromPlatform = 'linux-x64',
 
     [Parameter()]
+    [ValidatePattern('^((linux|win)-(x64|arm64)|osx-arm64)$')]
     [string]$ToPlatform = 'linux-arm64'
 )
 
 $ErrorActionPreference = 'Stop'
 
 # Validate platform format
-$validPlatformPattern = '^(linux|win|osx)-(x64|x86|arm64|arm)$'
-if ($FromPlatform -notmatch $validPlatformPattern) {
-    Write-Error "Invalid FromPlatform: '$FromPlatform'. Expected format: os-arch (e.g., linux-x64, linux-arm64)"
-    exit 1
-}
-if ($ToPlatform -notmatch $validPlatformPattern) {
-    Write-Error "Invalid ToPlatform: '$ToPlatform'. Expected format: os-arch (e.g., linux-x64, linux-arm64)"
-    exit 1
-}
-
 Write-Host "Platform transition: $FromPlatform -> $ToPlatform"
 
 # Platform-specific package patterns that are allowed to differ
@@ -64,8 +56,8 @@ Write-Host "Platform transition: $FromPlatform -> $ToPlatform"
 # We allow any valid platform suffix since we support multiple target platforms
 # Microsoft.NET.ILLink.Tasks is implicitly added by .NET 10 SDK when PublishSingleFile+SelfContained are enabled
 $AllowedPackagePatterns = @(
-    '^Aspire\.Dashboard\.Sdk\.(linux|win|osx)-(x64|x86|arm64|arm)$',
-    '^Aspire\.Hosting\.Orchestration\.(linux|win|osx)-(x64|x86|arm64|arm)$',
+    '^Aspire\.Dashboard\.Sdk\.(linux|win|osx)-(x64|arm64)$',
+    '^Aspire\.Hosting\.Orchestration\.(linux|win|osx)-(x64|arm64)$',
     '^Microsoft\.NET\.ILLink\.Tasks$'
 )
 
@@ -77,6 +69,101 @@ function Test-AllowedPackage {
         }
     }
     return $false
+}
+
+function Test-ProjectDependencyChangesAllowed {
+    param(
+        [hashtable]$BackupEntry,
+        [hashtable]$CurrentEntry
+    )
+
+    if (($null -eq $BackupEntry) -or ($null -eq $CurrentEntry)) {
+        return $false
+    }
+
+    if (($BackupEntry.type -ne 'Project') -or ($CurrentEntry.type -ne 'Project')) {
+        return $false
+    }
+
+    $backupDeps = @{}
+    $currentDeps = @{}
+
+    if ($BackupEntry.ContainsKey('dependencies') -and ($null -ne $BackupEntry.dependencies)) {
+        $backupDeps = $BackupEntry.dependencies
+    }
+    if ($CurrentEntry.ContainsKey('dependencies') -and ($null -ne $CurrentEntry.dependencies)) {
+        $currentDeps = $CurrentEntry.dependencies
+    }
+
+    # True means: the only differences between the two Project dependency maps are
+    # allowed platform-specific packages, and there is at least one such difference.
+    $allDependencyNames = @($backupDeps.Keys; $currentDeps.Keys) | Select-Object -Unique
+    $foundAllowedDifference = $false
+
+    foreach ($dependencyName in $allDependencyNames) {
+        $inBackup = $backupDeps.ContainsKey($dependencyName)
+        $inCurrent = $currentDeps.ContainsKey($dependencyName)
+
+        if (($inBackup -and $inCurrent) -and ($backupDeps[$dependencyName] -eq $currentDeps[$dependencyName])) {
+            continue
+        }
+
+        if (-not (Test-AllowedPackage $dependencyName)) {
+            return $false
+        }
+
+        $foundAllowedDifference = $true
+    }
+
+    return $foundAllowedDifference
+}
+
+function Test-LockEntryDifferent {
+    param(
+        [hashtable]$BackupEntry,
+        [hashtable]$CurrentEntry
+    )
+
+    if (($null -eq $BackupEntry) -or ($null -eq $CurrentEntry)) {
+        return $true
+    }
+
+    if (($BackupEntry.type -eq 'Transitive') -and ($CurrentEntry.type -eq 'Transitive')) {
+        return $BackupEntry.contentHash -ne $CurrentEntry.contentHash
+    }
+
+    if (($BackupEntry.type -eq 'Project') -and ($CurrentEntry.type -eq 'Project')) {
+        $backupDeps = @{}
+        $currentDeps = @{}
+
+        if ($BackupEntry.ContainsKey('dependencies') -and ($null -ne $BackupEntry.dependencies)) {
+            $backupDeps = $BackupEntry.dependencies
+        }
+        if ($CurrentEntry.ContainsKey('dependencies') -and ($null -ne $CurrentEntry.dependencies)) {
+            $currentDeps = $CurrentEntry.dependencies
+        }
+
+        $allDependencyNames = @($backupDeps.Keys; $currentDeps.Keys) | Select-Object -Unique
+        foreach ($dependencyName in $allDependencyNames) {
+            $inBackup = $backupDeps.ContainsKey($dependencyName)
+            $inCurrent = $currentDeps.ContainsKey($dependencyName)
+
+            if (
+                ($inBackup -and $inCurrent) -and
+                ($backupDeps[$dependencyName] -eq $currentDeps[$dependencyName])
+            ) {
+                continue
+            }
+
+            return $true
+        }
+
+        return $false
+    }
+
+    $backupJson = $BackupEntry | ConvertTo-Json -Compress
+    $currentJson = $CurrentEntry | ConvertTo-Json -Compress
+    return $backupJson -ne $currentJson
 }
 
 # Read and parse both lock files
@@ -113,11 +200,17 @@ foreach ($framework in $current.dependencies.Keys) {
 
         if ($inBackup -and $inCurrent) {
             # Package exists in both - check if it changed
-            $backupJson = $backupDeps[$package] | ConvertTo-Json -Compress
-            $currentJson = $currentDeps[$package] | ConvertTo-Json -Compress
+            $backupEntry = $backupDeps[$package]
+            $currentEntry = $currentDeps[$package]
 
-            if ($backupJson -ne $currentJson) {
+            if (Test-LockEntryDifferent -BackupEntry $backupEntry -CurrentEntry $currentEntry) {
                 if (Test-AllowedPackage $package) {
+                    $expectedChanges += [PSCustomObject]@{
+                        Package   = $package
+                        Type      = 'Modified'
+                        Framework = $framework
+                    }
+                } elseif (Test-ProjectDependencyChangesAllowed -BackupEntry $backupEntry -CurrentEntry $currentEntry) {
                     $expectedChanges += [PSCustomObject]@{
                         Package   = $package
                         Type      = 'Modified'
@@ -166,27 +259,37 @@ foreach ($framework in $backup.dependencies.Keys) {
 if ($expectedChanges.Count -gt 0) {
     Write-Host 'Platform-specific package changes:'
     foreach ($change in $expectedChanges) {
-        $versionInfo = ''
+        $versionInfo = [string]::Empty
         if ($change.Type -eq 'Modified') {
-            $backupVersion = $backup.dependencies[$change.Framework][$change.Package].resolved
-            $currentVersion = $current.dependencies[$change.Framework][$change.Package].resolved
-            $versionInfo = " (version: $backupVersion -> $currentVersion)"
+            $backupEntry = $backup.dependencies[$change.Framework][$change.Package]
+            $currentEntry = $current.dependencies[$change.Framework][$change.Package]
+            if ($null -ne $backupEntry -and $null -ne $currentEntry -and $backupEntry.ContainsKey('resolved') -and $currentEntry.ContainsKey('resolved')) {
+                $backupVersion = $backupEntry.resolved
+                $currentVersion = $currentEntry.resolved
+                $versionInfo = " (version: $backupVersion -> $currentVersion)"
+            }
         } elseif ($change.Type -eq 'Removed') {
-            $backupVersion = $backup.dependencies[$change.Framework][$change.Package].resolved
-            $versionInfo = " (version: $backupVersion)"
+            $backupEntry = $backup.dependencies[$change.Framework][$change.Package]
+            if ($null -ne $backupEntry -and $backupEntry.ContainsKey('resolved')) {
+                $backupVersion = $backupEntry.resolved
+                $versionInfo = " (version: $backupVersion)"
+            }
         } elseif ($change.Type -eq 'Added') {
-            $currentVersion = $current.dependencies[$change.Framework][$change.Package].resolved
-            $versionInfo = " (version: $currentVersion)"
+            $currentEntry = $current.dependencies[$change.Framework][$change.Package]
+            if ($null -ne $currentEntry -and $currentEntry.ContainsKey('resolved')) {
+                $currentVersion = $currentEntry.resolved
+                $versionInfo = " (version: $currentVersion)"
+            }
         }
         Write-Host "  [$($change.Type)] $($change.Package)$versionInfo"
     }
-    Write-Host ''
+    Write-Host [string]::Empty
 }
 
 if ($unexpectedChanges.Count -gt 0) {
     Write-Error (
         'ERROR: Non-platform-specific packages changed in lock file! ' +
-        "Only Aspire.Dashboard.Sdk.$FromPlatform/$ToPlatform and Aspire.Hosting.Orchestration.$FromPlatform/$ToPlatform packages should differ between platforms." +
+        'Only platform-specific Aspire packages (and the project entries that reference them) should differ between platforms.' +
         "`nUnexpected changes detected:" + ($unexpectedChanges | ForEach-Object { "`n  - $_" })
     )
     exit 1
