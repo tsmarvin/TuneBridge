@@ -238,7 +238,7 @@ namespace BridgeBeats.Services.LinkResolver {
 
                 MediaLinkResult result = new();
                 lookup.IsPrimary = true;
-                result._inputLinks.Add( $"https://{inputlink}" );
+                result.InputLinks.Add( $"https://{inputlink}" );
                 if (lookup.ExternalId == "prerelease") {
                     result.Messages ??= [];
                     result.Messages.Add( "Prerelease links aren't supported at the moment. Try a Title/Artist search to check other platforms." );

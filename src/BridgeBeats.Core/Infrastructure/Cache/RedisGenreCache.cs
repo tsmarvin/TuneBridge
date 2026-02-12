@@ -296,7 +296,7 @@ public sealed partial class RedisGenreCache : IGenreCacheService {
     /// <summary>
     /// Parses the genres array from a Redis hash.
     /// </summary>
-    private IReadOnlyList<string>? ParseGenresFromHash( HashEntry[] hashEntries ) {
+    private List<string>? ParseGenresFromHash( HashEntry[] hashEntries ) {
         RedisValue genresValue = hashEntries.FirstOrDefault( e => e.Name == GenresField ).Value;
 
         if (genresValue.IsNullOrEmpty) { return null; }

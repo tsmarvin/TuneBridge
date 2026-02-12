@@ -303,7 +303,7 @@ public class LookupOrchestratorTests {
             It.IsAny<string>( ),
             It.Is<string>( k => k.Contains( "IsrcLookup" ) ),
             LookupRequestType.IsrcLookup,
-            It.Is<string>( v => v.ToUpperInvariant( ) == TestIsrc.ToUpperInvariant( ) )
+            It.Is<string>( v => v.Equals( TestIsrc, StringComparison.InvariantCultureIgnoreCase ) )
         ), Times.Once );
         _queueMock.Verify(
             q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), QueuePriority.Interactive ),

@@ -147,7 +147,7 @@ public partial class PlaylistController( IPlaylistService? playlistService, IOpe
             if (primaryResult != null) {
                 items.Add( new PlaylistItemViewModel {
                     CardId = cardId,
-                    CardUrl = $"https://{_cardService?.BaseUrl}/card/{cardId}",
+                    CardUrl = $"https://{_cardService?.Domain}/card/{cardId}",
                     Result = result,
                     Title = primaryResult.Title ?? "Unknown Title",
                     Artist = primaryResult.Artist ?? "Unknown Artist",
@@ -162,7 +162,7 @@ public partial class PlaylistController( IPlaylistService? playlistService, IOpe
             Title = playlist.Title ?? "BridgeBeats",
             Description = playlist.Description,
             Items = items,
-            BaseUrl = _playlistService.BaseUrl
+            Domain = _playlistService.Domain
         };
 
         return View( viewModel );
@@ -235,7 +235,7 @@ public partial class PlaylistController( IPlaylistService? playlistService, IOpe
             if (primaryResult != null) {
                 items.Add( new PlaylistItemViewModel {
                     CardId = cardId,
-                    CardUrl = $"https://{_cardService?.BaseUrl}/card/{cardId}",
+                    CardUrl = $"https://{_cardService?.Domain}/card/{cardId}",
                     Result = result,
                     Title = primaryResult.Title ?? "Unknown Title",
                     Artist = primaryResult.Artist ?? "Unknown Artist",
@@ -248,7 +248,7 @@ public partial class PlaylistController( IPlaylistService? playlistService, IOpe
         // Generate QR code data URI if requested
         string? qrCodeDataUri = null;
         if (qr) {
-            string embedUrl = $"https://{_playlistService.BaseUrl}/playlist/{id}/embed";
+            string embedUrl = $"https://{_playlistService.Domain}/playlist/{id}/embed";
             qrCodeDataUri = _qrCodeService.GenerateQrCodeDataUri( embedUrl );
         }
 
@@ -257,7 +257,7 @@ public partial class PlaylistController( IPlaylistService? playlistService, IOpe
             Title = playlist.Title ?? "BridgeBeats Playlist",
             Description = playlist.Description,
             Items = items,
-            BaseUrl = _playlistService.BaseUrl,
+            Domain = _playlistService.Domain,
             QrCodeDataUri = qrCodeDataUri
         };
 

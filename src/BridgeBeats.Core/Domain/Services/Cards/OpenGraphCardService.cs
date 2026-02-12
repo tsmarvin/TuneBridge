@@ -8,13 +8,13 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
     /// <summary>
     /// In-memory implementation of the OpenGraph card service for storing MediaLinkResult objects.
     /// </summary>
-    public class OpenGraphCardService( string baseUrl, int expirationHours, int cleanupInterval ) : IOpenGraphCardService {
+    public class OpenGraphCardService( string domain, int expirationHours, int cleanupInterval ) : IOpenGraphCardService {
 
         /// <inheritdoc/>
-        public bool IsEnabled => string.IsNullOrWhiteSpace( baseUrl ) == false;
+        public bool IsEnabled => string.IsNullOrWhiteSpace( domain ) == false;
 
         /// <inheritdoc/>
-        public string BaseUrl => baseUrl;
+        public string Domain => domain;
 
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
         private readonly TimeSpan _expirationTime = expirationHours > 0
@@ -43,7 +43,7 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             );
 
             // Generate the OpenGraph card URL
-            return $"https://{baseUrl.TrimEnd( '/' )}/card/{id}";
+            return $"https://{domain.TrimEnd( '/' )}/card/{id}";
         }
 
         /// <inheritdoc/>

@@ -11,17 +11,17 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
     /// <summary>
     /// Database-backed implementation of the playlist service.
     /// </summary>
-    public class PlaylistService( string baseUrl, IDbContextFactory<ApplicationDbContext> contextFactory ) : IPlaylistService {
+    public class PlaylistService( string domain, IDbContextFactory<ApplicationDbContext> contextFactory ) : IPlaylistService {
 
         /// <inheritdoc/>
-        public bool IsEnabled => !string.IsNullOrWhiteSpace( baseUrl );
+        public bool IsEnabled => !string.IsNullOrWhiteSpace( domain );
 
         /// <inheritdoc/>
-        public string BaseUrl => baseUrl;
+        public string Domain => domain;
 
         private readonly IDbContextFactory<ApplicationDbContext> _contextFactory = contextFactory;
         private const int MaxPlaylistSize = 20;
-        private static readonly TimeSpan AnonymousExpiration = TimeSpan.FromDays( 14 ); // 2 weeks for anonymous
+        private static readonly TimeSpan s_anonymousExpiration = TimeSpan.FromDays( 14 ); // 2 weeks for anonymous
 
         /// <inheritdoc/>
         public async Task<string> CreatePlaylistAsync( List<string> cardIds, List<string> cardRkeys, string? title = null, string? description = null, string? userId = null ) {
@@ -75,7 +75,7 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
                     CardIds = string.Join( ",", cardIds ),
                     CardRkeys = string.Join( ",", cardRkeys ),
                     CreatedAt = DateTime.UtcNow,
-                    ExpiresAt = string.IsNullOrWhiteSpace( userId ) ? DateTime.UtcNow.Add( AnonymousExpiration ) : null
+                    ExpiresAt = string.IsNullOrWhiteSpace( userId ) ? DateTime.UtcNow.Add( s_anonymousExpiration ) : null
                 };
 
                 _ = context.Playlists.Add( entry );
@@ -83,7 +83,7 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             }
 
             // Generate the playlist card URL
-            return $"https://{baseUrl.TrimEnd( '/' )}/playlist/{playlistId}";
+            return $"https://{domain.TrimEnd( '/' )}/playlist/{playlistId}";
         }
 
         /// <inheritdoc/>

@@ -19,11 +19,11 @@ namespace BridgeBeats.Worker.Discord.Services {
         /// </summary>
         /// <param name="httpClient">The HTTP client configured for BridgeBeats Web API.</param>
         /// <param name="logger">The logger instance.</param>
-        /// <param name="baseUrl">The base URL for OpenGraph card links.</param>
-        public BridgeBeatsApiClient( HttpClient httpClient, ILogger<BridgeBeatsApiClient> logger, string baseUrl ) {
+        /// <param name="domain">The base URL for OpenGraph card links.</param>
+        public BridgeBeatsApiClient( HttpClient httpClient, ILogger<BridgeBeatsApiClient> logger, string domain ) {
             _httpClient = httpClient;
             _logger = logger;
-            BaseUrl = baseUrl;
+            Domain = domain;
             _jsonOptions = new JsonSerializerOptions {
                 PropertyNameCaseInsensitive = true
             };
@@ -32,12 +32,12 @@ namespace BridgeBeats.Worker.Discord.Services {
         /// <summary>
         /// Gets whether the OpenGraph card service is enabled (base URL is configured).
         /// </summary>
-        public bool IsCardServiceEnabled => !string.IsNullOrWhiteSpace( BaseUrl );
+        public bool IsCardServiceEnabled => !string.IsNullOrWhiteSpace( Domain );
 
         /// <summary>
         /// Gets the base URL for OpenGraph cards.
         /// </summary>
-        public string BaseUrl { get; }
+        public string Domain { get; }
 
         /// <summary>
         /// Resolves music links from the provided content by calling the Web API.

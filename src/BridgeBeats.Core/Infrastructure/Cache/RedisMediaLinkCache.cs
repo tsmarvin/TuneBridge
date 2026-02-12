@@ -246,7 +246,7 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
             allKeys.Add( cardKey );
 
             // Store URL lookups (input links + service URLs)
-            List<string> allUrls = [.. result._inputLinks];
+            List<string> allUrls = [.. result.InputLinks];
             allUrls.AddRange( result.Results.Values
                 .Where( r => !string.IsNullOrWhiteSpace( r.URL ) )
                 .Select( r => r.URL ) );

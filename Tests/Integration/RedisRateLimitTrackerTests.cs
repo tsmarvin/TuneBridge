@@ -116,7 +116,7 @@ public class RedisRateLimitTrackerTests {
 
         // RetryAfter should be close to what we set (within a second due to timing)
         TimeSpan diff = (retryAfter - state.RetryAfter.Value).Duration( );
-        Assert.IsLessThan( diff, TimeSpan.FromSeconds( 1 ), $"RetryAfter diff was {diff}" );
+        Assert.IsLessThan( TimeSpan.FromSeconds( 1 ), diff, $"RetryAfter diff was {diff}" );
     }
 
     /// <summary>

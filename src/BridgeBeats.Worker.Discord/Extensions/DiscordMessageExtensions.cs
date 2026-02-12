@@ -59,7 +59,7 @@ namespace BridgeBeats.Worker.Discord.Extensions {
             }
 
             if (string.IsNullOrWhiteSpace( externalId ) == false) {
-                desc += "\n" + (isAlbum ? _albumExternalMediaPrefix : _songExternalMediaPrefix) + externalId;
+                desc += "\n" + (isAlbum ? AlbumExternalMediaPrefix : SongExternalMediaPrefix) + externalId;
             }
 
             return NewMessagePropertiesWithUrl( title, image, desc, embedColor, fieldProps, userId, cardUrl );
@@ -111,7 +111,7 @@ namespace BridgeBeats.Worker.Discord.Extensions {
             }
 
             if (string.IsNullOrWhiteSpace( externalId ) == false) {
-                desc += "\n" + (isAlbum ? _albumExternalMediaPrefix : _songExternalMediaPrefix) + externalId;
+                desc += "\n" + (isAlbum ? AlbumExternalMediaPrefix : SongExternalMediaPrefix) + externalId;
             }
 
             return NewMessageProperties( title, image, desc, embedColor, fieldProps, userId );
@@ -150,18 +150,18 @@ namespace BridgeBeats.Worker.Discord.Extensions {
             return string.Empty;
         }
 
-        private const string _albumExternalMediaPrefix = "UPC: ";
-        private const string _songExternalMediaPrefix = "ISRC: ";
-        private const string _titlePrefix = "Title: ";
-        private const string _albumPrefix = "Album: ";
-        private const string _songPrefix = "Song: ";
+        private const string AlbumExternalMediaPrefix = "UPC: ";
+        private const string SongExternalMediaPrefix = "ISRC: ";
+        private const string TitlePrefix = "Title: ";
+        private const string AlbumPrefix = "Album: ";
+        private const string SongPrefix = "Song: ";
 
         private static string GetTitle( bool? isAlbum, string title ) {
             return (isAlbum == null
-                ? _titlePrefix
+                ? TitlePrefix
                 : (bool)isAlbum
-                    ? _albumPrefix
-                    : _songPrefix
+                    ? AlbumPrefix
+                    : SongPrefix
             ) + title;
         }
 

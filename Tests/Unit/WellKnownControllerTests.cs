@@ -12,14 +12,14 @@ namespace BridgeBeats.Tests.Unit;
 /// </summary>
 [TestClass]
 public class WellKnownControllerTests {
-    private const string TestBaseUrl = "https://example.com";
+    private const string TestDomain = "https://example.com";
 
     /// <summary>
-    /// Creates an IConfiguration with the specified BaseUrl.
+    /// Creates an IConfiguration with the specified Domain.
     /// </summary>
-    private static IConfiguration CreateConfiguration( string? baseUrl ) {
+    private static IConfiguration CreateConfiguration( string? domain ) {
         Dictionary<string, string?> settings = new( ) {
-            ["BridgeBeats:BaseUrl"] = baseUrl
+            ["BridgeBeats:Domain"] = domain
         };
 
         return new ConfigurationBuilder( )
@@ -41,7 +41,7 @@ public class WellKnownControllerTests {
     [TestMethod]
     public void ClientMetadata_WithSigningKey_ShouldReturnConfidentialClientMetadata( ) {
         // Arrange
-        IConfiguration config = CreateConfiguration( TestBaseUrl );
+        IConfiguration config = CreateConfiguration(TestDomain);
         using ATProtoSigningKeyProvider signingKey = CreateTestSigningKeyProvider( );
         WellKnownController controller = new( config, signingKey );
 
@@ -56,17 +56,17 @@ public class WellKnownControllerTests {
         using JsonDocument doc = JsonDocument.Parse( json );
         JsonElement root = doc.RootElement;
 
-        Assert.AreEqual( $"{TestBaseUrl}/.well-known/client-metadata.json", root.GetProperty( "client_id" ).GetString( ) );
+        Assert.AreEqual( $"{TestDomain}/.well-known/client-metadata.json", root.GetProperty( "client_id" ).GetString( ) );
         Assert.AreEqual( "BridgeBeats", root.GetProperty( "client_name" ).GetString( ) );
         Assert.AreEqual( "private_key_jwt", root.GetProperty( "token_endpoint_auth_method" ).GetString( ) );
         Assert.AreEqual( "ES256", root.GetProperty( "token_endpoint_auth_signing_alg" ).GetString( ) );
-        Assert.AreEqual( $"{TestBaseUrl}/.well-known/jwks.json", root.GetProperty( "jwks_uri" ).GetString( ) );
+        Assert.AreEqual( $"{TestDomain}/.well-known/jwks.json", root.GetProperty( "jwks_uri" ).GetString( ) );
         Assert.IsTrue( root.GetProperty( "dpop_bound_access_tokens" ).GetBoolean( ) );
 
         // Verify redirect_uris
         JsonElement redirectUris = root.GetProperty( "redirect_uris" );
         Assert.AreEqual( 1, redirectUris.GetArrayLength( ) );
-        Assert.AreEqual( $"{TestBaseUrl}/account/atproto-callback", redirectUris[0].GetString( ) );
+        Assert.AreEqual( $"{TestDomain}/account/atproto-callback", redirectUris[0].GetString( ) );
 
         // Verify scope
         Assert.AreEqual( "atproto repo:link.bridgebeats.playlist", root.GetProperty( "scope" ).GetString( ) );
@@ -78,7 +78,7 @@ public class WellKnownControllerTests {
     [TestMethod]
     public void ClientMetadata_WithoutSigningKey_ShouldReturnPublicClientMetadata( ) {
         // Arrange
-        IConfiguration config = CreateConfiguration( TestBaseUrl );
+        IConfiguration config = CreateConfiguration(TestDomain);
         WellKnownController controller = new( config );
 
         // Act
@@ -98,10 +98,10 @@ public class WellKnownControllerTests {
     }
 
     /// <summary>
-    /// Verifies that ClientMetadata returns NotFound when BaseUrl is not configured.
+    /// Verifies that ClientMetadata returns NotFound when Domain is not configured.
     /// </summary>
     [TestMethod]
-    public void ClientMetadata_WithoutBaseUrl_ShouldReturnNotFound( ) {
+    public void ClientMetadata_WithoutDomain_ShouldReturnNotFound( ) {
         // Arrange
         IConfiguration config = CreateConfiguration( null );
         WellKnownController controller = new( config );
@@ -114,10 +114,10 @@ public class WellKnownControllerTests {
     }
 
     /// <summary>
-    /// Verifies that ClientMetadata uses the configured BaseUrl for all URLs.
+    /// Verifies that ClientMetadata uses the configured Domain for all URLs.
     /// </summary>
     [TestMethod]
-    public void ClientMetadata_ShouldUseDynamicBaseUrl( ) {
+    public void ClientMetadata_ShouldUseDynamicDomain( ) {
         // Arrange
         string customUrl = "https://custom.example.org";
         IConfiguration config = CreateConfiguration( customUrl );
@@ -144,7 +144,7 @@ public class WellKnownControllerTests {
     [TestMethod]
     public void Jwks_WithSigningKey_ShouldReturnPublicJwks( ) {
         // Arrange
-        IConfiguration config = CreateConfiguration( TestBaseUrl );
+        IConfiguration config = CreateConfiguration(TestDomain);
         using ATProtoSigningKeyProvider signingKey = CreateTestSigningKeyProvider( );
         WellKnownController controller = new( config, signingKey );
 
@@ -177,7 +177,7 @@ public class WellKnownControllerTests {
     [TestMethod]
     public void Jwks_WithoutSigningKey_ShouldReturnNotFound( ) {
         // Arrange
-        IConfiguration config = CreateConfiguration( TestBaseUrl );
+        IConfiguration config = CreateConfiguration(TestDomain);
         WellKnownController controller = new( config );
 
         // Act

@@ -13,9 +13,9 @@ public interface IOpenGraphCardService {
     bool IsEnabled { get; }
 
     /// <summary>
-    /// The base URL for the application (e.g., https://bridgebeats.link).
+    /// The domain for the application (e.g. bridgebeats.link).
     /// </summary>
-    string BaseUrl { get; }
+    string Domain { get; }
 
     /// <summary>
     /// Stores a MediaLinkResult and returns a unique identifier for it.

@@ -44,7 +44,7 @@ IResourceBuilder<ParameterResource> internalServiceKey = builder.AddParameter( "
 
 // Additional configuration parameters
 IResourceBuilder<ParameterResource> nodeNumber               = builder.AddParameter( "NodeNumber" );
-IResourceBuilder<ParameterResource> baseUrl                  = builder.AddParameter( "BaseUrl" );
+IResourceBuilder<ParameterResource> domain                   = builder.AddParameter( "Domain" );
 IResourceBuilder<ParameterResource> rateLimitRequestsPerHour = builder.AddParameter( "RateLimitRequestsPerHour" );
 IResourceBuilder<ParameterResource> cacheDays                = builder.AddParameter( "CacheDays" );
 IResourceBuilder<ParameterResource> identityConnectionString = builder.AddParameter( "IdentityConnectionString" );
@@ -233,7 +233,7 @@ if (HasDiscordCredentials( )) {
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
             .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
             .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
-            .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
+            .WithEnvironment( "BridgeBeats__Domain", domain )
             .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey );
     } else {
         discordWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" );
@@ -242,7 +242,7 @@ if (HasDiscordCredentials( )) {
             .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
             .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
             .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
-            .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
+            .WithEnvironment( "BridgeBeats__Domain", domain )
             .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey );
     }
 }
@@ -346,7 +346,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
         .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
         .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey )
-        .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
+        .WithEnvironment( "BridgeBeats__Domain", domain )
         .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
@@ -374,7 +374,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
         .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
         .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey )
-        .WithEnvironment( "BridgeBeats__BaseUrl", baseUrl )
+        .WithEnvironment( "BridgeBeats__Domain", domain )
         .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )

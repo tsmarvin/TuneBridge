@@ -38,9 +38,9 @@ param(
 # Configuration
 # =============================================================================
 $ErrorActionPreference = 'Stop'
-$RepoOwner = 'tsmarvin'
-$RepoName = 'BridgeBeats'
-$Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$RepoOwner  = 'tsmarvin'
+$RepoName   = 'BridgeBeats'
+$Timestamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
 $UpgradeLog = 'upgrade.log'
 
 # Files to download from the repository
@@ -51,20 +51,20 @@ $BackupFiles = @('docker-compose.yml', 'Caddyfile')
 
 # Secret files configuration
 $SecretFiles = @(
-    @{ Name = 'apple_key.p8';              Description = 'Apple Music private key (.p8 file)'; AutoGenerate = $false }
-    @{ Name = 'spotify_client_secret.txt'; Description = 'Spotify API client secret';          AutoGenerate = $false }
-    @{ Name = 'tidal_client_secret.txt';   Description = 'Tidal API client secret';            AutoGenerate = $false }
-    @{ Name = 'discord_token.txt';         Description = 'Discord bot token';                  AutoGenerate = $false }
-    @{ Name = 'atproto_password.txt';      Description = 'ATProto app password';               AutoGenerate = $false }
-    @{ Name = 'atproto_oauth_key.json';    Description = 'ATProto OAuth signing key (ES256 JWK)'; AutoGenerate = $true }
-    @{ Name = 'api_key_salt.txt';          Description = 'API key salt';                       AutoGenerate = $true }
-    @{ Name = 'redis_password.txt';        Description = 'Redis password';                     AutoGenerate = $true }
+    @{ Name = 'apple_key.p8';              Description = 'Apple Music private key (.p8 file)';               AutoGenerate = $false }
+    @{ Name = 'spotify_client_secret.txt'; Description = 'Spotify API client secret';                        AutoGenerate = $false }
+    @{ Name = 'tidal_client_secret.txt';   Description = 'Tidal API client secret';                          AutoGenerate = $false }
+    @{ Name = 'discord_token.txt';         Description = 'Discord bot token';                                AutoGenerate = $false }
+    @{ Name = 'atproto_password.txt';      Description = 'ATProto app password';                             AutoGenerate = $false }
+    @{ Name = 'atproto_oauth_key.json';    Description = 'ATProto OAuth signing key (ES256 JWK)';            AutoGenerate = $true }
+    @{ Name = 'api_key_salt.txt';          Description = 'API key salt';                                     AutoGenerate = $true }
+    @{ Name = 'redis_password.txt';        Description = 'Redis password';                                   AutoGenerate = $true }
     @{ Name = 'internal_service_key.txt';  Description = 'Internal service key (worker/API authentication)'; AutoGenerate = $true }
-    @{ Name = 'cloudflare_api_token.txt';  Description = 'Cloudflare API token (DNS)';         AutoGenerate = $false }
+    @{ Name = 'cloudflare_api_token.txt';  Description = 'Cloudflare API token (DNS)';                       AutoGenerate = $false }
 )
 
 # Construct base URL for raw file downloads
-$BaseUrl = "https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/containers"
+$Domain = "https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/containers"
 
 # =============================================================================
 # Helper Functions
@@ -152,7 +152,9 @@ function Get-RandomString {
 
 function Get-ES256SigningKeyJwk {
     # Generate an ES256 (P-256) key pair and return it as a JWK JSON string
-    $ecdsa = [System.Security.Cryptography.ECDsa]::Create([System.Security.Cryptography.ECCurve]::CreateFromFriendlyName('nistP256'))
+    $ecdsa = [System.Security.Cryptography.ECDsa]::Create(
+        [System.Security.Cryptography.ECCurve]::CreateFromFriendlyName('nistP256')
+    )
     try {
         $params = $ecdsa.ExportParameters($true)
 
@@ -161,12 +163,16 @@ function Get-ES256SigningKeyJwk {
             [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
         }
 
-        $kid = [Guid]::NewGuid().ToString('N')
-        $x = & $b64url $params.Q.X
-        $y = & $b64url $params.Q.Y
-        $d = & $b64url $params.D
-
-        return "{`"kty`":`"EC`",`"crv`":`"P-256`",`"x`":`"$x`",`"y`":`"$y`",`"d`":`"$d`",`"kid`":`"$kid`",`"alg`":`"ES256`",`"use`":`"sig`"}"
+        return (@{
+            kty = 'EC'
+            crv = 'P-256'
+            x   = & $b64url $params.Q.X
+            y   = & $b64url $params.Q.Y
+            d   = & $b64url $params.D
+            kid = [Guid]::NewGuid().ToString('N')
+            alg = 'ES256'
+            use = 'sig'
+        } | ConvertTo-Json -Compress)
     } finally {
         $ecdsa.Dispose()
     }
@@ -298,7 +304,7 @@ Write-Ok "Working directory: $Directory"
 Write-Section 'Downloading Configuration Files'
 
 foreach ($file in $DownloadFiles) {
-    $sourceUrl = "$BaseUrl/$file"
+    $sourceUrl = "$Domain/$file"
     $destPath = Join-Path -Path $Directory -ChildPath $file
 
     # Backup existing file if it's in the backup list
@@ -413,8 +419,8 @@ if ($containersExist) {
             $digest = 'unknown'
         }
 
-        Write-Host "  $container: image=$image digest=$digest"
-        Write-UpgradeLog "  $container: image=$image digest=$digest"
+        Write-Host "  $container`: image=$image digest=$digest"
+        Write-UpgradeLog "  $container`: image=$image digest=$digest"
     }
 
     # Log rollback info
@@ -568,7 +574,6 @@ $envIssues = @()
 # Required environment variables to check
 $requiredEnvVars = @(
     'DOMAIN'
-    'BASEURL'
     'CADDY_ADMIN_EMAIL'
     'PDS_HOSTNAME'
     'PDS_JWT_SECRET'

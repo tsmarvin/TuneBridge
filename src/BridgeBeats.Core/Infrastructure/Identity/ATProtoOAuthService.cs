@@ -67,7 +67,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly ILogger<ATProtoOAuthService> _logger;
     private readonly string _clientId;
-    private readonly string _baseUrl;
+    private readonly string _domain;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ATProtoSigningKeyProvider? _signingKeyProvider;
     private readonly IPersonalDataProtector _personalDataProtector;
@@ -105,7 +105,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         if (!clientId.EndsWith( ClientMetadataPath, StringComparison.OrdinalIgnoreCase )) {
             throw new ArgumentException( $"Client ID must end with '{ClientMetadataPath}'", nameof( clientId ) );
         }
-        _baseUrl = clientId[..^ClientMetadataPath.Length];
+        _domain = clientId[..^ClientMetadataPath.Length];
     }
 
     /// <inheritdoc/>
@@ -687,7 +687,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
             ["client_id"] = _clientId,
-            ["redirect_uri"] = $"{_baseUrl}{OAuthCallbackPath}",
+            ["redirect_uri"] = $"{_domain}{OAuthCallbackPath}",
             ["code_verifier"] = oauthState.CodeVerifier!
         };
 

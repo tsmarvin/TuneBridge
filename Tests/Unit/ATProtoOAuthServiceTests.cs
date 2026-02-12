@@ -22,7 +22,7 @@ public class ATProtoOAuthServiceTests {
     private Mock<IPersonalDataProtector> _mockPersonalDataProtector = null!;
     private HttpClient _httpClient = null!;
     private const string TestClientId = "https://example.com/.well-known/client-metadata.json";
-    private const string TestBaseUrl = "https://example.com";
+    private const string TestDomain = "https://example.com";
     private const string TestDid = "did:plc:test123456789";
     private const string TestHandle = "test.bsky.social";
 
@@ -227,7 +227,7 @@ public class ATProtoOAuthServiceTests {
         using ECDsa ecdsa = ECDsa.Create( ECCurve.NamedCurves.nistP256 );
         ECParameters parameters = ecdsa.ExportParameters( includePrivateParameters: true );
 
-        string Base64UrlEncode( byte[] bytes ) => Convert.ToBase64String( bytes )
+        static string Base64UrlEncode( byte[] bytes ) => Convert.ToBase64String( bytes )
                 .TrimEnd( '=' )
                 .Replace( '+', '-' )
                 .Replace( '/', '_' );
@@ -235,9 +235,9 @@ public class ATProtoOAuthServiceTests {
         var jwk = new {
             kty = "EC",
             crv = "P-256",
-            x = Base64UrlEncode( parameters.Q.X! ),
-            y = Base64UrlEncode( parameters.Q.Y! ),
-            d = Base64UrlEncode( parameters.D! ),
+            x   = Base64UrlEncode( parameters.Q.X! ),
+            y   = Base64UrlEncode( parameters.Q.Y! ),
+            d   = Base64UrlEncode( parameters.D! ),
             kid = Guid.NewGuid( ).ToString( "N" )
         };
 

@@ -87,8 +87,8 @@ public static class ATProtoUriHelper {
         }
 
         // Strategy 1: Try to find by input link if available
-        if (includeInputLinkStrategy && result._inputLinks.Count > 0) {
-            foreach (string inputLink in result._inputLinks) {
+        if (includeInputLinkStrategy && result.InputLinks.Count > 0) {
+            foreach (string inputLink in result.InputLinks) {
                 (MediaLinkResult result, string recordUri, bool isStale)? cachedResult = await cacheRepository.TryGetCachedResultAsync( inputLink );
                 if (cachedResult.HasValue) {
                     return cachedResult.Value.recordUri;

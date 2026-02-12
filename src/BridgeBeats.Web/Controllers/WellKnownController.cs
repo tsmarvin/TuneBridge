@@ -15,43 +15,43 @@ namespace BridgeBeats.Web.Controllers {
     /// <remarks>
     /// Initializes a new instance of the <see cref="WellKnownController"/> class.
     /// </remarks>
-    /// <param name="configuration">Application configuration for reading BaseUrl.</param>
+    /// <param name="configuration">Application configuration for reading Domain.</param>
     /// <param name="signingKeyProvider">Optional signing key provider for JWKS endpoint.</param>
     [AllowAnonymous]
     public class WellKnownController(
         IConfiguration configuration,
         ATProtoSigningKeyProvider? signingKeyProvider = null
     ) : Controller {
-        private readonly string? _baseUrl = configuration.GetSection( "BridgeBeats" ).GetValue<string>( "BaseUrl" );
+        private readonly string? _domain = configuration.GetSection("BridgeBeats").GetValue<string>("Domain");
 
         /// <summary>
         /// Returns the ATProto OAuth client metadata document.
         /// This replaces the static .well-known/client-metadata.json file so that
-        /// all URLs are derived dynamically from the configured BaseUrl.
+        /// all URLs are derived dynamically from the configured Domain.
         /// </summary>
         /// <returns>JSON client metadata document.</returns>
         [HttpGet( ".well-known/client-metadata.json" )]
         [ResponseCache( Duration = 3600, Location = ResponseCacheLocation.Any )]
         public IActionResult ClientMetadata( ) {
-            if (string.IsNullOrWhiteSpace( _baseUrl )) {
-                return NotFound( "BaseUrl is not configured." );
+            if (string.IsNullOrWhiteSpace( _domain )) {
+                return NotFound( "Domain is not configured." );
             }
 
-            string baseUrl = _baseUrl.TrimEnd( '/' );
-            string clientId = $"{baseUrl}/.well-known/client-metadata.json";
+            string domain = _domain.TrimEnd('/');
+            string clientId = $"{domain}/.well-known/client-metadata.json";
 
             Dictionary<string, object> metadata = new( ) {
                 ["client_id"]                = clientId,
                 ["client_name"]              = "BridgeBeats",
-                ["client_uri"]               = baseUrl,
-                ["logo_uri"]                 = $"{baseUrl}/images/icon-192.png",
-                ["tos_uri"]                  = $"{baseUrl}/privacy",
-                ["policy_uri"]               = $"{baseUrl}/privacy",
+                ["client_uri"] = domain,
+                ["logo_uri"] = $"{domain}/images/icon-192.png",
+                ["tos_uri"] = $"{domain}/privacy",
+                ["policy_uri"] = $"{domain}/privacy",
                 ["application_type"]         = "web",
                 ["grant_types"]              = new[] { "authorization_code", "refresh_token" },
                 ["response_types"]           = new[] { "code" },
                 ["scope"]                    = "atproto repo:link.bridgebeats.playlist",
-                ["redirect_uris"]            = new[] { $"{baseUrl}/account/atproto-callback" },
+                ["redirect_uris"] = new[] { $"{domain}/account/atproto-callback" },
                 ["dpop_bound_access_tokens"] = true
             };
 
@@ -60,7 +60,7 @@ namespace BridgeBeats.Web.Controllers {
             } else {
                 metadata["token_endpoint_auth_method"] = "private_key_jwt";
                 metadata["token_endpoint_auth_signing_alg"] = "ES256";
-                metadata["jwks_uri"] = $"{baseUrl}/.well-known/jwks.json";
+                metadata["jwks_uri"] = $"{domain}/.well-known/jwks.json";
             }
 
             return Json( metadata );

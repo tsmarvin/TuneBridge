@@ -29,7 +29,7 @@ public class AppSettingsTests {
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
             ["BridgeBeats:ATProtoUserDID"] = string.Empty,
             ["BridgeBeats:CacheDays"] = "7",
-            ["BridgeBeats:BaseUrl"] = "localhost",
+            ["BridgeBeats:Domain"] = "localhost",
             ["BridgeBeats:LogDirPath"] = "./logs",
         };
 
@@ -56,7 +56,7 @@ public class AppSettingsTests {
         Assert.AreEqual( string.Empty, settings.ATProtoPassword );
         Assert.AreEqual( string.Empty, settings.ATProtoUserDID );
         Assert.AreEqual( 7, settings.CacheDays );
-        Assert.AreEqual( "localhost", settings.BaseUrl );
+        Assert.AreEqual( "localhost", settings.Domain );
         Assert.AreEqual( "./logs", settings.LogDirPath );
     }
 
@@ -77,14 +77,14 @@ public class AppSettingsTests {
     }
 
     /// <summary>
-    /// Verifies that BaseUrl defaults to empty string.
+    /// Verifies that Domain defaults to empty string.
     /// </summary>
     [TestMethod]
-    public void AppSettings_BaseUrl_DefaultsToEmpty( ) {
+    public void AppSettings_Domain_DefaultsToEmpty( ) {
         // Arrange & Act
         AppSettings settings = new();
 
         // Assert
-        Assert.AreEqual( string.Empty, settings.BaseUrl );
+        Assert.AreEqual( string.Empty, settings.Domain );
     }
 }

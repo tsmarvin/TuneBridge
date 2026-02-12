@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using AspNetCore.Authentication.ApiKey;
@@ -53,8 +54,7 @@ namespace BridgeBeats.Web.Configuration {
 
             _ = builder.WebHost.ConfigureBridgeBeatsServices(
                 builder.Services,
-                builder.Configuration,
-                builder.Environment.EnvironmentName
+                builder.Configuration
             );
 
             return builder;
@@ -63,10 +63,9 @@ namespace BridgeBeats.Web.Configuration {
         internal static TBuilder ConfigureBridgeBeatsServices<TBuilder>(
             this TBuilder builder,
             IServiceCollection services,
-            IConfiguration config,
-            string environment
+            IConfiguration config
         ) where TBuilder : IWebHostBuilder {
-            _ = AddBridgeBeatsServices( services, config, environment );
+            _ = AddBridgeBeatsServices( services, config );
             return builder;
         }
 
@@ -76,12 +75,10 @@ namespace BridgeBeats.Web.Configuration {
         /// </summary>
         /// <param name="services">The service collection to configure.</param>
         /// <param name="config">The configuration to use for settings.</param>
-        /// <param name="environment">The environment name.</param>
         /// <returns>The configured service collection.</returns>
         internal static IServiceCollection AddBridgeBeatsServices(
             this IServiceCollection services,
-            IConfiguration config,
-            string environment
+            IConfiguration config
         ) {
             // Add services to the container.
             _ = services
@@ -131,7 +128,7 @@ namespace BridgeBeats.Web.Configuration {
             _ = services.AddBridgeBeatsServices(
                 enabledProviders,
                 useCaching,
-                settings.BaseUrl,
+                settings.Domain,
                 settings.CardCacheExpirationHours,
                 settings.CardCacheCleanupInterval
             );
@@ -174,8 +171,7 @@ namespace BridgeBeats.Web.Configuration {
             _ = app.UseHttpsRedirection( );
 
             // Configure static file provider with proper MIME types for AT Protocol lexicon files
-            FileExtensionContentTypeProvider provider = new( );
-            provider.Mappings[".json"] = "application/json";
+            FileExtensionContentTypeProvider provider = new() { Mappings = { [".json"] = "application/json" } };
 
             // Serve .well-known directory with proper content types for AT Protocol lexicons
             _ = app.UseStaticFiles( new StaticFileOptions {
@@ -348,6 +344,34 @@ namespace BridgeBeats.Web.Configuration {
             // Use the centralized Identity configuration from Infrastructure project
             // This includes Data Protection key persistence and [ProtectedPersonalData] encryption
             _ = services.AddBridgeBeatsIdentity( settings.DataProtectionKeyPath );
+
+            _ = services.ConfigureApplicationCookie( options => {
+                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+                options.Cookie.SameSite = SameSiteMode.Lax;
+                options.Cookie.HttpOnly = true;
+
+                string domain = settings.Domain.Trim().TrimStart('.').TrimEnd('.');
+                if (ShouldSetCookieDomain( domain )) {
+                    options.Cookie.Domain = $".{domain}";
+                }
+            } );
+        }
+
+        private static bool ShouldSetCookieDomain( string domain ) {
+            if (string.IsNullOrWhiteSpace( domain )) {
+                return false;
+            }
+
+            // Cookie domains must be host-only (no scheme, path, or port)
+            if (domain.Contains( "://", StringComparison.OrdinalIgnoreCase ) ||
+                domain.Contains( '/', StringComparison.Ordinal ) ||
+                domain.Contains( ':', StringComparison.Ordinal )) {
+                return false;
+            }
+
+            // Avoid forcing Domain on localhost/IPs; let the browser use host-only cookies
+            return !string.Equals( domain, "localhost", StringComparison.OrdinalIgnoreCase ) &&
+!IPAddress.TryParse( domain, out _ );
         }
 
         private static void ConfigureApiKeyAuth( IServiceCollection services, AppSettings settings ) {
@@ -364,13 +388,12 @@ namespace BridgeBeats.Web.Configuration {
                 options.DefaultChallengeScheme = "MultiScheme";
             } )
             .AddPolicyScheme( "MultiScheme", "API Key, Service Key, or Cookie", options => {
-                options.ForwardDefaultSelector = context => {
-                    return context.Request.Headers.ContainsKey( InternalServiceDefaults.HeaderName )
+                options.ForwardDefaultSelector = context =>
+                    context.Request.Headers.ContainsKey( InternalServiceDefaults.HeaderName )
                         ? InternalServiceDefaults.AuthenticationScheme
                         : context.Request.Headers.ContainsKey( "X-API-Key" )
-                        ? ApiKeyDefaults.AuthenticationScheme
-                        : IdentityConstants.ApplicationScheme;
-                };
+                            ? ApiKeyDefaults.AuthenticationScheme
+                            : IdentityConstants.ApplicationScheme;
             } )
             .AddApiKeyInHeader<ApiKeyProvider>( options => {
                 options.Realm = "BridgeBeats API";
@@ -419,8 +442,8 @@ namespace BridgeBeats.Web.Configuration {
         private static void ConfigureATProtoIfEnabled( IServiceCollection services, AppSettings settings ) {
             // Register ATProto OAuth service (available even without server ATProto credentials)
             // This allows users to log in with Bluesky for playlist management
-            if (!string.IsNullOrWhiteSpace( settings.BaseUrl )) {
-                string clientId = $"{settings.BaseUrl.TrimEnd( '/' )}/.well-known/client-metadata.json";
+            if (!string.IsNullOrWhiteSpace( settings.Domain )) {
+                string clientId = $"{settings.Domain.TrimEnd('/')}/.well-known/client-metadata.json";
 
                 // Load the OAuth signing key for confidential client authentication if configured
                 ATProtoSigningKeyProvider? signingKeyProvider = null;

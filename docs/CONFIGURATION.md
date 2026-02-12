@@ -39,7 +39,7 @@ The Discord integration runs as a separate worker service (`BridgeBeats.Worker.D
 |----------|-------------|----------|
 | `BridgeBeats__DiscordToken` | Your Discord bot token | Yes** |
 | `BridgeBeats__NodeNumber` | Node number for Discord sharding | No (default: `0`) |
-| `BridgeBeats__BaseUrl` | Base URL for API calls (e.g., `https://bridgebeats.link`) | Yes** |
+| `BridgeBeats__Domain` | Base host for API calls (e.g., `bridgebeats.link`) | Yes** |
 
 \*\* Required only when deploying the Discord worker service
 
@@ -55,13 +55,15 @@ The Discord integration runs as a separate worker service (`BridgeBeats.Worker.D
 | `CACHE_DAYS` | Number of days to cache ATProto PDS lookup results | `7` |
 | `REDIS_CONNECTION_STRING` | Redis connection string for caching and queuing | `localhost:6379` (provided by Aspire) |
 | `BridgeBeats__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=bridgebeats.db` |
-| `BridgeBeats__BaseUrl` | Base URL for the application (for OpenGraph card URLs) | `localhost` |
+| `BridgeBeats__Domain` | Base domain for the application (for OpenGraph card URLs and dashboard auth cookie scope) | `localhost` |
 | `CARD_CACHE_EXPIRATION_HOURS` | Number of hours to cache OpenGraph cards in memory | `1` |
 | `CARD_CACHE_CLEANUP_INTERVAL` | Number of operations between cleanup cycles for expired cards | `500` |
 | `RATE_LIMIT_RETRY_THRESHOLD` | Re-queue requests if Retry-After exceeds this (format: HH:MM:SS) | `00:02:00` |
 | `JOB_EXPIRATION_MINUTES` | Minutes before incomplete lookup jobs expire | `60` |
 
-**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `BridgeBeats__BaseUrl` maps to `BridgeBeats:BaseUrl` in configuration).
+**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `BridgeBeats__Domain` maps to `BridgeBeats:Domain` in configuration).
+
+`BridgeBeats__Domain` must be a host-only value (no `http://`/`https://`, no path, and no port).
 
 ## Obtaining API Credentials
 
@@ -137,7 +139,7 @@ For local development, you can use an `appsettings.json` file instead of environ
     "ATProtoPassword": "your-app-password",
     "CacheDays": 7,
     "RedisConnectionString": "localhost:6379",
-    "BaseUrl": "localhost",
+    "Domain": "localhost",
     "LogDirPath": "./logs",
     "CardCacheExpirationHours": 1,
     "CardCacheCleanupInterval": 500,
@@ -248,9 +250,10 @@ docker exec -it bridgebeats tail -f /app/data/logs/bridgebeats-*.log
 ```
 
 **OpenTelemetry Logs** (Aspire Dashboard):
-1. Access the Aspire Dashboard at `http://localhost:18888` (or your configured endpoint)
-2. Ensure your user has the `AspireDashboardAccess` role (see [Aspire Dashboard Access Guide](ASPIRE_DASHBOARD_ACCESS.md))
-3. Navigate to the "Logs" section to view real-time logs with filtering and search
+1. Local development: access the Aspire Dashboard at `http://localhost:18888`
+2. Production: access the Aspire Dashboard at `https://dashboard.<your-domain>`
+3. Ensure your user has the `AspireDashboardAccess` role
+4. Navigate to the "Logs" section to view real-time logs with filtering and search
 
 ### Log Rotation Details
 

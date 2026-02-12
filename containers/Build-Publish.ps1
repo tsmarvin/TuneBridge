@@ -52,13 +52,13 @@ $TestScript = Join-Path -Path $PSScriptRoot -ChildPath 'Test-LockFileChanges.ps1
 $Projects = Get-ChildItem -Path $SrcDir -Filter '*.csproj' -Recurse
 foreach ($Project in $Projects) {
     # Detect the original RID from the AppHost lock file
-    $ProjLock    = Join-Path -Path $Project.DirectoryName -ChildPath 'packages.lock.json'
-    $LockBackup  = Join-Path -Path $Project.DirectoryName -ChildPath 'packages.lock.json.backup'
+    $ProjLock = Join-Path -Path $Project.DirectoryName -ChildPath 'packages.lock.json'
+    $LockBackup = Join-Path -Path $Project.DirectoryName -ChildPath 'packages.lock.json.backup'
     $LockContent = Get-Content -Path $ProjLock -Raw | ConvertFrom-Json -AsHashtable
     $OriginalRid = $LockContent.dependencies.Keys
-                    | Where-Object { $_ -match '^net\d+\.\d+/(linux|win|osx)-(x64|x86|arm64|arm)$' }
-                    | ForEach-Object { $_ -replace '^net\d+\.\d+/', '' }
-                    | Select-Object -First 1
+                   | Where-Object { $_ -match '^net\d+\.\d+/(linux|win|osx)-(x64|x86|arm64|arm)$' }
+                   | ForEach-Object { $_ -replace '^net\d+\.\d+/', '' }
+                   | Select-Object -First 1
     if (-not $OriginalRid) { $OriginalRid = 'linux-x64' }
 
     Copy-Item -Path $ProjLock -Destination $LockBackup

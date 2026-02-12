@@ -109,6 +109,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         IDatabase db = _redis.GetDatabase( );
 
         foreach (string stream in new[] { _interactiveStream, _backgroundStream, _bulkStream }) {
+            if (cancellationToken.IsCancellationRequested) { break; }
             try {
                 // XGROUP CREATE creates the stream if it doesn't exist
                 _ = await db.StreamCreateConsumerGroupAsync(

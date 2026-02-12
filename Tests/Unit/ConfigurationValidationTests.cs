@@ -37,7 +37,7 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         FileNotFoundException ex = Assert.ThrowsExactly<FileNotFoundException>( () => {
-            _ = services.AddBridgeBeatsServices( config, "Testing" );
+            _ = services.AddBridgeBeatsServices( config );
         } );
         Assert.Contains( ".p8", ex.Message );
     }
@@ -71,7 +71,7 @@ public class ConfigurationValidationTests {
 
             // Act & Assert
             InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
-                _ = services.AddBridgeBeatsServices( config, "Testing" );
+                _ = services.AddBridgeBeatsServices( config );
             } );
             Assert.Contains( "missing contents", ex.Message );
         } finally {
@@ -105,7 +105,7 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            _ = services.AddBridgeBeatsServices( config, "Testing" );
+            _ = services.AddBridgeBeatsServices( config );
         } );
         Assert.Contains( "Required settings are missing", ex.Message );
     }
@@ -135,7 +135,7 @@ public class ConfigurationValidationTests {
         // Act
         IServiceCollection services = new ServiceCollection( );
         IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
-        _ = services.AddBridgeBeatsServices( config, "Testing" );
+        _ = services.AddBridgeBeatsServices( config );
         ServiceProvider sp = services.BuildServiceProvider( );
 
         // Assert
@@ -163,7 +163,7 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            _ = services.AddBridgeBeatsServices( config, "Testing" );
+            _ = services.AddBridgeBeatsServices( config );
         } );
         Assert.Contains( "CardCacheExpirationHours must be greater than zero", ex.Message );
     }
@@ -187,7 +187,7 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            _ = services.AddBridgeBeatsServices( config, "Testing" );
+            _ = services.AddBridgeBeatsServices( config );
         } );
         Assert.Contains( "CardCacheExpirationHours must be greater than zero", ex.Message );
     }
@@ -211,7 +211,7 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            _ = services.AddBridgeBeatsServices( config, "Testing" );
+            _ = services.AddBridgeBeatsServices( config );
         } );
         Assert.Contains( "CardCacheCleanupInterval must be greater than zero", ex.Message );
     }
@@ -235,7 +235,7 @@ public class ConfigurationValidationTests {
 
         // Act & Assert
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>( () => {
-            _ = services.AddBridgeBeatsServices( config, "Testing" );
+            _ = services.AddBridgeBeatsServices( config );
         } );
         Assert.Contains( "CardCacheCleanupInterval must be greater than zero", ex.Message );
     }

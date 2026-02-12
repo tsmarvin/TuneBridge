@@ -68,10 +68,10 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
             string sanitizedAlbumTitle = SanitizeAlbumTitle( title );
             string sanitizedTrackTitle = SanitizeSongTitle( title );
             foreach ((string id, string artistName) in artistResults) {
-                result = await ParseArtistAlbums( id, artistName, sanitizedAlbumTitle );
+                result = await ParseArtistAlbums( id, sanitizedAlbumTitle );
                 if (result != null) { return result; }
 
-                result = await ParseArtistTracks( id, artistName, sanitizedTrackTitle );
+                result = await ParseArtistTracks( id, sanitizedTrackTitle );
                 if (result != null) { return result; }
             }
 
@@ -96,7 +96,7 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
                 ? await NewAlbumIdLookup( providerId, true )
                 : await NewTrackIdLookup( providerId, true );
 
-        private async Task<MusicLookupResult?> ParseArtistAlbums( string artistId, string artistName, string title ) {
+        private async Task<MusicLookupResult?> ParseArtistAlbums( string artistId, string title ) {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistAlbumsUri( DefaultStorefront, artistId ), LookupRequestType.ArtistAlbumLookup );
             if (body == null) { return null; }
 
@@ -108,7 +108,7 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
             return null;
         }
 
-        private async Task<MusicLookupResult?> ParseArtistTracks( string artistId, string artistName, string title ) {
+        private async Task<MusicLookupResult?> ParseArtistTracks( string artistId, string title ) {
             string? body = await NewMusicApiRequest( TidalLinkParser.GetArtistTracksUri( DefaultStorefront, artistId ), LookupRequestType.AlbumTrackLookup );
             if (body == null) { return null; }
 

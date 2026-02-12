@@ -79,6 +79,7 @@ public sealed partial class SpotifyBatchQueueHelper {
         IDatabase db = _redis.GetDatabase( );
 
         foreach (string stream in new[] { BulkTrackIdStream, BulkAlbumIdStream }) {
+            if (cancellationToken.IsCancellationRequested) { break; }
             try {
                 _ = await db.StreamCreateConsumerGroupAsync(
                     stream,
@@ -104,17 +105,15 @@ public sealed partial class SpotifyBatchQueueHelper {
         long bulkTrackCount = await db.StreamLengthAsync( BulkTrackIdStream );
         long bulkAlbumCount = await db.StreamLengthAsync( BulkAlbumIdStream );
 
-
-
         // Also scan standard priority streams for ID-based lookups
         int interactiveTrackCount;
         int interactiveAlbumCount;
         // Scan interactive stream
-        (interactiveTrackCount, interactiveAlbumCount) = await CountIdLookupsInStreamAsync( db, InteractiveStream );
+        (interactiveTrackCount, interactiveAlbumCount) = await CountIdLookupsInStreamAsync( db, InteractiveStream, cancellationToken );
         int backgroundTrackCount;
         int backgroundAlbumCount;
         // Scan background stream
-        (backgroundTrackCount, backgroundAlbumCount) = await CountIdLookupsInStreamAsync( db, BackgroundStream );
+        (backgroundTrackCount, backgroundAlbumCount) = await CountIdLookupsInStreamAsync( db, BackgroundStream, cancellationToken );
 
         return new IdLookupDepth(
             TrackIdCount: (int)bulkTrackCount + interactiveTrackCount + backgroundTrackCount,
@@ -127,7 +126,7 @@ public sealed partial class SpotifyBatchQueueHelper {
     /// <summary>
     /// Counts ID-based lookup requests in a standard priority stream.
     /// </summary>
-    private async Task<(int trackCount, int albumCount)> CountIdLookupsInStreamAsync( IDatabase db, string stream ) {
+    private async Task<(int trackCount, int albumCount)> CountIdLookupsInStreamAsync( IDatabase db, string stream, CancellationToken cancellationToken ) {
         int trackCount = 0;
         int albumCount = 0;
 
@@ -135,6 +134,7 @@ public sealed partial class SpotifyBatchQueueHelper {
             StreamEntry[] entries = await db.StreamRangeAsync( stream, "-", "+", count: 100 );
 
             foreach (StreamEntry entry in entries) {
+                if (cancellationToken.IsCancellationRequested) { break; }
                 string? payload = entry[MessagePayloadField];
                 if (string.IsNullOrEmpty( payload )) { continue; }
 

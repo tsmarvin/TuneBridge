@@ -10,7 +10,7 @@ public sealed class MediaLinkResult {
     /// <summary>
     /// The list of input media links used for the initial lookup (if applicable).
     /// </summary>
-    internal readonly List<string> _inputLinks = [];
+    internal readonly List<string> InputLinks = [];
 
     /// <summary>
     /// The dictionary of results from supported providers with matching entries.
@@ -52,7 +52,7 @@ public sealed class MediaLinkResult {
             obj.GetType( ) == typeof( MediaLinkResult )
         ) {
             MediaLinkResult objCast = (MediaLinkResult)obj;
-            return objCast._inputLinks == _inputLinks &&
+            return objCast.InputLinks == InputLinks &&
                     objCast.Results == Results;
         }
         return false;

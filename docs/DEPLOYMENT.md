@@ -66,6 +66,8 @@ docker compose up -d
 
 Visit `https://localhost` (or your configured domain) to access BridgeBeats.
 
+For production, the Aspire Dashboard is served on a dedicated subdomain: `https://dashboard.<your-domain>`.
+
 For detailed step-by-step instructions, see the [Quick Start Guide](QUICKSTART.md).
 
 ## Docker Deployment
@@ -153,10 +155,10 @@ The entrypoint script automatically reads secrets from `/run/secrets/` and falls
 
 ### Production Settings
 
-Update `BridgeBeats__BaseUrl` to your public domain:
+Update `BridgeBeats__Domain` to your public domain:
 
 ```bash
--e BridgeBeats__BaseUrl=bridgebeats.link
+-e BridgeBeats__Domain=bridgebeats.link
 ```
 
 This ensures OpenGraph cards generate correct URLs.
@@ -204,20 +206,20 @@ The Discord integration runs as a separate worker service (`BridgeBeats.Worker.D
 docker run -p 10001:10000 \
   -e BridgeBeats__DiscordToken=your_token \
   -e BridgeBeats__NodeNumber=0 \
-  -e BridgeBeats__BaseUrl=https://bridgebeats.link \
+  -e BridgeBeats__Domain=bridgebeats.link \
   tsmarvin/bridgebeats-discord:latest
 
 # Instance 2 - shard 1
 docker run -p 10002:10000 \
   -e BridgeBeats__DiscordToken=your_token \
   -e BridgeBeats__NodeNumber=1 \
-  -e BridgeBeats__BaseUrl=https://bridgebeats.link \
+  -e BridgeBeats__Domain=bridgebeats.link \
   tsmarvin/bridgebeats-discord:latest
 ```
 
 **Important**: Each shard must have a unique `NODE_NUMBER`. Running multiple instances with the same node number will cause duplicate responses to the same messages.
 
-The Discord worker calls the main BridgeBeats Web API for music lookups, so ensure `BridgeBeats__BaseUrl` points to a running BridgeBeats Web instance.
+The Discord worker calls the main BridgeBeats Web API for music lookups, so ensure `BridgeBeats__Domain` is set to the BridgeBeats host value (for example `bridgebeats.link`) for a running BridgeBeats Web instance.
 
 
 ## Security Considerations

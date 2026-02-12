@@ -15,7 +15,7 @@ public interface IPlaylistService {
     /// <summary>
     /// The base URL for the application (e.g., https://bridgebeats.link).
     /// </summary>
-    string BaseUrl { get; }
+    string Domain { get; }
 
     /// <summary>
     /// Creates a playlist from a list of card IDs (rkeys).

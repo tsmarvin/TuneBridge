@@ -353,13 +353,13 @@ public static class ServiceExtensions {
     /// Registers the OpenGraph card service and playlist service.
     /// </summary>
     /// <param name="services">The service collection.</param>
-    /// <param name="baseUrl">The base URL for card and playlist URLs.</param>
+    /// <param name="domain">The base URL for card and playlist URLs.</param>
     /// <param name="cardCacheExpirationHours">Card cache expiration in hours.</param>
     /// <param name="cardCacheCleanupInterval">Card cache cleanup interval.</param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddCardServices(
         this IServiceCollection services,
-        string baseUrl,
+        string domain,
         int cardCacheExpirationHours,
         int cardCacheCleanupInterval
     ) {
@@ -374,7 +374,7 @@ public static class ServiceExtensions {
         // OpenGraph card service
         _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>(
             _ => new OpenGraphCardService(
-                baseUrl,
+                domain,
                 cardCacheExpirationHours,
                 cardCacheCleanupInterval
             )
@@ -382,7 +382,7 @@ public static class ServiceExtensions {
 
         // Playlist service (singleton with DbContextFactory for thread-safe database access)
         _ = services.AddSingleton<IPlaylistService, PlaylistService>(
-            p => new PlaylistService( baseUrl, p.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( ) )
+            p => new PlaylistService( domain, p.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( ) )
         );
 
         // Register playlist cleanup background service
@@ -510,7 +510,7 @@ public static class ServiceExtensions {
     /// <param name="services">The service collection.</param>
     /// <param name="enabledProviders">Set of enabled music providers.</param>
     /// <param name="useCaching">Whether to use caching for media link service.</param>
-    /// <param name="baseUrl">The base URL for card and playlist URLs.</param>
+    /// <param name="domain">The base URL for card and playlist URLs.</param>
     /// <param name="cardCacheExpirationHours">Card cache expiration in hours.</param>
     /// <param name="cardCacheCleanupInterval">Card cache cleanup interval.</param>
     /// <returns>The service collection for chaining.</returns>
@@ -518,12 +518,12 @@ public static class ServiceExtensions {
         this IServiceCollection services,
         HashSet<SupportedProviders> enabledProviders,
         bool useCaching,
-        string baseUrl,
+        string domain,
         int cardCacheExpirationHours,
         int cardCacheCleanupInterval
     ) {
         _ = services.AddMediaLinkResolver( enabledProviders, useCaching );
-        _ = services.AddCardServices( baseUrl, cardCacheExpirationHours, cardCacheCleanupInterval );
+        _ = services.AddCardServices( domain, cardCacheExpirationHours, cardCacheCleanupInterval );
         _ = services.AddQrCodeService( );
 
         return services;

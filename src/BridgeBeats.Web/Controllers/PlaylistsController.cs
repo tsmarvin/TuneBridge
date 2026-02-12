@@ -44,7 +44,7 @@ public partial class PlaylistsController( IPlaylistService? playlistService, ILo
                     Description = p.Description,
                     ItemCount = p.CardIds.Split( ',', StringSplitOptions.RemoveEmptyEntries ).Length,
                     CreatedAt = p.CreatedAt,
-                    PlaylistUrl = $"https://{_playlistService.BaseUrl}/playlist/{p.PlaylistId}"
+                    PlaylistUrl = $"https://{_playlistService.Domain}/playlist/{p.PlaylistId}"
                 } )]
             };
 

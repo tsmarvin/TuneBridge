@@ -19,7 +19,7 @@ namespace BridgeBeats.Tests.Integration;
 [TestCategory( "Docker" )]
 public class RedisMediaLinkCacheTests {
 
-    private static IConnectionMultiplexer? _redis;
+    private static IConnectionMultiplexer? s_redis;
 
     private Mock<IATProtoStorageService> _mockAtProto = null!;
     private Mock<ILogger<RedisMediaLinkCache>> _mockLogger = null!;
@@ -40,7 +40,7 @@ public class RedisMediaLinkCacheTests {
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
-        _redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
+        s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
     }
 
     /// <summary>
@@ -48,9 +48,9 @@ public class RedisMediaLinkCacheTests {
     /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
-        if (_redis is not null) {
-            await _redis.CloseAsync( );
-            _redis.Dispose( );
+        if (s_redis is not null) {
+            await s_redis.CloseAsync( );
+            s_redis.Dispose( );
         }
     }
 
@@ -60,8 +60,8 @@ public class RedisMediaLinkCacheTests {
     [TestInitialize]
     public async Task TestInitialize( ) {
         // Clear only cache-related keys before each test
-        IDatabase db = _redis!.GetDatabase( );
-        IServer server = _redis.GetServer( _redis.GetEndPoints( )[0] );
+        IDatabase db = s_redis!.GetDatabase( );
+        IServer server = s_redis.GetServer( s_redis.GetEndPoints( )[0] );
         await foreach (RedisKey key in server.KeysAsync( pattern: "lookup:*" )) {
             _ = await db.KeyDeleteAsync( key );
         }
@@ -70,7 +70,7 @@ public class RedisMediaLinkCacheTests {
         _mockLogger = new Mock<ILogger<RedisMediaLinkCache>>( );
 
         _cache = new RedisMediaLinkCache(
-            _redis,
+            s_redis,
             _mockAtProto.Object,
             _mockLogger.Object,
             CacheDays,
@@ -103,7 +103,7 @@ public class RedisMediaLinkCacheTests {
         Assert.AreEqual( recordUri, cachedUri );
 
         // Verify ISRC key exists
-        IDatabase db = _redis!.GetDatabase( );
+        IDatabase db = s_redis!.GetDatabase( );
         RedisValue isrcValue = await db.StringGetAsync( "lookup:isrc:USRC12345678" );
         Assert.IsFalse( isrcValue.IsNullOrEmpty );
         Assert.AreEqual( recordUri, isrcValue.ToString( ) );
@@ -177,7 +177,7 @@ public class RedisMediaLinkCacheTests {
         // Arrange
         string inputUrl = "https://open.spotify.com/track/abc123";
         MediaLinkResult result = CreateTestResult( "TESTISRC001", false );
-        result._inputLinks.Add( inputUrl );
+        result.InputLinks.Add( inputUrl );
 
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:TESTISRC001";
 
@@ -270,7 +270,7 @@ public class RedisMediaLinkCacheTests {
     public async Task CacheResultAsync_CleansUpOldKeys_OnRefresh( ) {
         // Arrange
         MediaLinkResult result1 = CreateTestResult( "REFRESHTEST1", false );
-        result1._inputLinks.Add( "https://old.url/track1" );
+        result1.InputLinks.Add( "https://old.url/track1" );
 
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:REFRESHTEST1";
 
@@ -285,14 +285,14 @@ public class RedisMediaLinkCacheTests {
         _ = await _cache.CacheResultAsync( result1, TestContext.CancellationToken );
 
         // Verify old URL is cached
-        IDatabase db = _redis!.GetDatabase( );
+        IDatabase db = s_redis!.GetDatabase( );
         string oldUrlHash = HashUtility.HashUrl( "https://old.url/track1" );
         RedisValue oldValue = await db.StringGetAsync( $"lookup:url:{oldUrlHash}" );
         Assert.IsFalse( oldValue.IsNullOrEmpty, "Old URL should be cached" );
 
         // Now cache the same result with a different URL (simulating refresh)
         MediaLinkResult result2 = CreateTestResult( "REFRESHTEST1", false );
-        result2._inputLinks.Add( "https://new.url/track1" );
+        result2.InputLinks.Add( "https://new.url/track1" );
 
         _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
@@ -378,7 +378,7 @@ public class RedisMediaLinkCacheTests {
         _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
 
         // Get the ISRC key value and TTL after first write
-        IDatabase db = _redis!.GetDatabase( );
+        IDatabase db = s_redis!.GetDatabase( );
         TimeSpan? ttlBefore = await db.KeyTimeToLiveAsync( "lookup:isrc:SKIPTEST123" );
         Assert.IsNotNull( ttlBefore, "ISRC key should exist after first write" );
 
@@ -394,7 +394,7 @@ public class RedisMediaLinkCacheTests {
 
         // TTL should be refreshed (close to original cache days)
         // The TTL after should be >= TTL before (since we refreshed it)
-        Assert.IsGreaterThanOrEqualTo( ttlAfter.Value, ttlBefore!.Value.Subtract( TimeSpan.FromSeconds( 1 ) ),
+        Assert.IsGreaterThanOrEqualTo( ttlBefore!.Value.Subtract( TimeSpan.FromSeconds( 1 ) ), ttlAfter.Value,
             "TTL should be refreshed, not reduced" );
     }
 

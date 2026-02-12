@@ -42,7 +42,7 @@ public static class Program {
         _ = builder.AddServiceDefaults( );
 
         // Read and validate configuration
-        (string discordToken, int nodeNumber, string baseUrl) = ValidateConfiguration( builder );
+        (string discordToken, int nodeNumber, string domain) = ValidateConfiguration( builder );
 
         // Register Discord node configuration
         _ = builder.Services.AddSingleton( new DiscordNodeConfig( nodeNumber ) );
@@ -69,7 +69,7 @@ public static class Program {
             IHttpClientFactory factory = sp.GetRequiredService<IHttpClientFactory>();
             HttpClient httpClient = factory.CreateClient(nameof(BridgeBeatsApiClient));
             ILogger<BridgeBeatsApiClient> logger = sp.GetRequiredService<ILogger<BridgeBeatsApiClient>>();
-            return new BridgeBeatsApiClient( httpClient, logger, baseUrl );
+            return new BridgeBeatsApiClient( httpClient, logger, domain );
         } );
 
         // Configure Discord gateway
@@ -88,17 +88,17 @@ public static class Program {
     /// <param name="builder">The host application builder.</param>
     /// <returns>A tuple containing the validated Discord configuration.</returns>
     /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
-    private static (string DiscordToken, int NodeNumber, string BaseUrl) ValidateConfiguration(
+    private static (string DiscordToken, int NodeNumber, string Domain) ValidateConfiguration(
         HostApplicationBuilder builder
     ) {
         string? discordToken = builder.Configuration["BridgeBeats:DiscordToken"];
         int nodeNumber = builder.Configuration.GetValue("BridgeBeats:NodeNumber", 0);
-        string baseUrl = builder.Configuration["BridgeBeats:BaseUrl"] ?? string.Empty;
+        string domain = builder.Configuration["BridgeBeats:Domain"] ?? string.Empty;
 
         return string.IsNullOrWhiteSpace( discordToken )
             ? throw new InvalidOperationException(
                 "Discord token is required. Set BridgeBeats:DiscordToken."
             )
-            : ((string DiscordToken, int NodeNumber, string BaseUrl))(discordToken, nodeNumber, baseUrl);
+            : ((string DiscordToken, int NodeNumber, string Domain))(discordToken, nodeNumber, domain);
     }
 }

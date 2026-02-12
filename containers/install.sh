@@ -664,7 +664,6 @@ env_issues=()
 # Required environment variables to check
 required_env_vars=(
     "DOMAIN"
-    "BASEURL"
     "CADDY_ADMIN_EMAIL"
     "PDS_HOSTNAME"
     "PDS_JWT_SECRET"

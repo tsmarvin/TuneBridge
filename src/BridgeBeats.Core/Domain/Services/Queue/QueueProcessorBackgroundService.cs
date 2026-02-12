@@ -215,9 +215,11 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
                 await _lookupService.GetInfoAsync( request.Title, request.Artist ),
             LookupRequestType.AlbumLookup when request is { Title: not null, Artist: not null } =>
                 await _lookupService.GetInfoAsync( request.Title, request.Artist ),
+            LookupRequestType.ArtistAlbumLookup => throw new NotImplementedException( ),
+            LookupRequestType.AlbumTrackLookup => throw new NotImplementedException( ),
             _ => throw new InvalidOperationException(
-                $"Unsupported lookup type {request.LookupType} or missing required parameters"
-            )
+                            $"Unsupported lookup type {request.LookupType} or missing required parameters"
+                        )
         };
     }
 

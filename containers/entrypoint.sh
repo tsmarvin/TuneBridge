@@ -33,10 +33,13 @@ export DASHBOARD__MCP__DISABLED="true"
 WEB_PORT="${WEB_PORT:-10000}"
 
 # ---- Configure defaults ----
-BASEURL="${BASEURL:-"bridgebeats.link"}"
+DOMAIN="${DOMAIN:-bridgebeats.link}"
 NODE_NUMBER="${NODE_NUMBER:-0}"
 DEFAULT_LOGLEVEL="${DEFAULT_LOGLEVEL:-Information}"
 HOSTING_DEFAULT_LOGLEVEL="${HOSTING_DEFAULT_LOGLEVEL:-Information}"
+
+# External Aspire dashboard URL for subdomain-based access
+export DASHBOARD__FRONTEND__PUBLICURL="https://dashboard.${DOMAIN}"
 
 # Optional music provider credentials
 # Read from Docker secrets if available, otherwise use environment variables
@@ -151,7 +154,7 @@ cat > /src/BridgeBeats.Web/appsettings.json <<EOF
     "ATProtoUserDID": "$ATPROTO_USER_DID",
     "ATProtoPassword": "$ATPROTO_PASSWORD",
     "CacheDays": $CACHE_DAYS,
-    "BaseUrl": "$BASEURL",
+    "Domain": "$DOMAIN",
     "ATProtoOAuthSigningKeyPath": "$ATPROTO_OAUTH_KEY_PATH",
     "LogDirPath": "$(escape_bs "$LOG_DIR_PATH")",
     "DataProtectionKeyPath": "$(escape_bs "$DATA_PROTECTION_KEY_PATH")",
@@ -213,7 +216,7 @@ export Parameters__InternalServiceKey="$INTERNAL_SERVICE_KEY"
 export Parameters__RedisConnectionString="$REDIS_CONNECTION_STRING"
 export ConnectionStrings__redis="$REDIS_CONNECTION_STRING"
 export Parameters__NodeNumber="$NODE_NUMBER"
-export Parameters__BaseUrl="$BASEURL"
+export Parameters__Domain="$DOMAIN"
 export Parameters__RateLimitRequestsPerHour="$RATE_LIMIT_REQUESTS_PER_HOUR"
 export Parameters__CacheDays="$CACHE_DAYS"
 export Parameters__IdentityConnectionString="$IDENTITY_CONNECTION_STRING"

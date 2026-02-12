@@ -107,7 +107,7 @@ namespace BridgeBeats.Web.Configuration {
         /// <summary>
         /// The base URL for the application (e.g., https://bridgebeats.link). Used for generating OpenGraph card URLs.
         /// </summary>
-        public string BaseUrl { get; set; } = string.Empty;
+        public string Domain { get; set; } = string.Empty;
 
         /// <summary>
         /// The file path to the ATProto OAuth signing key in JWK format.

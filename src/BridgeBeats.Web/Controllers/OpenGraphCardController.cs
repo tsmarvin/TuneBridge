@@ -48,7 +48,7 @@ public partial class OpenGraphCardController(
 
         Dictionary<string, string> metadata = result.ToOpenGraphMetadata( );
         ViewBag.Metadata = metadata;
-        ViewBag.BaseUrl = _cardService.BaseUrl;
+        ViewBag.Domain = _cardService.Domain;
 
         // Try to get ATProto URI from cache
         ViewBag.ATProtoUri = await GetATProtoUriFromCache( result );
@@ -109,7 +109,7 @@ public partial class OpenGraphCardController(
         // Try to get ATProto URI from cache
         string? atProtoUri = await GetATProtoUriFromCache( result );
 
-        string cardUrl = $"https://{_cardService.BaseUrl}/card/{id}";
+        string cardUrl = $"https://{_cardService.Domain}/card/{id}";
 
         // Generate QR code data URI if requested
         string? qrCodeDataUri = null;
