@@ -54,7 +54,7 @@
         header_up X-Real-IP { remote_host }
         header_up X-Forwarded-For { remote_host }
         header_up X-Forwarded-Proto { scheme }
-        header_up X-Forwarded-Host { Get-host }
+        header_up X-Forwarded-Host { host }
 
         # Timeouts - increased read timeout to 10 minutes to accommodate retry-after delays
         transport http {
@@ -67,10 +67,10 @@
     # Custom error pages (optional)
     handle_errors {
         @5xx expression `{err.status_code } >= 500 && { err.status_code } < 600`
-    handle @5xx {
-        respond 'Service temporarily unavailable. Please try again later.' 503
+        handle @5xx {
+            respond 'Service temporarily unavailable. Please try again later.' 503
+        }
     }
-}
 }
 
 dashboard. { $DOMAIN } {
@@ -105,7 +105,7 @@ dashboard. { $DOMAIN } {
         header_up X-Real-IP { remote_host }
         header_up X-Forwarded-For { remote_host }
         header_up X-Forwarded-Proto { scheme }
-        header_up X-Forwarded-Host { Get-host }
+        header_up X-Forwarded-Host { host }
 
         transport http {
             read_timeout 30s
