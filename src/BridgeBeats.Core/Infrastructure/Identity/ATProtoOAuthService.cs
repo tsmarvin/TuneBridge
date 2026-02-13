@@ -116,7 +116,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         ArgumentException.ThrowIfNullOrWhiteSpace( handle );
 
         // Build redirect URI from the configured domain (same as client-metadata.json and token exchange)
-        string redirectUri = $"https://{_domain}{OAuthCallbackPath}";
+        string redirectUri = $"{_domain}{OAuthCallbackPath}";
 
         // Normalize handle (remove @ prefix if present)
         handle = handle.TrimStart( '@' ).Trim( );

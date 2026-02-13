@@ -15,14 +15,32 @@ namespace BridgeBeats.Web.Controllers {
     /// <remarks>
     /// Initializes a new instance of the <see cref="WellKnownController"/> class.
     /// </remarks>
-    /// <param name="configuration">Application configuration for reading Domain.</param>
-    /// <param name="signingKeyProvider">Optional signing key provider for JWKS endpoint.</param>
     [AllowAnonymous]
-    public class WellKnownController(
-        IConfiguration configuration,
-        ATProtoSigningKeyProvider? signingKeyProvider = null
-    ) : Controller {
-        private readonly string? _domain = configuration.GetSection("BridgeBeats").GetValue<string>("Domain");
+    public class WellKnownController : Controller {
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="WellKnownController"/> class.
+        /// </summary>
+        /// <param name="configuration">Application configuration for reading Domain.</param>
+        /// <param name="signingKeyProvider">Optional signing key provider for JWKS endpoint.</param>
+        public WellKnownController(
+            IConfiguration configuration,
+            ATProtoSigningKeyProvider? signingKeyProvider = null
+        ) {
+            string? domainConfig = configuration
+                                        .GetSection("BridgeBeats")
+                                        .GetValue<string>("Domain")
+                                        ?.TrimEnd('/') ?? string.Empty;
+
+            _domain = domainConfig.StartsWith( "https://", StringComparison.OrdinalIgnoreCase )
+                        ? domainConfig
+                        : $"https://{domainConfig}";
+
+            _signingKeyProvider = signingKeyProvider;
+        }
+
+        private readonly string _domain;
+        private readonly ATProtoSigningKeyProvider? _signingKeyProvider;
 
         /// <summary>
         /// Returns the ATProto OAuth client metadata document.
@@ -37,30 +55,29 @@ namespace BridgeBeats.Web.Controllers {
                 return NotFound( "Domain is not configured." );
             }
 
-            string domain = _domain.TrimEnd('/');
-            string clientId = $"{domain}/.well-known/client-metadata.json";
+            string clientId = $"{_domain}/.well-known/client-metadata.json";
 
             Dictionary<string, object> metadata = new( ) {
                 ["client_id"]                = clientId,
                 ["client_name"]              = "BridgeBeats",
-                ["client_uri"] = domain,
-                ["logo_uri"] = $"{domain}/images/icon-192.png",
-                ["tos_uri"] = $"{domain}/privacy",
-                ["policy_uri"] = $"{domain}/privacy",
+                ["client_uri"]               = _domain,
+                ["logo_uri"]                 = $"{_domain}/images/icon-192.png",
+                ["tos_uri"]                  = $"{_domain}/privacy",
+                ["policy_uri"]               = $"{_domain}/privacy",
                 ["application_type"]         = "web",
                 ["grant_types"]              = new[] { "authorization_code", "refresh_token" },
                 ["response_types"]           = new[] { "code" },
                 ["scope"]                    = "atproto repo:link.bridgebeats.playlist",
-                ["redirect_uris"] = new[] { $"{domain}/account/atproto-callback" },
+                ["redirect_uris"]            = new[] { $"{_domain}/account/atproto-callback" },
                 ["dpop_bound_access_tokens"] = true
             };
 
-            if (signingKeyProvider is null) {
+            if (_signingKeyProvider is null) {
                 metadata["token_endpoint_auth_method"] = "none";
             } else {
                 metadata["token_endpoint_auth_method"] = "private_key_jwt";
                 metadata["token_endpoint_auth_signing_alg"] = "ES256";
-                metadata["jwks_uri"] = $"{domain}/.well-known/jwks.json";
+                metadata["jwks_uri"] = $"{_domain}/.well-known/jwks.json";
             }
 
             return Json( metadata );
@@ -75,11 +92,11 @@ namespace BridgeBeats.Web.Controllers {
         [HttpGet( ".well-known/jwks.json" )]
         [ResponseCache( Duration = 3600, Location = ResponseCacheLocation.Any )]
         public IActionResult Jwks( ) {
-            if (signingKeyProvider is null) {
+            if (_signingKeyProvider is null) {
                 return NotFound( "No signing key configured." );
             }
 
-            string jwksJson = signingKeyProvider.GetPublicJwks( );
+            string jwksJson = _signingKeyProvider.GetPublicJwks( );
             return Content( jwksJson, "application/json" );
         }
     }
