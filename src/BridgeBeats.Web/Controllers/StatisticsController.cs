@@ -25,17 +25,22 @@ public partial class StatisticsController(
     /// Displays the statistics page with lookup collection metrics.
     /// </summary>
     /// <returns>The statistics view.</returns>
-    public async Task<IActionResult> Index( CancellationToken cancellationToken ) {
+    public IActionResult Index( ) {
         if (statisticsService is null) {
             LogNotAvailable( );
             return View( "Error", new ErrorViewModel { Message = "Statistics service is not configured." } );
         }
 
         try {
-            LookupStatistics stats = await statisticsService.GetStatisticsAsync( cancellationToken );
+            LookupStatistics? stats = statisticsService.GetCachedStatistics();
+
+            if (stats is null) {
+                ViewBag.IsRefreshing = true;
+                return View( "Generating" );
+            }
+
+            ViewBag.IsRefreshing = statisticsService.IsRefreshing;
             return View( stats );
-        } catch (OperationCanceledException) {
-            throw; // Let the framework handle cancellation
         } catch (Exception ex) {
             LogRetrieveError( ex );
             return View( "Error", new ErrorViewModel { Message = "Unable to retrieve statistics. Please try again later." } );
@@ -49,13 +54,13 @@ public partial class StatisticsController(
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Authorize( Roles = Roles.AspireDashboardAccess )]
-    public async Task<IActionResult> Refresh( CancellationToken cancellationToken ) {
+    public IActionResult Refresh( ) {
         if (statisticsService is null) {
             return RedirectToAction( nameof( Index ) );
         }
 
         try {
-            _ = await statisticsService.RefreshStatisticsAsync( cancellationToken );
+            _ = statisticsService.TriggerRefresh( );
         } catch (Exception ex) {
             LogRefreshError( ex );
         }

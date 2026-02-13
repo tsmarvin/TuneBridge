@@ -309,7 +309,7 @@ namespace BridgeBeats.Web.Configuration {
         /// </summary>
         /// <param name="serviceProvider">The service provider to use for resolving services.</param>
         private static void InitializeCacheDatabase( IServiceProvider serviceProvider ) {
-            Microsoft.Extensions.Logging.ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>( ).CreateLogger( "BridgeBeats.Web.Configuration.StartupExtensions" );
+            ILogger logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("BridgeBeats.Web.Configuration.StartupExtensions");
             try {
                 // Validate Redis connection (fail-fast if unavailable)
                 IConnectionMultiplexer? redis = serviceProvider.GetService<IConnectionMultiplexer>( );
@@ -505,15 +505,18 @@ namespace BridgeBeats.Web.Configuration {
             StatisticsSettings statsSettings = new(
                 pdsUri,
                 settings.ATProtoUserDID,
-                TimeSpan.FromHours( 6 ) // Cache statistics for 6 hours
+                TimeSpan.FromHours(6), // Cache statistics for 6 hours
+                TimeSpan.FromSeconds(30)
             );
             _ = services.AddSingleton( statsSettings );
-            _ = services.AddSingleton<IStatisticsService>( s => new StatisticsService(
+            _ = services.AddSingleton<StatisticsService>( s => new StatisticsService(
                 s.GetRequiredService<IATProtoStorageService>( ),
                 s.GetRequiredService<IConnectionMultiplexer>( ),
                 statsSettings,
                 s.GetRequiredService<ILogger<StatisticsService>>( )
             ) );
+            _ = services.AddSingleton<IStatisticsService>( s => s.GetRequiredService<StatisticsService>( ) );
+            _ = services.AddHostedService<StatisticsRefreshBackgroundService>( );
 
             // Register queue infrastructure (deduplicator, rate limit tracker, saga manager)
             // and provider-specific queues for the LookupOrchestrator

@@ -51,10 +51,10 @@
         health_timeout 5s
 
         # Pass real client IP
-        header_up X-Real-IP { remote_host }
-        header_up X-Forwarded-For { remote_host }
-        header_up X-Forwarded-Proto { scheme }
-        header_up X-Forwarded-Host { host }
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
 
         # Timeouts - increased read timeout to 10 minutes to accommodate retry-after delays
         transport http {
@@ -66,14 +66,14 @@
 
     # Custom error pages (optional)
     handle_errors {
-        @5xx expression `{err.status_code } >= 500 && { err.status_code } < 600`
+        @5xx expression `{err.status_code} >= 500 && {err.status_code} < 600`
         handle @5xx {
-            respond 'Service temporarily unavailable. Please try again later.' 503
+            respond "Service temporarily unavailable. Please try again later." 503
         }
     }
 }
 
-dashboard. { $DOMAIN } {
+dashboard.{$DOMAIN} {
     log {
         output file /var/log/caddy/dashboard-access.log
         format json
@@ -81,7 +81,7 @@ dashboard. { $DOMAIN } {
 
     # Use Cloudflare DNS challenge for dashboard subdomain certificates
     tls {
-        dns cloudflare { env.CLOUDFLARE_API_TOKEN }
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
 
     # Security headers - do not override dashboard CSP
@@ -102,10 +102,10 @@ dashboard. { $DOMAIN } {
 
     # Proxy to Aspire Dashboard at root path
     reverse_proxy bridgebeats:18888 {
-        header_up X-Real-IP { remote_host }
-        header_up X-Forwarded-For { remote_host }
-        header_up X-Forwarded-Proto { scheme }
-        header_up X-Forwarded-Host { host }
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
 
         transport http {
             read_timeout 30s

@@ -1399,6 +1399,11 @@ public static class LogEventIds {
             /// </summary>
             public const int CacheBootstrapStatusReadError = 3752;
 
+            /// <summary>
+            /// EventId for <see cref="StatisticsService.LogStatisticsRefreshSkipped"/>.
+            /// </summary>
+            public const int StatisticsRefreshSkipped = 3753;
+
             // AspireServiceExtensions (3800-3824)
         }
     }
@@ -1412,11 +1417,36 @@ public static class LogEventIds {
     /// <list type="bullet">
     ///   <item>4000-4499: Controllers</item>
     ///   <item>4500-4749: Middleware</item>
-    ///   <item>4750-4999: Configuration</item>
+    ///   <item>4750-4899: Configuration</item>
     /// </list>
     /// </remarks>
     public static class Web {
         // EventIds defined in BridgeBeats.Web.Logging.LogEventIds
+    }
+
+    /// <summary>
+    /// EventIds for BackgroundServices (4900-4999).
+    /// </summary>
+    public static class BackgroundServices {
+        // StatisticsRefreshBackgroundService (4900-4924)
+
+        /// <summary>EventId for StatisticsRefreshBackgroundService starting.</summary>
+        public const int StatisticsRefreshStarting = 4900;
+
+        /// <summary>EventId for StatisticsRefreshBackgroundService initial refresh complete.</summary>
+        public const int StatisticsRefreshInitialComplete = 4901;
+
+        /// <summary>EventId for StatisticsRefreshBackgroundService periodic refresh triggered.</summary>
+        public const int StatisticsRefreshPeriodicTriggered = 4902;
+
+        /// <summary>EventId for StatisticsRefreshBackgroundService manual refresh triggered.</summary>
+        public const int StatisticsRefreshManualTriggered = 4903;
+
+        /// <summary>EventId for StatisticsRefreshBackgroundService refresh error.</summary>
+        public const int StatisticsRefreshError = 4904;
+
+        /// <summary>EventId for StatisticsRefreshBackgroundService stopped.</summary>
+        public const int StatisticsRefreshStopped = 4905;
     }
 
     /// <summary>

@@ -181,7 +181,7 @@ public static class AspireServiceExtensions {
         bool enableTracing = builder.Configuration.GetValue( "OpenTelemetry:EnableTracing", true );
         bool enableMetrics = builder.Configuration.GetValue( "OpenTelemetry:EnableMetrics", true );
 
-        bool hasValidEndpoint = TryGetOtlpEndpoint( otlpEndpoint, out Uri? otlpUri );
+        bool hasCustomEndpoint = TryGetOtlpEndpoint( otlpEndpoint, out Uri? otlpUri );
 
         ResourceBuilder resourceBuilder = ResourceBuilder.CreateDefault( )
             .AddService(
@@ -189,17 +189,18 @@ public static class AspireServiceExtensions {
                 serviceVersion: GetServiceVersion( )
             );
 
-        if (hasValidEndpoint) {
-            _ = builder.Logging.AddOpenTelemetry( options => {
-                _ = options.SetResourceBuilder( resourceBuilder );
-                _ = options.AddOtlpExporter( otlpOptions => {
+        _ = builder.Logging.AddOpenTelemetry( options => {
+            _ = options.SetResourceBuilder( resourceBuilder );
+            _ = options.AddOtlpExporter( otlpOptions => {
+                if (hasCustomEndpoint) {
                     otlpOptions.Endpoint = otlpUri!;
-                    if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
-                        otlpOptions.Headers = otlpHeaders;
-                    }
-                } );
+                }
+
+                if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                    otlpOptions.Headers = otlpHeaders;
+                }
             } );
-        }
+        } );
 
         OpenTelemetryBuilder openTelemetryBuilder = builder.Services.AddOpenTelemetry( )
             .ConfigureResource( resource => resource.AddService( builder.Environment.ApplicationName ) );
@@ -211,14 +212,15 @@ public static class AspireServiceExtensions {
                     .AddAspNetCoreInstrumentation( )
                     .AddHttpClientInstrumentation( );
 
-                if (hasValidEndpoint) {
-                    _ = tracing.AddOtlpExporter( otlpOptions => {
+                _ = tracing.AddOtlpExporter( otlpOptions => {
+                    if (hasCustomEndpoint) {
                         otlpOptions.Endpoint = otlpUri!;
-                        if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
-                            otlpOptions.Headers = otlpHeaders;
-                        }
-                    } );
-                }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                        otlpOptions.Headers = otlpHeaders;
+                    }
+                } );
             } );
         }
 
@@ -232,14 +234,15 @@ public static class AspireServiceExtensions {
                     .AddMeter( "BridgeBeats.Queue" )
                     .AddMeter( "BridgeBeats.Providers" );
 
-                if (hasValidEndpoint) {
-                    _ = metrics.AddOtlpExporter( otlpOptions => {
+                _ = metrics.AddOtlpExporter( otlpOptions => {
+                    if (hasCustomEndpoint) {
                         otlpOptions.Endpoint = otlpUri!;
-                        if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
-                            otlpOptions.Headers = otlpHeaders;
-                        }
-                    } );
-                }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                        otlpOptions.Headers = otlpHeaders;
+                    }
+                } );
             } );
         }
     }
@@ -254,7 +257,7 @@ public static class AspireServiceExtensions {
         bool enableTracing = builder.Configuration.GetValue( "OpenTelemetry:EnableTracing", true );
         bool enableMetrics = builder.Configuration.GetValue( "OpenTelemetry:EnableMetrics", true );
 
-        bool hasValidEndpoint = TryGetOtlpEndpoint( otlpEndpoint, out Uri? otlpUri );
+        bool hasCustomEndpoint = TryGetOtlpEndpoint( otlpEndpoint, out Uri? otlpUri );
 
         ResourceBuilder resourceBuilder = ResourceBuilder.CreateDefault( )
             .AddService(
@@ -262,17 +265,18 @@ public static class AspireServiceExtensions {
                 serviceVersion: GetServiceVersion( )
             );
 
-        if (hasValidEndpoint) {
-            _ = builder.Logging.AddOpenTelemetry( options => {
-                _ = options.SetResourceBuilder( resourceBuilder );
-                _ = options.AddOtlpExporter( otlpOptions => {
+        _ = builder.Logging.AddOpenTelemetry( options => {
+            _ = options.SetResourceBuilder( resourceBuilder );
+            _ = options.AddOtlpExporter( otlpOptions => {
+                if (hasCustomEndpoint) {
                     otlpOptions.Endpoint = otlpUri!;
-                    if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
-                        otlpOptions.Headers = otlpHeaders;
-                    }
-                } );
+                }
+
+                if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                    otlpOptions.Headers = otlpHeaders;
+                }
             } );
-        }
+        } );
 
         OpenTelemetryBuilder openTelemetryBuilder = builder.Services.AddOpenTelemetry( )
             .ConfigureResource( resource => resource.AddService( builder.Environment.ApplicationName ) );
@@ -284,14 +288,15 @@ public static class AspireServiceExtensions {
                     .SetResourceBuilder( resourceBuilder )
                     .AddHttpClientInstrumentation( );
 
-                if (hasValidEndpoint) {
-                    _ = tracing.AddOtlpExporter( otlpOptions => {
+                _ = tracing.AddOtlpExporter( otlpOptions => {
+                    if (hasCustomEndpoint) {
                         otlpOptions.Endpoint = otlpUri!;
-                        if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
-                            otlpOptions.Headers = otlpHeaders;
-                        }
-                    } );
-                }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                        otlpOptions.Headers = otlpHeaders;
+                    }
+                } );
             } );
         }
 
@@ -305,14 +310,15 @@ public static class AspireServiceExtensions {
                     .AddMeter( "BridgeBeats.Queue" )
                     .AddMeter( "BridgeBeats.Providers" );
 
-                if (hasValidEndpoint) {
-                    _ = metrics.AddOtlpExporter( otlpOptions => {
+                _ = metrics.AddOtlpExporter( otlpOptions => {
+                    if (hasCustomEndpoint) {
                         otlpOptions.Endpoint = otlpUri!;
-                        if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
-                            otlpOptions.Headers = otlpHeaders;
-                        }
-                    } );
-                }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace( otlpHeaders )) {
+                        otlpOptions.Headers = otlpHeaders;
+                    }
+                } );
             } );
         }
     }

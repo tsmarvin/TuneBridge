@@ -357,14 +357,8 @@ public partial class AccountController(
         }
 
         try {
-            // Build the callback URL
-            Uri callbackUri = new(
-                $"{Request.Scheme}://{Request.Host}/account/atproto-callback"
-            );
-
             (Uri authUrl, string state) = await atProtoOAuth.StartAuthorizationAsync(
-                request.Handle,
-                callbackUri
+                request.Handle
             );
 
             LogAtProtoOAuthStarted( request.Handle, authUrl.Host );

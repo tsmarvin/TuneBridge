@@ -18,8 +18,14 @@
         }
     </div>
 
-    <p class="text-muted mb-4">
-        Statistics generated at @Model.GeneratedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC
+    <p class="text-muted mb-4 d-flex align-items-center gap-2">
+        <span>Statistics generated at @Model.GeneratedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</span>
+        @if (ViewBag.IsRefreshing == true)
+        {
+            <span class="badge bg-info">
+                <i class="bi bi-arrow-repeat spin"></i> Refreshing...
+            </span>
+        }
     </p>
 
     <!-- Overview Cards -->

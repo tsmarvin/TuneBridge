@@ -13,12 +13,10 @@ public interface IATProtoOAuthService {
     /// and returns the authorization URL to redirect the user to.
     /// </summary>
     /// <param name="handle">The ATProto handle (e.g., "user.bsky.social").</param>
-    /// <param name="redirectUri">The callback URI for the OAuth flow.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The authorization URL to redirect the user to, and the state for correlation.</returns>
     Task<(Uri AuthorizationUrl, string State)> StartAuthorizationAsync(
         string handle,
-        Uri redirectUri,
         CancellationToken cancellationToken = default
     );
 

@@ -177,44 +177,6 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Enqueues a lookup request to the appropriate type-specific bulk stream.
-    /// </summary>
-    /// <param name="request">The lookup request to enqueue.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>True if the request was enqueued to a type-specific stream; false if not applicable.</returns>
-    public async Task<bool> TryEnqueueToBulkTypeStreamAsync(
-        QueuedLookupRequest request,
-        CancellationToken cancellationToken = default
-    ) {
-        string? stream = request.LookupType switch {
-            LookupRequestType.SongIdLookup => BulkTrackIdStream,
-            LookupRequestType.AlbumIdLookup => BulkAlbumIdStream,
-            _ => null
-        };
-
-        if (stream is null) {
-            return false;
-        }
-
-        IDatabase db = _redis.GetDatabase( );
-        string payload = JsonSerializer.Serialize( request, _jsonOptions );
-
-        NameValueEntry[] fields = [
-            new NameValueEntry( MessagePayloadField, payload ),
-            new NameValueEntry( MessageEnqueuedAtField, DateTimeOffset.UtcNow.ToString( "O" ) )
-        ];
-
-        _ = await db.StreamAddAsync( stream, fields );
-
-        if (_logger.IsEnabled( LogLevel.Debug )) {
-            string lookupTypeStr = request.LookupType.ToString( );
-            LogEnqueuedToBulkStream( _logger, lookupTypeStr, stream );
-        }
-
-        return true;
-    }
-
-    /// <summary>
     /// Dequeues a batch of track ID lookup requests.
     /// </summary>
     /// <param name="maxCount">Maximum number of requests to dequeue (defaults to <see cref="SpotifyConstants.MaxTracksPerBatchLookup"/>).</param>
@@ -288,6 +250,7 @@ public sealed partial class SpotifyBatchQueueHelper {
             StreamEntry[] entries = await db.StreamRangeAsync( stream, "-", "+", count: maxCount * 2 );
 
             foreach (StreamEntry entry in entries) {
+                if (cancellationToken.IsCancellationRequested) { break; }
                 if (collected.Count >= maxCount) { break; }
 
                 string? payload = entry[MessagePayloadField];
@@ -347,6 +310,7 @@ public sealed partial class SpotifyBatchQueueHelper {
             );
 
             foreach (StreamEntry entry in entries) {
+                if (cancellationToken.IsCancellationRequested) { break; }
                 string? payload = entry[MessagePayloadField];
                 string? enqueuedAtStr = entry[MessageEnqueuedAtField];
 
@@ -377,8 +341,7 @@ public sealed partial class SpotifyBatchQueueHelper {
     /// Acknowledges and removes a message from its stream.
     /// </summary>
     /// <param name="messageId">The composite message ID (stream:id format).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task AcknowledgeAsync( string messageId, CancellationToken cancellationToken = default ) {
+    public async Task AcknowledgeAsync( string messageId ) {
         (string stream, string id) = ParseMessageId( messageId );
 
         IDatabase db = _redis.GetDatabase( );
@@ -392,8 +355,7 @@ public sealed partial class SpotifyBatchQueueHelper {
     /// Requeues a message to its original stream.
     /// </summary>
     /// <param name="messageId">The composite message ID (stream:id format).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task RequeueAsync( string messageId, CancellationToken cancellationToken = default ) {
+    public async Task RequeueAsync( string messageId ) {
         (string stream, string id) = ParseMessageId( messageId );
 
         IDatabase db = _redis.GetDatabase( );

@@ -6,66 +6,66 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
 
+#pragma warning disable CS1591
+
 namespace BridgeBeats.Tests.Unit;
 
-/// <summary>
-/// Unit tests for <see cref="StatisticsController"/> to verify view rendering,
-/// error handling, and refresh functionality.
-/// </summary>
 [TestClass]
 public class StatisticsControllerTests {
 
     private Mock<IStatisticsService> _statisticsServiceMock = null!;
     private Mock<ILogger<StatisticsController>> _loggerMock = null!;
 
-    /// <summary>
-    /// Initializes mocks before each test.
-    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _statisticsServiceMock = new Mock<IStatisticsService>( );
         _loggerMock = new Mock<ILogger<StatisticsController>>( );
     }
 
-    #region Index Tests
-
-    /// <summary>
-    /// Verifies that Index returns a view with statistics when service is valid.
-    /// </summary>
     [TestMethod]
-    public async Task Index_WithValidService_ShouldReturnViewWithStatistics( ) {
-        // Arrange
+    public void Index_WithCachedStats_ReturnsViewWithStats( ) {
         LookupStatistics expectedStats = CreateTestStatistics( );
         _ = _statisticsServiceMock
-            .Setup( x => x.GetStatisticsAsync( It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( expectedStats );
+            .Setup( x => x.GetCachedStatistics( ) )
+            .Returns( expectedStats );
+        _ = _statisticsServiceMock
+            .Setup( x => x.IsRefreshing )
+            .Returns( false );
 
         StatisticsController controller = CreateController( );
 
-        // Act
-        IActionResult result = await controller.Index( CancellationToken.None );
+        IActionResult result = controller.Index();
 
-        // Assert
         ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
         LookupStatistics model = Assert.IsInstanceOfType<LookupStatistics>( viewResult.Model );
         Assert.AreEqual( 100, model.TotalRecords );
+        Assert.IsFalse( (bool)(viewResult.ViewData["IsRefreshing"] ?? false) );
     }
 
-    /// <summary>
-    /// Verifies that Index returns an error view when service is null.
-    /// </summary>
     [TestMethod]
-    public async Task Index_WithNullService_ShouldReturnErrorView( ) {
-        // Arrange
+    public void Index_WithNoCachedStats_ReturnsGeneratingView( ) {
+        _ = _statisticsServiceMock
+            .Setup( x => x.GetCachedStatistics( ) )
+            .Returns( (LookupStatistics?)null );
+
+        StatisticsController controller = CreateController();
+
+        IActionResult result = controller.Index();
+
+        ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
+        Assert.AreEqual( "Generating", viewResult.ViewName );
+        Assert.IsTrue( (bool)(viewResult.ViewData["IsRefreshing"] ?? false) );
+    }
+
+    [TestMethod]
+    public void Index_WithNullService_ReturnsErrorView( ) {
         StatisticsController controller = new(
-            null, // No statistics service
+            null,
             _loggerMock.Object
         );
 
-        // Act
-        IActionResult result = await controller.Index( CancellationToken.None );
+        IActionResult result = controller.Index();
 
-        // Assert
         ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
         Assert.AreEqual( "Error", viewResult.ViewName );
         ErrorViewModel model = Assert.IsInstanceOfType<ErrorViewModel>( viewResult.Model );
@@ -73,125 +73,36 @@ public class StatisticsControllerTests {
         Assert.Contains( "not configured", model.Message );
     }
 
-    /// <summary>
-    /// Verifies that Index returns an error view when service throws an exception.
-    /// </summary>
     [TestMethod]
-    public async Task Index_WhenServiceThrows_ShouldReturnErrorView( ) {
-        // Arrange
+    public void Refresh_TriggersServiceRefresh_RedirectsImmediately( ) {
         _ = _statisticsServiceMock
-            .Setup( x => x.GetStatisticsAsync( It.IsAny<CancellationToken>( ) ) )
-            .ThrowsAsync( new InvalidOperationException( "Test error" ) );
+            .Setup( x => x.TriggerRefresh( ) )
+            .Returns( true );
 
         StatisticsController controller = CreateController( );
 
-        // Act
-        IActionResult result = await controller.Index( CancellationToken.None );
+        IActionResult result = controller.Refresh();
 
-        // Assert
-        ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
-        Assert.AreEqual( "Error", viewResult.ViewName );
-        ErrorViewModel model = Assert.IsInstanceOfType<ErrorViewModel>( viewResult.Model );
-        Assert.IsNotNull( model.Message );
-        Assert.Contains( "Unable to retrieve", model.Message );
-    }
-
-    /// <summary>
-    /// Verifies that Index throws <see cref="OperationCanceledException"/> when cancelled.
-    /// </summary>
-    [TestMethod]
-    public async Task Index_WhenCancelled_ShouldThrowOperationCanceledException( ) {
-        // Arrange
-        using CancellationTokenSource cts = new( );
-        await cts.CancelAsync( );
-
-        _ = _statisticsServiceMock
-            .Setup( x => x.GetStatisticsAsync( It.IsAny<CancellationToken>( ) ) )
-            .ThrowsAsync( new OperationCanceledException( ) );
-
-        StatisticsController controller = CreateController( );
-
-        // Act & Assert
-        _ = await Assert.ThrowsExactlyAsync<OperationCanceledException>(
-            async ( ) => await controller.Index( cts.Token )
-        );
-    }
-
-    #endregion
-
-    #region Refresh Tests
-
-    /// <summary>
-    /// Verifies that Refresh calls RefreshStatisticsAsync and redirects to Index.
-    /// </summary>
-    [TestMethod]
-    public async Task Refresh_WithValidService_ShouldCallRefreshAndRedirect( ) {
-        // Arrange
-        _ = _statisticsServiceMock
-            .Setup( x => x.RefreshStatisticsAsync( It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( CreateTestStatistics( ) );
-
-        StatisticsController controller = CreateController( );
-
-        // Act
-        IActionResult result = await controller.Refresh( CancellationToken.None );
-
-        // Assert
         RedirectToActionResult redirectResult = Assert.IsInstanceOfType<RedirectToActionResult>( result );
         Assert.AreEqual( "Index", redirectResult.ActionName );
-        _statisticsServiceMock.Verify(
-            x => x.RefreshStatisticsAsync( It.IsAny<CancellationToken>( ) ),
-            Times.Once( )
-        );
+        _statisticsServiceMock.Verify( x => x.TriggerRefresh( ), Times.Once( ) );
     }
 
-    /// <summary>
-    /// Verifies that Refresh redirects to Index even when service is null.
-    /// </summary>
     [TestMethod]
-    public async Task Refresh_WithNullService_ShouldRedirectWithoutError( ) {
-        // Arrange
-        StatisticsController controller = new(
-            null, // No statistics service
-            _loggerMock.Object
-        );
-
-        // Act
-        IActionResult result = await controller.Refresh( CancellationToken.None );
-
-        // Assert
-        RedirectToActionResult redirectResult = Assert.IsInstanceOfType<RedirectToActionResult>( result );
-        Assert.AreEqual( "Index", redirectResult.ActionName );
-    }
-
-    /// <summary>
-    /// Verifies that Refresh redirects to Index even when service throws an exception.
-    /// </summary>
-    [TestMethod]
-    public async Task Refresh_WhenServiceThrows_ShouldStillRedirect( ) {
-        // Arrange
+    public void Refresh_WhenRefreshAlreadyRunning_StillRedirects( ) {
         _ = _statisticsServiceMock
-            .Setup( x => x.RefreshStatisticsAsync( It.IsAny<CancellationToken>( ) ) )
-            .ThrowsAsync( new InvalidOperationException( "Test error" ) );
+            .Setup( x => x.TriggerRefresh( ) )
+            .Returns( false );
 
         StatisticsController controller = CreateController( );
 
-        // Act
-        IActionResult result = await controller.Refresh( CancellationToken.None );
+        IActionResult result = controller.Refresh();
 
-        // Assert - Should redirect even on error
         RedirectToActionResult redirectResult = Assert.IsInstanceOfType<RedirectToActionResult>( result );
         Assert.AreEqual( "Index", redirectResult.ActionName );
+        _statisticsServiceMock.Verify( x => x.TriggerRefresh( ), Times.Once( ) );
     }
 
-    #endregion
-
-    #region Helper Methods
-
-    /// <summary>
-    /// Creates a <see cref="StatisticsController"/> instance with the mocked dependencies.
-    /// </summary>
-    /// <returns>A configured <see cref="StatisticsController"/> instance.</returns>
     private StatisticsController CreateController( ) {
         return new StatisticsController(
             _statisticsServiceMock.Object,
@@ -199,10 +110,6 @@ public class StatisticsControllerTests {
         );
     }
 
-    /// <summary>
-    /// Creates a test <see cref="LookupStatistics"/> instance with sample data.
-    /// </summary>
-    /// <returns>A populated <see cref="LookupStatistics"/> instance.</returns>
     private static LookupStatistics CreateTestStatistics( ) {
         return new LookupStatistics {
             TotalRecords = 100,
@@ -228,6 +135,6 @@ public class StatisticsControllerTests {
             GeneratedAt = DateTimeOffset.UtcNow
         };
     }
-
-    #endregion
 }
+
+#pragma warning restore CS1591

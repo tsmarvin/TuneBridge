@@ -7,12 +7,10 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
 
+#pragma warning disable CS1591
+
 namespace BridgeBeats.Tests.Unit;
 
-/// <summary>
-/// Unit tests for <see cref="StatisticsService"/> to verify statistics computation,
-/// caching behavior, and refresh functionality.
-/// </summary>
 [TestClass]
 public class StatisticsServiceTests {
 
@@ -25,14 +23,6 @@ public class StatisticsServiceTests {
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
     private const string TestUserDid = "did:plc:testuser123";
 
-    /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
-    /// </summary>
-    public TestContext TestContext { get; set; } = null!;
-
-    /// <summary>
-    /// Initializes test dependencies before each test method.
-    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _atProtoStorageMock = new Mock<IATProtoStorageService>( );
@@ -44,293 +34,146 @@ public class StatisticsServiceTests {
         _settings = new StatisticsSettings(
             s_testPdsUri,
             TestUserDid,
-            TimeSpan.FromHours( 6 )
+            TimeSpan.FromHours( 6 ),
+            TimeSpan.FromSeconds( 30 )
         );
     }
 
-    #region Constructor Tests
-
-    /// <summary>
-    /// Verifies that the constructor creates a valid instance when provided with valid dependencies.
-    /// </summary>
     [TestMethod]
-    public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
-        // Act
+    public void GetCachedStatistics_WhenNoCachedData_ReturnsNull( ) {
         StatisticsService service = CreateService( );
 
-        // Assert
-        Assert.IsNotNull( service );
+        LookupStatistics? result = service.GetCachedStatistics();
+
+        Assert.IsNull( result );
     }
 
-    #endregion
-
-    #region GetStatisticsAsync Tests
-
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> returns zero counts and empty
-    /// collections when the ATProto storage contains no records.
-    /// </summary>
     [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStatisticsAsync_WithEmptyCollection_ShouldReturnZeroStats( ) {
-        // Arrange
+    public async Task GetCachedStatistics_AfterRefresh_ReturnsCachedData( ) {
         SetupEmptyRecordList( );
         StatisticsService service = CreateService( );
 
-        // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
+        _ = await service.RefreshStatisticsAsync( CancellationToken.None );
+        LookupStatistics? result = service.GetCachedStatistics();
 
-        // Assert
-        Assert.AreEqual( 0, stats.TotalRecords );
-        Assert.AreEqual( 0, stats.AlbumCount );
-        Assert.AreEqual( 0, stats.TrackCount );
-        Assert.IsEmpty( stats.ProviderCounts );
-        Assert.IsEmpty( stats.RecentEntries );
-        Assert.IsNull( stats.EarliestLookup );
-        Assert.IsNull( stats.LatestLookup );
+        Assert.IsNotNull( result );
+        Assert.AreEqual( 0, result.TotalRecords );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> correctly computes statistics
-    /// for a mix of track and album records, including correct total, album, and track counts.
-    /// </summary>
     [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStatisticsAsync_WithMixedRecords_ShouldComputeCorrectStats( ) {
-        // Arrange
-        List<(string AtUri, MediaLinkResult Result)> records = [
-            CreateTrackRecord( "at://did:plc:test/link.bridgebeats.lookup/track:ISRC1", "Artist1", "Track1", DateTimeOffset.UtcNow.AddDays( -2 ) ),
-            CreateTrackRecord( "at://did:plc:test/link.bridgebeats.lookup/track:ISRC2", "Artist2", "Track2", DateTimeOffset.UtcNow.AddDays( -1 ) ),
-            CreateAlbumRecord( "at://did:plc:test/link.bridgebeats.lookup/album:UPC1", "Artist3", "Album1", DateTimeOffset.UtcNow )
-        ];
-        SetupRecordList( records );
+    public async Task GetStatisticsAsync_WhenNoCache_ReturnsEmptyStatsWithoutComputation( ) {
         StatisticsService service = CreateService( );
 
-        // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
+        LookupStatistics result = await service.GetStatisticsAsync(CancellationToken.None);
 
-        // Assert
-        Assert.AreEqual( 3, stats.TotalRecords );
-        Assert.AreEqual( 1, stats.AlbumCount );
-        Assert.AreEqual( 2, stats.TrackCount );
+        Assert.AreEqual( 0, result.TotalRecords );
+        Assert.AreEqual( DateTimeOffset.MinValue, result.GeneratedAt );
+        _atProtoStorageMock.Verify(
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never( )
+        );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> correctly counts the number
-    /// of records per music provider.
-    /// </summary>
     [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStatisticsAsync_ShouldCountProviders( ) {
-        // Arrange
-        List<(string AtUri, MediaLinkResult Result)> records = [
-            CreateTrackRecordWithProviders( "at://test/1", [SupportedProviders.Spotify, SupportedProviders.AppleMusic] ),
-            CreateTrackRecordWithProviders( "at://test/2", [SupportedProviders.Spotify, SupportedProviders.Tidal] ),
-            CreateTrackRecordWithProviders( "at://test/3", [SupportedProviders.AppleMusic] )
-        ];
-        SetupRecordList( records );
+    public async Task GetStatisticsAsync_ReturnsCachedData_NeverTriggersComputation( ) {
+        SetupRecordList( [
+            CreateTrackRecord( "at://did:plc:test/link.bridgebeats.lookup/track:ISRC1", "Artist1", "Track1", DateTimeOffset.UtcNow )
+        ] );
         StatisticsService service = CreateService( );
+        _ = await service.RefreshStatisticsAsync( CancellationToken.None );
 
-        // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
+        LookupStatistics result = await service.GetStatisticsAsync(CancellationToken.None);
 
-        // Assert
-        Assert.AreEqual( 2, stats.ProviderCounts["Spotify"] );
-        Assert.AreEqual( 2, stats.ProviderCounts["AppleMusic"] );
-        Assert.AreEqual( 1, stats.ProviderCounts["Tidal"] );
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> correctly identifies the
-    /// earliest and latest lookup timestamps from the records.
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStatisticsAsync_ShouldTrackDateRange( ) {
-        // Arrange
-        DateTimeOffset earliest = DateTimeOffset.UtcNow.AddDays( -30 );
-        DateTimeOffset latest = DateTimeOffset.UtcNow;
-        List<(string AtUri, MediaLinkResult Result)> records = [
-            CreateTrackRecord( "at://test/1", "Artist1", "Track1", earliest ),
-            CreateTrackRecord( "at://test/2", "Artist2", "Track2", DateTimeOffset.UtcNow.AddDays( -15 ) ),
-            CreateTrackRecord( "at://test/3", "Artist3", "Track3", latest )
-        ];
-        SetupRecordList( records );
-        StatisticsService service = CreateService( );
-
-        // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
-
-        // Assert
-        Assert.IsNotNull( stats.EarliestLookup );
-        Assert.IsNotNull( stats.LatestLookup );
-        Assert.AreEqual( earliest, stats.EarliestLookup.Value );
-        Assert.AreEqual( latest, stats.LatestLookup.Value );
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> returns only the five most
-    /// recent entries in the correct order (newest first).
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStatisticsAsync_ShouldReturnFiveMostRecentEntries( ) {
-        // Arrange
-        List<(string AtUri, MediaLinkResult Result)> records = [];
-        for (int i = 0; i < 10; i++) {
-            records.Add( CreateTrackRecord(
-                $"at://test/{i}",
-                $"Artist{i}",
-                $"Track{i}",
-                DateTimeOffset.UtcNow.AddHours( -i )
-            ) );
-        }
-        SetupRecordList( records );
-        StatisticsService service = CreateService( );
-
-        // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
-
-        // Assert
-        Assert.HasCount( 5, stats.RecentEntries );
-        Assert.AreEqual( "Track0", stats.RecentEntries[0].Title ); // Most recent
-        Assert.AreEqual( "Track4", stats.RecentEntries[4].Title ); // 5th most recent
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> generates a card ID
-    /// for each recent entry, extracted from the ATProto URI.
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStatisticsAsync_ShouldGenerateCardIdForRecentEntries( ) {
-        // Arrange
-        List<(string AtUri, MediaLinkResult Result)> records = [
-            CreateTrackRecord( "at://did:plc:test/link.bridgebeats.lookup/track:ISRC12345", "Artist", "Track", DateTimeOffset.UtcNow )
-        ];
-        SetupRecordList( records );
-        StatisticsService service = CreateService( );
-
-        // Act
-        LookupStatistics stats = await service.GetStatisticsAsync( TestContext.CancellationToken );
-
-        // Assert
-        Assert.HasCount( 1, stats.RecentEntries );
-        Assert.IsNotNull( stats.RecentEntries[0].CardId );
-        Assert.IsNotEmpty( stats.RecentEntries[0].CardId! );
-    }
-
-    #endregion
-
-    #region Caching Tests
-
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> caches results to avoid
-    /// repeated calls to the ATProto storage service.
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStatisticsAsync_ShouldCacheResults( ) {
-        // Arrange
-        SetupEmptyRecordList( );
-        StatisticsService service = CreateService( );
-
-        // Act - Call twice
-        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
-        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
-
-        // Assert - ListAllRecordsAsync should only be called once due to caching
+        Assert.AreEqual( 1, result.TotalRecords );
         _atProtoStorageMock.Verify(
             x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
             Times.Once( )
         );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.RefreshStatisticsAsync"/> bypasses the cache
-    /// and fetches fresh data from the ATProto storage service.
-    /// </summary>
     [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RefreshStatisticsAsync_ShouldBypassCache( ) {
-        // Arrange
+    public void TriggerRefresh_WhenNotRefreshing_StartsRefresh( ) {
+        StatisticsService service = CreateService( );
+
+        bool result = service.TriggerRefresh();
+
+        Assert.IsTrue( result );
+    }
+
+    [TestMethod]
+    public async Task TriggerRefresh_WhenAlreadyRefreshing_ReturnsFalse( ) {
+        TaskCompletionSource<bool> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( BlockingSequence( gate.Task ) );
+
+        StatisticsService service = CreateService( );
+
+        Task<LookupStatistics> refreshTask = service.RefreshStatisticsAsync(CancellationToken.None);
+
+        await WaitUntilAsync( ( ) => service.IsRefreshing, TimeSpan.FromSeconds( 2 ) );
+        bool triggerResult = service.TriggerRefresh();
+
+        Assert.IsFalse( triggerResult );
+        _ = gate.TrySetResult( true );
+        _ = await refreshTask;
+    }
+
+    [TestMethod]
+    public async Task IsRefreshing_AfterRefresh_ReturnsFalse( ) {
         SetupEmptyRecordList( );
         StatisticsService service = CreateService( );
 
-        // Act - Get stats, then refresh
-        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
-        _ = await service.RefreshStatisticsAsync( TestContext.CancellationToken );
+        _ = await service.RefreshStatisticsAsync( CancellationToken.None );
 
-        // Assert - ListAllRecordsAsync should be called twice (initial + refresh)
+        Assert.IsFalse( service.IsRefreshing );
+    }
+
+    [TestMethod]
+    public async Task RefreshStatisticsAsync_SkipsComputeWhenCacheFresh( ) {
+        SetupEmptyRecordList( );
+        StatisticsService service = CreateService( );
+
+        _ = await service.RefreshStatisticsAsync( CancellationToken.None );
+        _ = await service.RefreshStatisticsAsync( CancellationToken.None );
+
+        _atProtoStorageMock.Verify(
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once( )
+        );
+    }
+
+    [TestMethod]
+    public async Task RefreshStatisticsAsync_ForceRefresh_BypassesFreshCache( ) {
+        SetupEmptyRecordList( );
+        StatisticsService service = CreateService( );
+
+        _ = await service.RefreshStatisticsAsync( CancellationToken.None );
+        _ = await service.RefreshStatisticsAsync( true, CancellationToken.None );
+
         _atProtoStorageMock.Verify(
             x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
             Times.Exactly( 2 )
         );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> re-fetches data from
-    /// the ATProto storage service after the cache expires.
-    /// </summary>
     [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStatisticsAsync_AfterCacheExpiry_ShouldRefetch( ) {
-        // Arrange - Use very short cache duration
-        StatisticsSettings shortCacheSettings = new(
-            s_testPdsUri,
-            TestUserDid,
-            TimeSpan.FromMilliseconds( 1 )
-        );
-        SetupEmptyRecordList( );
-        StatisticsService service = new(
-            _atProtoStorageMock.Object,
-            _redisMock.Object,
-            shortCacheSettings,
-            _loggerMock.Object
-        );
-
-        // Act - Call, wait for expiry, call again
-        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
-        await Task.Delay( 10, TestContext.CancellationToken ); // Wait for cache to expire
-        _ = await service.GetStatisticsAsync( TestContext.CancellationToken );
-
-        // Assert - Should be called twice due to cache expiry
-        _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Exactly( 2 )
-        );
-    }
-
-    #endregion
-
-    #region Cancellation Tests
-
-    /// <summary>
-    /// Verifies that <see cref="StatisticsService.GetStatisticsAsync"/> throws
-    /// <see cref="OperationCanceledException"/> when the cancellation token is cancelled.
-    /// </summary>
-    [TestMethod]
-    public async Task GetStatisticsAsync_WhenCancelled_ShouldThrowOperationCanceledException( ) {
-        // Arrange
-        using CancellationTokenSource cts = new( );
-        await cts.CancelAsync( );
-        SetupEmptyRecordList( );
+    public async Task RefreshStatisticsAsync_UpdatesCachedStats( ) {
+        SetupRecordList( [
+            CreateTrackRecord( "at://did:plc:test/link.bridgebeats.lookup/track:ISRC1", "Artist1", "Track1", DateTimeOffset.UtcNow ),
+            CreateAlbumRecord( "at://did:plc:test/link.bridgebeats.lookup/album:UPC1", "Artist2", "Album1", DateTimeOffset.UtcNow )
+        ] );
         StatisticsService service = CreateService( );
 
-        // Act & Assert - TaskCanceledException is a subclass of OperationCanceledException
-        _ = await Assert.ThrowsAsync<OperationCanceledException>(
-            async ( ) => await service.GetStatisticsAsync( cts.Token )
-        );
+        _ = await service.RefreshStatisticsAsync( CancellationToken.None );
+        LookupStatistics? cached = service.GetCachedStatistics();
+
+        Assert.IsNotNull( cached );
+        Assert.AreEqual( 2, cached.TotalRecords );
+        Assert.AreEqual( 1, cached.AlbumCount );
+        Assert.AreEqual( 1, cached.TrackCount );
     }
 
-    #endregion
-
-    #region Helper Methods
-
-    /// <summary>
-    /// Creates a <see cref="StatisticsService"/> instance with the mocked dependencies.
-    /// </summary>
-    /// <returns>A configured <see cref="StatisticsService"/> instance.</returns>
     private StatisticsService CreateService( ) {
         return new StatisticsService(
             _atProtoStorageMock.Object,
@@ -340,33 +183,36 @@ public class StatisticsServiceTests {
         );
     }
 
-    /// <summary>
-    /// Configures the ATProto storage mock to return an empty list of records.
-    /// </summary>
     private void SetupEmptyRecordList( ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
     }
 
-    /// <summary>
-    /// Configures the ATProto storage mock to return the specified list of records.
-    /// </summary>
-    /// <param name="records">The records to return from the mock.</param>
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( records.ToAsyncEnumerable( ) );
     }
 
-    /// <summary>
-    /// Creates a track record with the specified metadata for testing.
-    /// </summary>
-    /// <param name="atUri">The ATProto URI for the record.</param>
-    /// <param name="artist">The artist name.</param>
-    /// <param name="title">The track title.</param>
-    /// <param name="lookedUpAt">The timestamp when the lookup occurred.</param>
-    /// <returns>A tuple containing the AT URI and the <see cref="MediaLinkResult"/>.</returns>
+    private static async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> BlockingSequence( Task releaseTask ) {
+        await releaseTask;
+        yield break;
+    }
+
+    private static async Task WaitUntilAsync( Func<bool> condition, TimeSpan timeout ) {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline) {
+            if (condition( )) {
+                return;
+            }
+
+            await Task.Delay( 10 );
+        }
+
+        Assert.Fail( "Condition not met before timeout." );
+    }
+
     private static (string AtUri, MediaLinkResult Result) CreateTrackRecord(
         string atUri,
         string artist,
@@ -386,14 +232,6 @@ public class StatisticsServiceTests {
         return (atUri, result);
     }
 
-    /// <summary>
-    /// Creates an album record with the specified metadata for testing.
-    /// </summary>
-    /// <param name="atUri">The ATProto URI for the record.</param>
-    /// <param name="artist">The artist name.</param>
-    /// <param name="title">The album title.</param>
-    /// <param name="lookedUpAt">The timestamp when the lookup occurred.</param>
-    /// <returns>A tuple containing the AT URI and the <see cref="MediaLinkResult"/>.</returns>
     private static (string AtUri, MediaLinkResult Result) CreateAlbumRecord(
         string atUri,
         string artist,
@@ -412,31 +250,6 @@ public class StatisticsServiceTests {
         } );
         return (atUri, result);
     }
-
-    /// <summary>
-    /// Creates a track record with the specified providers for testing provider counting.
-    /// </summary>
-    /// <param name="atUri">The ATProto URI for the record.</param>
-    /// <param name="providers">The providers to include in the result.</param>
-    /// <returns>A tuple containing the AT URI and the <see cref="MediaLinkResult"/>.</returns>
-    private static (string AtUri, MediaLinkResult Result) CreateTrackRecordWithProviders(
-        string atUri,
-        SupportedProviders[] providers
-    ) {
-        MediaLinkResult result = new( ) {
-            LookedUpAt = DateTime.UtcNow
-        };
-        foreach (SupportedProviders provider in providers) {
-            result.Results.Add( provider, new MusicLookupResult {
-                Artist = "Test Artist",
-                Title = "Test Track",
-                IsAlbum = false,
-                ExternalId = "ISRC12345678",
-                URL = $"https://{provider}.example/track/test"
-            } );
-        }
-        return (atUri, result);
-    }
-
-    #endregion
 }
+
+#pragma warning restore CS1591

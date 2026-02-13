@@ -13,7 +13,8 @@ namespace BridgeBeats.Web.Logging;
 /// <list type="bullet">
 ///   <item>4000-4499: Controllers</item>
 ///   <item>4500-4749: Middleware</item>
-///   <item>4750-4999: Configuration</item>
+///   <item>4750-4899: Configuration</item>
+///   <item>4900-4999: BackgroundServices</item>
 /// </list>
 /// </remarks>
 public static class LogEventIds {
@@ -216,7 +217,7 @@ public static class LogEventIds {
     }
 
     /// <summary>
-    /// EventIds for Configuration (4750-4999).
+    /// EventIds for Configuration (4750-4899).
     /// </summary>
     public static class Configuration {
         // StartupExtensions (4750-4774)

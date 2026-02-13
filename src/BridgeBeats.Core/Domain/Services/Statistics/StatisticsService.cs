@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Threading.Channels;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
@@ -11,6 +12,7 @@ namespace BridgeBeats.Core.Domain.Services;
 
 /// <summary>
 /// Service for retrieving and caching statistics about the lookup collection.
+/// Maintains an in-memory cache that is refreshed by a background service.
 /// </summary>
 /// <remarks>
 /// Initializes a new instance of the <see cref="StatisticsService"/> class.
@@ -30,33 +32,75 @@ public sealed partial class StatisticsService(
     private readonly SemaphoreSlim _cacheLock = new( 1, 1 );
     private LookupStatistics? _cachedStats;
     private DateTimeOffset _cacheExpiry = DateTimeOffset.MinValue;
+    private volatile int _isRefreshing;
+
+    private readonly Channel<bool> _refreshChannel = Channel.CreateBounded<bool>(
+        new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropNewest }
+    );
+
+    /// <summary>
+    /// Gets the <see cref="ChannelReader{T}"/> that the background service reads from
+    /// to receive manual refresh signals.
+    /// </summary>
+    public ChannelReader<bool> RefreshTriggerReader => _refreshChannel.Reader;
 
     /// <inheritdoc/>
-    public async Task<LookupStatistics> GetStatisticsAsync( CancellationToken cancellationToken = default ) {
-        // Check if we have valid cached stats
-        return _cachedStats is not null && DateTimeOffset.UtcNow < _cacheExpiry
-            ? _cachedStats
-            : await RefreshStatisticsAsync( cancellationToken );
+    public bool IsRefreshing => Interlocked.CompareExchange( ref _isRefreshing, 0, 0 ) == 1;
+
+    /// <inheritdoc/>
+    public LookupStatistics? GetCachedStatistics( ) {
+        return _cachedStats;
+    }
+
+    /// <inheritdoc/>
+    public bool TriggerRefresh( ) {
+        return !IsRefreshing && _refreshChannel.Writer.TryWrite( true );
+    }
+
+    /// <inheritdoc/>
+    public Task<LookupStatistics> GetStatisticsAsync( CancellationToken cancellationToken = default ) {
+        LookupStatistics stats = _cachedStats ?? new LookupStatistics { GeneratedAt = DateTimeOffset.MinValue };
+        return Task.FromResult( stats );
     }
 
     /// <inheritdoc/>
     public async Task<LookupStatistics> RefreshStatisticsAsync( CancellationToken cancellationToken = default ) {
+        return await RefreshStatisticsAsync( false, cancellationToken );
+    }
+
+    /// <summary>
+    /// Refreshes cached statistics, optionally forcing recomputation even when cache is fresh.
+    /// </summary>
+    /// <param name="forceRefresh">True to bypass freshness check and recompute immediately.</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>The refreshed lookup statistics.</returns>
+    public async Task<LookupStatistics> RefreshStatisticsAsync( bool forceRefresh, CancellationToken cancellationToken = default ) {
         await _cacheLock.WaitAsync( cancellationToken );
         try {
-            // Force refresh - do not check cache validity (this is an explicit refresh request)
-            if (logger.IsEnabled( LogLevel.Information )) {
-                string pdsUriString = settings.PdsUri.ToString( );
-                LogRefreshingStatistics( logger, pdsUriString, settings.UserDid );
+            // Double-check: if cache was recently refreshed by another thread, skip
+            if (!forceRefresh && _cachedStats is not null && DateTimeOffset.UtcNow < _cacheExpiry) {
+                LogStatisticsRefreshSkipped( logger );
+                return _cachedStats;
             }
 
-            LookupStatistics stats = await ComputeStatisticsAsync( cancellationToken );
+            _ = Interlocked.Exchange( ref _isRefreshing, 1 );
+            try {
+                if (logger.IsEnabled( LogLevel.Information )) {
+                    string pdsUriString = settings.PdsUri.ToString();
+                    LogRefreshingStatistics( logger, pdsUriString, settings.UserDid );
+                }
 
-            _cachedStats = stats;
-            _cacheExpiry = DateTimeOffset.UtcNow + settings.CacheDuration;
+                LookupStatistics stats = await ComputeStatisticsAsync(cancellationToken);
 
-            LogStatisticsRefreshed( logger, stats.TotalRecords, _cacheExpiry );
+                _cachedStats = stats;
+                _cacheExpiry = DateTimeOffset.UtcNow + settings.CacheDuration;
 
-            return stats;
+                LogStatisticsRefreshed( logger, stats.TotalRecords, _cacheExpiry );
+
+                return stats;
+            } finally {
+                _ = Interlocked.Exchange( ref _isRefreshing, 0 );
+            }
         } finally {
             _ = _cacheLock.Release( );
         }
@@ -203,6 +247,15 @@ public sealed partial class StatisticsService(
         Level = LogLevel.Warning,
         Message = "Failed to read cache bootstrap status from Redis" )]
     private static partial void LogCacheBootstrapStatusError( ILogger logger, Exception ex );
+
+    /// <summary>
+    /// Logs that a statistics refresh was skipped because the cache is still fresh.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Other.StatisticsRefreshSkipped,
+        Level = LogLevel.Information,
+        Message = "Statistics refresh skipped — cache is still fresh" )]
+    private static partial void LogStatisticsRefreshSkipped( ILogger logger );
 
     #endregion LoggerMessage Definitions
 }

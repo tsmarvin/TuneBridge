@@ -297,12 +297,12 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
             await PublishLookupCompletionAsync( request.SagaId, ct );
 
             // Acknowledge the message
-            await _batchHelper.AcknowledgeAsync( message.MessageId, ct );
+            await _batchHelper.AcknowledgeAsync( message.MessageId );
 
             LogBulkResultProcessed( _logger, request.SagaId, result is not null ? "found" : "not found" );
         } catch (Exception ex) {
             LogBulkResultError( _logger, ex, request.SagaId );
-            await _batchHelper.RequeueAsync( message.MessageId, ct );
+            await _batchHelper.RequeueAsync( message.MessageId );
         }
     }
 
@@ -333,8 +333,9 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         CancellationToken ct
     ) {
         foreach (QueuedMessage<QueuedLookupRequest> message in messages) {
+            if (ct.IsCancellationRequested) { break; }
             try {
-                await _batchHelper.RequeueAsync( message.MessageId, ct );
+                await _batchHelper.RequeueAsync( message.MessageId );
             } catch (Exception ex) {
                 LogRequeueError( _logger, ex, message.MessageId );
             }

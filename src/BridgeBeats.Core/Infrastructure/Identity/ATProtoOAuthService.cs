@@ -111,11 +111,12 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     /// <inheritdoc/>
     public async Task<(Uri AuthorizationUrl, string State)> StartAuthorizationAsync(
         string handle,
-        Uri redirectUri,
         CancellationToken cancellationToken = default
     ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( handle );
-        ArgumentNullException.ThrowIfNull( redirectUri );
+
+        // Build redirect URI from the configured domain (same as client-metadata.json and token exchange)
+        Uri redirectUri = new($"{_domain}{OAuthCallbackPath}");
 
         // Normalize handle (remove @ prefix if present)
         handle = handle.TrimStart( '@' ).Trim( );
