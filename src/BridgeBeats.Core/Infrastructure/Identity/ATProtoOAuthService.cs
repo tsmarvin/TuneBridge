@@ -116,7 +116,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         ArgumentException.ThrowIfNullOrWhiteSpace( handle );
 
         // Build redirect URI from the configured domain (same as client-metadata.json and token exchange)
-        Uri redirectUri = new($"{_domain}{OAuthCallbackPath}");
+        string redirectUri = $"https://{_domain}{OAuthCallbackPath}";
 
         // Normalize handle (remove @ prefix if present)
         handle = handle.TrimStart( '@' ).Trim( );
@@ -486,7 +486,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     private async Task<Uri> PerformPushedAuthorizationRequestAsync(
         AuthorizationServerMetadata metadata,
         string dpoPKeyJwk,
-        Uri redirectUri,
+        string redirectUri,
         string state,
         string codeChallenge,
         string loginHint,
@@ -507,7 +507,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         {
             ["client_id"] = _clientId,
             ["response_type"] = "code",
-            ["redirect_uri"] = redirectUri.ToString(),
+            ["redirect_uri"] = redirectUri,
             ["state"] = state,
             ["scope"] = scope,
             ["code_challenge"] = codeChallenge,
@@ -559,7 +559,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
     private Uri BuildDirectAuthorizationUrl(
         Uri authorizationEndpoint,
         Uri authorizationServer,
-        Uri redirectUri,
+        string redirectUri,
         string state,
         string codeChallenge,
         string loginHint
@@ -571,7 +571,7 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
         System.Collections.Specialized.NameValueCollection query = System.Web.HttpUtility.ParseQueryString( string.Empty );
         query["client_id"] = _clientId;
         query["response_type"] = "code";
-        query["redirect_uri"] = redirectUri.ToString( );
+        query["redirect_uri"] = redirectUri;
         query["state"] = state;
         query["scope"] = scope;
         query["code_challenge"] = codeChallenge;
