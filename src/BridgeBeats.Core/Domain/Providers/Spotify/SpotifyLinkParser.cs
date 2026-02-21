@@ -104,36 +104,6 @@ namespace BridgeBeats.Providers.Spotify {
             => ProviderUrlParser.ExtractSpotifyId( url );
 
         /// <summary>
-        /// Normalizes a Spotify URL by removing query parameters and fragments.
-        /// Reconstructs a clean canonical URL from the ID and entity type.
-        /// </summary>
-        /// <param name="url">The Spotify URL to normalize (may contain query parameters like ?si=).</param>
-        /// <returns>
-        /// The normalized URL without query parameters, or the original URL if it cannot be parsed.
-        /// Returns empty string if the input is null or empty.
-        /// </returns>
-        /// <remarks>
-        /// This ensures that URLs like https://open.spotify.com/track/ID?si=xyz are normalized to
-        /// https://open.spotify.com/track/ID for consistent caching and comparison.
-        /// </remarks>
-        public static string NormalizeUrl( string? url ) {
-            if (string.IsNullOrWhiteSpace( url )) {
-                return string.Empty;
-            }
-
-            // Use the regex to extract the type and ID
-            Match match = s_spotifyLink.Match( url );
-            if (match.Success) {
-                string type = match.Groups["type"].Value.ToLowerInvariant( );
-                string id = match.Groups["id"].Value;
-                return $"https://open.spotify.com/{type}/{id}";
-            }
-
-            // If we can't parse it, return the original URL
-            return url;
-        }
-
-        /// <summary>
         /// Constructs an API URI for searching artists by name.
         /// </summary>
         /// <param name="artist">The artist name to search for.</param>
