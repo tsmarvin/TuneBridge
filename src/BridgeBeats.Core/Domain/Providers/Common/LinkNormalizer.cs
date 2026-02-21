@@ -39,8 +39,8 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
                 normalized = normalized[..fragmentIndex];
             }
 
-            // Remove trailing slash
-            return normalized.TrimEnd( '/' );
+            // Remove trailing slash and convert to lowercase for case-insensitive comparison
+            return normalized.TrimEnd( '/' ).ToLowerInvariant( );
         }
     }
 }

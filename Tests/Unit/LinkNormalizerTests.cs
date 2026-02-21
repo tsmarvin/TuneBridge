@@ -22,7 +22,7 @@ public class LinkNormalizerTests {
         string normalized = LinkNormalizer.Normalize( url );
 
         // Assert
-        Assert.AreEqual( "open.spotify.com/track/2zyTP97uGsIc1C4KNNEkyn", normalized );
+        Assert.AreEqual( "open.spotify.com/track/2zytp97ugsic1c4knnekyn", normalized );
     }
 
     /// <summary>
@@ -211,7 +211,7 @@ public class LinkNormalizerTests {
         // Assert
         Assert.AreEqual( normalized1, normalized2, "URLs with and without ?si= should normalize to same value" );
         Assert.AreEqual( normalized1, normalized3, "URLs with different ?si= values should normalize to same value" );
-        Assert.AreEqual( "open.spotify.com/track/2zyTP97uGsIc1C4KNNEkyn", normalized1 );
+        Assert.AreEqual( "open.spotify.com/track/2zytp97ugsic1c4knnekyn", normalized1 );
     }
 
     #endregion
