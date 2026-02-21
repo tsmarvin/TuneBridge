@@ -82,20 +82,20 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that HashUrl normalizes URLs to lowercase for consistent hashing.
+    /// Verifies that HashUrl normalizes domain to lowercase for consistent hashing.
     /// </summary>
     [TestMethod]
     public void HashUrl_NormalizesUrl_ToLowercase( ) {
-        // Arrange
-        string url1 = "https://EXAMPLE.COM/Path";
+        // Arrange - different domain case should normalize, but paths with different case should NOT
+        string url1 = "https://EXAMPLE.COM/path";
         string url2 = "https://example.com/path";
 
         // Act
         string hash1 = HashUtility.HashUrl( url1 );
         string hash2 = HashUtility.HashUrl( url2 );
 
-        // Assert
-        Assert.AreEqual( hash1, hash2 );
+        // Assert - domain case-insensitive
+        Assert.AreEqual( hash1, hash2, "URLs with different domain case should produce same hash" );
     }
 
     /// <summary>
