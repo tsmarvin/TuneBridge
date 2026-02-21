@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using BridgeBeats.Core.Domain.Providers.Common;
 
 namespace BridgeBeats.Core.Infrastructure.Utilities;
 
@@ -38,7 +39,9 @@ public static class HashUtility {
 
     /// <summary>
     /// Computes a SHA-256 hash of a URL string for use as a Redis lookup key.
-    /// The URL is normalized (lowercased) before hashing to ensure consistent lookups.
+    /// The URL is normalized using <see cref="LinkNormalizer.Normalize"/> to remove
+    /// protocol, query parameters, fragments, www prefix, and trailing slashes before hashing
+    /// to ensure consistent lookups regardless of these variations.
     /// </summary>
     /// <param name="url">The URL to hash.</param>
     /// <returns>A lowercase base32-encoded SHA-256 hash string.</returns>
@@ -50,8 +53,9 @@ public static class HashUtility {
             throw new ArgumentException( "URL cannot be empty or whitespace", nameof( url ) );
         }
 
-        // Normalize URL to lowercase for consistent hashing
-        return ComputeSha256Base32( url.Trim( ).ToLowerInvariant( ) );
+        // Normalize URL using LinkNormalizer to strip query params, protocol, etc. for consistent hashing
+        string normalized = LinkNormalizer.Normalize( url );
+        return ComputeSha256Base32( normalized );
     }
 
     /// <summary>

@@ -1,11 +1,9 @@
-using System.Text.RegularExpressions;
-
 namespace BridgeBeats.Core.Domain.Providers.Common {
 
     /// <summary>
     /// Provides consistent link normalization across the application.
     /// </summary>
-    public static partial class LinkNormalizer {
+    public static class LinkNormalizer {
 
         /// <summary>
         /// Normalizes a link by removing protocol, query strings, fragments, www prefix, and trailing slashes for consistent comparison.
@@ -30,42 +28,19 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
                 normalized = normalized[4..];
             }
 
+            // Remove query parameters and fragments
+            int queryIndex = normalized.IndexOf( '?' );
+            if (queryIndex >= 0) {
+                normalized = normalized[..queryIndex];
+            }
+
+            int fragmentIndex = normalized.IndexOf( '#' );
+            if (fragmentIndex >= 0) {
+                normalized = normalized[..fragmentIndex];
+            }
+
             // Remove trailing slash
             return normalized.TrimEnd( '/' );
         }
-
-        /// <summary>
-        /// Normalizes a Spotify URL by removing query parameters and fragments while preserving the full URL structure.
-        /// Reconstructs a clean canonical URL from the ID and entity type.
-        /// </summary>
-        /// <param name="url">The Spotify URL to normalize (may contain query parameters like ?si=).</param>
-        /// <returns>
-        /// The normalized URL without query parameters, or the original URL if it cannot be parsed.
-        /// Returns empty string if the input is null or empty.
-        /// </returns>
-        /// <remarks>
-        /// This ensures that URLs like https://open.spotify.com/track/ID?si=xyz are normalized to
-        /// https://open.spotify.com/track/ID for consistent caching and comparison.
-        /// </remarks>
-        public static string NormalizeSpotifyUrl( string? url ) {
-            if (string.IsNullOrWhiteSpace( url )) {
-                return string.Empty;
-            }
-
-            // Use the regex to extract the type and ID
-            Match match = s_spotifyLink.Match( url );
-            if (match.Success) {
-                string type = match.Groups["type"].Value.ToLowerInvariant( );
-                string id = match.Groups["id"].Value;
-                return $"https://open.spotify.com/{type}/{id}";
-            }
-
-            // If we can't parse it, return the original URL
-            return url;
-        }
-
-        private static readonly Regex s_spotifyLink = SpotifyMusicLink();
-        [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album|prerelease)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
-        private static partial Regex SpotifyMusicLink( );
     }
 }
