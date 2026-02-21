@@ -31,5 +31,38 @@ namespace BridgeBeats.Providers.Common {
             // Remove trailing slash
             return normalized.TrimEnd( '/' );
         }
+
+        /// <summary>
+        /// Normalizes a URL by removing tracking query parameters while preserving the protocol and domain.
+        /// This ensures URLs with different tracking parameters (e.g., ?si=xxx) are treated as identical for caching.
+        /// </summary>
+        /// <param name="url">The URL to normalize.</param>
+        /// <returns>The normalized URL without tracking parameters.</returns>
+        public static string NormalizeUrl( string url ) {
+            if (string.IsNullOrWhiteSpace( url )) {
+                return string.Empty;
+            }
+
+            string trimmedUrl = url.Trim( );
+
+            // Remove query parameters and fragments
+            int queryIndex = trimmedUrl.IndexOf( '?' );
+            int fragmentIndex = trimmedUrl.IndexOf( '#' );
+
+            int cutoffIndex = -1;
+            if (queryIndex >= 0 && fragmentIndex >= 0) {
+                cutoffIndex = Math.Min( queryIndex, fragmentIndex );
+            } else if (queryIndex >= 0) {
+                cutoffIndex = queryIndex;
+            } else if (fragmentIndex >= 0) {
+                cutoffIndex = fragmentIndex;
+            }
+
+            if (cutoffIndex >= 0) {
+                trimmedUrl = trimmedUrl[..cutoffIndex];
+            }
+
+            return trimmedUrl;
+        }
     }
 }

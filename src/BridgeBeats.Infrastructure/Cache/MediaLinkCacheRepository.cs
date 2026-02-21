@@ -3,6 +3,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Infrastructure.Cache.Entities;
 using BridgeBeats.Infrastructure.Storage;
+using BridgeBeats.Providers.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -32,10 +33,14 @@ public class MediaLinkCacheRepository(
     /// <inheritdoc/>
     public async Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultAsync( string inputLink ) {
         using MediaLinkCacheDbContext dbContext = dbContextFactory.CreateDbContext( );
+
+        // Normalize the input link to strip tracking parameters for consistent lookups
+        string normalizedLink = LinkNormalizer.NormalizeUrl( inputLink );
+
         MediaLookupEntry? lookupEntry = dbContext
                                         .LookupEntries
                                         .Include( le => le.MediaLinkCacheEntry )
-                                        .FirstOrDefault( le => le.LookupType == LookupEntryType.Url && le.LookupValue == inputLink );
+                                        .FirstOrDefault( le => le.LookupType == LookupEntryType.Url && le.LookupValue == normalizedLink );
         return lookupEntry is null || lookupEntry.MediaLinkCacheEntry is null
             ? null
             : await ValidatePDSRecordState( lookupEntry.MediaLinkCacheEntry );
@@ -222,7 +227,7 @@ public class MediaLinkCacheRepository(
     /// <summary>
     /// Helper method to add lookup entries of a specific type with conflict handling.
     /// Batches all adds and saves once to reduce database I/O.
-    /// For URLs: stores the original un-normalized value for tracking, but uses normalized value for deduplication.
+    /// For URLs: normalizes URLs to remove tracking parameters for consistent deduplication.
     /// </summary>
     private async Task AddLookupEntriesOfTypeAsync(
         MediaLinkCacheDbContext dbContext,
@@ -233,7 +238,13 @@ public class MediaLinkCacheRepository(
     ) {
         List<string> cleanLookups = [.. lookupValues
                                         .Where( v => !string.IsNullOrWhiteSpace( v ) )
-                                        .Select( v => v.Trim() )
+                                        .Select( v => {
+                                            string trimmed = v.Trim();
+                                            // Normalize URLs to remove tracking parameters for consistent lookups
+                                            return lookupType == LookupEntryType.Url
+                                                ? LinkNormalizer.NormalizeUrl( trimmed )
+                                                : trimmed;
+                                        } )
                                         .Distinct( )
                                     ];
         if (cleanLookups.Count == 0) { return; }
@@ -250,7 +261,7 @@ public class MediaLinkCacheRepository(
         }
         if (cleanLookups.Count == 0) { return; }
 
-        // Create new entries for values that don't exist (store original values)
+        // Create new entries for values that don't exist (store normalized values for URLs)
         List<MediaLookupEntry> newEntries = [.. cleanLookups
                                                 .Select( cl => new MediaLookupEntry {
                                                     LookupValue             = cl,
