@@ -177,7 +177,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                             Artist = track.Artists is { Count: > 0 } ? track.Artists[0].Name : string.Empty,
                             Title = track.Name,
                             ExternalId = track.ExternalIds?.Isrc ?? string.Empty,
-                            URL = track.ExternalUrls?.Spotify ?? string.Empty,
+                            URL = SpotifyLinkParser.NormalizeUrl( track.ExternalUrls?.Spotify ),
                             ArtUrl = track.Album?.Images is { Count: > 0 } ? track.Album.Images[0].Url : string.Empty,
                             IsAlbum = false,
                             IsPrimary = true
@@ -251,7 +251,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                             Artist = album.Artists is { Count: > 0 } ? album.Artists[0].Name : string.Empty,
                             Title = album.Name,
                             ExternalId = album.ExternalIds?.Upc ?? string.Empty,
-                            URL = album.ExternalUrls?.Spotify ?? string.Empty,
+                            URL = SpotifyLinkParser.NormalizeUrl( album.ExternalUrls?.Spotify ),
                             ArtUrl = album.Images is { Count: > 0 } ? album.Images[0].Url : string.Empty,
                             IsAlbum = true,
                             IsPrimary = true
@@ -434,7 +434,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                                         : string.Empty;
                         result.Title = albumData.Name;
                         result.ExternalId = albumData.ExternalIds?.Upc ?? string.Empty;
-                        result.URL = albumData.ExternalUrls != null ? albumData.ExternalUrls.Spotify : string.Empty;
+                        result.URL = SpotifyLinkParser.NormalizeUrl( albumData.ExternalUrls?.Spotify );
                         result.ArtUrl = albumData.Images.Count > 0
                                         ? albumData.Images[0].Url
                                         : string.Empty;
@@ -450,7 +450,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                                         : string.Empty;
                         result.Title = trackData.Name;
                         result.ExternalId = trackData.ExternalIds?.Isrc ?? string.Empty;
-                        result.URL = trackData.ExternalUrls != null ? trackData.ExternalUrls.Spotify : string.Empty;
+                        result.URL = SpotifyLinkParser.NormalizeUrl( trackData.ExternalUrls?.Spotify );
                         result.ArtUrl = trackData.Album?.Images != null && trackData.Album.Images.Count > 0
                                         ? trackData.Album.Images[0].Url
                                         : string.Empty;
@@ -516,7 +516,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                         Artist = album.Artists != null && album.Artists.Count > 0 ? album.Artists[0].Name : string.Empty,
                         Title = album.Name,
                         ExternalId = string.Empty, // Will be filled in later if matched
-                        URL = album.ExternalUrls != null ? album.ExternalUrls.Spotify : string.Empty,
+                        URL = SpotifyLinkParser.NormalizeUrl( album.ExternalUrls?.Spotify ),
                         ArtUrl = album.Images != null && album.Images.Count > 0 ? album.Images[0].Url : string.Empty,
                         IsAlbum = true
                     });
@@ -550,7 +550,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                                 Artist = track.Artists != null && track.Artists.Count > 0 ? track.Artists[0].Name : string.Empty,
                                 Title = track.Name,
                                 ExternalId = string.Empty,
-                                URL = track.ExternalUrls != null ? track.ExternalUrls.Spotify : string.Empty,
+                                URL = SpotifyLinkParser.NormalizeUrl( track.ExternalUrls?.Spotify ),
                                 IsAlbum = false
                             };
                         }
@@ -564,7 +564,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                             Artist = fullTrack.Artists != null && fullTrack.Artists.Count > 0 ? fullTrack.Artists[0].Name : string.Empty,
                             Title = fullTrack.Name,
                             ExternalId = fullTrack.ExternalIds?.Isrc ?? string.Empty,
-                            URL = fullTrack.ExternalUrls != null ? fullTrack.ExternalUrls.Spotify : string.Empty,
+                            URL = SpotifyLinkParser.NormalizeUrl( fullTrack.ExternalUrls?.Spotify ),
                             IsAlbum = false
                         };
                     }

@@ -243,6 +243,105 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
+    /// <summary>
+    /// Verifies that NormalizeUrl normalizes track URL with query parameters.
+    /// </summary>
+    [TestMethod]
+    public void SpotifyNormalizeUrl_RemovesQueryParameters_FromTrackUrl( ) {
+        // Arrange
+        string url = "https://open.spotify.com/track/2zyTP97uGsIc1C4KNNEkyn?si=MGp6ZDEjQX6yT3uI6ayMDQ";
+
+        // Act
+        string normalized = BridgeBeats.Providers.Spotify.SpotifyLinkParser.NormalizeUrl( url );
+
+        // Assert
+        Assert.AreEqual( "https://open.spotify.com/track/2zyTP97uGsIc1C4KNNEkyn", normalized );
+    }
+
+    /// <summary>
+    /// Verifies that NormalizeUrl normalizes album URL with query parameters.
+    /// </summary>
+    [TestMethod]
+    public void SpotifyNormalizeUrl_RemovesQueryParameters_FromAlbumUrl( ) {
+        // Arrange
+        string url = "https://open.spotify.com/album/6WdSsBrH5QtofaTTqgwxOV?si=abc123xyz";
+
+        // Act
+        string normalized = BridgeBeats.Providers.Spotify.SpotifyLinkParser.NormalizeUrl( url );
+
+        // Assert
+        Assert.AreEqual( "https://open.spotify.com/album/6WdSsBrH5QtofaTTqgwxOV", normalized );
+    }
+
+    /// <summary>
+    /// Verifies that NormalizeUrl leaves clean URLs unchanged.
+    /// </summary>
+    [TestMethod]
+    public void SpotifyNormalizeUrl_LeavesCleanUrl_Unchanged( ) {
+        // Arrange
+        string url = "https://open.spotify.com/track/3n3Ppam7vgaVa1iaRUc9Lp";
+
+        // Act
+        string normalized = BridgeBeats.Providers.Spotify.SpotifyLinkParser.NormalizeUrl( url );
+
+        // Assert
+        Assert.AreEqual( "https://open.spotify.com/track/3n3Ppam7vgaVa1iaRUc9Lp", normalized );
+    }
+
+    /// <summary>
+    /// Verifies that NormalizeUrl handles prerelease URLs.
+    /// </summary>
+    [TestMethod]
+    public void SpotifyNormalizeUrl_HandlesPrerelease_WithQueryParameters( ) {
+        // Arrange
+        string url = "https://open.spotify.com/prerelease/1ABC2DEF3GHI4JKL5MNO6P?si=test123";
+
+        // Act
+        string normalized = BridgeBeats.Providers.Spotify.SpotifyLinkParser.NormalizeUrl( url );
+
+        // Assert
+        Assert.AreEqual( "https://open.spotify.com/prerelease/1ABC2DEF3GHI4JKL5MNO6P", normalized );
+    }
+
+    /// <summary>
+    /// Verifies that NormalizeUrl returns empty string for null input.
+    /// </summary>
+    [TestMethod]
+    public void SpotifyNormalizeUrl_ReturnsEmpty_ForNullInput( ) {
+        // Act
+        string normalized = BridgeBeats.Providers.Spotify.SpotifyLinkParser.NormalizeUrl( null );
+
+        // Assert
+        Assert.AreEqual( string.Empty, normalized );
+    }
+
+    /// <summary>
+    /// Verifies that NormalizeUrl returns empty string for empty input.
+    /// </summary>
+    [TestMethod]
+    public void SpotifyNormalizeUrl_ReturnsEmpty_ForEmptyInput( ) {
+        // Act
+        string normalized = BridgeBeats.Providers.Spotify.SpotifyLinkParser.NormalizeUrl( "" );
+
+        // Assert
+        Assert.AreEqual( string.Empty, normalized );
+    }
+
+    /// <summary>
+    /// Verifies that NormalizeUrl returns original URL for non-Spotify URL.
+    /// </summary>
+    [TestMethod]
+    public void SpotifyNormalizeUrl_ReturnsOriginal_ForNonSpotifyUrl( ) {
+        // Arrange
+        string url = "https://example.com/not-spotify";
+
+        // Act
+        string normalized = BridgeBeats.Providers.Spotify.SpotifyLinkParser.NormalizeUrl( url );
+
+        // Assert
+        Assert.AreEqual( url, normalized );
+    }
+
     #endregion
 
     #region Tidal Tests
