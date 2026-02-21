@@ -89,7 +89,7 @@ public class LinkNormalizerTests {
     [TestMethod]
     public void NormalizeUrl_WithNullOrEmpty_ReturnsEmpty( ) {
         // Arrange & Act
-        string resultNull = LinkNormalizer.NormalizeUrl( null );
+        string resultNull = LinkNormalizer.NormalizeUrl( null! );
         string resultEmpty = LinkNormalizer.NormalizeUrl( string.Empty );
         string resultWhitespace = LinkNormalizer.NormalizeUrl( "   " );
 
