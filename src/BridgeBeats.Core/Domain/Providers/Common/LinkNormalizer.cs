@@ -6,6 +6,20 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
     public static class LinkNormalizer {
 
         /// <summary>
+        /// Known tracking query parameters to remove during normalization (case-insensitive).
+        /// </summary>
+        private static readonly HashSet<string> s_trackingParams = new( StringComparer.OrdinalIgnoreCase ) {
+            "si",     // Spotify tracking
+            "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", // UTM tracking
+            "fbclid", // Facebook click ID
+            "gclid",  // Google click ID
+            "at",     // Apple affiliate token
+            "ls",     // Apple Music tracking
+            "uo",     // Apple Music tracking
+            "app"     // Generic app tracking
+        };
+
+        /// <summary>
         /// Normalizes a link by removing protocol, www prefix, trailing slashes, and tracking query parameters
         /// for consistent comparison while preserving case-sensitive IDs and semantic query parameters.
         /// </summary>
@@ -77,6 +91,7 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
 
         /// <summary>
         /// Filters out tracking query parameters while preserving semantic parameters.
+        /// Special-cases Apple Music's ?i= parameter which identifies specific tracks within albums.
         /// </summary>
         /// <param name="queryString">Query string including the leading '?'</param>
         /// <returns>Filtered query string with only semantic parameters, or empty if all params were tracking</returns>
@@ -84,18 +99,6 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
             if (string.IsNullOrEmpty( queryString ) || !queryString.StartsWith( '?' )) {
                 return string.Empty;
             }
-
-            // Known tracking parameters to remove (case-insensitive parameter names)
-            HashSet<string> trackingParams = new( StringComparer.OrdinalIgnoreCase ) {
-                "si",     // Spotify tracking
-                "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", // UTM tracking
-                "fbclid", // Facebook click ID
-                "gclid",  // Google click ID
-                "at",     // Apple affiliate token
-                "ls",     // Apple Music tracking
-                "uo",     // Apple Music tracking
-                "app"     // Generic app tracking
-            };
 
             // Parse query parameters
             string[] parameters = queryString[1..].Split( '&' );
@@ -109,8 +112,14 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
                 // Get parameter name (before '=' if present)
                 string paramName = param.Split( '=' )[0];
 
-                // Keep parameter if it's not a tracking parameter
-                if (!trackingParams.Contains( paramName )) {
+                // Special case: preserve Apple Music's ?i= parameter (track ID in album)
+                if (paramName.Equals( "i", StringComparison.OrdinalIgnoreCase )) {
+                    preservedParams.Add( param );
+                    continue;
+                }
+
+                // Keep parameter if it's not a known tracking parameter
+                if (!s_trackingParams.Contains( paramName )) {
                     preservedParams.Add( param );
                 }
             }
