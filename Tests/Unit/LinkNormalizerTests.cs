@@ -26,17 +26,17 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize removes tracking query parameters with multiple params.
+    /// Verifies that Normalize removes all query parameters (including unknown ones).
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesMultipleQueryParameters( ) {
-        // Arrange
-        string url = "https://example.com/path?si=tracking1&utm_source=facebook";
+        // Arrange - mix of known tracking params and unknown params
+        string url = "https://example.com/path?si=tracking1&foo=bar&utm_source=facebook";
 
         // Act
         string normalized = LinkNormalizer.Normalize( url );
 
-        // Assert - tracking params removed
+        // Assert - all params removed
         Assert.AreEqual( "example.com/path", normalized );
     }
 
