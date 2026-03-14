@@ -11,7 +11,7 @@
 
   <!-- Shared package dependency for ATProto records - provides AtProtoRecord base class -->
   <ItemGroup>
-    <PackageReference Include="idunno.AtProto" Version="1.3.0" />
+    <PackageReference Include="idunno.AtProto" Version="1.7.0" />
     <PackageReference Include="idunno.Bluesky" Version="1.3.0" />
   </ItemGroup>
 
