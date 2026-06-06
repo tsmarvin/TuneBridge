@@ -259,4 +259,9 @@ public static class LogEventIds {
     /// EventId for <see cref="SagaCoordinatorBackgroundService.LogSecondariesAlreadyQueued"/>.
     /// </summary>
     public const int SecondariesAlreadyQueued = 5052;
+
+    /// <summary>
+    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogNoSecondariesEnqueued"/>.
+    /// </summary>
+    public const int NoSecondariesEnqueued = 5053;
 }

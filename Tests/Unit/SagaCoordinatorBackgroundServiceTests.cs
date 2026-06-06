@@ -946,7 +946,9 @@ public class SagaCoordinatorBackgroundServiceTests {
 
     /// <summary>
     /// Verifies that when a concurrent handler already claimed the secondaries-queued marker,
-    /// the losing handler queues nothing but still defers finalization (writes the partial).
+    /// the losing handler queues nothing but still runs the idempotent state initialization
+    /// and partial marking (so its published partial can never read as final) and defers
+    /// finalization (writes the partial).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1013,9 +1015,16 @@ public class SagaCoordinatorBackgroundServiceTests {
             q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never
         );
+
+        // Assert - The idempotent state/partial writes still run (they happen before the
+        // marker claim so a published partial can never be mistaken for a final result)
         _sagaManagerMock.Verify(
             s => s.InitializeProviderStatesAsync( TestSagaId, It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Never
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetIsPartialAsync( TestSagaId, true, It.IsAny<CancellationToken>( ) ),
+            Times.Once
         );
 
         // Assert - It still defers finalization (secondaries pending elsewhere)
@@ -1027,6 +1036,179 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Assert - The partial result is still written for waiting callers
         _atProtoStorageMock.Verify(
             a => a.StoreMediaLinkResultAsync( It.Is<MediaLinkResult>( r => r.IsPartial ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Verifies that pending provider states are initialized and the saga is marked partial
+    /// BEFORE the secondaries-queued marker is claimed. The marker loser's caller publishes
+    /// the partial and releases waiters immediately, so the saga must already read as
+    /// incomplete and partial by then - otherwise a waiting orchestrator could see
+    /// IsComplete=true with IsPartial=false and mistake the one-provider result for a final.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task SagaCompletion_ShouldInitializeStatesAndMarkPartialBeforeClaimingMarker( ) {
+        // Arrange
+        Dictionary<string, Action<RedisChannel, RedisValue>> handlers = [];
+        _ = _subscriberMock
+            .Setup( s => s.SubscribeAsync( It.IsAny<RedisChannel>( ), It.IsAny<Action<RedisChannel, RedisValue>>( ), It.IsAny<CommandFlags>( ) ) )
+            .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
+                ( channel, handler, _ ) => handlers[channel.ToString( )] = handler )
+            .Returns( Task.CompletedTask );
+
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState uriSaga = CreateUriLookupSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetAsync( TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( uriSaga );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [] );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.TryGetCachedResultByISRCAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( ((MediaLinkResult result, string recordUri, bool isStale)?)null );
+
+        // Record the order of the saga-manager calls that close the partial-vs-final race
+        List<string> callOrder = [];
+        _ = _sagaManagerMock
+            .Setup( s => s.InitializeProviderStatesAsync( TestSagaId, It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( ) => callOrder.Add( "InitializeProviderStates" ) )
+            .Returns( Task.CompletedTask );
+        _ = _sagaManagerMock
+            .Setup( s => s.SetIsPartialAsync( TestSagaId, true, It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( ) => callOrder.Add( "SetIsPartial" ) )
+            .Returns( Task.CompletedTask );
+        _ = _sagaManagerMock
+            .Setup( s => s.TryMarkSecondariesQueuedAsync( TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( ) => callOrder.Add( "TryMarkSecondariesQueued" ) )
+            .ReturnsAsync( true );
+
+        Mock<IRequestQueue<QueuedLookupRequest>> queueMock = new( );
+        _ = _queueResolverMock
+            .Setup( r => r.GetQueue( It.IsAny<SupportedProviders>( ) ) )
+            .Returns( queueMock.Object );
+
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // Act - start the service, then simulate a saga completion event via Pub/Sub
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 100, TestContext.CancellationToken );
+
+        Assert.IsTrue( handlers.ContainsKey( "saga:completed" ), "Service should have subscribed to saga:completed" );
+        handlers["saga:completed"]( RedisChannel.Literal( "saga:completed" ), TestSagaId );
+        await Task.Delay( 250, TestContext.CancellationToken );
+
+        await cts.CancelAsync( );
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - The idempotent writes both precede the marker claim
+        CollectionAssert.AreEqual(
+            new List<string> { "InitializeProviderStates", "SetIsPartial", "TryMarkSecondariesQueued" },
+            callOrder
+        );
+    }
+
+    /// <summary>
+    /// Verifies that finalization is still deferred when every secondary enqueue fails:
+    /// pending provider states were initialized and the saga marked partial, so finalizing
+    /// would publish a result missing providers as complete and overwrite richer cached
+    /// data. The partial is written instead and the stale-partial cache path retries later.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task SagaCompletion_WhenEveryEnqueueFails_ShouldStillDeferFinalizationAndWritePartial( ) {
+        // Arrange
+        Dictionary<string, Action<RedisChannel, RedisValue>> handlers = [];
+        _ = _subscriberMock
+            .Setup( s => s.SubscribeAsync( It.IsAny<RedisChannel>( ), It.IsAny<Action<RedisChannel, RedisValue>>( ), It.IsAny<CommandFlags>( ) ) )
+            .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
+                ( channel, handler, _ ) => handlers[channel.ToString( )] = handler )
+            .Returns( Task.CompletedTask );
+
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState uriSaga = CreateUriLookupSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetAsync( TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( uriSaga );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [] );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.TryGetCachedResultByISRCAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( ((MediaLinkResult result, string recordUri, bool isStale)?)null );
+
+        // Every secondary enqueue fails (e.g. the queue backend is unavailable)
+        Mock<IRequestQueue<QueuedLookupRequest>> queueMock = new( );
+        _ = queueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "queue unavailable" ) );
+        _ = _queueResolverMock
+            .Setup( r => r.GetQueue( It.IsAny<SupportedProviders>( ) ) )
+            .Returns( queueMock.Object );
+
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // Act - start the service, then simulate a saga completion event via Pub/Sub
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 100, TestContext.CancellationToken );
+
+        Assert.IsTrue( handlers.ContainsKey( "saga:completed" ), "Service should have subscribed to saga:completed" );
+        handlers["saga:completed"]( RedisChannel.Literal( "saga:completed" ), TestSagaId );
+        await Task.Delay( 250, TestContext.CancellationToken );
+
+        await cts.CancelAsync( );
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - All enqueues were attempted (AppleMusic + Tidal) and failed
+        queueMock.Verify(
+            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Exactly( 2 )
+        );
+
+        // Assert - The saga is NOT finalized: the one-provider result must not be published
+        // as complete while providers are still missing
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - The partial result is written for waiting callers instead
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.Is<MediaLinkResult>( r => r.IsPartial ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetIsPartialAsync( TestSagaId, true, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
     }
