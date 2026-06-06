@@ -133,6 +133,7 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
             $"{request.LookupType}:{request.LookupValue}",
             request.LookupType,
             request.LookupValue,
+            request.OriginPriority,
             ct
         );
 
@@ -240,11 +241,19 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
 
         // Mark saga as partial and record rate limit info for user notification
         await _sagaManager.SetIsPartialAsync( request.SagaId, true, ct );
-        await _sagaManager.SetRateLimitInfoAsync(
-            request.SagaId,
-            [new ProviderRateLimitInfo( _provider, retryAfter, endpoint )],
-            ct
-        );
+
+        // Merge with rate limit info recorded by other providers so no entry is lost -
+        // the orchestrator's all-pending-providers-rate-limited escape hatch depends on
+        // every rate-limited provider being present. This is a read-modify-write (the
+        // saga manager has no atomic merge); a lost update under concurrent writes only
+        // degrades to the previous overwrite behavior.
+        LookupSagaState? sagaForRateLimit = await _sagaManager.GetAsync( request.SagaId, ct );
+        List<ProviderRateLimitInfo> mergedRateLimitInfo = sagaForRateLimit?.RateLimitInfo is not null
+            ? [.. sagaForRateLimit.RateLimitInfo.Where( r => r.Provider != _provider )]
+            : [];
+        mergedRateLimitInfo.Add( new ProviderRateLimitInfo( _provider, retryAfter, endpoint ) );
+
+        await _sagaManager.SetRateLimitInfoAsync( request.SagaId, mergedRateLimitInfo, ct );
 
         // Publish rate-limited sentinel so waiting clients know this is a partial result
         await PublishRateLimitSentinelAsync( request.SagaId, ct );

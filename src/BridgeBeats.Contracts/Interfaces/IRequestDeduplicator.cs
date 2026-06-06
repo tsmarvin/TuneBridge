@@ -43,4 +43,31 @@ public interface IRequestDeduplicator {
     /// or <c>null</c> if the request failed or the timeout was reached.
     /// </returns>
     Task<string?> WaitForCompletionAsync( string requestKey, TimeSpan timeout, CancellationToken cancellationToken = default );
+
+    /// <summary>
+    /// Subscribe to the next completion notification for a request that has already produced
+    /// a partial result (the in-flight lock may already be released).
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="WaitForCompletionAsync"/>, a missing in-flight lock is NOT treated as
+    /// completion. To close the gap between the caller reading state and subscribing,
+    /// <paramref name="missedResultCheck"/> is invoked AFTER the subscription is active;
+    /// a non-empty value it returns is used as the result without waiting.
+    /// </remarks>
+    /// <param name="requestKey">The unique key for the request to wait for.</param>
+    /// <param name="timeout">Maximum time to wait for the next notification.</param>
+    /// <param name="missedResultCheck">
+    /// Optional callback that re-checks durable state (e.g., the saga's final result URI)
+    /// for a result published before the subscription was active.
+    /// </param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>
+    /// The next non-empty published payload (a result URI or rate-limit sentinel),
+    /// or <c>null</c> if the timeout was reached.
+    /// </returns>
+    Task<string?> WaitForFinalCompletionAsync(
+        string requestKey,
+        TimeSpan timeout,
+        Func<Task<string?>>? missedResultCheck = null,
+        CancellationToken cancellationToken = default );
 }

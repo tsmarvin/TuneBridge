@@ -356,6 +356,38 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
+    /// Verifies that the cache marks partial results as stale regardless of age, so callers
+    /// re-enter the lookup path and wait for the complete result.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task CheckRecordFreshness_ReturnsStale_WhenResultIsPartial( ) {
+        // Arrange - a freshly looked-up but PARTIAL result
+        MediaLinkResult result = CreateTestResult( "PARTIALTEST123", false );
+        result.IsPartial = true;
+
+        string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:PARTIALTEST123";
+
+        _ = _mockAtProto
+            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( recordUri );
+
+        _ = _mockAtProto
+            .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
+            .ReturnsAsync( result );
+
+        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+
+        // Act
+        (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
+            await _cache.TryGetCachedResultByISRCAsync( "PARTIALTEST123" );
+
+        // Assert
+        Assert.IsNotNull( lookupResult );
+        Assert.IsTrue( lookupResult.Value.isStale, "Partial results should always be stale-eligible" );
+    }
+
+    /// <summary>
     /// Verifies that <see cref="RedisMediaLinkCache.AddInputLinksAsync"/> skips writing when the record
     /// already exists with the same RecordUri, avoiding unnecessary Redis writes during cache bootstrap.
     /// </summary>

@@ -220,6 +220,49 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
+    /// Verifies that the request's origin priority is threaded through to saga creation so the
+    /// coordinator can later enqueue secondary lookups at the origin's priority.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessMessage_WithBulkOriginPriority_ShouldPassOriginPriorityToSagaCreation( ) {
+        // Arrange
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.IsrcLookup, "US1234567890" ) with {
+            OriginPriority = QueuePriority.Bulk
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+
+        SetupNotRateLimited( );
+        SetupLookupSuccess( );
+        SetupSagaNotComplete( request.SagaId );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert
+        _sagaManagerMock.Verify(
+            s => s.GetOrCreateAsync(
+                request.SagaId,
+                It.IsAny<string>( ),
+                request.LookupType,
+                request.LookupValue,
+                It.Is<QueuePriority?>( p => p == QueuePriority.Bulk ),
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
     /// Verifies that messages are requeued with delay when the endpoint is rate limited.
     /// </summary>
     [TestMethod]
@@ -712,6 +755,72 @@ public class QueueProcessorBackgroundServiceTests {
                     info.Count == 1 &&
                     info[0].Provider == TestProvider &&
                     !string.IsNullOrEmpty( info[0].Endpoint )
+                ),
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Verifies that rate limit info recorded by other providers is merged with (not overwritten by)
+    /// this provider's entry, so the orchestrator's all-providers-rate-limited escape hatch can
+    /// still match when multiple providers are rate-limited.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessMessage_WhenRateLimitExceptionThrown_ShouldMergeRateLimitInfoWithOtherProviders( ) {
+        // Arrange
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.IsrcLookup, "US1234567890" );
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+        TimeSpan retryAfter = TimeSpan.FromSeconds( 60 );
+
+        // Saga already carries rate limit info from a different provider
+        ProviderRateLimitInfo existingInfo = new(
+            SupportedProviders.AppleMusic,
+            DateTimeOffset.UtcNow.AddMinutes( 5 ),
+            "IsrcLookup"
+        );
+        LookupSagaState saga = new( ) {
+            SagaId = request.SagaId,
+            LookupKey = "test-key",
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = "US1234567890",
+            ProviderStates = [],
+            RateLimitInfo = [existingInfo]
+        };
+        _ = _sagaManagerMock.Setup( s => s.GetAsync( request.SagaId, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( saga );
+
+        SetupNotRateLimited( );
+        _ = _lookupServiceMock.Setup( l => l.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
+            .ThrowsAsync( new RetryAfterExceededException(
+                retryAfter,
+                TimeSpan.FromSeconds( 30 ),
+                new Uri( "https://api.spotify.com/v1/tracks" ),
+                SupportedProviders.Spotify
+            ) );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert - Both the existing AppleMusic entry and the new Spotify entry are present
+        _sagaManagerMock.Verify(
+            s => s.SetRateLimitInfoAsync(
+                request.SagaId,
+                It.Is<List<ProviderRateLimitInfo>>( info =>
+                    info.Count == 2 &&
+                    info.Any( r => r.Provider == SupportedProviders.AppleMusic ) &&
+                    info.Any( r => r.Provider == TestProvider )
                 ),
                 It.IsAny<CancellationToken>( )
             ),

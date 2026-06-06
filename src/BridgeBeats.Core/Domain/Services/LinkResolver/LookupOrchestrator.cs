@@ -21,8 +21,9 @@ namespace BridgeBeats.Services.LinkResolver;
 /// 3. If in-flight, subscribe to completion notification
 /// 4. Otherwise, create saga, queue initial provider lookup
 /// 5. Wait for initial result via Pub/Sub
-/// 6. On result, spawn secondary provider lookups at Background priority
-/// 7. Return result to caller (partial if rate-limited)
+/// 6. On a partial result (secondary lookups pending), keep waiting with the
+///    remaining time budget until the final result is published
+/// 7. Return result to caller (partial only when rate-limited or the budget is exhausted)
 /// </para>
 /// </remarks>
 /// <remarks>
@@ -35,7 +36,8 @@ public sealed partial class LookupOrchestrator(
     IProviderQueueResolver<QueuedLookupRequest> queueResolver,
     IATProtoStorageService atProtoStorage,
     HashSet<SupportedProviders> enabledProviders,
-    ILogger<LookupOrchestrator> logger
+    ILogger<LookupOrchestrator> logger,
+    QueueSettings? settings = null
 ) : ILookupOrchestrator {
     private readonly IMediaLinkCacheRepository _cache = cache
                                                         ?? throw new ArgumentNullException( nameof( cache ) );
@@ -52,8 +54,24 @@ public sealed partial class LookupOrchestrator(
     private readonly ILogger<LookupOrchestrator> _logger = logger
                                                          ?? throw new ArgumentNullException( nameof( logger ) );
 
-    private static readonly TimeSpan s_defaultTimeout = TimeSpan.FromSeconds( 30 );
+    private readonly TimeSpan _interactiveWaitTimeout = TimeSpan.FromSeconds( (settings ?? new QueueSettings( )).InteractiveWaitSeconds );
+
     private static readonly TimeSpan s_deduplicationLockDuration = TimeSpan.FromMinutes( 5 );
+
+    /// <summary>
+    /// Target wait budget across all links of a single content lookup, kept under the
+    /// Discord bot's 120s HTTP client timeout (see BridgeBeats.Worker.Discord Program.cs)
+    /// so the server-side budget, not the transport, is the binding constraint. Note the
+    /// per-link floor below takes precedence, so messages with more than 18 links can
+    /// exceed this target (and beyond ~24 links may exceed the bot's transport timeout).
+    /// </summary>
+    private static readonly TimeSpan s_maxContentWaitBudget = TimeSpan.FromSeconds( 90 );
+
+    /// <summary>
+    /// Floor for the scaled per-link wait budget so every link gets a usable wait window.
+    /// Takes precedence over <see cref="s_maxContentWaitBudget"/> for very link-heavy messages.
+    /// </summary>
+    private static readonly TimeSpan s_minPerLinkWaitBudget = TimeSpan.FromSeconds( 5 );
 
     /// <inheritdoc/>
     public async IAsyncEnumerable<LookupResult> LookupByContentAsync( string content ) {
@@ -61,7 +79,10 @@ public sealed partial class LookupOrchestrator(
             yield break;
         }
 
+        // Collect unique links for enabled providers up front so the per-link wait
+        // budget can be scaled to the number of links
         HashSet<string> processedLinks = new( StringComparer.OrdinalIgnoreCase );
+        List<(string Link, SupportedProviders Provider)> links = [];
 
         foreach (string link in ValidHttpsLink( ).GetGroupValues( content, "Url" )) {
             if (!processedLinks.Add( link )) {
@@ -74,7 +95,25 @@ public sealed partial class LookupOrchestrator(
                 continue;
             }
 
-            LookupResult result = await LookupByUrlAsync( link, provider.Value );
+            links.Add( (link, provider.Value) );
+        }
+
+        if (links.Count == 0) {
+            yield break;
+        }
+
+        // Links resolve sequentially, each waiting up to the interactive budget; scale
+        // the per-link budget so the total stays under s_maxContentWaitBudget (a Discord
+        // multi-link message must finish before the bot's HTTP transport gives up)
+        TimeSpan perLinkBudget = TimeSpan.FromTicks(
+            Math.Min( _interactiveWaitTimeout.Ticks, s_maxContentWaitBudget.Ticks / links.Count )
+        );
+        if (perLinkBudget < s_minPerLinkWaitBudget) {
+            perLinkBudget = s_minPerLinkWaitBudget;
+        }
+
+        foreach ((string link, SupportedProviders provider) in links) {
+            LookupResult result = await LookupByUrlAsync( link, provider, perLinkBudget );
             yield return result;
         }
     }
@@ -154,7 +193,7 @@ public sealed partial class LookupOrchestrator(
         );
     }
 
-    private async Task<LookupResult> LookupByUrlAsync( string url, SupportedProviders provider ) {
+    private async Task<LookupResult> LookupByUrlAsync( string url, SupportedProviders provider, TimeSpan? waitBudget = null ) {
         string lookupKey = $"{LookupRequestType.UriLookup}:{HashUtility.HashUrl( url )}";
 
         return await PerformLookupAsync(
@@ -163,7 +202,8 @@ public sealed partial class LookupOrchestrator(
             lookupValue: url,
             cacheCheck: ( ) => _cache.TryGetCachedResultAsync( url ),
             isAlbum: false, // Will be determined by the lookup
-            initialProvider: provider
+            initialProvider: provider,
+            waitBudget: waitBudget
         );
     }
 
@@ -175,16 +215,20 @@ public sealed partial class LookupOrchestrator(
         bool isAlbum = false,
         string? title = null,
         string? artist = null,
-        SupportedProviders? initialProvider = null
+        SupportedProviders? initialProvider = null,
+        TimeSpan? waitBudget = null
     ) {
-        // Step 1: Check cache
+        TimeSpan waitTimeout = waitBudget ?? _interactiveWaitTimeout;
+
+        // Step 1: Check cache. Partial results are reported stale by the cache so they
+        // fall through to the dedup/wait logic below instead of masquerading as final.
         (MediaLinkResult result, string recordUri, bool isStale)? cached = await cacheCheck( );
 
         if (cached.HasValue && !cached.Value.isStale) {
             LogCacheHit( _logger, lookupKey );
             return new LookupResult {
                 Result = cached.Value.result,
-                IsPartial = false
+                IsPartial = cached.Value.result.IsPartial
             };
         }
 
@@ -194,27 +238,32 @@ public sealed partial class LookupOrchestrator(
         if (!dedup.Acquired && dedup.AlreadyInFlight) {
             LogRequestAlreadyInFlight( _logger, lookupKey );
 
-            // Wait for the other instance to complete
-            string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, s_defaultTimeout );
+            string inFlightSagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+            DateTimeOffset deadline = DateTimeOffset.UtcNow + waitTimeout;
 
-            // Check for rate-limited sentinel
+            // When the in-flight saga already stored a result, skip the blind wait and go
+            // straight to the final-result wait, which honors the rate-limit escape hatch
+            // and time budget (during a rate-limit window no publish would ever arrive)
+            LookupSagaState? inFlightSaga = await _sagaManager.GetAsync( inFlightSagaId );
+            string? storedResultUri = inFlightSaga?.FinalResultUri ?? inFlightSaga?.PartialResultUri;
+            if (!string.IsNullOrEmpty( storedResultUri )) {
+                LogInFlightSagaHasStoredResult( _logger, inFlightSagaId );
+                return await WaitForFinalResultAsync( lookupKey, inFlightSagaId, storedResultUri, deadline );
+            }
+
+            // Wait for the other instance to complete
+            string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, waitTimeout );
+
+            // Check for rate-limited sentinel - return any stored partial data
+            // alongside the rate-limit info instead of dropping it
             if (resultUri == LookupConstants.RateLimitedSentinel) {
-                string rateLimitSagaId = ISagaStateManager.GenerateSagaId( lookupKey );
-                LookupSagaState? rateLimitedSaga = await _sagaManager.GetAsync( rateLimitSagaId );
-                return new LookupResult {
-                    Result = null,
-                    IsPartial = true,
-                    SagaId = rateLimitSagaId,
-                    RateLimitedProviders = rateLimitedSaga?.RateLimitInfo
-                };
+                return await BuildRateLimitedPartialAsync( inFlightSagaId );
             }
 
             if (!string.IsNullOrEmpty( resultUri )) {
-                MediaLinkResult? completedResult = await _atProtoStorage.GetMediaLinkResultAsync( resultUri );
-                return new LookupResult {
-                    Result = completedResult,
-                    IsPartial = false
-                };
+                // The published result may be partial (secondary lookups pending) -
+                // keep waiting for the final with the remaining time budget
+                return await WaitForFinalResultAsync( lookupKey, inFlightSagaId, resultUri, deadline );
             }
 
             // Timeout or failure - check cache again, might have been populated
@@ -222,7 +271,8 @@ public sealed partial class LookupOrchestrator(
             if (cached.HasValue) {
                 return new LookupResult {
                     Result = cached.Value.result,
-                    IsPartial = false
+                    IsPartial = cached.Value.result.IsPartial,
+                    SagaId = cached.Value.result.IsPartial ? inFlightSagaId : null
                 };
             }
 
@@ -239,7 +289,8 @@ public sealed partial class LookupOrchestrator(
                 isAlbum,
                 title,
                 artist,
-                initialProvider
+                initialProvider,
+                waitTimeout
             );
         } catch (Exception ex) {
             LogLookupError( _logger, ex, lookupKey );
@@ -258,20 +309,38 @@ public sealed partial class LookupOrchestrator(
         bool isAlbum,
         string? title,
         string? artist,
-        SupportedProviders? initialProvider
+        SupportedProviders? initialProvider,
+        TimeSpan waitTimeout
     ) {
         // Generate deterministic saga ID from lookup key
         string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
 
-        // Create saga
-        _ = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, lookupValue );
+        // Create saga (or resume an in-progress one, e.g. when a cached partial sent us back here)
+        LookupSagaState saga = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, lookupValue );
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + waitTimeout;
+
+        // Resumed saga that already stored a result: resolve it directly instead of re-queueing
+        string? knownResultUri = saga.FinalResultUri ?? saga.PartialResultUri;
+        if (!string.IsNullOrEmpty( knownResultUri )) {
+            LogSagaResumedWithResult( _logger, sagaId );
+
+            // Release the just-acquired in-flight lock before waiting: this path enqueues
+            // no work, so nothing else would release it (the coordinator runs in another
+            // process and its release is ownership-checked). Publishing the known URI
+            // hands the stored result to callers already blocked in WaitForCompletionAsync.
+            await _deduplicator.ReleaseAsync( lookupKey, knownResultUri );
+
+            return await WaitForFinalResultAsync( lookupKey, sagaId, knownResultUri, deadline );
+        }
 
         // Determine which provider to queue first
         SupportedProviders firstProvider = initialProvider ?? _enabledProviders.First();
 
         // For direct lookups (ISRC/UPC without initialProvider), initialize all enabled providers
         // For URL lookups (with initialProvider), only initialize the first provider
-        // Secondary provider lookups will create their own separate sagas
+        // The saga coordinator adds the remaining providers to the SAME saga once the
+        // initial result yields an external ID for secondary lookups
         List<SupportedProviders> providersToInitialize = initialProvider.HasValue
             ? [firstProvider]
             : [.. _enabledProviders];
@@ -283,77 +352,220 @@ public sealed partial class LookupOrchestrator(
             await _sagaManager.SetInitialProviderAsync( sagaId, initialProvider.Value );
         }
 
-        // Queue the initial provider lookup at Interactive priority
+        // Queue the initial provider lookup at Interactive priority,
+        // unless the resumed saga already has this provider queued or completed
+        if (!saga.ProviderStates.ContainsKey( firstProvider )) {
+            QueuedLookupRequest request = new( ) {
+                RequestId = Guid.NewGuid( ).ToString( "N" ),
+                Provider = firstProvider,
+                LookupType = lookupType,
+                LookupValue = lookupValue,
+                SagaId = sagaId,
+                IsAlbum = isAlbum,
+                Title = title,
+                Artist = artist,
+                // Interactive origin is persisted into the saga so secondary lookups
+                // spawned by the coordinator inherit the caller's urgency
+                OriginPriority = QueuePriority.Interactive
+            };
 
-        QueuedLookupRequest request = new( ) {
-            RequestId = Guid.NewGuid( ).ToString( "N" ),
-            Provider = firstProvider,
-            LookupType = lookupType,
-            LookupValue = lookupValue,
-            SagaId = sagaId,
-            IsAlbum = isAlbum,
-            Title = title,
-            Artist = artist
-        };
+            IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( firstProvider );
+            await queue.EnqueueAsync( request, QueuePriority.Interactive );
 
-        IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( firstProvider );
-        await queue.EnqueueAsync( request, QueuePriority.Interactive );
-
-        LogSagaCreated( _logger, sagaId, firstProvider, lookupType, lookupValue );
+            LogSagaCreated( _logger, sagaId, firstProvider, lookupType, lookupValue );
+        }
 
         // Wait for initial result via deduplicator subscription
-        string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, s_defaultTimeout );
+        string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, waitTimeout );
 
-        // Check for rate-limited sentinel
+        // Check for rate-limited sentinel - return any stored partial data alongside the
+        // rate-limit info (the partial write may land moments after the sentinel)
         if (resultUri == LookupConstants.RateLimitedSentinel) {
-            LookupSagaState? rateLimitedSaga = await _sagaManager.GetAsync( sagaId );
-            return new LookupResult {
-                Result = null,
-                IsPartial = true,
-                SagaId = sagaId,
-                RateLimitedProviders = rateLimitedSaga?.RateLimitInfo
-            };
+            return await BuildRateLimitedPartialAsync( sagaId );
         }
 
         if (!string.IsNullOrEmpty( resultUri )) {
-            // Initial lookup completed, fetch result
-            MediaLinkResult? result = await _atProtoStorage.GetMediaLinkResultAsync( resultUri );
-
-            // Check if saga is complete or has pending providers
-            LookupSagaState? updatedSaga = await _sagaManager.GetAsync( sagaId );
-
-            return updatedSaga is not null
-                ? new LookupResult {
-                    Result = result,
-                    IsPartial = updatedSaga.IsPartial,
-                    SagaId = updatedSaga.IsPartial ? sagaId : null,
-                    RateLimitedProviders = updatedSaga.RateLimitInfo
-                }
-                : new LookupResult {
-                    Result = result,
-                    IsPartial = false
-                };
+            // Initial lookup completed - the published result may be partial (secondary
+            // lookups pending), so keep waiting for the final with the remaining budget
+            return await WaitForFinalResultAsync( lookupKey, sagaId, resultUri, deadline );
         }
 
-        // Timeout - check if we have any result
+        // Timeout - check if we have any result. ISRC/UPC direct lookups never write a
+        // partial, so the final result URI must be honored too.
         LookupSagaState? saga2 = await _sagaManager.GetAsync( sagaId );
 
-        if (saga2?.PartialResultUri is not null) {
-            MediaLinkResult? partialResult = await _atProtoStorage.GetMediaLinkResultAsync( saga2.PartialResultUri );
-            return new LookupResult {
-                Result = partialResult,
-                IsPartial = true,
-                SagaId = sagaId,
-                RateLimitedProviders = saga2.RateLimitInfo
-            };
+        string? storedResultUri = saga2?.FinalResultUri ?? saga2?.PartialResultUri;
+        if (storedResultUri is not null) {
+            MediaLinkResult? storedResult = await _atProtoStorage.GetMediaLinkResultAsync( storedResultUri );
+            return !string.IsNullOrEmpty( saga2!.FinalResultUri )
+                ? new LookupResult { Result = storedResult, IsPartial = false }
+                : CreatePartialResult( storedResult, sagaId, saga2 );
         }
 
         // No result yet
         return new LookupResult {
             Result = null,
             IsPartial = true,
-            SagaId = sagaId
+            SagaId = sagaId,
+            RateLimitedProviders = GetActiveRateLimits( saga2 )
         };
+    }
+
+    /// <summary>
+    /// Resolves a completion notification into a final result, re-waiting with the remaining
+    /// time budget while the published result is only partial (secondary lookups pending).
+    /// </summary>
+    /// <remarks>
+    /// Returns a partial result immediately when every pending provider is rate-limited
+    /// (waiting cannot help) and honestly flags the result partial when the budget runs out.
+    /// </remarks>
+    /// <param name="lookupKey">The deduplication lookup key (completion channel suffix).</param>
+    /// <param name="sagaId">The deterministic saga ID for the lookup.</param>
+    /// <param name="resultUri">The result URI received from the completion channel.</param>
+    /// <param name="deadline">Absolute point in time at which waiting stops.</param>
+    private async Task<LookupResult> WaitForFinalResultAsync(
+        string lookupKey,
+        string sagaId,
+        string resultUri,
+        DateTimeOffset deadline
+    ) {
+        while (true) {
+            LookupSagaState? saga = await _sagaManager.GetAsync( sagaId );
+
+            // Prefer the final result URI once available (it may differ from the partial's)
+            if (!string.IsNullOrEmpty( saga?.FinalResultUri )) {
+                resultUri = saga.FinalResultUri;
+            }
+
+            MediaLinkResult? result = await _atProtoStorage.GetMediaLinkResultAsync( resultUri );
+
+            // Saga state missing (expired/deleted) - trust the stored result's own flag
+            if (saga is null) {
+                return new LookupResult {
+                    Result = result,
+                    IsPartial = result?.IsPartial ?? false,
+                    SagaId = result?.IsPartial == true ? sagaId : null
+                };
+            }
+
+            bool isFinal = !string.IsNullOrEmpty( saga.FinalResultUri )
+                        || (saga.IsComplete && !saga.IsPartial);
+
+            if (isFinal) {
+                return new LookupResult {
+                    Result = result,
+                    IsPartial = false
+                };
+            }
+
+            // When every pending provider is rate-limited, waiting cannot help -
+            // return the partial with rate-limit info immediately (approved escape hatch).
+            // Expired rate-limit entries are ignored so an imminent full result is still
+            // waited for instead of returning a stale partial.
+            if (AllPendingProvidersRateLimited( saga )) {
+                LogReturningRateLimitedPartial( _logger, sagaId );
+                return CreatePartialResult( result, sagaId, saga );
+            }
+
+            TimeSpan remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero) {
+                LogWaitBudgetExhausted( _logger, sagaId );
+                return CreatePartialResult( result, sagaId, saga );
+            }
+
+            LogWaitingForFinalResult( _logger, sagaId, remaining.TotalSeconds );
+
+            // Subscribe before re-reading saga state (inside the deduplicator) so a final
+            // result or rate-limit sentinel published in the gap is never missed
+            string? nextUri = await _deduplicator.WaitForFinalCompletionAsync(
+                lookupKey,
+                remaining,
+                async ( ) => {
+                    LookupSagaState? gapSaga = await _sagaManager.GetAsync( sagaId );
+                    if (!string.IsNullOrEmpty( gapSaga?.FinalResultUri )) {
+                        return gapSaga.FinalResultUri;
+                    }
+
+                    // A rate-limit condition arising in the gap is equally unrecoverable
+                    // by waiting - surface the sentinel so the escape hatch applies
+                    return gapSaga is not null && AllPendingProvidersRateLimited( gapSaga )
+                        ? LookupConstants.RateLimitedSentinel
+                        : null;
+                }
+            );
+
+            if (nextUri == LookupConstants.RateLimitedSentinel) {
+                return await BuildRateLimitedPartialAsync( sagaId, result );
+            }
+
+            if (string.IsNullOrEmpty( nextUri )) {
+                // Timed out - re-check once in case the final landed without a notification
+                saga = await _sagaManager.GetAsync( sagaId );
+                if (!string.IsNullOrEmpty( saga?.FinalResultUri )) {
+                    resultUri = saga.FinalResultUri;
+                    continue;
+                }
+
+                LogWaitBudgetExhausted( _logger, sagaId );
+                return CreatePartialResult( result, sagaId, saga );
+            }
+
+            resultUri = nextUri;
+        }
+    }
+
+    /// <summary>
+    /// Resolves a rate-limit sentinel into the best available partial response: the saga's
+    /// stored result (final preferred over partial) is fetched so available provider links
+    /// are returned alongside the rate-limit info instead of being dropped.
+    /// </summary>
+    /// <param name="sagaId">The deterministic saga ID for the lookup.</param>
+    /// <param name="knownResult">An already-fetched result to reuse instead of re-fetching.</param>
+    private async Task<LookupResult> BuildRateLimitedPartialAsync( string sagaId, MediaLinkResult? knownResult = null ) {
+        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId );
+
+        MediaLinkResult? result = knownResult;
+        string? storedResultUri = saga?.FinalResultUri ?? saga?.PartialResultUri;
+        if (result is null && !string.IsNullOrEmpty( storedResultUri )) {
+            result = await _atProtoStorage.GetMediaLinkResultAsync( storedResultUri );
+        }
+
+        LogReturningRateLimitedPartial( _logger, sagaId );
+        return CreatePartialResult( result, sagaId, saga );
+    }
+
+    /// <summary>
+    /// Creates a partial <see cref="LookupResult"/> carrying the saga's unexpired rate-limit info.
+    /// </summary>
+    private static LookupResult CreatePartialResult( MediaLinkResult? result, string sagaId, LookupSagaState? saga )
+        => new( ) {
+            Result = result,
+            IsPartial = true,
+            SagaId = sagaId,
+            RateLimitedProviders = GetActiveRateLimits( saga )
+        };
+
+    /// <summary>
+    /// Filters the saga's rate-limit info down to entries whose retry-after has not yet
+    /// lapsed, so expired limits neither trigger the escape hatch nor produce stale
+    /// "retry after" user messaging. Returns null when nothing is actively rate-limited.
+    /// </summary>
+    private static List<ProviderRateLimitInfo>? GetActiveRateLimits( LookupSagaState? saga ) {
+        List<ProviderRateLimitInfo>? activeRateLimits = saga?.RateLimitInfo?
+            .Where( r => r.RetryAfter > DateTimeOffset.UtcNow )
+            .ToList( );
+
+        return activeRateLimits is { Count: > 0 } ? activeRateLimits : null;
+    }
+
+    /// <summary>
+    /// Determines whether every pending provider is covered by an unexpired rate limit,
+    /// meaning waiting longer cannot produce additional results.
+    /// </summary>
+    private static bool AllPendingProvidersRateLimited( LookupSagaState saga ) {
+        List<ProviderRateLimitInfo>? activeRateLimits = GetActiveRateLimits( saga );
+        return activeRateLimits is not null
+            && saga.PendingProviders.All( p => activeRateLimits.Any( r => r.Provider == p ) );
     }
 
     private static SupportedProviders? DetermineProviderFromUrl( string url ) {
@@ -414,6 +626,51 @@ public sealed partial class LookupOrchestrator(
         Level = LogLevel.Information,
         Message = "Created saga {SagaId} and queued initial lookup for {Provider} ({LookupType}:{LookupValue})" )]
     private static partial void LogSagaCreated( ILogger logger, string sagaId, SupportedProviders provider, LookupRequestType lookupType, string lookupValue );
+
+    /// <summary>
+    /// Logs that an in-flight saga already stored a result, so the final-result wait is used directly.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorInFlightSagaHasStoredResult,
+        Level = LogLevel.Debug,
+        Message = "In-flight saga {SagaId} already stored a result, waiting for the final result directly" )]
+    private static partial void LogInFlightSagaHasStoredResult( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that an existing saga with a stored result was resumed.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorSagaResumedWithResult,
+        Level = LogLevel.Debug,
+        Message = "Resumed saga {SagaId} with an existing stored result, resolving directly" )]
+    private static partial void LogSagaResumedWithResult( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that the orchestrator keeps waiting for the final result of a partial saga.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorWaitingForFinalResult,
+        Level = LogLevel.Debug,
+        Message = "Saga {SagaId} is partial, waiting up to {RemainingSeconds:F1}s for the final result" )]
+    private static partial void LogWaitingForFinalResult( ILogger logger, string sagaId, double remainingSeconds );
+
+    /// <summary>
+    /// Logs that a partial result is returned because all pending providers are rate-limited.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorReturningRateLimitedPartial,
+        Level = LogLevel.Information,
+        Message = "All pending providers for saga {SagaId} are rate-limited, returning partial result" )]
+    private static partial void LogReturningRateLimitedPartial( ILogger logger, string sagaId );
+
+    /// <summary>
+    /// Logs that the interactive wait budget was exhausted before the final result arrived.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.OrchestratorWaitBudgetExhausted,
+        Level = LogLevel.Information,
+        Message = "Wait budget exhausted for saga {SagaId}, returning best available partial result" )]
+    private static partial void LogWaitBudgetExhausted( ILogger logger, string sagaId );
 
     #endregion LoggerMessage Definitions
 }

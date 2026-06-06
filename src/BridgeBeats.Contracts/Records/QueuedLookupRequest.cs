@@ -81,4 +81,15 @@ public sealed record QueuedLookupRequest : IQueueableRequest {
     [JsonPropertyName( "rateLimitedEndpoint" )]
     [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
     public string? RateLimitedEndpoint { get; init; }
+
+    /// <summary>
+    /// Gets the priority of the originating request, persisted into the saga so
+    /// secondary lookups inherit the origin's urgency.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="QueuePriority.Background"/> so in-flight messages
+    /// serialized before this field existed are never promoted to interactive.
+    /// </remarks>
+    [JsonPropertyName( "originPriority" )]
+    public QueuePriority OriginPriority { get; init; } = QueuePriority.Background;
 }

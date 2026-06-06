@@ -465,6 +465,16 @@ public static class LogEventIds {
             /// </summary>
             public const int RedisSagaStateManagerRemovedFromPendingIndex = 1314;
 
+            /// <summary>
+            /// EventId for <see cref="RedisSagaStateManager.LogOriginPrioritySet"/>.
+            /// </summary>
+            public const int RedisSagaStateManagerOriginPrioritySet = 1315;
+
+            /// <summary>
+            /// EventId for <see cref="RedisSagaStateManager.LogSecondariesQueuedMarker"/>.
+            /// </summary>
+            public const int RedisSagaStateManagerSecondariesQueuedMarker = 1316;
+
             // RedisRequestDeduplicator (1350-1374)
 
             /// <summary>
@@ -496,6 +506,16 @@ public static class LogEventIds {
             /// EventId for <see cref="RedisRequestDeduplicator.LogWaitTimeout"/>.
             /// </summary>
             public const int RedisRequestDeduplicatorWaitTimeout = 1355;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestDeduplicator.LogFinalCompletedBeforeSubscription"/>.
+            /// </summary>
+            public const int RedisRequestDeduplicatorFinalCompletedBeforeSubscription = 1356;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestDeduplicator.LogFinalWaitTimeout"/>.
+            /// </summary>
+            public const int RedisRequestDeduplicatorFinalWaitTimeout = 1357;
 
             // RedisRateLimitTracker (1375-1399)
 
@@ -1323,6 +1343,11 @@ public static class LogEventIds {
             /// </summary>
             public const int PartialResultReturned = 3300;
 
+            /// <summary>
+            /// EventId for <see cref="CachingMediaLinkService.LogPendingPartialReturned"/>.
+            /// </summary>
+            public const int PendingPartialResultReturned = 3301;
+
             // LookupOrchestrator (3350-3399)
 
             /// <summary>
@@ -1344,6 +1369,31 @@ public static class LogEventIds {
             /// EventId for <see cref="LookupOrchestrator.LogSagaCreated"/>.
             /// </summary>
             public const int OrchestratorSagaCreated = 3353;
+
+            /// <summary>
+            /// EventId for <see cref="LookupOrchestrator.LogSagaResumedWithResult"/>.
+            /// </summary>
+            public const int OrchestratorSagaResumedWithResult = 3354;
+
+            /// <summary>
+            /// EventId for <see cref="LookupOrchestrator.LogWaitingForFinalResult"/>.
+            /// </summary>
+            public const int OrchestratorWaitingForFinalResult = 3355;
+
+            /// <summary>
+            /// EventId for <see cref="LookupOrchestrator.LogReturningRateLimitedPartial"/>.
+            /// </summary>
+            public const int OrchestratorReturningRateLimitedPartial = 3356;
+
+            /// <summary>
+            /// EventId for <see cref="LookupOrchestrator.LogWaitBudgetExhausted"/>.
+            /// </summary>
+            public const int OrchestratorWaitBudgetExhausted = 3357;
+
+            /// <summary>
+            /// EventId for <see cref="LookupOrchestrator.LogInFlightSagaHasStoredResult"/>.
+            /// </summary>
+            public const int OrchestratorInFlightSagaHasStoredResult = 3358;
         }
 
         /// <summary>

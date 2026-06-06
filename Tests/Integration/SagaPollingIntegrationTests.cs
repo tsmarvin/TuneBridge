@@ -91,7 +91,7 @@ public class SagaPollingIntegrationTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Mark provider as complete
@@ -142,7 +142,7 @@ public class SagaPollingIntegrationTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
@@ -179,7 +179,7 @@ public class SagaPollingIntegrationTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Add provider but don't complete it
@@ -214,7 +214,7 @@ public class SagaPollingIntegrationTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
@@ -249,7 +249,7 @@ public class SagaPollingIntegrationTests {
                 lookupKey,
                 LookupRequestType.IsrcLookup,
                 $"USRC{i:D10}",
-                TestContext.CancellationToken
+                cancellationToken: TestContext.CancellationToken
             );
 
             await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
@@ -359,7 +359,7 @@ public class SagaPollingIntegrationTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert - Should be in pending index
@@ -384,7 +384,7 @@ public class SagaPollingIntegrationTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Verify it's in the index
@@ -416,7 +416,7 @@ public class SagaPollingIntegrationTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Verify it's in the index

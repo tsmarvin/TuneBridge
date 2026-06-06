@@ -191,6 +191,65 @@ public sealed partial class RedisRequestDeduplicator(
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<string?> WaitForFinalCompletionAsync(
+        string requestKey,
+        TimeSpan timeout,
+        Func<Task<string?>>? missedResultCheck = null,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( requestKey );
+
+        string channelKey = $"{CompleteChannelPrefix}{requestKey}";
+        ISubscriber subscriber = _redis.GetSubscriber( );
+
+        RedisChannel channel = RedisChannel.Literal( channelKey );
+
+        // Subscribe to completion channel using ChannelMessageQueue for async iteration
+        ChannelMessageQueue messageQueue = await subscriber.SubscribeAsync( channel );
+
+        try {
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( cancellationToken );
+            cts.CancelAfter( timeout );
+
+            // The result may have been published in the gap between the caller reading state
+            // and this subscription becoming active - re-check durable state now that we
+            // are guaranteed to observe any future publish.
+            if (missedResultCheck is not null) {
+                string? missedResult = await missedResultCheck( );
+                if (!string.IsNullOrEmpty( missedResult )) {
+                    if (_logger.IsEnabled( LogLevel.Debug )) {
+                        string sanitizedRequestKey = requestKey.SanitizeForLogging( );
+                        LogFinalCompletedBeforeSubscription( _logger, sanitizedRequestKey );
+                    }
+                    return missedResult;
+                }
+            }
+
+            // Wait for a non-empty message or timeout. Unlike WaitForCompletionAsync, the
+            // absence of the in-flight lock means nothing here: it is deleted when the
+            // partial result is released while the saga keeps running.
+            try {
+                await foreach (ChannelMessage message in messageQueue.WithCancellation( cts.Token )) {
+                    string result = message.Message.ToString( );
+                    if (!string.IsNullOrEmpty( result )) {
+                        return result;
+                    }
+                }
+                return null;
+            } catch (OperationCanceledException) {
+                if (_logger.IsEnabled( LogLevel.Debug )) {
+                    string sanitizedRequestKey = requestKey.SanitizeForLogging( );
+                    LogFinalWaitTimeout( _logger, sanitizedRequestKey );
+                }
+                return null;
+            }
+        } finally {
+            // Always unsubscribe
+            messageQueue.Unsubscribe( );
+        }
+    }
+
     /// <summary>
     /// Generates a request key from lookup type and value.
     /// </summary>
@@ -241,6 +300,18 @@ public sealed partial class RedisRequestDeduplicator(
         Level = LogLevel.Debug,
         Message = "Timeout waiting for completion of {RequestKey}" )]
     internal static partial void LogWaitTimeout( ILogger logger, string requestKey );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorFinalCompletedBeforeSubscription,
+        Level = LogLevel.Debug,
+        Message = "Final result for {RequestKey} was already available before subscription was active" )]
+    internal static partial void LogFinalCompletedBeforeSubscription( ILogger logger, string requestKey );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorFinalWaitTimeout,
+        Level = LogLevel.Debug,
+        Message = "Timeout waiting for final completion of {RequestKey}" )]
+    internal static partial void LogFinalWaitTimeout( ILogger logger, string requestKey );
 
     #endregion
 }

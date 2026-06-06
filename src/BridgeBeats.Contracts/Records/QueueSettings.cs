@@ -21,6 +21,13 @@ public sealed record QueueSettings {
     public int JobExpirationMinutes { get; init; } = 60;
 
     /// <summary>
+    /// Gets the total time budget (in seconds) an interactive caller waits for a complete
+    /// lookup result before returning the best available partial result.
+    /// </summary>
+    [JsonPropertyName( "interactiveWaitSeconds" )]
+    public int InteractiveWaitSeconds { get; init; } = 30;
+
+    /// <summary>
     /// Gets the priority weighting configuration.
     /// </summary>
     [JsonPropertyName( "weights" )]
