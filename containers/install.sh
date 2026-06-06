@@ -332,7 +332,8 @@ fi
 # Explain why sudo is needed
 echo "This script may need elevated privileges (sudo) to:"
 echo "  1. Set ownership of secrets directory for container access (fresh install)"
-echo "  2. Read existing secrets owned by the container user (re-run/upgrade)"
+echo "  2. Set ownership of logs directory so the container can write log files"
+echo "  3. Read existing secrets owned by the container user (re-run/upgrade)"
 echo ""
 
 if [[ "$SUDO_AVAILABLE" == "true" ]]; then
@@ -345,12 +346,14 @@ if [[ "$SUDO_AVAILABLE" == "true" ]]; then
         echo ""
         echo "You may need to run these commands manually later:"
         echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} \$(pwd)/secrets"
+        echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} \$(pwd)/logs"
     fi
 else
     echo "[WARN] sudo not available on this system"
     echo ""
     echo "You may need to run these commands manually later:"
     echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} \$(pwd)/secrets"
+    echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} \$(pwd)/logs"
 fi
 
 # =============================================================================
@@ -422,6 +425,23 @@ if [[ -d "$LOGS_DIR" ]]; then
 else
     mkdir -p "$LOGS_DIR"
     echo "[OK] Created logs directory: ${LOGS_DIR}"
+fi
+
+# Set ownership of logs directory to container UID so the non-root container user can write logs.
+# The container runs as UID ${CONTAINER_UID}; without this the bind-mounted ./logs stays owned by
+# the host user and Serilog's file sink silently fails to write. Applied every run so existing
+# installs with incorrect ownership are self-healed on upgrade.
+if [[ "$USE_SUDO" == "true" ]]; then
+    if sudo chown -R "${CONTAINER_UID}:${CONTAINER_UID}" "$LOGS_DIR" 2>/dev/null; then
+        echo "[OK] Set logs ownership to UID ${CONTAINER_UID} (container user)"
+    else
+        echo "[WARN] Could not set logs ownership. Please run manually:"
+        echo "       sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/logs"
+    fi
+else
+    echo ""
+    echo "[ACTION REQUIRED] Set logs ownership for container access:"
+    echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/logs"
 fi
 
 # =============================================================================

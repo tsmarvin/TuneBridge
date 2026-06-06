@@ -135,8 +135,8 @@ public class RedisGenreCacheTests {
         // Assert
         Assert.IsNotNull( result );
         Assert.HasCount( 2, result );
-        Assert.IsTrue( result.Contains( "Rock" ) );
-        Assert.IsTrue( result.Contains( "Alternative" ) );
+        Assert.Contains( "Rock", result );
+        Assert.Contains( "Alternative", result );
     }
 
     #endregion
@@ -228,8 +228,8 @@ public class RedisGenreCacheTests {
 
         // Assert
         Assert.IsNotNull( result );
-        Assert.IsTrue( result.Contains( "Pop" ) );
-        Assert.IsTrue( result.Contains( "Electronic" ) );
+        Assert.Contains( "Pop", result );
+        Assert.Contains( "Electronic", result );
     }
 
     #endregion
@@ -390,8 +390,8 @@ public class RedisGenreCacheTests {
 
         // Assert
         Assert.HasCount( 2, result );
-        Assert.IsTrue( result.Contains( "artist1" ) );
-        Assert.IsTrue( result.Contains( "artist2" ) );
+        Assert.Contains( "artist1", result );
+        Assert.Contains( "artist2", result );
     }
 
     /// <summary>

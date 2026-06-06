@@ -17,15 +17,19 @@ read_secret() {
 export DOTNET_ENVIRONMENT="${DOTNET_ENVIRONMENT:-Production}"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-$DOTNET_ENVIRONMENT}"
 
-# ---- Configure Aspire Dashboard (Aspire 13.1) ----
+# ---- Configure Aspire Dashboard (Aspire 13.4) ----
 # Allow unsecured transport since we use HTTP behind Caddy reverse proxy (Caddy handles HTTPS)
 export ASPIRE_ALLOW_UNSECURED_TRANSPORT="true"
 # Dashboard auth is handled by Caddy forward_auth, so we disable all dashboard auth
 # MCP server is disabled as we don't need AI tooling features
-# OTLP endpoint is required by Aspire 13.1 for dashboard initialization (internal only)
+# OTLP endpoint is required by Aspire for dashboard initialization (internal only)
 export ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL="http://localhost:18889"
 export ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS="true"
 export DASHBOARD__MCP__DISABLED="true"
+# Aspire 13.4+ persists local state (IAspireStore) under the AppHost project's
+# build-time intermediate output path (/build), which does not exist at runtime.
+# Redirect it to the writable persistent data directory (handled in AppHost Program.cs).
+export ASPIRE_STORE_PATH="/app/data"
 
 # ---- Web app port configuration ----
 # Use explicit WEB_PORT if set, default to 10000 for production.

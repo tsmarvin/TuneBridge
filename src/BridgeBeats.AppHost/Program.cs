@@ -4,6 +4,20 @@ using Microsoft.Extensions.Hosting;
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder( args );
 
 // ============================================================================
+// Aspire Store Path Override
+// ============================================================================
+// Aspire 13.4+ persists local state (IAspireStore) under the AppHost project's
+// build-time intermediate output path (AppHostProjectBaseIntermediateOutputPath
+// assembly metadata), which resolves to /build in the published container and
+// does not exist at runtime. The builder seeds "Aspire:Store:Path" via an
+// in-memory source added after the environment variable providers, so a plain
+// environment variable cannot override it. Set it explicitly when provided.
+string? aspireStorePath = Environment.GetEnvironmentVariable( "ASPIRE_STORE_PATH" );
+if (!string.IsNullOrWhiteSpace( aspireStorePath )) {
+    builder.Configuration["Aspire:Store:Path"] = aspireStorePath;
+}
+
+// ============================================================================
 // Environment Detection
 // ============================================================================
 // In production (Docker), we use AddExecutable() with pre-published DLLs.
