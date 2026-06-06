@@ -1,4 +1,5 @@
 using BridgeBeats.Core.Infrastructure.Identity;
+using BridgeBeats.Web.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,32 +16,18 @@ namespace BridgeBeats.Web.Controllers {
     /// <remarks>
     /// Initializes a new instance of the <see cref="WellKnownController"/> class.
     /// </remarks>
+    /// <param name="configuration">Application configuration for reading Domain.</param>
+    /// <param name="signingKeyProvider">Optional signing key provider for JWKS endpoint.</param>
     [AllowAnonymous]
-    public class WellKnownController : Controller {
+    public class WellKnownController(
+        IConfiguration configuration,
+        ATProtoSigningKeyProvider? signingKeyProvider = null
+    ) : Controller {
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="WellKnownController"/> class.
-        /// </summary>
-        /// <param name="configuration">Application configuration for reading Domain.</param>
-        /// <param name="signingKeyProvider">Optional signing key provider for JWKS endpoint.</param>
-        public WellKnownController(
-            IConfiguration configuration,
-            ATProtoSigningKeyProvider? signingKeyProvider = null
-        ) {
-            string? domainConfig = configuration
-                                        .GetSection("BridgeBeats")
-                                        .GetValue<string>("Domain")
-                                        ?.TrimEnd('/') ?? string.Empty;
-
-            _domain = domainConfig.StartsWith( "https://", StringComparison.OrdinalIgnoreCase )
-                        ? domainConfig
-                        : $"https://{domainConfig}";
-
-            _signingKeyProvider = signingKeyProvider;
-        }
-
-        private readonly string _domain;
-        private readonly ATProtoSigningKeyProvider? _signingKeyProvider;
+        private readonly string? _domain = AppSettings.NormalizeDomain(
+            configuration.GetSection( "BridgeBeats" ).GetValue<string>( "Domain" )
+        );
+        private readonly ATProtoSigningKeyProvider? _signingKeyProvider = signingKeyProvider;
 
         /// <summary>
         /// Returns the ATProto OAuth client metadata document.

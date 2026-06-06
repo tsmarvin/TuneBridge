@@ -442,11 +442,8 @@ namespace BridgeBeats.Web.Configuration {
         private static void ConfigureATProtoIfEnabled( IServiceCollection services, AppSettings settings ) {
             // Register ATProto OAuth service (available even without server ATProto credentials)
             // This allows users to log in with Bluesky for playlist management
-            if (!string.IsNullOrWhiteSpace( settings.Domain )) {
-                string trimmedDomain = settings.Domain.TrimEnd('/');
-                string domainWithScheme = trimmedDomain.StartsWith( "https://", StringComparison.OrdinalIgnoreCase )
-                    ? trimmedDomain
-                    : $"https://{trimmedDomain}";
+            string? domainWithScheme = AppSettings.NormalizeDomain( settings.Domain );
+            if (!string.IsNullOrWhiteSpace( domainWithScheme )) {
                 string clientId = $"{domainWithScheme}/.well-known/client-metadata.json";
 
                 // Load the OAuth signing key for confidential client authentication if configured

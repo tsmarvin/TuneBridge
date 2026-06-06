@@ -110,6 +110,22 @@ namespace BridgeBeats.Web.Configuration {
         public string Domain { get; set; } = string.Empty;
 
         /// <summary>
+        /// Normalizes a configured domain to an absolute https URL with no trailing slash.
+        /// </summary>
+        /// <param name="domain">The configured domain value.</param>
+        /// <returns>The normalized domain URL, or null when the domain is not configured.</returns>
+        public static string? NormalizeDomain( string? domain ) {
+            if (string.IsNullOrWhiteSpace( domain )) {
+                return null;
+            }
+
+            string trimmed = domain.TrimEnd( '/' );
+            return trimmed.StartsWith( "https://", StringComparison.OrdinalIgnoreCase )
+                ? trimmed
+                : $"https://{trimmed}";
+        }
+
+        /// <summary>
         /// The file path to the ATProto OAuth signing key in JWK format.
         /// Required for confidential client authentication (private_key_jwt).
         /// When empty, the ATProto OAuth service operates as a public client (localhost only).
