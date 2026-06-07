@@ -395,31 +395,26 @@ public sealed partial class RedisSagaStateManager(
 
             // Idempotent: never overwrite existing provider state. A resumed saga may
             // already have completed or in-progress providers that must be preserved.
-            if (await db.KeyExistsAsync( key )) {
-                _ = await db.KeyExpireAsync( key, ttl );
-                continue;
-            }
-
-            // Create initial pending state for each provider
-            ProviderLookupState pendingState = new(
-                Provider: provider,
-                IsComplete: false,
-                IsSuccess: false,
-                ResultJson: null,
-                CompletedAt: null,
-                ErrorMessage: null
-            );
-
+            // The KeyNotExists condition makes the pending-state write commit atomically
+            // only when no state exists yet, so a concurrent UpdateProviderStateAsync
+            // cannot be regressed back to pending.
             HashEntry[] providerHash = [
-                new HashEntry( FieldIsComplete, pendingState.IsComplete.ToString() ),
-                new HashEntry( FieldIsSuccess, pendingState.IsSuccess.ToString() ),
+                new HashEntry( FieldIsComplete, false.ToString() ),
+                new HashEntry( FieldIsSuccess, false.ToString() ),
                 new HashEntry( FieldResultJson, string.Empty ),
                 new HashEntry( FieldCompletedAt, string.Empty ),
                 new HashEntry( FieldErrorMessage, string.Empty )
             ];
 
-            await db.HashSetAsync( key, providerHash );
-            _ = await db.KeyExpireAsync( key, ttl );
+            ITransaction transaction = db.CreateTransaction( );
+            _ = transaction.AddCondition( Condition.KeyNotExists( key ) );
+            _ = transaction.HashSetAsync( key, providerHash );
+            _ = transaction.KeyExpireAsync( key, ttl );
+
+            if (!await transaction.ExecuteAsync( )) {
+                // Provider state already exists — leave it untouched and refresh the TTL.
+                _ = await db.KeyExpireAsync( key, ttl );
+            }
         }
 
         if (_logger.IsEnabled( LogLevel.Debug )) {

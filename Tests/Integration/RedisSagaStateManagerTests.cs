@@ -443,7 +443,7 @@ public class RedisSagaStateManagerTests {
             LookupRequestType.IsrcLookup,
             "USRC12345678",
             QueuePriority.Bulk,
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         LookupSagaState resumed = await _sagaManager.GetOrCreateAsync(
@@ -452,7 +452,7 @@ public class RedisSagaStateManagerTests {
             LookupRequestType.IsrcLookup,
             "USRC12345678",
             QueuePriority.Interactive,
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert - first recorded origin priority is kept
@@ -494,7 +494,7 @@ public class RedisSagaStateManagerTests {
             LookupRequestType.IsrcLookup,
             "USRC12345678",
             QueuePriority.Interactive,
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert
@@ -529,5 +529,59 @@ public class RedisSagaStateManagerTests {
         // Assert
         Assert.IsTrue( first );
         Assert.IsFalse( second );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.InitializeProviderStatesAsync"/> never
+    /// regresses an already-recorded provider state back to pending, while still creating
+    /// pending states for providers that have no state yet.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task InitializeProviderStatesAsync_PreservesExistingProviderState( ) {
+        // Arrange
+        string lookupKey = "isrc:USRC12345678";
+        string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+
+        _ = await _sagaManager.GetOrCreateAsync(
+            sagaId,
+            lookupKey,
+            LookupRequestType.IsrcLookup,
+            "USRC12345678",
+            cancellationToken: TestContext.CancellationToken
+        );
+
+        ProviderLookupState completedState = new(
+            Provider: SupportedProviders.Spotify,
+            IsComplete: true,
+            IsSuccess: true,
+            ResultJson: """{"trackId": "abc123"}""",
+            CompletedAt: DateTimeOffset.UtcNow,
+            ErrorMessage: null
+        );
+
+        await _sagaManager.UpdateProviderStateAsync( sagaId, completedState, TestContext.CancellationToken );
+
+        // Act - re-initialize including the already-completed provider
+        await _sagaManager.InitializeProviderStatesAsync(
+            sagaId,
+            [SupportedProviders.Spotify, SupportedProviders.AppleMusic],
+            TestContext.CancellationToken
+        );
+
+        // Assert - completed provider is untouched, missing provider is created pending
+        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
+        Assert.IsNotNull( saga );
+        Assert.HasCount( 2, saga.ProviderStates );
+
+        ProviderLookupState spotify = saga.ProviderStates[SupportedProviders.Spotify];
+        Assert.IsTrue( spotify.IsComplete );
+        Assert.IsTrue( spotify.IsSuccess );
+        Assert.AreEqual( """{"trackId": "abc123"}""", spotify.ResultJson );
+
+        ProviderLookupState apple = saga.ProviderStates[SupportedProviders.AppleMusic];
+        Assert.IsFalse( apple.IsComplete );
+        Assert.IsFalse( apple.IsSuccess );
+        Assert.IsNull( apple.ResultJson );
     }
 }
