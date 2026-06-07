@@ -95,7 +95,7 @@ public partial class AccountController(
         IdentityResult result;
         try {
             result = await userManager.CreateAsync( user, request.Password );
-        } catch (DbUpdateException dbEx) when (dbEx.InnerException?.Message.Contains( "UNIQUE constraint failed: AspNetUsers.NormalizedEmail", StringComparison.OrdinalIgnoreCase ) == true) {
+        } catch (DbUpdateException dbEx) when (dbEx.InnerException is Microsoft.Data.Sqlite.SqliteException sqliteEx && sqliteEx.SqliteErrorCode == 19 && sqliteEx.Message.Contains( "AspNetUsers.NormalizedEmail", StringComparison.OrdinalIgnoreCase )) {
             // A concurrent registration slipped past the FindByEmailAsync pre-check and hit the
             // DB-level unique index on NormalizedEmail. Surface as the same friendly 400 the
             // pre-check produces rather than letting an unhandled 500 reach the client.
