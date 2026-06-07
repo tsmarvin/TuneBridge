@@ -250,6 +250,64 @@ public class StatisticsServiceTests {
         } );
         return (atUri, result);
     }
+
+    [TestMethod]
+    public async Task GetLiveBootstrapStatusAsync_WhenRedisHasStatus_ReturnsDeserializedStatus( ) {
+        // Arrange: pre-load a completed status into the Redis mock
+        CacheBootstrapStatus expected = new( ) {
+            IsRunning = false,
+            LastRunTime = DateTimeOffset.UtcNow.AddHours( -2 ),
+            LastSuccessCount = 247404,
+            LastErrorCount = 0,
+            LastDurationSeconds = 4565.9,
+            RedisKeyCount = 2882803
+        };
+        string json = System.Text.Json.JsonSerializer.Serialize( expected );
+        _ = _redisDatabaseMock
+            .Setup( x => x.StringGetAsync( CacheBootstrapStatus.RedisKey, It.IsAny<CommandFlags>( ) ) )
+            .ReturnsAsync( (RedisValue)json );
+
+        StatisticsService service = CreateService( );
+
+        // Act
+        CacheBootstrapStatus? result = await service.GetLiveBootstrapStatusAsync( CancellationToken.None );
+
+        // Assert: returns the deserialized status directly from Redis (not cached stats)
+        Assert.IsNotNull( result );
+        Assert.IsFalse( result.IsRunning );
+        Assert.AreEqual( 247404, result.LastSuccessCount );
+        Assert.AreEqual( 4565.9, result.LastDurationSeconds );
+
+        // Verify that ATProto storage was NOT called (live status does not trigger a refresh)
+        _atProtoStorageMock.Verify(
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never( )
+        );
+    }
+
+    [TestMethod]
+    public async Task GetLiveBootstrapStatusAsync_WhenRedisReturnsNull_ReturnsNull( ) {
+        // Default mock already returns RedisValue.Null
+        StatisticsService service = CreateService( );
+
+        CacheBootstrapStatus? result = await service.GetLiveBootstrapStatusAsync( CancellationToken.None );
+
+        Assert.IsNull( result );
+    }
+
+    [TestMethod]
+    public async Task GetLiveBootstrapStatusAsync_WhenRedisThrows_ReturnsNullWithoutThrowing( ) {
+        _ = _redisDatabaseMock
+            .Setup( x => x.StringGetAsync( It.IsAny<RedisKey>( ), It.IsAny<CommandFlags>( ) ) )
+            .ThrowsAsync( new StackExchange.Redis.RedisException( "Connection refused" ) );
+
+        StatisticsService service = CreateService( );
+
+        // Act: should not throw; returns null gracefully
+        CacheBootstrapStatus? result = await service.GetLiveBootstrapStatusAsync( CancellationToken.None );
+
+        Assert.IsNull( result );
+    }
 }
 
 #pragma warning restore CS1591

@@ -28,6 +28,7 @@ public sealed partial class CacheBootstrapBackgroundService(
 ) : BackgroundService {
 
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) { WriteIndented = false };
+    private static readonly JsonSerializerOptions s_jsonReadOptions = new( ) { PropertyNameCaseInsensitive = true };
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
@@ -39,12 +40,6 @@ public sealed partial class CacheBootstrapBackgroundService(
 
         while (!stoppingToken.IsCancellationRequested) {
             try {
-                // Update status with next scheduled run time
-                await UpdateStatusAsync( new CacheBootstrapStatus {
-                    IsRunning = false,
-                    NextScheduledRun = DateTimeOffset.UtcNow.Add( settings.BootstrapInterval )
-                } );
-
                 _ = await timer.WaitForNextTickAsync( stoppingToken );
                 await RunBootstrapAsync( stoppingToken );
             } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
@@ -72,13 +67,35 @@ public sealed partial class CacheBootstrapBackgroundService(
     }
 
     /// <summary>
+    /// Reads the current cache bootstrap status from Redis, or returns null if absent or unreadable.
+    /// </summary>
+    private async Task<CacheBootstrapStatus?> GetCacheBootstrapStatusAsync( ) {
+        try {
+            IDatabase db = redis.GetDatabase( );
+            RedisValue value = await db.StringGetAsync( CacheBootstrapStatus.RedisKey );
+            return value.IsNullOrEmpty
+                ? null
+                : JsonSerializer.Deserialize<CacheBootstrapStatus>( value.ToString( ), s_jsonReadOptions );
+        } catch (Exception ex) {
+            LogStatusUpdateError( logger, ex );
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Performs a full cache bootstrap by fetching all records from ATProto and populating Redis.
     /// </summary>
     private async Task RunBootstrapAsync( CancellationToken cancellationToken ) {
-        // Update status to show bootstrap is running
+        // Preserve previously completed-run fields when signalling that a run has started.
+        CacheBootstrapStatus? previous = await GetCacheBootstrapStatusAsync( );
         await UpdateStatusAsync( new CacheBootstrapStatus {
             IsRunning = true,
-            NextScheduledRun = null
+            NextScheduledRun = null,
+            LastRunTime = previous?.LastRunTime,
+            LastSuccessCount = previous?.LastSuccessCount,
+            LastErrorCount = previous?.LastErrorCount,
+            LastDurationSeconds = previous?.LastDurationSeconds,
+            RedisKeyCount = previous?.RedisKeyCount
         } );
 
         // Get Redis key count before bootstrap for comparison
@@ -127,6 +144,22 @@ public sealed partial class CacheBootstrapBackgroundService(
             throw;
         } catch (Exception ex) {
             LogBootstrapFatalError( logger, ex );
+            stopwatch.Stop( );
+
+            // Preserve the last successful run's fields; only update lifecycle fields.
+            // Do NOT fall through to the normal completion write — that would record a zero-count
+            // run as a completed run and clobber the previous successful run's stats.
+            CacheBootstrapStatus? prior = await GetCacheBootstrapStatusAsync( );
+            await UpdateStatusAsync( new CacheBootstrapStatus {
+                IsRunning = false,
+                NextScheduledRun = DateTimeOffset.UtcNow.Add( settings.BootstrapInterval ),
+                LastRunTime = prior?.LastRunTime,
+                LastSuccessCount = prior?.LastSuccessCount,
+                LastErrorCount = prior?.LastErrorCount,
+                LastDurationSeconds = prior?.LastDurationSeconds,
+                RedisKeyCount = prior?.RedisKeyCount
+            } );
+            return;
         }
 
         stopwatch.Stop( );

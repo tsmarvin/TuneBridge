@@ -88,9 +88,36 @@ public static class LogEventIds {
             public const int ATProtoStorageServiceRetrieveError = 1079;
 
             /// <summary>
-            /// EventId for <see cref="ATProtoStorageService.LogListRecordsError"/>.
+            /// EventId for ATProtoStorageService list-records error (retired; superseded by CAR-based logging).
             /// </summary>
             public const int ATProtoStorageServiceListRecordsError = 1080;
+
+            // ATProtoStorageService CAR download log events (1081-1099)
+
+            /// <summary>
+            /// EventId for ATProtoStorageService CAR file downloaded successfully (bytes, blocks, elapsed).
+            /// </summary>
+            public const int ATProtoStorageServiceCarDownloaded = 1081;
+
+            /// <summary>
+            /// EventId for ATProtoStorageService CAR enumeration complete (record count).
+            /// </summary>
+            public const int ATProtoStorageServiceCarEnumerated = 1082;
+
+            /// <summary>
+            /// EventId for ATProtoStorageService CAR download or parse failure.
+            /// </summary>
+            public const int ATProtoStorageServiceCarDownloadFailed = 1083;
+
+            /// <summary>
+            /// EventId for ATProtoStorageService per-record skip due to parse or convert failure.
+            /// </summary>
+            public const int ATProtoStorageServiceCarRecordSkipped = 1084;
+
+            /// <summary>
+            /// EventId for ATProtoStorageService CAR commit version not equal to 3 (warn and proceed).
+            /// </summary>
+            public const int ATProtoStorageServiceCarCommitVersionUnexpected = 1085;
 
             // RedisATProtoSessionManager (1100-1149)
 
