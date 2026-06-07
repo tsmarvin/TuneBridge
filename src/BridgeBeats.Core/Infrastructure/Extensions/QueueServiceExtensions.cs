@@ -79,24 +79,93 @@ public static class QueueServiceExtensions {
     /// <typeparam name="T">The type of request to queue.</typeparam>
     /// <param name="services">The service collection to configure.</param>
     /// <returns>The configured service collection.</returns>
+    /// <remarks>
+    /// When <typeparamref name="T"/> is <see cref="QueuedLookupRequest"/>, the Spotify queue
+    /// registration is automatically wrapped with <see cref="SpotifyBulkQueueDecorator"/> so
+    /// that <see cref="LookupRequestType.SongIdLookup"/> and
+    /// <see cref="LookupRequestType.AlbumIdLookup"/> requests are routed to the type-specific
+    /// bulk streams. No additional registration step is required in any host.
+    /// </remarks>
     public static IServiceCollection AddAllProviderQueues<T>( this IServiceCollection services )
         where T : class, IQueueableRequest {
         foreach (SupportedProviders provider in Enum.GetValues<SupportedProviders>( )) {
             _ = services.AddProviderQueue<T>( provider );
         }
 
-        // Also register a resolver to get queues by provider
+        // Register a resolver to get queues by provider. For QueuedLookupRequest, the Spotify
+        // queue is wrapped with SpotifyBulkQueueDecorator via ApplySpotifyBulkDecorator so all
+        // hosts that produce Spotify ID lookups automatically route to the type-specific bulk
+        // streams without any per-host opt-in call.
         _ = services.AddSingleton<IProviderQueueResolver<T>>( sp => {
             IEnumerable<ProviderQueueRegistration<T>> registrations =
                 sp.GetServices<ProviderQueueRegistration<T>>( );
 
-            Dictionary<SupportedProviders, IRequestQueue<T>> queues =
-                registrations.ToDictionary( r => r.Provider, r => r.Queue );
+            IConnectionMultiplexer redis = sp.GetRequiredService<IConnectionMultiplexer>( );
+            ILogger<SpotifyBulkQueueDecorator> decoratorLogger =
+                sp.GetRequiredService<ILogger<SpotifyBulkQueueDecorator>>( );
+
+            Dictionary<SupportedProviders, IRequestQueue<T>> queues = registrations.ToDictionary(
+                r => r.Provider,
+                r => ApplySpotifyBulkDecorator( r.Queue, r.Provider, redis, decoratorLogger )
+            );
 
             return new ProviderQueueResolver<T>( queues );
         } );
 
         return services;
+    }
+
+    /// <summary>
+    /// Creates an <see cref="IRequestQueue{QueuedLookupRequest}"/> for the given provider,
+    /// delegating the Spotify-wrap decision entirely to <see cref="ApplySpotifyBulkDecorator"/>.
+    /// </summary>
+    /// <remarks>
+    /// This method constructs a raw <see cref="RedisRequestQueue{T}"/> and passes it to
+    /// <see cref="ApplySpotifyBulkDecorator"/>, which holds the single <c>provider == Spotify</c>
+    /// conditional. Callers of this method — both <c>AddQueueProcessor</c> overloads in
+    /// <c>ServiceExtensions</c> — obtain a correctly wrapped queue without duplicating the
+    /// wrap decision.
+    /// </remarks>
+    internal static IRequestQueue<QueuedLookupRequest> CreateProviderQueue(
+        IServiceProvider sp,
+        SupportedProviders provider
+    ) {
+        RedisRequestQueue<QueuedLookupRequest> raw = new(
+            sp.GetRequiredService<IConnectionMultiplexer>( ),
+            sp.GetRequiredService<ILogger<RedisRequestQueue<QueuedLookupRequest>>>( ),
+            sp.GetRequiredService<IOptions<QueueSettings>>( ),
+            provider
+        );
+        return ApplySpotifyBulkDecorator(
+            (IRequestQueue<QueuedLookupRequest>)raw,
+            provider,
+            sp.GetRequiredService<IConnectionMultiplexer>( ),
+            sp.GetRequiredService<ILogger<SpotifyBulkQueueDecorator>>( )
+        );
+    }
+
+    /// <summary>
+    /// Conditionally wraps <paramref name="raw"/> with <see cref="SpotifyBulkQueueDecorator"/>
+    /// when <paramref name="provider"/> is <see cref="SupportedProviders.Spotify"/> and
+    /// <typeparamref name="T"/> is <see cref="QueuedLookupRequest"/>; otherwise returns
+    /// <paramref name="raw"/> unchanged.
+    /// </summary>
+    /// <remarks>
+    /// The double type-erasing cast is safe because the <c>typeof(T)</c> check is performed
+    /// before casting. This is the only location in the codebase that performs this cast.
+    /// </remarks>
+    private static IRequestQueue<T> ApplySpotifyBulkDecorator<T>(
+        IRequestQueue<T> raw,
+        SupportedProviders provider,
+        IConnectionMultiplexer redis,
+        ILogger<SpotifyBulkQueueDecorator> decoratorLogger
+    ) where T : class, IQueueableRequest {
+        if (provider == SupportedProviders.Spotify && typeof( T ) == typeof( QueuedLookupRequest )) {
+            // Safe: typeof(T) == typeof(QueuedLookupRequest) verified above.
+            return (IRequestQueue<T>)(object)new SpotifyBulkQueueDecorator(
+                (IRequestQueue<QueuedLookupRequest>)(object)raw, redis, decoratorLogger );
+        }
+        return raw;
     }
 
     /// <summary>
@@ -112,6 +181,7 @@ public static class QueueServiceExtensions {
         _ = services.Configure( configureAction );
         return services;
     }
+
 }
 
 

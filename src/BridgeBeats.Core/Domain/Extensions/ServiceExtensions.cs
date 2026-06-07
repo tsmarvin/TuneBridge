@@ -6,6 +6,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Domain.Providers.Spotify;
 using BridgeBeats.Core.Domain.Services;
 using BridgeBeats.Core.Domain.Services.Cards;
 using BridgeBeats.Core.Domain.Services.LinkResolver;
@@ -190,13 +191,10 @@ public static class ServiceExtensions {
         // Register shared queue infrastructure
         _ = services.AddQueueInfrastructure( );
 
-        // Register the provider-specific queue
-        _ = services.AddSingleton<IRequestQueue<QueuedLookupRequest>>( sp => new RedisRequestQueue<QueuedLookupRequest>(
-            sp.GetRequiredService<IConnectionMultiplexer>( ),
-            sp.GetRequiredService<ILogger<RedisRequestQueue<QueuedLookupRequest>>>( ),
-            sp.GetRequiredService<IOptions<QueueSettings>>( ),
-            provider
-        ) );
+        // Register the provider-specific queue via the single factory that owns the
+        // "wrap with SpotifyBulkQueueDecorator if Spotify" conditional (AA-F1).
+        _ = services.AddSingleton<IRequestQueue<QueuedLookupRequest>>(
+            sp => QueueServiceExtensions.CreateProviderQueue( sp, provider ) );
 
         // Register the background service
         _ = services.AddHostedService( sp => new QueueProcessorBackgroundService(
@@ -238,13 +236,10 @@ public static class ServiceExtensions {
         // Register shared queue infrastructure
         _ = services.AddQueueInfrastructure( );
 
-        // Register the provider-specific queue
-        _ = services.AddSingleton<IRequestQueue<QueuedLookupRequest>>( sp => new RedisRequestQueue<QueuedLookupRequest>(
-            sp.GetRequiredService<IConnectionMultiplexer>( ),
-            sp.GetRequiredService<ILogger<RedisRequestQueue<QueuedLookupRequest>>>( ),
-            sp.GetRequiredService<IOptions<QueueSettings>>( ),
-            provider
-        ) );
+        // Register the provider-specific queue via the single factory that owns the
+        // "wrap with SpotifyBulkQueueDecorator if Spotify" conditional (AA-F1).
+        _ = services.AddSingleton<IRequestQueue<QueuedLookupRequest>>(
+            sp => QueueServiceExtensions.CreateProviderQueue( sp, provider ) );
 
         // Register the background service using the factory
         _ = services.AddHostedService( sp => new QueueProcessorBackgroundService(

@@ -4,6 +4,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Providers.Common;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Providers.AppleMusic;
 using BridgeBeats.Providers.Spotify;
 using BridgeBeats.Providers.Tidal;
@@ -14,6 +15,13 @@ using idunno.Bluesky;
 using idunno.Bluesky.Embed;
 using idunno.Bluesky.Feed;
 using idunno.Bluesky.RichText;
+
+// Pre-check (§1.1): Downstream saga consumers (SagaCoordinatorBackgroundService,
+// QueueProcessorBackgroundService) do not condition behavior on LookupType == UriLookup
+// for JetStream-originated sagas, and no cache-pointer write uses the URL as a lookup value
+// — cache pointers are keyed by ISRC/UPC or provider ID. Switching Spotify track/album
+// JetStream messages to SongIdLookup/AlbumIdLookup with the Spotify ID as LookupValue
+// is therefore safe for all downstream consumers.
 
 namespace BridgeBeats.Worker.JetStreamWatcher;
 
@@ -266,12 +274,22 @@ public sealed partial class JetStreamWatcherService(
         string normalizedLink = NormalizeMusicLink( link );
 
         // Try to identify and enqueue to the appropriate provider queue
-        (SupportedProviders? provider, LookupRequestType lookupType, bool isAlbum) = await IdentifyProviderAsync( normalizedLink );
+        (SupportedProviders? provider, LookupRequestType lookupType, bool isAlbum, string lookupValue) =
+            await IdentifyProviderAsync( normalizedLink );
 
         if (provider is null) {
             // Not a recognized music link - skip silently
             return;
         }
+
+        // Build the saga ID using LookupKeyBuilder — the single source of truth for key
+        // shape. All producers (orchestrator, queue workers, JetStream watcher) consume
+        // this builder so keys for the same entity are always identical, enabling proper
+        // deduplication and cross-producer saga state sharing.
+        string lookupKey = lookupType is LookupRequestType.SongIdLookup or LookupRequestType.AlbumIdLookup
+            ? LookupKeyBuilder.TypedKey( lookupType, provider.Value, lookupValue )
+            : LookupKeyBuilder.UrlKey( lookupValue );
+        string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
 
         // Create the lookup request with a saga ID for coordinating cross-provider lookups.
         // Bulk origin priority is persisted into the saga so secondary lookups spawned by
@@ -280,13 +298,17 @@ public sealed partial class JetStreamWatcherService(
             RequestId = Guid.NewGuid( ).ToString( "N" ),
             Provider = provider.Value,
             LookupType = lookupType,
-            LookupValue = normalizedLink,
-            SagaId = GenerateSagaId( normalizedLink ),
+            LookupValue = lookupValue,
+            SagaId = sagaId,
             IsAlbum = isAlbum,
             OriginPriority = QueuePriority.Bulk
         };
 
-        // Fire-and-forget: enqueue at bulk priority
+        // Fire-and-forget: enqueue at bulk priority.
+        // For Spotify SongIdLookup/AlbumIdLookup, the SpotifyBulkQueueDecorator registered
+        // on the Spotify IRequestQueue intercepts the call and routes to the type-specific
+        // bulk stream (queue:spotify:bulk:track-id / queue:spotify:bulk:album-id) instead
+        // of the generic queue:spotify:bulk stream.
         try {
             IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( provider.Value );
             await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
@@ -312,26 +334,46 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Identifies the music provider for a link and determines the lookup type.
+    /// Identifies the music provider for a link and determines the lookup type and value.
     /// </summary>
     /// <returns>
-    /// A tuple of (provider, lookupType, isAlbum) or (null, _, _) if not a recognized music link.
+    /// A tuple of (provider, lookupType, isAlbum, lookupValue) where lookupValue is the
+    /// Spotify ID for SongIdLookup/AlbumIdLookup, or the normalized URL for UriLookup.
+    /// Returns (null, default, false, link) if not a recognized music link.
     /// </returns>
-    private static async Task<(SupportedProviders? provider, LookupRequestType lookupType, bool isAlbum)> IdentifyProviderAsync(
+    internal static async Task<(SupportedProviders? provider, LookupRequestType lookupType, bool isAlbum, string lookupValue)> IdentifyProviderAsync(
         string link
     ) {
         string normalizedLink = LinkNormalizer.Normalize( link );
 
         // Check Spotify (including short links)
         if (normalizedLink.Contains( "spotify.link", StringComparison.OrdinalIgnoreCase )) {
-            // Short link - worker will resolve it
-            return (SupportedProviders.Spotify, LookupRequestType.UriLookup, false);
+            // Short link — the Spotify worker resolves these via HTTP redirect; keep as UriLookup
+            return (SupportedProviders.Spotify, LookupRequestType.UriLookup, false, link);
         }
 
         (bool success, SpotifyEntity kind, string id) = await SpotifyLinkParser.TryParseUriAsync( link );
         if (success && !string.IsNullOrEmpty( id )) {
-            bool isAlbum = kind == SpotifyEntity.Album;
-            return (SupportedProviders.Spotify, LookupRequestType.UriLookup, isAlbum);
+            // Track and album links carry a resolvable Spotify ID. Emit typed ID lookups so
+            // the SpotifyBulkQueueDecorator routes them into the type-specific bulk streams
+            // (queue:spotify:bulk:track-id / queue:spotify:bulk:album-id) where
+            // SpotifyBulkProcessorService can aggregate and flush them in batch API calls.
+            // Prerelease links are not supported by the batch API and remain as UriLookup so
+            // the generic worker handles them. Artist and playlist links are not recognised
+            // by SpotifyLinkParser (the regex does not capture them) and are therefore dropped
+            // entirely — neither entity type is processed anywhere in the system.
+            if (kind is SpotifyEntity.Track or SpotifyEntity.Album) {
+                bool isAlbum = kind == SpotifyEntity.Album;
+                LookupRequestType lookupType = isAlbum ? LookupRequestType.AlbumIdLookup : LookupRequestType.SongIdLookup;
+                return (SupportedProviders.Spotify, lookupType, isAlbum, id);
+            }
+
+            // Prerelease: resolve via the generic URI path.
+            // Use normalizedLink so the lookupValue matches the Tidal/Apple branches above;
+            // HashUtility.HashUrl (used downstream for the saga ID) normalizes again, so both
+            // `link` and `normalizedLink` would produce the same hash — but being explicit here
+            // avoids any future divergence if the calling site changes.
+            return (SupportedProviders.Spotify, LookupRequestType.UriLookup, false, normalizedLink);
         }
 
         // Check Tidal
@@ -339,23 +381,15 @@ public sealed partial class JetStreamWatcherService(
             !string.IsNullOrEmpty( tidalId )
         ) {
             bool isAlbum = tidalKind == TidalEntity.Album;
-            return (SupportedProviders.Tidal, LookupRequestType.UriLookup, isAlbum);
+            return (SupportedProviders.Tidal, LookupRequestType.UriLookup, isAlbum, normalizedLink);
         }
 
         // Check Apple Music
         if (AppleMusicLinkParser.TryParseUri( normalizedLink, out _, out _, out bool appleIsAlbum )) {
-            return (SupportedProviders.AppleMusic, LookupRequestType.UriLookup, appleIsAlbum);
+            return (SupportedProviders.AppleMusic, LookupRequestType.UriLookup, appleIsAlbum, normalizedLink);
         }
 
-        return (null, default, false);
-    }
-
-    /// <summary>
-    /// Generates a saga ID based on the normalized link for deduplication.
-    /// </summary>
-    private static string GenerateSagaId( string link ) {
-        string normalized = LinkNormalizer.Normalize( link );
-        return $"jetstream:{normalized.GetHashCode( ):X8}:{DateTimeOffset.UtcNow:yyyyMMddHHmm}";
+        return (null, default, false, link);
     }
 
     #region LoggerMessage Methods

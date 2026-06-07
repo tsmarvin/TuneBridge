@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using StackExchange.Redis;
 
@@ -159,6 +160,25 @@ public static class QueueMetrics {
                 description: "Current number of requests in queue"
             );
 
+            // Separate gauges for the Spotify type-specific bulk streams.
+            // These streams sit outside the generic priority-stream layout so they
+            // need their own measurement series. A nonzero depth here that grows
+            // without bound indicates the XAUTOCLAIM sweep (M3) is not running or
+            // SpotifyBulkProcessorService is unhealthy.
+            _ = Meter.CreateObservableGauge(
+                "bridgebeats.queue.spotify.bulk.track.depth",
+                ( ) => GetSpotifyBulkStreamDepth( redis, SpotifyConstants.BulkTrackIdStream ),
+                unit: "{requests}",
+                description: "Current depth of the Spotify bulk track-id stream (queue:spotify:bulk:track-id)"
+            );
+
+            _ = Meter.CreateObservableGauge(
+                "bridgebeats.queue.spotify.bulk.album.depth",
+                ( ) => GetSpotifyBulkStreamDepth( redis, SpotifyConstants.BulkAlbumIdStream ),
+                unit: "{requests}",
+                description: "Current depth of the Spotify bulk album-id stream (queue:spotify:bulk:album-id)"
+            );
+
             s_gaugesRegistered = true;
         }
     }
@@ -191,6 +211,25 @@ public static class QueueMetrics {
                 );
             }
         }
+    }
+
+    /// <summary>
+    /// Returns a single depth measurement for a Spotify type-specific bulk stream.
+    /// </summary>
+    private static IEnumerable<Measurement<long>> GetSpotifyBulkStreamDepth( IConnectionMultiplexer redis, string stream ) {
+        IDatabase db = redis.GetDatabase( );
+        long length;
+        try {
+            length = db.StreamLength( stream );
+        } catch {
+            length = 0;
+        }
+
+        yield return new Measurement<long>(
+            length,
+            new KeyValuePair<string, object?>( QueueMetricTags.Provider, "spotify" ),
+            new KeyValuePair<string, object?>( "stream", stream )
+        );
     }
 
     #endregion

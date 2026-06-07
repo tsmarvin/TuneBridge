@@ -10,4 +10,12 @@ public static class LookupConstants {
     /// result immediately rather than waiting for the full timeout.
     /// </summary>
     public const string RateLimitedSentinel = "RATE_LIMITED";
+
+    /// <summary>
+    /// Maximum number of times a queued lookup message may be retried before it is
+    /// considered complete-failed and discarded. Shared by
+    /// <c>QueueProcessorBackgroundService</c> and <c>SpotifyBatchQueueHelper</c>
+    /// so both code paths enforce the same cap.
+    /// </summary>
+    public const int MaxQueueRetryAttempts = 5;
 }

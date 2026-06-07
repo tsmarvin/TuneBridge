@@ -8,6 +8,7 @@ using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 
@@ -46,7 +47,6 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
     private readonly ILogger<QueueProcessorBackgroundService> _logger;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    private const int MaxRetryAttempts = 5;
     private const string SagaCompletedChannel = "saga:completed";
     private const string LookupCompleteChannelPrefix = "complete:";
     private static readonly TimeSpan s_noMessageDelay = TimeSpan.FromMilliseconds( 100 );
@@ -128,9 +128,17 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         // Ensure saga exists before processing. This handles JetStream bulk lookups where
         // the saga ID is set but the saga hasn't been created yet (fire-and-forget pattern).
         // For web lookups, this will return the existing saga.
+        // The lookupKey MUST use the same canonical format as LookupOrchestrator so that
+        // orchestrator-produced and worker-produced saga IDs agree for the same entity.
+        // Use LookupKeyBuilder to derive the key from the request's own fields.
+        string lookupKey = request.LookupType is LookupRequestType.SongIdLookup or LookupRequestType.AlbumIdLookup
+            ? LookupKeyBuilder.TypedKey( request.LookupType, _provider, request.LookupValue )
+            : request.LookupType == LookupRequestType.UriLookup
+                ? LookupKeyBuilder.UrlKey( request.LookupValue )
+                : $"{request.LookupType}:{request.LookupValue}";
         _ = await _sagaManager.GetOrCreateAsync(
             request.SagaId,
-            $"{request.LookupType}:{request.LookupValue}",
+            lookupKey,
             request.LookupType,
             request.LookupValue,
             request.OriginPriority,
@@ -280,8 +288,8 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         LogProcessingFailed( _logger, ex, request.RequestId, request.SagaId );
 
         // Check if we've exceeded retry attempts
-        if (request.AttemptCount >= MaxRetryAttempts) {
-            LogMaxRetriesExceeded( _logger, message.MessageId, MaxRetryAttempts );
+        if (request.AttemptCount >= LookupConstants.MaxQueueRetryAttempts) {
+            LogMaxRetriesExceeded( _logger, message.MessageId, LookupConstants.MaxQueueRetryAttempts );
 
             // Update saga with error state
             await _sagaManager.UpdateProviderStateAsync(
@@ -292,7 +300,7 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
                     IsSuccess: false,
                     ResultJson: null,
                     CompletedAt: DateTimeOffset.UtcNow,
-                    ErrorMessage: $"Failed after {MaxRetryAttempts} attempts: {ex.Message}"
+                    ErrorMessage: $"Failed after {LookupConstants.MaxQueueRetryAttempts} attempts: {ex.Message}"
                 ),
                 ct
             );

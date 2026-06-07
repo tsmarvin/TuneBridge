@@ -232,7 +232,8 @@ public static class AspireServiceExtensions {
                     .AddHttpClientInstrumentation( )
                     .AddRuntimeInstrumentation( )
                     .AddMeter( "BridgeBeats.Queue" )
-                    .AddMeter( "BridgeBeats.Providers" );
+                    .AddMeter( "BridgeBeats.Providers" )
+                    .AddMeter( "BridgeBeats.Spotify.Batch" );
 
                 _ = metrics.AddOtlpExporter( otlpOptions => {
                     if (hasCustomEndpoint) {
@@ -308,7 +309,8 @@ public static class AspireServiceExtensions {
                     .AddHttpClientInstrumentation( )
                     .AddRuntimeInstrumentation( )
                     .AddMeter( "BridgeBeats.Queue" )
-                    .AddMeter( "BridgeBeats.Providers" );
+                    .AddMeter( "BridgeBeats.Providers" )
+                    .AddMeter( "BridgeBeats.Spotify.Batch" );
 
                 _ = metrics.AddOtlpExporter( otlpOptions => {
                     if (hasCustomEndpoint) {

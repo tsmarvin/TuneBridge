@@ -520,7 +520,9 @@ namespace BridgeBeats.Web.Configuration {
             _ = services.AddHostedService<StatisticsRefreshBackgroundService>( );
 
             // Register queue infrastructure (deduplicator, rate limit tracker, saga manager)
-            // and provider-specific queues for the LookupOrchestrator
+            // and provider-specific queues for the LookupOrchestrator.
+            // AddAllProviderQueues automatically applies SpotifyBulkQueueDecorator for QueuedLookupRequest,
+            // routing Spotify SongIdLookup/AlbumIdLookup to the type-specific bulk streams.
             _ = services.AddQueueInfrastructure( );
             _ = services.AddAllProviderQueues<QueuedLookupRequest>( );
 

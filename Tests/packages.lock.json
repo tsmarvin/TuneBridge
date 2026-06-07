@@ -1753,6 +1753,14 @@
           "NetCord.Hosting": "[1.0.0-beta.2, )"
         }
       },
+      "bridgebeats.worker.jetstreamwatcher": {
+        "type": "Project",
+        "dependencies": {
+          "BridgeBeats.Core": "[1.0.0, )",
+          "idunno.AtProto": "[2.0.0, )",
+          "idunno.Bluesky": "[2.0.0, )"
+        }
+      },
       "bridgebeats.worker.sagacoordinator": {
         "type": "Project",
         "dependencies": {

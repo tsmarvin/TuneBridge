@@ -50,4 +50,26 @@ public static class SpotifyConstants {
     /// Used to track rate limits separately from single-artist lookups.
     /// </summary>
     public const string BulkArtistsEndpoint = "BulkArtists";
+
+    // -------------------------------------------------------------------------
+    // Type-specific bulk stream names
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Redis stream key for <c>SongIdLookup</c> messages routed by
+    /// <c>SpotifyBulkQueueDecorator</c> and consumed by <c>SpotifyBulkProcessorService</c>.
+    /// </summary>
+    /// <remarks>
+    /// Using this constant in every component that reads or writes the stream prevents
+    /// the silent key-mismatch failure where a producer and consumer disagree on the
+    /// stream name and no messages are ever delivered.
+    /// </remarks>
+    public const string BulkTrackIdStream = "queue:spotify:bulk:track-id";
+
+    /// <summary>
+    /// Redis stream key for <c>AlbumIdLookup</c> messages routed by
+    /// <c>SpotifyBulkQueueDecorator</c> and consumed by <c>SpotifyBulkProcessorService</c>.
+    /// </summary>
+    public const string BulkAlbumIdStream = "queue:spotify:bulk:album-id";
+
 }

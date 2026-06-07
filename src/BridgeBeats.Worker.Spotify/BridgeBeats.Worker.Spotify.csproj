@@ -18,4 +18,8 @@
     <ProjectReference Include="..\BridgeBeats.Core\BridgeBeats.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="BridgeBeats.Tests" />
+  </ItemGroup>
+
 </Project>

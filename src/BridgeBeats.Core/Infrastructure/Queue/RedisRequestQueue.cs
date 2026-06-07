@@ -61,8 +61,6 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     private readonly string _dlqStream;
 
     // Track which stream a message came from for ack/requeue
-    private const string MessagePayloadField = "payload";
-    private const string MessageEnqueuedAtField = "enqueuedAt";
     private const string DlqReasonField = "dlqReason";
     private const string DlqMovedAtField = "dlqMovedAt";
     private const string DlqOriginalStreamField = "originalStream";
@@ -135,8 +133,8 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
         IDatabase db = _redis.GetDatabase( );
         NameValueEntry[] fields = [
-            new NameValueEntry( MessagePayloadField, payload ),
-            new NameValueEntry( MessageEnqueuedAtField, DateTimeOffset.UtcNow.ToString( "O" ) )
+            new NameValueEntry( QueueStreamFieldNames.Payload, payload ),
+            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, DateTimeOffset.UtcNow.ToString( "O" ) )
         ];
 
         RedisValue messageId = await db.StreamAddAsync( stream, fields );
@@ -398,8 +396,8 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
         // Re-add with updated enqueued time
         NameValueEntry[] fields = [
-            new NameValueEntry( MessagePayloadField, original[MessagePayloadField] ),
-            new NameValueEntry( MessageEnqueuedAtField, DateTimeOffset.UtcNow.ToString( "O" ) )
+            new NameValueEntry( QueueStreamFieldNames.Payload, original[QueueStreamFieldNames.Payload] ),
+            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, DateTimeOffset.UtcNow.ToString( "O" ) )
         ];
 
         _ = await db.StreamAddAsync( stream, fields );
@@ -466,8 +464,8 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
         // Add to target stream
         NameValueEntry[] fields = [
-            new NameValueEntry( MessagePayloadField, original[MessagePayloadField] ),
-            new NameValueEntry( MessageEnqueuedAtField, DateTimeOffset.UtcNow.ToString( "O" ) )
+            new NameValueEntry( QueueStreamFieldNames.Payload, original[QueueStreamFieldNames.Payload] ),
+            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, DateTimeOffset.UtcNow.ToString( "O" ) )
         ];
 
         _ = await db.StreamAddAsync( targetStream, fields );
@@ -497,8 +495,8 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
         // Add to DLQ with metadata
         NameValueEntry[] dlqFields = [
-            new NameValueEntry( MessagePayloadField, original[MessagePayloadField] ),
-            new NameValueEntry( MessageEnqueuedAtField, original[MessageEnqueuedAtField] ),
+            new NameValueEntry( QueueStreamFieldNames.Payload, original[QueueStreamFieldNames.Payload] ),
+            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, original[QueueStreamFieldNames.EnqueuedAt] ),
             new NameValueEntry( DlqOriginalStreamField, stream ),
             new NameValueEntry( DlqReasonField, reason ),
             new NameValueEntry( DlqMovedAtField, DateTimeOffset.UtcNow.ToString( "O" ) )
@@ -586,8 +584,8 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     }
 
     private QueuedMessage<T>? ParseStreamEntry( StreamEntry entry, string stream ) {
-        string? payload = entry[MessagePayloadField];
-        string? enqueuedAtStr = entry[MessageEnqueuedAtField];
+        string? payload = entry[QueueStreamFieldNames.Payload];
+        string? enqueuedAtStr = entry[QueueStreamFieldNames.EnqueuedAt];
 
         if (string.IsNullOrEmpty( payload )) {
             LogMessageNoPayload( _logger, entry.Id.ToString( ), stream );
