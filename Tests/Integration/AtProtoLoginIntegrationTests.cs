@@ -264,21 +264,11 @@ public class AtProtoLoginIntegrationTests : IDisposable {
         private readonly Mock<IATProtoOAuthService> _oauthMock = new( );
         public readonly string TestState = Guid.NewGuid( ).ToString( "N" );
 
-        // Env var names that this factory mutates and must restore on dispose.
-        private static readonly (string EnvVar, string? PriorValue)[] s_envVarRestoreList = [
-            ("BridgeBeats__Workers__UseWorkerServices",
-             Environment.GetEnvironmentVariable( "BridgeBeats__Workers__UseWorkerServices" )),
-            ("BridgeBeats__SpotifyClientId",
-             Environment.GetEnvironmentVariable( "BridgeBeats__SpotifyClientId" )),
-            ("BridgeBeats__SpotifyClientSecret",
-             Environment.GetEnvironmentVariable( "BridgeBeats__SpotifyClientSecret" )),
-            ("BridgeBeats__AppleTeamId",
-             Environment.GetEnvironmentVariable( "BridgeBeats__AppleTeamId" )),
-            ("BridgeBeats__AppleKeyId",
-             Environment.GetEnvironmentVariable( "BridgeBeats__AppleKeyId" )),
-            ("BridgeBeats__AppleKeyPath",
-             Environment.GetEnvironmentVariable( "BridgeBeats__AppleKeyPath" )),
-        ];
+        // Per-instance snapshot of env var values captured immediately before this factory
+        // mutates them. Instance field (not static) so each factory construction records the
+        // values actually in effect at that moment, preventing cross-test contamination when
+        // another fixture has modified these vars between process start and this construction.
+        private readonly (string EnvVar, string? PriorValue)[] _envVarRestoreList;
 
         private static readonly Dictionary<string, string?> s_configOverrides = new( ) {
             // In-memory config-data overrides (DashboardAuthorizationTests.cs:54 pattern).
@@ -303,13 +293,34 @@ public class AtProtoLoginIntegrationTests : IDisposable {
         };
 
         public AtProtoTestWebApplicationFactory( ) : base( s_configOverrides ) {
+            // Capture prior env var values BEFORE mutating them so Dispose() restores the values
+            // that were in effect immediately before this factory ran — not process-start values.
+            // WebApplicationFactory builds the host lazily (on first Server/CreateClient access),
+            // so capture in the constructor body (after base()) is safe: base() does not start
+            // the host or read these env vars.
+            _envVarRestoreList = [
+                ("BridgeBeats__Workers__UseWorkerServices",
+                 Environment.GetEnvironmentVariable( "BridgeBeats__Workers__UseWorkerServices" )),
+                ("BridgeBeats__SpotifyClientId",
+                 Environment.GetEnvironmentVariable( "BridgeBeats__SpotifyClientId" )),
+                ("BridgeBeats__SpotifyClientSecret",
+                 Environment.GetEnvironmentVariable( "BridgeBeats__SpotifyClientSecret" )),
+                ("BridgeBeats__AppleTeamId",
+                 Environment.GetEnvironmentVariable( "BridgeBeats__AppleTeamId" )),
+                ("BridgeBeats__AppleKeyId",
+                 Environment.GetEnvironmentVariable( "BridgeBeats__AppleKeyId" )),
+                ("BridgeBeats__AppleKeyPath",
+                 Environment.GetEnvironmentVariable( "BridgeBeats__AppleKeyPath" )),
+            ];
+
             // Belt-and-braces: also set env vars so these values are visible during the earliest
             // configuration-binding phase (before ConfigureAppConfiguration callbacks run).
-            // Prior values are captured in s_envVarRestoreList and restored in Dispose().
+            // Must be set before CreateClient() / Server access triggers host build.
+            // Prior values are captured above in _envVarRestoreList and restored in Dispose().
             Environment.SetEnvironmentVariable( "BridgeBeats__Workers__UseWorkerServices", "false" );
             Environment.SetEnvironmentVariable( "BridgeBeats__SpotifyClientId", "test" );
             Environment.SetEnvironmentVariable( "BridgeBeats__SpotifyClientSecret", "test" );
-            // Belt-and-braces for Apple: must blank env vars before base() (Program.Main) reads them.
+            // Belt-and-braces for Apple: blank env vars before host build reads them.
             // AddAppleMusicJwtHandler calls File.ReadAllText during service registration; if any of
             // these three env vars is non-empty on the host, the handler attempts to open the key file.
             Environment.SetEnvironmentVariable( "BridgeBeats__AppleTeamId", "" );
@@ -329,7 +340,7 @@ public class AtProtoLoginIntegrationTests : IDisposable {
         /// <inheritdoc/>
         protected override void Dispose( bool disposing ) {
             // Restore env vars to prevent process-wide contamination of parallel test classes.
-            foreach ((string envVar, string? prior) in s_envVarRestoreList) {
+            foreach ((string envVar, string? prior) in _envVarRestoreList) {
                 Environment.SetEnvironmentVariable( envVar, prior );
             }
             base.Dispose( disposing );
