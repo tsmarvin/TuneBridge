@@ -106,7 +106,7 @@ public class StatisticsRefreshBackgroundServiceTests {
         using CancellationTokenSource cts = new( );
 
         // Act: start service, trigger a manual refresh, then wait for the periodic tick to fire
-        Task serviceTask = backgroundService.StartAsync( cts.Token );
+        _ = backgroundService.StartAsync( cts.Token );
 
         // Wait for startup initial refresh
         await WaitUntilAsync( ( ) => Volatile.Read( ref refreshCount ) >= 1, TimeSpan.FromSeconds( 5 ) );
@@ -180,7 +180,7 @@ public class StatisticsRefreshBackgroundServiceTests {
         using CancellationTokenSource cts = new( );
 
         // Act
-        Task serviceTask = backgroundService.StartAsync( cts.Token );
+        _ = backgroundService.StartAsync( cts.Token );
 
         // Wait for the startup refresh before firing manual triggers
         await WaitUntilAsync( ( ) => Volatile.Read( ref refreshCount ) >= 1, TimeSpan.FromSeconds( 5 ) );
