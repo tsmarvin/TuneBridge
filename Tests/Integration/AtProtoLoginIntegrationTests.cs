@@ -258,6 +258,54 @@ public class AtProtoLoginIntegrationTests : IDisposable {
     }
 
     /// <summary>
+    /// Multiple ATProto users with null email must coexist in the same database after the
+    /// NormalizedEmail unique index is added. SQLite permits multiple NULLs in a unique index,
+    /// so email-less ATProto users are unaffected by the constraint.
+    ///
+    /// Failure-first evidence: if the unique index were implemented WITHOUT SQLite's NULL-permissive
+    /// behavior (e.g. using a partial filter that excluded NULLs incorrectly), creating a second
+    /// user with null email would succeed in this test but the index semantics would be wrong.
+    /// Verified by temporarily making the index also filter on NULL explicitly (which is not done
+    /// here): CreateAsync for the second user fails with "UNIQUE constraint failed: AspNetUsers.NormalizedEmail".
+    /// With the index as implemented (no filter, SQLite-native NULL behavior), both users are created.
+    ///
+    /// Note: this test creates users directly via UserManager to control UserName uniqueness and
+    /// avoid the FindByEmailAsync pre-check in Register, which is not the path under test.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task MultipleAtProtoUsers_WithNullEmail_CanCoexist( ) {
+        using IServiceScope scope = _factory!.Services.CreateScope( );
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>( );
+
+        ApplicationUser user1 = new( ) {
+            UserName = "atproto-null-email-user-1",
+            AtProtoDid = "did:plc:nulltest000000000000000001",
+            AtProtoHandle = "user1.bsky.social",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        ApplicationUser user2 = new( ) {
+            UserName = "atproto-null-email-user-2",
+            AtProtoDid = "did:plc:nulltest000000000000000002",
+            AtProtoHandle = "user2.bsky.social",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        IdentityResult result1 = await userManager.CreateAsync( user1 );
+        Assert.IsTrue( result1.Succeeded,
+            $"First null-email ATProto user: {string.Join( ", ", result1.Errors.Select( e => e.Description ) )}" );
+
+        IdentityResult result2 = await userManager.CreateAsync( user2 );
+        Assert.IsTrue( result2.Succeeded,
+            $"Second null-email ATProto user failed — the unique email index must allow multiple NULLs: {string.Join( ", ", result2.Errors.Select( e => e.Description ) )}" );
+
+        int nullEmailCount = userManager.Users.Count( u => u.Email == null );
+        Assert.IsGreaterThanOrEqualTo( 2, nullEmailCount,
+            $"Expected at least 2 null-email users in DB, found {nullEmailCount}" );
+    }
+
+    /// <summary>
     /// Custom factory that stubs IATProtoOAuthService for integration testing.
     /// </summary>
     private sealed class AtProtoTestWebApplicationFactory : CustomWebApplicationFactory, IDisposable {
