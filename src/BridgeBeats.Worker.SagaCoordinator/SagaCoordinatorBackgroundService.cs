@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
@@ -65,6 +66,14 @@ public sealed partial class SagaCoordinatorBackgroundService(
     private static readonly TimeSpan s_pollingInterval = TimeSpan.FromSeconds( 30 );
     private static readonly TimeSpan s_minimumSagaAge = TimeSpan.FromSeconds( 15 );
     private const int PollingBatchLimit = 100;
+
+    // Must match the serialization the provider workers use for ProviderLookupState.ResultJson
+    // (QueueProcessorBackgroundService) so SagaResultCombiner can deserialize materialized
+    // cached results identically.
+    private static readonly JsonSerializerOptions s_jsonOptions = new( ) {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false
+    };
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
@@ -281,6 +290,21 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 ct.ThrowIfCancellationRequested( );
 
                 try {
+                    // Run the same check as the Pub/Sub handlers - a completion missed by
+                    // Pub/Sub must not finalize a one-provider result as complete while
+                    // other providers still need secondary lookups
+                    MediaLinkResult? result = _resultCombiner.CombineResults( saga );
+                    if (result is not null) {
+                        bool queuedSecondaryLookups = await CheckCacheAndQueueSecondaryLookupsAsync( result, saga, ct );
+                        if (queuedSecondaryLookups) {
+                            // Write initial result as partial and notify waiters immediately
+                            // while secondary lookups continue in the background
+                            LogWaitingForSecondaryLookups( _logger, saga.SagaId );
+                            await WritePartialResultAsync( saga, ct );
+                            continue;
+                        }
+                    }
+
                     // Check if saga is partial and needs partial result written first
                     if (saga.IsPartial && string.IsNullOrEmpty( saga.PartialResultUri )) {
                         LogWritingPartialDuringPolling( _logger, saga.SagaId );
@@ -327,6 +351,9 @@ public sealed partial class SagaCoordinatorBackgroundService(
 
             // Update saga with final result URI
             await _sagaManager.SetFinalResultUriAsync( saga.SagaId, recordUri, ct );
+
+            // Clear the partial flag - the saga now represents a complete result
+            await _sagaManager.SetIsPartialAsync( saga.SagaId, false, ct );
 
             // Update Redis cache
             _ = await _cacheRepository.CacheResultAsync( finalResult, ct );
@@ -417,7 +444,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
     /// </list>
     /// Secondary lookups are added to the original saga, not separate sagas.
     /// </remarks>
-    /// <returns>True if secondary lookups were queued (caller should wait), false if ready to finalize.</returns>
+    /// <returns>True if secondary lookups are pending (caller should write a partial and wait), false if ready to finalize.</returns>
     private async Task<bool> CheckCacheAndQueueSecondaryLookupsAsync(
         MediaLinkResult result,
         LookupSagaState originalSaga,
@@ -464,8 +491,33 @@ public sealed partial class SagaCoordinatorBackgroundService(
 
         // Add providers with cached data
         if (cached.HasValue && !cached.Value.isStale) {
-            foreach (SupportedProviders provider in cached.Value.cachedResult.Results.Keys) {
+            foreach ((SupportedProviders provider, MusicLookupResult cachedProviderResult) in cached.Value.cachedResult.Results) {
                 _ = providersWithData.Add( provider );
+
+                // Materialize the cached result into the saga as a completed provider state.
+                // The final result is assembled from saga provider states only, and the
+                // ATProto record (deterministic rkey) plus cache pointers are written as a
+                // full replace - without this, cached providers' data would be dropped and
+                // a richer existing record overwritten by a poorer one.
+                if (!originalSaga.ProviderStates.ContainsKey( provider )) {
+                    ProviderLookupState cachedState = new(
+                        Provider: provider,
+                        IsComplete: true,
+                        IsSuccess: true,
+                        ResultJson: JsonSerializer.Serialize( cachedProviderResult, s_jsonOptions ),
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        ErrorMessage: null
+                    );
+
+                    await _sagaManager.UpdateProviderStateAsync( originalSaga.SagaId, cachedState, ct );
+
+                    // Keep the in-memory saga consistent so the partial/final result
+                    // written by the caller includes the materialized data
+                    originalSaga.ProviderStates[provider] = cachedState;
+
+                    string providerStr = provider.ToString( );
+                    LogMaterializedCachedProvider( _logger, providerStr, originalSaga.SagaId, externalId );
+                }
             }
 
             if (_logger.IsEnabled( LogLevel.Debug )) {
@@ -482,12 +534,40 @@ public sealed partial class SagaCoordinatorBackgroundService(
             return false;
         }
 
-        // Add the new providers to the ORIGINAL saga (don't create separate sagas)
+        // Add the new providers to the ORIGINAL saga (don't create separate sagas) and mark
+        // the saga partial so waiting callers can distinguish the upcoming partial result
+        // from a final one and keep waiting for the secondary lookups. Both writes are
+        // idempotent and deliberately run BEFORE the marker claim below: once either racing
+        // handler reports "secondaries pending" (causing its caller to publish the partial
+        // and release waiters), the saga is already guaranteed to read as incomplete and
+        // partial. Otherwise the marker loser could publish while IsPartial is still false
+        // and no pending states exist, letting a waiting orchestrator mistake the
+        // one-provider result for a final one (isFinal = IsComplete && !IsPartial).
         await _sagaManager.InitializeProviderStatesAsync( originalSaga.SagaId, providersToQueue, ct );
+        await _sagaManager.SetIsPartialAsync( originalSaga.SagaId, true, ct );
+
         if (_logger.IsEnabled( LogLevel.Information )) {
             string providerNames = string.Join( ", ", providersToQueue );
             LogAddedProvidersToSaga( _logger, originalSaga.SagaId, providerNames );
         }
+
+        // Atomically claim the right to enqueue secondaries - the only non-idempotent step.
+        // The worker publishes both saga:completed and complete:{key}, so both handlers can
+        // race through here and would otherwise enqueue every secondary twice. The loser
+        // still reports "secondaries pending" so its caller defers finalization.
+        bool markerAcquired = await _sagaManager.TryMarkSecondariesQueuedAsync( originalSaga.SagaId, ct );
+        if (!markerAcquired) {
+            LogSecondariesAlreadyQueued( _logger, originalSaga.SagaId );
+            return true;
+        }
+
+        // Interactive priority only when the saga originated from an interactive caller
+        // who is actively waiting for these secondary results to complete the saga (see
+        // LookupOrchestrator wait-for-final logic). Bulk/background-origin sagas (e.g.
+        // JetStream firehose) queue at Background so they stay out of the interactive lane.
+        QueuePriority secondaryPriority = originalSaga.OriginPriority == QueuePriority.Interactive
+            ? QueuePriority.Interactive
+            : QueuePriority.Background;
 
         // Queue lookups for each provider using the ORIGINAL saga ID
         int queuedCount = 0;
@@ -503,11 +583,13 @@ public sealed partial class SagaCoordinatorBackgroundService(
                     SagaId = originalSaga.SagaId,  // Use original saga ID!
                     IsAlbum = isAlbum,
                     Title = firstResult.Title,
-                    Artist = firstResult.Artist
+                    Artist = firstResult.Artist,
+                    OriginPriority = originalSaga.OriginPriority
                 };
 
                 IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue(provider);
-                await queue.EnqueueAsync( secondaryRequest, QueuePriority.Background, ct );
+
+                await queue.EnqueueAsync( secondaryRequest, secondaryPriority, ct );
 
                 string lookupTypeStr = lookupType.ToString( );
                 string providerStr = provider.ToString( );
@@ -520,8 +602,18 @@ public sealed partial class SagaCoordinatorBackgroundService(
             }
         }
 
-        // Return true if we queued any secondary lookups (caller should wait for completion)
-        return queuedCount > 0;
+        if (queuedCount == 0) {
+            // Every enqueue failed. Pending provider states and the partial flag are already
+            // set, so finalizing now would publish a result that is missing providers as
+            // complete and overwrite richer cached data. Waiters receive the honest partial
+            // instead; the cache marks partial results stale, so the lookup is retried once
+            // the saga expires.
+            LogNoSecondariesEnqueued( _logger, originalSaga.SagaId, externalId );
+        }
+
+        // Pending provider states exist and the saga is marked partial, so the caller must
+        // defer finalization even when some (or all) enqueues failed.
+        return true;
     }
 
     #region LoggerMessage Methods
@@ -868,6 +960,27 @@ public sealed partial class SagaCoordinatorBackgroundService(
         Level = LogLevel.Information,
         Message = "Waiting for secondary lookups to complete for saga {SagaId}, deferring finalization" )]
     private static partial void LogWaitingForSecondaryLookups( ILogger logger, string sagaId );
+
+    /// <summary>Logs that a cached provider result was materialized into the saga.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.MaterializedCachedProvider,
+        Level = LogLevel.Information,
+        Message = "Materialized cached {Provider} result into saga {SagaId} for external ID {ExternalId}" )]
+    private static partial void LogMaterializedCachedProvider( ILogger logger, string provider, string sagaId, string externalId );
+
+    /// <summary>Logs that another handler already queued the secondary lookups for the saga.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.SecondariesAlreadyQueued,
+        Level = LogLevel.Debug,
+        Message = "Secondary lookups already queued for saga {SagaId} by a concurrent handler, deferring finalization" )]
+    private static partial void LogSecondariesAlreadyQueued( ILogger logger, string sagaId );
+
+    /// <summary>Logs that no secondary lookups could be enqueued despite pending provider states.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.NoSecondariesEnqueued,
+        Level = LogLevel.Warning,
+        Message = "Failed to enqueue any secondary lookups for saga {SagaId} with external ID {ExternalId}; deferring finalization so waiters receive a partial result and the lookup is retried after the saga expires" )]
+    private static partial void LogNoSecondariesEnqueued( ILogger logger, string sagaId, string externalId );
 
     #endregion
 }

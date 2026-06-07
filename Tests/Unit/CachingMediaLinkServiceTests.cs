@@ -431,11 +431,11 @@ public class CachingMediaLinkServiceTests {
     }
 
     /// <summary>
-    /// Verifies that no messages are added when the result is partial but there
-    /// are no rate-limited providers in the response.
+    /// Verifies that a pending-provider message is added when the result is partial but no
+    /// providers are rate-limited (secondary lookups still in flight).
     /// </summary>
     [TestMethod]
-    public async Task GetInfoByISRCAsync_WhenPartialButNoRateLimitedProviders_ShouldNotAddMessages( ) {
+    public async Task GetInfoByISRCAsync_WhenPartialButNoRateLimitedProviders_ShouldAddPendingMessage( ) {
         // Arrange
         MediaLinkResult expectedResult = CreateMediaLinkResult( );
 
@@ -444,6 +444,7 @@ public class CachingMediaLinkServiceTests {
             .ReturnsAsync( new LookupResult {
                 Result = expectedResult,
                 IsPartial = true,
+                SagaId = "test-saga",
                 RateLimitedProviders = []
             } );
 
@@ -452,7 +453,36 @@ public class CachingMediaLinkServiceTests {
 
         // Assert
         Assert.IsNotNull( result );
-        Assert.IsNull( result.Messages );
+        Assert.IsTrue( result.IsPartial, "The DTO should be flagged partial for downstream consumers" );
+        Assert.IsNotNull( result.Messages );
+        Assert.HasCount( 1, result.Messages );
+        Assert.Contains( "still being fetched", result.Messages[0] );
+    }
+
+    /// <summary>
+    /// Verifies that a partial lookup result sets the partial flag on the returned DTO
+    /// even when the stored result did not carry it.
+    /// </summary>
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_WhenPartial_ShouldFlagResultPartial( ) {
+        // Arrange
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        Assert.IsFalse( expectedResult.IsPartial );
+
+        _ = _orchestratorMock
+            .Setup( o => o.LookupByIsrcAsync( TestIsrc ) )
+            .ReturnsAsync( new LookupResult {
+                Result = expectedResult,
+                IsPartial = true,
+                SagaId = "test-saga"
+            } );
+
+        // Act
+        MediaLinkResult? result = await _service.GetInfoByISRCAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result );
+        Assert.IsTrue( result.IsPartial );
     }
 
     #endregion

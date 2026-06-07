@@ -419,13 +419,15 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
 
     /// <summary>
     /// Checks if a result is stale based on the cache days configuration.
+    /// Partial results are always stale-eligible so callers re-enter the lookup path
+    /// and wait for the complete result instead of serving the partial as final.
     /// </summary>
     private (MediaLinkResult result, string recordUri, bool isStale) CheckRecordFreshness(
         MediaLinkResult result,
         string recordUri
     ) {
         DateTime expirationDate = DateTime.UtcNow.AddDays( -_cacheDays );
-        bool isStale = result.LookedUpAt < expirationDate;
+        bool isStale = result.IsPartial || result.LookedUpAt < expirationDate;
         return (result, recordUri, isStale);
     }
 

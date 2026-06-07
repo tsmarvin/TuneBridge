@@ -86,6 +86,18 @@ public sealed record LookupSagaState {
     public List<ProviderRateLimitInfo>? RateLimitInfo { get; init; }
 
     /// <summary>
+    /// Gets the priority of the request that originated this saga. Secondary lookups
+    /// inherit this so bulk-origin sagas (e.g. JetStream firehose) never compete with
+    /// interactive lookups.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="QueuePriority.Background"/> for sagas persisted before
+    /// this field existed so they are never promoted to interactive.
+    /// </remarks>
+    [JsonPropertyName( "originPriority" )]
+    public QueuePriority OriginPriority { get; init; } = QueuePriority.Background;
+
+    /// <summary>
     /// Gets the set of providers that have not yet completed their lookups.
     /// </summary>
     [JsonIgnore]

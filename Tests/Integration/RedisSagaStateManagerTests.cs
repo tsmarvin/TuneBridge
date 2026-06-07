@@ -90,7 +90,7 @@ public class RedisSagaStateManagerTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert
@@ -120,7 +120,7 @@ public class RedisSagaStateManagerTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Act - try to create again with different values
@@ -129,7 +129,7 @@ public class RedisSagaStateManagerTests {
             "different-key",
             LookupRequestType.UpcLookup,
             "DIFFERENT",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Assert - should return original, not new values
@@ -167,7 +167,7 @@ public class RedisSagaStateManagerTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         ProviderLookupState providerState = new(
@@ -210,7 +210,7 @@ public class RedisSagaStateManagerTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         ProviderLookupState spotifyState = new(
@@ -262,7 +262,7 @@ public class RedisSagaStateManagerTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Act
@@ -292,7 +292,7 @@ public class RedisSagaStateManagerTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Act
@@ -320,7 +320,7 @@ public class RedisSagaStateManagerTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         await _sagaManager.UpdateProviderStateAsync( sagaId, new ProviderLookupState(
@@ -402,7 +402,7 @@ public class RedisSagaStateManagerTests {
             lookupKey,
             LookupRequestType.IsrcLookup,
             "USRC12345678",
-            TestContext.CancellationToken
+            cancellationToken: TestContext.CancellationToken
         );
 
         // Add incomplete provider
@@ -423,5 +423,165 @@ public class RedisSagaStateManagerTests {
         LookupSagaState? complete = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
         Assert.IsNotNull( complete );
         Assert.IsTrue( complete.IsComplete );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.GetOrCreateAsync"/> persists the origin
+    /// priority on creation and that the first recorded priority wins on resume.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task GetOrCreateAsync_PersistsOriginPriority_FirstWriterWins( ) {
+        // Arrange
+        string lookupKey = "isrc:USRC12345678";
+        string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+
+        // Act - create with Bulk origin, then resume with Interactive
+        LookupSagaState created = await _sagaManager.GetOrCreateAsync(
+            sagaId,
+            lookupKey,
+            LookupRequestType.IsrcLookup,
+            "USRC12345678",
+            QueuePriority.Bulk,
+            cancellationToken: TestContext.CancellationToken
+        );
+
+        LookupSagaState resumed = await _sagaManager.GetOrCreateAsync(
+            sagaId,
+            lookupKey,
+            LookupRequestType.IsrcLookup,
+            "USRC12345678",
+            QueuePriority.Interactive,
+            cancellationToken: TestContext.CancellationToken
+        );
+
+        // Assert - first recorded origin priority is kept
+        Assert.AreEqual( QueuePriority.Bulk, created.OriginPriority );
+        Assert.AreEqual( QueuePriority.Bulk, resumed.OriginPriority );
+
+        LookupSagaState? fetched = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
+        Assert.IsNotNull( fetched );
+        Assert.AreEqual( QueuePriority.Bulk, fetched.OriginPriority );
+    }
+
+    /// <summary>
+    /// Verifies that a saga created without an origin priority (e.g. by the orchestrator)
+    /// records the first explicitly provided origin priority on resume, and that sagas
+    /// without the field default to Background.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task GetOrCreateAsync_WithoutOriginPriority_DefaultsToBackgroundUntilRecorded( ) {
+        // Arrange
+        string lookupKey = "isrc:USRC12345678";
+        string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+
+        // Act - create without an origin priority (orchestrator path)
+        _ = await _sagaManager.GetOrCreateAsync(
+            sagaId,
+            lookupKey,
+            LookupRequestType.IsrcLookup,
+            "USRC12345678",
+            cancellationToken: TestContext.CancellationToken
+        );
+
+        LookupSagaState? beforeRecorded = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
+
+        // Resume with the first request's priority (worker path)
+        LookupSagaState resumed = await _sagaManager.GetOrCreateAsync(
+            sagaId,
+            lookupKey,
+            LookupRequestType.IsrcLookup,
+            "USRC12345678",
+            QueuePriority.Interactive,
+            cancellationToken: TestContext.CancellationToken
+        );
+
+        // Assert
+        Assert.IsNotNull( beforeRecorded );
+        Assert.AreEqual( QueuePriority.Background, beforeRecorded.OriginPriority );
+        Assert.AreEqual( QueuePriority.Interactive, resumed.OriginPriority );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.TryMarkSecondariesQueuedAsync"/> returns
+    /// true exactly once per saga so racing coordinator handlers cannot both queue secondaries.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task TryMarkSecondariesQueuedAsync_OnlyFirstCallerWins( ) {
+        // Arrange
+        string lookupKey = "isrc:USRC12345678";
+        string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+
+        _ = await _sagaManager.GetOrCreateAsync(
+            sagaId,
+            lookupKey,
+            LookupRequestType.IsrcLookup,
+            "USRC12345678",
+            cancellationToken: TestContext.CancellationToken
+        );
+
+        // Act
+        bool first = await _sagaManager.TryMarkSecondariesQueuedAsync( sagaId, TestContext.CancellationToken );
+        bool second = await _sagaManager.TryMarkSecondariesQueuedAsync( sagaId, TestContext.CancellationToken );
+
+        // Assert
+        Assert.IsTrue( first );
+        Assert.IsFalse( second );
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="RedisSagaStateManager.InitializeProviderStatesAsync"/> never
+    /// regresses an already-recorded provider state back to pending, while still creating
+    /// pending states for providers that have no state yet.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task InitializeProviderStatesAsync_PreservesExistingProviderState( ) {
+        // Arrange
+        string lookupKey = "isrc:USRC12345678";
+        string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+
+        _ = await _sagaManager.GetOrCreateAsync(
+            sagaId,
+            lookupKey,
+            LookupRequestType.IsrcLookup,
+            "USRC12345678",
+            cancellationToken: TestContext.CancellationToken
+        );
+
+        ProviderLookupState completedState = new(
+            Provider: SupportedProviders.Spotify,
+            IsComplete: true,
+            IsSuccess: true,
+            ResultJson: """{"trackId": "abc123"}""",
+            CompletedAt: DateTimeOffset.UtcNow,
+            ErrorMessage: null
+        );
+
+        await _sagaManager.UpdateProviderStateAsync( sagaId, completedState, TestContext.CancellationToken );
+
+        // Act - re-initialize including the already-completed provider
+        await _sagaManager.InitializeProviderStatesAsync(
+            sagaId,
+            [SupportedProviders.Spotify, SupportedProviders.AppleMusic],
+            TestContext.CancellationToken
+        );
+
+        // Assert - completed provider is untouched, missing provider is created pending
+        LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
+        Assert.IsNotNull( saga );
+        Assert.HasCount( 2, saga.ProviderStates );
+
+        ProviderLookupState spotify = saga.ProviderStates[SupportedProviders.Spotify];
+        Assert.IsTrue( spotify.IsComplete );
+        Assert.IsTrue( spotify.IsSuccess );
+        Assert.AreEqual( """{"trackId": "abc123"}""", spotify.ResultJson );
+
+        ProviderLookupState apple = saga.ProviderStates[SupportedProviders.AppleMusic];
+        Assert.IsFalse( apple.IsComplete );
+        Assert.IsFalse( apple.IsSuccess );
+        Assert.IsNull( apple.ResultJson );
     }
 }

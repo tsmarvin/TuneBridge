@@ -273,14 +273,17 @@ public sealed partial class JetStreamWatcherService(
             return;
         }
 
-        // Create the lookup request with a saga ID for coordinating cross-provider lookups
+        // Create the lookup request with a saga ID for coordinating cross-provider lookups.
+        // Bulk origin priority is persisted into the saga so secondary lookups spawned by
+        // the coordinator stay out of the interactive lane.
         QueuedLookupRequest request = new( ) {
             RequestId = Guid.NewGuid( ).ToString( "N" ),
             Provider = provider.Value,
             LookupType = lookupType,
             LookupValue = normalizedLink,
             SagaId = GenerateSagaId( normalizedLink ),
-            IsAlbum = isAlbum
+            IsAlbum = isAlbum,
+            OriginPriority = QueuePriority.Bulk
         };
 
         // Fire-and-forget: enqueue at bulk priority

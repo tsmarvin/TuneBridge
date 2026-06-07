@@ -154,7 +154,8 @@ public partial class ATProtoStorageService(
 
         return new MediaLinkResultRecord(
             results: providerResults,
-            lookedUpAt: DateTimeOffset.UtcNow
+            lookedUpAt: DateTimeOffset.UtcNow,
+            isPartial: result.IsPartial
         );
     }
 
@@ -165,7 +166,8 @@ public partial class ATProtoStorageService(
     /// <returns>A MediaLinkResult with parsed providers, or null if no valid providers were found.</returns>
     private static MediaLinkResult? ConvertFromRecord( MediaLinkResultRecord record ) {
         MediaLinkResult result = new( ) {
-            LookedUpAt = record.LookedUpAt.UtcDateTime
+            LookedUpAt = record.LookedUpAt.UtcDateTime,
+            IsPartial = record.IsPartial
         };
 
         foreach (ProviderResultRecord providerResult in record.Results) {

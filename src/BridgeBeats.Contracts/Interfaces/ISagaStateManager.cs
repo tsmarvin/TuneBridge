@@ -37,6 +37,12 @@ public interface ISagaStateManager {
     /// <param name="lookupKey">The deduplication key (e.g., "isrc:USRC12345678").</param>
     /// <param name="lookupType">Type of lookup being performed.</param>
     /// <param name="lookupValue">The raw lookup value.</param>
+    /// <param name="originPriority">
+    /// Priority of the originating request. When provided, it is recorded as the saga's
+    /// origin priority if one has not been recorded yet (first writer wins). When null,
+    /// no origin priority is written and the saga defaults to
+    /// <see cref="QueuePriority.Background"/> until a worker records one.
+    /// </param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The saga state, either existing or newly created.</returns>
     Task<LookupSagaState> GetOrCreateAsync(
@@ -44,6 +50,7 @@ public interface ISagaStateManager {
         string lookupKey,
         LookupRequestType lookupType,
         string lookupValue,
+        QueuePriority? originPriority = null,
         CancellationToken cancellationToken = default
     );
 
@@ -207,6 +214,22 @@ public interface ISagaStateManager {
     /// <param name="rateLimitInfo">List of rate-limited provider information.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     Task SetRateLimitInfoAsync( string sagaId, List<ProviderRateLimitInfo> rateLimitInfo, CancellationToken cancellationToken = default );
+
+    /// <summary>
+    /// Atomically marks a saga as having had its secondary lookups queued.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The coordinator can receive both a <c>saga:completed</c> and a <c>complete:{key}</c>
+    /// event for the same completion and race itself into queueing each secondary lookup
+    /// twice. This marker is a set-if-not-exists operation so exactly one caller wins the
+    /// right to queue secondaries.
+    /// </para>
+    /// </remarks>
+    /// <param name="sagaId">The saga identifier.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>True if this caller set the marker (and should queue secondaries); false if it was already set.</returns>
+    Task<bool> TryMarkSecondariesQueuedAsync( string sagaId, CancellationToken cancellationToken = default );
 
     /// <summary>
     /// Initializes provider states for all enabled providers at the start of a saga.

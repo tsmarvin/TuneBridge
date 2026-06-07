@@ -73,7 +73,7 @@ public sealed partial class CachingMediaLinkService(
     }
 
     /// <summary>
-    /// Adds rate limit information to the result's messages if this is a partial result.
+    /// Adds rate limit or pending-provider information to the result's messages if this is a partial result.
     /// Creates a lightweight result with messages when no data is available but rate limiting occurred.
     /// </summary>
     private MediaLinkResult? AddPartialMessage( LookupResult lookupResult ) {
@@ -99,14 +99,23 @@ public sealed partial class CachingMediaLinkService(
             return null;
         }
 
-        if (lookupResult.IsPartial && lookupResult.RateLimitedProviders is { Count: > 0 }) {
+        if (lookupResult.IsPartial) {
+            // Keep the DTO honest for downstream consumers (web UI, bot, cache)
+            lookupResult.Result.IsPartial = true;
             lookupResult.Result.Messages ??= [];
 
-            foreach (ProviderRateLimitInfo rateLimitInfo in lookupResult.RateLimitedProviders) {
-                string message = $"{rateLimitInfo.Provider} is temporarily unavailable. Results will be updated when available (retry after {rateLimitInfo.RetryAfter:u}).";
-                lookupResult.Result.Messages.Add( message );
+            if (lookupResult.RateLimitedProviders is { Count: > 0 }) {
+                foreach (ProviderRateLimitInfo rateLimitInfo in lookupResult.RateLimitedProviders) {
+                    string message = $"{rateLimitInfo.Provider} is temporarily unavailable. Results will be updated when available (retry after {rateLimitInfo.RetryAfter:u}).";
+                    lookupResult.Result.Messages.Add( message );
 
-                LogPartialResultReturned( _logger, lookupResult.SagaId ?? string.Empty, rateLimitInfo.Provider, rateLimitInfo.RetryAfter );
+                    LogPartialResultReturned( _logger, lookupResult.SagaId ?? string.Empty, rateLimitInfo.Provider, rateLimitInfo.RetryAfter );
+                }
+            } else {
+                // Partial because secondary provider lookups are still pending
+                lookupResult.Result.Messages.Add( "Additional provider results are still being fetched. Look up this link again shortly for the complete set of links." );
+
+                LogPendingPartialReturned( _logger, lookupResult.SagaId ?? string.Empty );
             }
         }
 
@@ -123,6 +132,15 @@ public sealed partial class CachingMediaLinkService(
         Level = LogLevel.Information,
         Message = "Partial result returned for saga {SagaId}. {Provider} rate-limited until {RetryAfter}" )]
     private static partial void LogPartialResultReturned( ILogger logger, string sagaId, SupportedProviders provider, DateTimeOffset retryAfter );
+
+    /// <summary>
+    /// Logs that a partial result was returned with secondary provider lookups still pending.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.LinkResolver.PendingPartialResultReturned,
+        Level = LogLevel.Information,
+        Message = "Partial result returned for saga {SagaId} with secondary provider lookups still pending" )]
+    private static partial void LogPendingPartialReturned( ILogger logger, string sagaId );
 
     #endregion LoggerMessage Definitions
 }

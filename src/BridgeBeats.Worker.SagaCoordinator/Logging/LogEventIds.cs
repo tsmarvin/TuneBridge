@@ -249,4 +249,19 @@ public static class LogEventIds {
     /// EventId for <see cref="SagaCoordinatorBackgroundService.LogWaitingForSecondaryLookups"/>.
     /// </summary>
     public const int WaitingForSecondaryLookups = 5050;
+
+    /// <summary>
+    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogMaterializedCachedProvider"/>.
+    /// </summary>
+    public const int MaterializedCachedProvider = 5051;
+
+    /// <summary>
+    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogSecondariesAlreadyQueued"/>.
+    /// </summary>
+    public const int SecondariesAlreadyQueued = 5052;
+
+    /// <summary>
+    /// EventId for <see cref="SagaCoordinatorBackgroundService.LogNoSecondariesEnqueued"/>.
+    /// </summary>
+    public const int NoSecondariesEnqueued = 5053;
 }

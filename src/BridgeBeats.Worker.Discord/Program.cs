@@ -53,6 +53,11 @@ public static class Program {
         _ = builder.Services.AddHttpClient<BridgeBeatsApiClient>( client => {
             // The base address will be set via Aspire service discovery
             client.BaseAddress = new Uri( "http://bridgebeats" );
+            // Multi-link lookups wait server-side for up to 90s in total (see
+            // LookupOrchestrator.LookupByContentAsync) - keep the transport timeout above
+            // that so the server-side budget, not HttpClient's default 100s, is the
+            // binding constraint
+            client.Timeout = TimeSpan.FromSeconds( 120 );
             client.DefaultRequestHeaders.Add( "User-Agent", "BridgeBeats-Discord-Worker/1.0" );
             if (!string.IsNullOrWhiteSpace( internalServiceKey )) {
                 client.DefaultRequestHeaders.Add( "X-Service-Key", internalServiceKey );

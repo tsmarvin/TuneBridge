@@ -287,7 +287,8 @@ public static class ServiceExtensions {
                     s.GetRequiredService<IProviderQueueResolver<QueuedLookupRequest>>( ),
                     s.GetRequiredService<IATProtoStorageService>( ),
                     enabledProviders,
-                    s.GetRequiredService<ILogger<LookupOrchestrator>>( )
+                    s.GetRequiredService<ILogger<LookupOrchestrator>>( ),
+                    s.GetService<IOptions<QueueSettings>>( )?.Value
                 )
             );
 

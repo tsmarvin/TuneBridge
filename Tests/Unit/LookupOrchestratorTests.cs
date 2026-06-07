@@ -1,3 +1,4 @@
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
@@ -307,6 +308,37 @@ public class LookupOrchestratorTests {
         ), Times.Once );
         _queueMock.Verify(
             q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), QueuePriority.Interactive ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Verifies that the queued request carries the Interactive origin priority so the saga
+    /// coordinator can enqueue secondary lookups at the originating caller's priority.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WithCacheMissAndDeduplicationAcquired_ShouldEnqueueWithInteractiveOriginPriority( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+        SetupDeduplicationWaitWithResult( );
+
+        MediaLinkResult result1 = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( result1 );
+
+        // Act
+        _ = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert
+        _queueMock.Verify(
+            q => q.EnqueueAsync(
+                It.Is<QueuedLookupRequest>( r => r.OriginPriority == QueuePriority.Interactive ),
+                QueuePriority.Interactive
+            ),
             Times.Once
         );
     }
@@ -735,6 +767,124 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
+    /// Verifies that LookupByContentAsync uses the full interactive wait budget when the
+    /// content contains a single link.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByContentAsync_WithSingleLink_ShouldUseFullInteractiveBudget( ) {
+        // Arrange
+        string content = "Check out https://open.spotify.com/track/abc123";
+        SetupCacheMissForUrl( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        List<TimeSpan> capturedTimeouts = [];
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .Callback<string, TimeSpan, CancellationToken>( ( _, timeout, _ ) => capturedTimeouts.Add( timeout ) )
+            .ReturnsAsync( TestRecordUri );
+
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( expectedResult );
+
+        // Act
+        List<LookupResult> results = [];
+        await foreach (LookupResult result in _orchestrator.LookupByContentAsync( content )) {
+            results.Add( result );
+        }
+
+        // Assert
+        Assert.HasCount( 1, results );
+        Assert.HasCount( 1, capturedTimeouts );
+        Assert.AreEqual( TimeSpan.FromSeconds( 30 ), capturedTimeouts[0] );
+    }
+
+    /// <summary>
+    /// Verifies that LookupByContentAsync scales the per-link wait budget down when multiple
+    /// links are present so the total stays under the content wait budget (90s).
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByContentAsync_WithMultipleLinks_ShouldScalePerLinkWaitBudget( ) {
+        // Arrange - 4 links: per-link budget = min(30s, 90s / 4) = 22.5s
+        string content = string.Join(
+            " ",
+            Enumerable.Range( 1, 4 ).Select( i => $"https://open.spotify.com/track/track{i}" )
+        );
+        SetupCacheMissForUrl( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        List<TimeSpan> capturedTimeouts = [];
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .Callback<string, TimeSpan, CancellationToken>( ( _, timeout, _ ) => capturedTimeouts.Add( timeout ) )
+            .ReturnsAsync( TestRecordUri );
+
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( expectedResult );
+
+        // Act
+        List<LookupResult> results = [];
+        await foreach (LookupResult result in _orchestrator.LookupByContentAsync( content )) {
+            results.Add( result );
+        }
+
+        // Assert
+        Assert.HasCount( 4, results );
+        Assert.HasCount( 4, capturedTimeouts );
+        foreach (TimeSpan timeout in capturedTimeouts) {
+            Assert.AreEqual( TimeSpan.FromSeconds( 22.5 ), timeout );
+        }
+    }
+
+    /// <summary>
+    /// Verifies that LookupByContentAsync applies the per-link wait budget floor (5s) when
+    /// the content contains many links.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByContentAsync_WithManyLinks_ShouldApplyPerLinkBudgetFloor( ) {
+        // Arrange - 20 links: 90s / 20 = 4.5s, clamped up to the 5s floor
+        string content = string.Join(
+            " ",
+            Enumerable.Range( 1, 20 ).Select( i => $"https://open.spotify.com/track/track{i}" )
+        );
+        SetupCacheMissForUrl( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        List<TimeSpan> capturedTimeouts = [];
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .Callback<string, TimeSpan, CancellationToken>( ( _, timeout, _ ) => capturedTimeouts.Add( timeout ) )
+            .ReturnsAsync( TestRecordUri );
+
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( expectedResult );
+
+        // Act
+        List<LookupResult> results = [];
+        await foreach (LookupResult result in _orchestrator.LookupByContentAsync( content )) {
+            results.Add( result );
+        }
+
+        // Assert
+        Assert.HasCount( 20, results );
+        Assert.HasCount( 20, capturedTimeouts );
+        foreach (TimeSpan timeout in capturedTimeouts) {
+            Assert.AreEqual( TimeSpan.FromSeconds( 5 ), timeout );
+        }
+    }
+
+    /// <summary>
     /// Verifies that LookupByContentAsync returns an empty collection when content has no music URLs.
     /// </summary>
     [TestMethod]
@@ -807,6 +957,725 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
+    /// Verifies that the orchestrator keeps waiting after a partial result and returns the final
+    /// result when it is published within the time budget.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenPartialThenFinalWithinBudget_ShouldReturnFinal( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( partialUri );
+
+        // First read: saga is partial with a pending provider; second read: saga finalized
+        LookupSagaState partialSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+        LookupSagaState finalSaga = CreateSagaState(
+            isPartial: false,
+            partialResultUri: partialUri,
+            finalResultUri: TestRecordUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, true)]
+        );
+
+        _ = _sagaManagerMock
+            .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialSaga )
+            .ReturnsAsync( finalSaga );
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( expectedResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result.Result );
+        Assert.IsFalse( result.IsPartial );
+        _deduplicatorMock.Verify(
+            d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Verifies that the orchestrator returns an honestly-flagged partial result when the final
+    /// result never arrives within the time budget.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenFinalNeverArrives_ShouldReturnHonestPartial( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( partialUri );
+
+        LookupSagaState partialSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialSaga );
+
+        // Final never published - wait times out
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .ReturnsAsync( (string?)null );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        Assert.IsNotNull( result.SagaId );
+    }
+
+    /// <summary>
+    /// Verifies that the orchestrator returns the partial with rate limit info when the
+    /// rate-limited sentinel is published while waiting for the final result.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenRateLimitSentinelDuringFinalWait_ShouldReturnPartialWithInfo( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( partialUri );
+
+        List<ProviderRateLimitInfo> rateLimitInfo = [
+            new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
+        ];
+
+        // First read: two providers pending, none rate-limited yet (so the wait proceeds);
+        // second read (after sentinel): rate limit info recorded
+        LookupSagaState pendingSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false), (SupportedProviders.Tidal, false)]
+        );
+        LookupSagaState rateLimitedSaga = pendingSaga with { RateLimitInfo = rateLimitInfo };
+
+        _ = _sagaManagerMock
+            .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( pendingSaga )
+            .ReturnsAsync( rateLimitedSaga );
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .ReturnsAsync( LookupConstants.RateLimitedSentinel );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        Assert.IsNotNull( result.RateLimitedProviders );
+        Assert.AreEqual( SupportedProviders.AppleMusic, result.RateLimitedProviders[0].Provider );
+    }
+
+    /// <summary>
+    /// Verifies that the orchestrator returns the partial immediately (without waiting)
+    /// when every pending provider is rate-limited.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenAllPendingProvidersRateLimited_ShouldReturnPartialImmediately( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( partialUri );
+
+        List<ProviderRateLimitInfo> rateLimitInfo = [
+            new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
+        ];
+
+        LookupSagaState rateLimitedSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            rateLimitInfo: rateLimitInfo,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( rateLimitedSaga );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        Assert.IsNotNull( result.RateLimitedProviders );
+        _deduplicatorMock.Verify(
+            d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a second caller (already-in-flight branch) also waits for the final
+    /// result when the published result is only partial.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WithInFlightPartialResult_ShouldKeepWaitingForFinal( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationInFlight( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( partialUri );
+
+        LookupSagaState partialSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+        LookupSagaState finalSaga = CreateSagaState(
+            isPartial: false,
+            partialResultUri: partialUri,
+            finalResultUri: TestRecordUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, true)]
+        );
+
+        _ = _sagaManagerMock
+            .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialSaga )
+            .ReturnsAsync( finalSaga );
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( expectedResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result.Result );
+        Assert.IsFalse( result.IsPartial );
+        _sagaManagerMock.Verify(
+            s => s.GetOrCreateAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ), It.IsAny<string>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that resuming a saga that already stored a partial result resolves it
+    /// directly without re-queueing the initial provider lookup.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenResumedSagaHasPartialResult_ShouldNotReenqueue( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        LookupSagaState resumedSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetOrCreateAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ), It.IsAny<string>( ) ) )
+            .ReturnsAsync( resumedSaga );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( resumedSaga );
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .ReturnsAsync( (string?)null );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        _queueMock.Verify(
+            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ) ),
+            Times.Never
+        );
+        _deduplicatorMock.Verify(
+            d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that resuming a saga with a stored result releases the just-acquired
+    /// deduplication lock with the known result URI (instead of leaking it for its full
+    /// TTL), so concurrently blocked waiters receive the stored result.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenResumedSagaHasStoredResult_ShouldReleaseLockWithKnownUri( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        LookupSagaState resumedSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetOrCreateAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ), It.IsAny<string>( ) ) )
+            .ReturnsAsync( resumedSaga );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( resumedSaga );
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .ReturnsAsync( (string?)null );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        _ = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert - released with the known URI (not null: an empty publish would leave waiters stuck)
+        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), partialUri ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Never );
+    }
+
+    /// <summary>
+    /// Verifies that the already-in-flight branch skips the blind completion wait when the
+    /// saga already stored a result and instead goes to the final-result wait, which honors
+    /// the rate-limit escape hatch.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WithInFlightSagaHavingStoredResult_ShouldSkipBlindWaitAndHonorEscapeHatch( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationInFlight( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        List<ProviderRateLimitInfo> rateLimitInfo = [
+            new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
+        ];
+
+        LookupSagaState rateLimitedSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            rateLimitInfo: rateLimitInfo,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( rateLimitedSaga );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert - escape hatch returned the partial without ever blind-waiting
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        Assert.IsNotNull( result.RateLimitedProviders );
+        _deduplicatorMock.Verify(
+            d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that the already-in-flight branch returns the saga's stored partial data
+    /// (instead of a links-less result) when the rate-limited sentinel is received.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WithInFlightRateLimitSentinel_ShouldReturnStoredPartialData( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationInFlight( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        List<ProviderRateLimitInfo> rateLimitInfo = [
+            new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
+        ];
+
+        LookupSagaState rateLimitedSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            rateLimitInfo: rateLimitInfo,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+
+        // First read (pre-wait check): no saga yet; second read (after sentinel): partial stored
+        _ = _sagaManagerMock
+            .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( (LookupSagaState?)null )
+            .ReturnsAsync( rateLimitedSaga );
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( LookupConstants.RateLimitedSentinel );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( partialUri ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert - available partial links are returned alongside the rate-limit info
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        Assert.IsNotNull( result.RateLimitedProviders );
+        Assert.AreEqual( SupportedProviders.AppleMusic, result.RateLimitedProviders[0].Provider );
+    }
+
+    /// <summary>
+    /// Verifies that expired rate-limit info does not trigger the escape hatch: the
+    /// orchestrator keeps waiting and returns the final result when it arrives.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenAllPendingRateLimitsExpired_ShouldKeepWaitingForFinal( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( partialUri );
+
+        // Rate limit lapsed five minutes ago - waiting CAN help, escape hatch must not fire
+        List<ProviderRateLimitInfo> expiredRateLimitInfo = [
+            new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( -5 ), "/v1/catalog" )
+        ];
+
+        LookupSagaState partialSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            rateLimitInfo: expiredRateLimitInfo,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+        LookupSagaState finalSaga = CreateSagaState(
+            isPartial: false,
+            partialResultUri: partialUri,
+            finalResultUri: TestRecordUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, true)]
+        );
+
+        _ = _sagaManagerMock
+            .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialSaga )
+            .ReturnsAsync( finalSaga );
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        MediaLinkResult expectedResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( expectedResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert - the final result was waited for instead of returning a stale partial
+        Assert.IsNotNull( result.Result );
+        Assert.IsFalse( result.IsPartial );
+        _deduplicatorMock.Verify(
+            d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Verifies that expired rate-limit info is not reported to the caller when the wait
+    /// budget runs out (no stale "retry after" messaging).
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenRateLimitExpiredAndBudgetExhausted_ShouldNotReportExpiredRateLimits( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( partialUri );
+
+        List<ProviderRateLimitInfo> expiredRateLimitInfo = [
+            new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( -5 ), "/v1/catalog" )
+        ];
+
+        LookupSagaState partialSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            rateLimitInfo: expiredRateLimitInfo,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialSaga );
+
+        // Final never published - wait times out
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .ReturnsAsync( (string?)null );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        Assert.IsNull( result.RateLimitedProviders );
+    }
+
+    /// <summary>
+    /// Verifies that the creator-path timeout returns the final result when the saga has a
+    /// FinalResultUri but no partial (e.g. ISRC/UPC direct lookups never write a partial).
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenCreateWaitTimesOutWithFinalResult_ShouldReturnFinal( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        // No completion notification arrives within the budget
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( (string?)null );
+
+        LookupSagaState finalSaga = CreateSagaState(
+            isPartial: false,
+            finalResultUri: TestRecordUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, true), (SupportedProviders.Tidal, true)]
+        );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( finalSaga );
+
+        MediaLinkResult finalResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( TestRecordUri ) )
+            .ReturnsAsync( finalResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert - the cached final result is returned, honestly flagged as complete
+        Assert.IsNotNull( result.Result );
+        Assert.IsFalse( result.IsPartial );
+        Assert.IsNull( result.SagaId );
+    }
+
+    /// <summary>
+    /// Verifies that the create path returns the saga's stored partial data (instead of a
+    /// links-less result) when the rate-limited sentinel is received.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenRateLimitSentinelOnCreatePath_ShouldReturnStoredPartialData( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( LookupConstants.RateLimitedSentinel );
+
+        List<ProviderRateLimitInfo> rateLimitInfo = [
+            new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
+        ];
+
+        LookupSagaState rateLimitedSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            rateLimitInfo: rateLimitInfo,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( rateLimitedSaga );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( partialUri ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert - available partial links are returned alongside the rate-limit info
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        Assert.IsNotNull( result.RateLimitedProviders );
+        Assert.AreEqual( SupportedProviders.AppleMusic, result.RateLimitedProviders[0].Provider );
+    }
+
+    /// <summary>
+    /// Verifies that a rate-limit condition arising in the subscribe gap (between reading
+    /// saga state and the completion subscription becoming active) is detected by the
+    /// missed-result check and resolved into a partial result via the sentinel.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenRateLimitArisesInSubscribeGap_ShouldReturnPartialViaSentinel( ) {
+        // Arrange
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+
+        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( partialUri );
+
+        List<ProviderRateLimitInfo> rateLimitInfo = [
+            new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
+        ];
+
+        LookupSagaState pendingSaga = CreateSagaState(
+            isPartial: true,
+            partialResultUri: partialUri,
+            providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
+        );
+        LookupSagaState rateLimitedSaga = pendingSaga with { RateLimitInfo = rateLimitInfo };
+
+        // First read (wait loop): no rate limits yet; second read (gap check inside the
+        // deduplicator): rate limit recorded; third read (sentinel handling): unchanged
+        _ = _sagaManagerMock
+            .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( pendingSaga )
+            .ReturnsAsync( rateLimitedSaga )
+            .ReturnsAsync( rateLimitedSaga );
+
+        // Simulate the deduplicator running the missed-result check after subscribing
+        _ = _deduplicatorMock
+            .Setup( d => d.WaitForFinalCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ), It.IsAny<Func<Task<string?>>?>( ) ) )
+            .Returns( ( string _, TimeSpan _, Func<Task<string?>>? missedResultCheck, CancellationToken _ ) => missedResultCheck!( ) );
+
+        MediaLinkResult partialResult = CreateMediaLinkResult( );
+        _ = _atProtoStorageMock
+            .Setup( a => a.GetMediaLinkResultAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( partialResult );
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert - the gap check surfaced the sentinel and the partial was returned
+        Assert.IsNotNull( result.Result );
+        Assert.IsTrue( result.IsPartial );
+        Assert.IsNotNull( result.RateLimitedProviders );
+        Assert.AreEqual( SupportedProviders.AppleMusic, result.RateLimitedProviders[0].Provider );
+    }
+
+    /// <summary>
     /// Verifies that LookupByIsrcAsync releases the deduplication lock when an error occurs.
     /// </summary>
     [TestMethod]
@@ -864,6 +1733,42 @@ public class LookupOrchestratorTests {
                     IsAlbum = false
                 }
             }
+        };
+    }
+
+    /// <summary>
+    /// Creates a test <see cref="LookupSagaState"/> with the given provider completion states.
+    /// </summary>
+    private static LookupSagaState CreateSagaState(
+        bool isPartial = false,
+        string? partialResultUri = null,
+        string? finalResultUri = null,
+        List<ProviderRateLimitInfo>? rateLimitInfo = null,
+        (SupportedProviders provider, bool isComplete)[]? providers = null
+    ) {
+        Dictionary<SupportedProviders, ProviderLookupState> states = [];
+        foreach ((SupportedProviders provider, bool isComplete) in providers ?? []) {
+            states[provider] = new ProviderLookupState(
+                Provider: provider,
+                IsComplete: isComplete,
+                IsSuccess: isComplete,
+                ResultJson: null,
+                CompletedAt: isComplete ? DateTimeOffset.UtcNow : null,
+                ErrorMessage: null
+            );
+        }
+
+        return new LookupSagaState {
+            SagaId = "test-saga",
+            LookupKey = "test-key",
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = TestIsrc,
+            CreatedAt = DateTimeOffset.UtcNow,
+            IsPartial = isPartial,
+            PartialResultUri = partialResultUri,
+            FinalResultUri = finalResultUri,
+            ProviderStates = states,
+            RateLimitInfo = rateLimitInfo
         };
     }
 

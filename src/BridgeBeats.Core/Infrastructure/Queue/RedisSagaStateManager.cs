@@ -58,6 +58,8 @@ public sealed partial class RedisSagaStateManager(
     private const string FieldIsPartial = "isPartial";
     private const string FieldInitialProvider = "initialProvider";
     private const string FieldRateLimitInfo = "rateLimitInfo";
+    private const string FieldOriginPriority = "originPriority";
+    private const string FieldSecondariesQueued = "secondariesQueued";
 
     // Hash field names for provider state
     private const string FieldIsComplete = "isComplete";
@@ -72,6 +74,7 @@ public sealed partial class RedisSagaStateManager(
         string lookupKey,
         LookupRequestType lookupType,
         string lookupValue,
+        QueuePriority? originPriority = null,
         CancellationToken cancellationToken = default
     ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
@@ -88,6 +91,15 @@ public sealed partial class RedisSagaStateManager(
         if (exists) {
             // Extend TTL and return existing state
             _ = await db.KeyExpireAsync( key, ttl );
+
+            // Record the origin priority if none has been recorded yet (first writer wins).
+            // Sagas created by the orchestrator before a worker processes the first request
+            // have no origin priority field; the first request's priority becomes the origin.
+            if (originPriority.HasValue &&
+                await db.HashSetAsync( key, FieldOriginPriority, originPriority.Value.ToString( ), When.NotExists )) {
+                LogOriginPrioritySet( _logger, originPriority.Value, sagaId );
+            }
+
             LookupSagaState? existingState = await GetAsync( sagaId, cancellationToken );
 
             if (existingState is not null) {
@@ -97,7 +109,7 @@ public sealed partial class RedisSagaStateManager(
         }
 
         // Create new saga
-        HashEntry[] sagaHash = [
+        List<HashEntry> sagaHashEntries = [
             new HashEntry( FieldLookupKey, lookupKey ),
             new HashEntry( FieldLookupType, lookupType.ToString() ),
             new HashEntry( FieldLookupValue, lookupValue ),
@@ -106,7 +118,11 @@ public sealed partial class RedisSagaStateManager(
             new HashEntry( FieldFinalResultUri, RedisValue.EmptyString )
         ];
 
-        await db.HashSetAsync( key, sagaHash );
+        if (originPriority.HasValue) {
+            sagaHashEntries.Add( new HashEntry( FieldOriginPriority, originPriority.Value.ToString( ) ) );
+        }
+
+        await db.HashSetAsync( key, [.. sagaHashEntries] );
         _ = await db.KeyExpireAsync( key, ttl );
 
         // Add to pending index for efficient polling
@@ -122,7 +138,8 @@ public sealed partial class RedisSagaStateManager(
             CreatedAt = DateTimeOffset.UtcNow,
             ProviderStates = [],
             PartialResultUri = null,
-            FinalResultUri = null
+            FinalResultUri = null,
+            OriginPriority = originPriority ?? QueuePriority.Background
         };
     }
 
@@ -163,6 +180,7 @@ public sealed partial class RedisSagaStateManager(
         _ = fields.TryGetValue( FieldIsPartial, out string? isPartialStr );
         _ = fields.TryGetValue( FieldInitialProvider, out string? initialProviderStr );
         _ = fields.TryGetValue( FieldRateLimitInfo, out string? rateLimitInfoJson );
+        _ = fields.TryGetValue( FieldOriginPriority, out string? originPriorityStr );
 
         DateTimeOffset createdAt = !string.IsNullOrEmpty( createdAtStr )
             ? DateTimeOffset.Parse( createdAtStr )
@@ -179,6 +197,13 @@ public sealed partial class RedisSagaStateManager(
             ? System.Text.Json.JsonSerializer.Deserialize<List<ProviderRateLimitInfo>>( rateLimitInfoJson )
             : null;
 
+        // Missing field (sagas persisted before this field existed) defaults to Background
+        // so old sagas are never promoted to interactive.
+        QueuePriority originPriority = !string.IsNullOrEmpty( originPriorityStr ) &&
+            Enum.TryParse<QueuePriority>( originPriorityStr, out QueuePriority parsedPriority )
+                ? parsedPriority
+                : QueuePriority.Background;
+
         // Load provider states
         Dictionary<SupportedProviders, ProviderLookupState> providerStates = await LoadProviderStatesAsync( db, sagaId );
 
@@ -193,7 +218,8 @@ public sealed partial class RedisSagaStateManager(
             FinalResultUri = string.IsNullOrEmpty( finalUri ) ? null : finalUri,
             IsPartial = isPartial,
             InitialProvider = initialProvider,
-            RateLimitInfo = rateLimitInfo
+            RateLimitInfo = rateLimitInfo,
+            OriginPriority = originPriority
         };
     }
 
@@ -339,6 +365,24 @@ public sealed partial class RedisSagaStateManager(
     }
 
     /// <inheritdoc/>
+    public async Task<bool> TryMarkSecondariesQueuedAsync( string sagaId, CancellationToken cancellationToken = default ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+
+        string key = GetSagaKey( sagaId );
+        IDatabase db = _redis.GetDatabase( );
+        TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
+
+        // HSETNX: only the first caller creates the field, making the
+        // queue-secondaries decision atomic across racing coordinator handlers.
+        bool acquired = await db.HashSetAsync( key, FieldSecondariesQueued, true.ToString( ), When.NotExists );
+        _ = await db.KeyExpireAsync( key, ttl );
+
+        LogSecondariesQueuedMarker( _logger, sagaId, acquired );
+
+        return acquired;
+    }
+
+    /// <inheritdoc/>
     public async Task InitializeProviderStatesAsync( string sagaId, IEnumerable<SupportedProviders> providers, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
         ArgumentNullException.ThrowIfNull( providers );
@@ -347,27 +391,30 @@ public sealed partial class RedisSagaStateManager(
         TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
 
         foreach (SupportedProviders provider in providers) {
-            // Create initial pending state for each provider
-            ProviderLookupState pendingState = new(
-                Provider: provider,
-                IsComplete: false,
-                IsSuccess: false,
-                ResultJson: null,
-                CompletedAt: null,
-                ErrorMessage: null
-            );
-
             string key = GetProviderKey( sagaId, provider );
+
+            // Idempotent: never overwrite existing provider state. A resumed saga may
+            // already have completed or in-progress providers that must be preserved.
+            // The KeyNotExists condition makes the pending-state write commit atomically
+            // only when no state exists yet, so a concurrent UpdateProviderStateAsync
+            // cannot be regressed back to pending.
             HashEntry[] providerHash = [
-                new HashEntry( FieldIsComplete, pendingState.IsComplete.ToString() ),
-                new HashEntry( FieldIsSuccess, pendingState.IsSuccess.ToString() ),
+                new HashEntry( FieldIsComplete, false.ToString() ),
+                new HashEntry( FieldIsSuccess, false.ToString() ),
                 new HashEntry( FieldResultJson, string.Empty ),
                 new HashEntry( FieldCompletedAt, string.Empty ),
                 new HashEntry( FieldErrorMessage, string.Empty )
             ];
 
-            await db.HashSetAsync( key, providerHash );
-            _ = await db.KeyExpireAsync( key, ttl );
+            ITransaction transaction = db.CreateTransaction( );
+            _ = transaction.AddCondition( Condition.KeyNotExists( key ) );
+            _ = transaction.HashSetAsync( key, providerHash );
+            _ = transaction.KeyExpireAsync( key, ttl );
+
+            if (!await transaction.ExecuteAsync( )) {
+                // Provider state already exists — leave it untouched and refresh the TTL.
+                _ = await db.KeyExpireAsync( key, ttl );
+            }
         }
 
         if (_logger.IsEnabled( LogLevel.Debug )) {
@@ -589,6 +636,18 @@ public sealed partial class RedisSagaStateManager(
         Level = LogLevel.Debug,
         Message = "Removed saga {SagaId} from pending index" )]
     internal static partial void LogRemovedFromPendingIndex( ILogger logger, string sagaId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerOriginPrioritySet,
+        Level = LogLevel.Debug,
+        Message = "Set originPriority={Priority} for saga {SagaId}" )]
+    internal static partial void LogOriginPrioritySet( ILogger logger, QueuePriority priority, string sagaId );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerSecondariesQueuedMarker,
+        Level = LogLevel.Debug,
+        Message = "Secondaries-queued marker for saga {SagaId}: acquired={Acquired}" )]
+    internal static partial void LogSecondariesQueuedMarker( ILogger logger, string sagaId, bool acquired );
 
     #endregion
 }
