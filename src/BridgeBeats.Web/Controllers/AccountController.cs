@@ -74,9 +74,16 @@ public partial class AccountController(
             return BadRequest( ModelState );
         }
 
+        // Explicit duplicate-email check: RequireUniqueEmail is disabled at the Identity level
+        // (ATProto users have null email), so enforce uniqueness for password accounts here.
+        ApplicationUser? existingUser = await userManager.FindByEmailAsync( request.Email );
+        if (existingUser is not null) {
+            ModelState.AddModelError( string.Empty, userManager.ErrorDescriber.DuplicateEmail( request.Email ).Description );
+            return BadRequest( ModelState );
+        }
+
         // Generate API key
-        string apiKey = ApiKeyHasher.GenerateApiKey( );
-        string hashedApiKey = hasher.HashApiKey( apiKey );
+        (string apiKey, string hashedApiKey) = IssueApiKey( );
 
         ApplicationUser user = new() {
             UserName = request.Email,
@@ -142,8 +149,7 @@ public partial class AccountController(
         // Generate new API key only if user doesn't have one
         string apiKey;
         if (string.IsNullOrEmpty( user.ApiKeyHash )) {
-            apiKey = ApiKeyHasher.GenerateApiKey( );
-            user.ApiKeyHash = hasher.HashApiKey( apiKey );
+            (apiKey, user.ApiKeyHash) = IssueApiKey( );
             _ = await userManager.UpdateAsync( user );
         } else {
             // Return a message that the API key is already set
@@ -219,8 +225,7 @@ public partial class AccountController(
             return Unauthorized( );
         }
 
-        string apiKey = ApiKeyHasher.GenerateApiKey( );
-        user.ApiKeyHash = hasher.HashApiKey( apiKey );
+        (string apiKey, user.ApiKeyHash) = IssueApiKey( );
         IdentityResult result = await userManager.UpdateAsync( user );
 
         if (!result.Succeeded) {
@@ -425,7 +430,11 @@ public partial class AccountController(
                 .FirstOrDefaultAsync( u => u.AtProtoDid == result.Did );
 
             if (user is null) {
-                // Create a new user for this ATProto account
+                // Create a new user for this ATProto account.
+                // ApiKeyHash is intentionally left null: ATProto users sign in via OAuth and
+                // have no need for an API key at creation time. The plaintext key would be
+                // discarded at the OAuth redirect with no way to surface it to the user.
+                // Keys can be minted later via POST /account/regenerate-api-key ([Authorize]).
                 user = new ApplicationUser {
                     UserName = result.Handle,
                     AtProtoDid = result.Did,
@@ -475,4 +484,14 @@ public partial class AccountController(
     }
 
     #endregion
+
+    /// <summary>
+    /// Generates a new API key and returns both the plaintext and its hash.
+    /// All three generation sites (Register, Login, RegenerateApiKey) must use this helper
+    /// so that any future change to key length or encoding is made in exactly one place.
+    /// </summary>
+    private (string ApiKey, string ApiKeyHash) IssueApiKey( ) {
+        string apiKey = ApiKeyHasher.GenerateApiKey( );
+        return (apiKey, hasher.HashApiKey( apiKey ));
+    }
 }

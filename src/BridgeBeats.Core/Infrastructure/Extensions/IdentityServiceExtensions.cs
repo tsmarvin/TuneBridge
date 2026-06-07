@@ -46,7 +46,10 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
                 options.Password.RequiredLength = 14;
 
                 // User settings
-                options.User.RequireUniqueEmail = true;
+                // RequireUniqueEmail must be false because ATProto-only users have no email
+                // (ATProto OAuth does not supply one, and null email cannot satisfy "unique non-empty").
+                // Uniqueness for password-account emails is enforced explicitly in AccountController.Register.
+                options.User.RequireUniqueEmail = false;
             } )
             .AddRoles<IdentityRole>( )
             .AddEntityFrameworkStores<ApplicationDbContext>( )
