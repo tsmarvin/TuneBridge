@@ -60,4 +60,14 @@ public sealed partial class StatisticsRefreshBackgroundService {
         Level = LogLevel.Information,
         Message = "Statistics refresh background service stopped" )]
     private partial void LogStopped( );
+
+    /// <summary>
+    /// Logs when the trigger channel is closed by its writer (channel permanently completed).
+    /// The background service exits the loop because no further manual triggers can arrive.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.BackgroundServices.StatisticsRefreshChannelCompleted,
+        Level = LogLevel.Warning,
+        Message = "Statistics refresh trigger channel completed unexpectedly; stopping background service loop" )]
+    private partial void LogChannelCompleted( Exception? exception );
 }

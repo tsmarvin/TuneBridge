@@ -3,14 +3,17 @@ using System;
 using BridgeBeats.Core.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
 namespace BridgeBeats.Core.Infrastructure.Migrations {
     [DbContext( typeof( ApplicationDbContext ) )]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot {
-        protected override void BuildModel( ModelBuilder modelBuilder ) {
+    [Migration( "20260607055439_UniqueEmailIndex" )]
+    partial class UniqueEmailIndex {
+        /// <inheritdoc />
+        protected override void BuildTargetModel( ModelBuilder modelBuilder ) {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation( "ProductVersion", "10.0.8" );
 

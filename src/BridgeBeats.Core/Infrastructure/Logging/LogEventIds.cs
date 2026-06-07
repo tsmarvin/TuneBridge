@@ -1497,6 +1497,9 @@ public static class LogEventIds {
 
         /// <summary>EventId for StatisticsRefreshBackgroundService stopped.</summary>
         public const int StatisticsRefreshStopped = 4905;
+
+        /// <summary>EventId for StatisticsRefreshBackgroundService channel completed (writer closed).</summary>
+        public const int StatisticsRefreshChannelCompleted = 4906;
     }
 
     /// <summary>

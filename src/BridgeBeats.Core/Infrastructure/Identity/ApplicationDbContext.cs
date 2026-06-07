@@ -39,6 +39,15 @@ public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> option
             .IsUnique( )
             .HasFilter( "[AtProtoDid] IS NOT NULL" );
 
+        // Upgrade Identity's default EmailIndex to unique: closes the Register TOCTOU race by
+        // converting the window between FindByEmailAsync and CreateAsync into a DB constraint
+        // violation caught in AccountController.Register. SQLite allows multiple NULLs in a
+        // unique index, so email-less ATProto users are unaffected.
+        _ = builder.Entity<ApplicationUser>( )
+            .HasIndex( u => u.NormalizedEmail )
+            .IsUnique( )
+            .HasDatabaseName( "EmailIndex" );
+
         // Configure PlaylistEntry
         _ = builder.Entity<PlaylistEntry>( entity => {
             _ = entity.HasKey( e => e.PlaylistId );
