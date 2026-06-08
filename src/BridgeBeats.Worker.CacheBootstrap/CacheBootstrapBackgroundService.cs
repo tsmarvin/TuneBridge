@@ -77,7 +77,7 @@ public sealed partial class CacheBootstrapBackgroundService(
                 ? null
                 : JsonSerializer.Deserialize<CacheBootstrapStatus>( value.ToString( ), s_jsonReadOptions );
         } catch (Exception ex) {
-            LogStatusUpdateError( logger, ex );
+            LogStatusReadError( logger, ex );
             return null;
         }
     }
@@ -300,6 +300,13 @@ public sealed partial class CacheBootstrapBackgroundService(
         Level = LogLevel.Warning,
         Message = "Failed to update cache bootstrap status in Redis" )]
     private static partial void LogStatusUpdateError( ILogger logger, Exception ex );
+
+    /// <summary>Logs failure to read status from Redis.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.StatusReadError,
+        Level = LogLevel.Warning,
+        Message = "Failed to read cache bootstrap status from Redis" )]
+    private static partial void LogStatusReadError( ILogger logger, Exception ex );
 
     #endregion
 }

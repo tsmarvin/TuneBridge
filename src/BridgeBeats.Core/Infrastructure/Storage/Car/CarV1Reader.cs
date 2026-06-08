@@ -138,6 +138,10 @@ internal static class CarV1Reader {
 
             reader.ReadEndMap( );
 
+            if (version is null) {
+                throw new CarParseException( "CAR header missing required 'version' field." );
+            }
+
             if (rootCid is null) {
                 throw new CarParseException( "CAR header missing roots." );
             }

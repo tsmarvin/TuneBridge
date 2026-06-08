@@ -155,6 +155,36 @@ public class CarV1ReaderTests {
         _ = Assert.ThrowsExactly<CarParseException>( ( ) => CarV1Reader.Read( carBytes ) );
     }
 
+    // ─── Hardening: oversized CID rejected ───────────────────────────────────
+
+    /// <summary>
+    /// Verifies that a CAR header whose tag-42 root CID byte string is 37 bytes (one byte longer
+    /// than the required 36) is rejected with CarParseException rather than silently accepted.
+    /// Failure-first evidence: before Fix 1 (exact-length check), the old &lt; guard accepted any
+    /// span &gt;= 36 bytes, so this test would have passed without an exception being thrown.
+    /// </summary>
+    [TestMethod]
+    public void Read_OversizedCidBytes_ThrowsCarParseException( ) {
+        byte[] carBytes = TestCarBuilder.BuildCarWithOversizedCidInHeader( );
+
+        _ = Assert.ThrowsExactly<CarParseException>( ( ) => CarV1Reader.Read( carBytes ) );
+    }
+
+    // ─── Hardening: missing version field rejected ────────────────────────────
+
+    /// <summary>
+    /// Verifies that a CAR header whose DAG-CBOR map omits the "version" key entirely is rejected
+    /// with CarParseException even though "roots" is present and valid.
+    /// Failure-first evidence: before Fix 2 (version-presence check), a header without "version"
+    /// was accepted as v1, so this test would have completed without throwing.
+    /// </summary>
+    [TestMethod]
+    public void Read_HeaderMissingVersion_ThrowsCarParseException( ) {
+        byte[] carBytes = TestCarBuilder.BuildCarWithHeaderMissingVersion( );
+
+        _ = Assert.ThrowsExactly<CarParseException>( ( ) => CarV1Reader.Read( carBytes ) );
+    }
+
     private static byte[] BuildCarWithVersion( int version ) {
         using System.IO.MemoryStream ms = new( );
 

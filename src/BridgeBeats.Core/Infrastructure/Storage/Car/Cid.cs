@@ -37,8 +37,11 @@ internal readonly struct Cid {
             throw new CarParseException( "CIDv0 is not supported; atproto repos use CIDv1 only." );
         }
 
-        if (bytes.Length < ExpectedCidBytes) {
-            throw new CarParseException( $"CID bytes too short: expected {ExpectedCidBytes}, got {bytes.Length}." );
+        if (bytes.Length != ExpectedCidBytes) {
+            throw new CarParseException(
+                bytes.Length < ExpectedCidBytes
+                    ? $"CID bytes too short: expected exactly {ExpectedCidBytes}, got {bytes.Length}."
+                    : $"CID bytes too long: expected exactly {ExpectedCidBytes}, got {bytes.Length}." );
         }
 
         if (bytes[0] != CidV1Version || bytes[1] != DagCborCodec ||

@@ -46,6 +46,9 @@ public static class LogEventIds {
     /// <summary>Failed to update status in Redis.</summary>
     public const int StatusUpdateError = 5512;
 
+    /// <summary>Failed to read status from Redis.</summary>
+    public const int StatusReadError = 5513;
+
     #endregion
 
     #region Program Startup (5550-5574)

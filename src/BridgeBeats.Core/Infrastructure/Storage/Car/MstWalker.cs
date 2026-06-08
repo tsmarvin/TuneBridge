@@ -30,10 +30,7 @@ internal static class MstWalker {
             throw new CarParseException( $"Commit block {commitHex} not found in CAR." );
         }
 
-        (string? mstRootHex, int commitVersion) = ReadCommitDataLinkAndVersion( commitBytes );
-        if (mstRootHex is null) {
-            return ([], commitVersion);
-        }
+        (string mstRootHex, int commitVersion) = ReadCommitDataLinkAndVersion( commitBytes );
 
         // Visited-node set: a valid MST is a tree — no node may appear twice.
         // Caps are derived from block count: a valid walk cannot visit more nodes
@@ -45,12 +42,12 @@ internal static class MstWalker {
         return (WalkNode( car, mstRootHex, "", 0, visited, maxNodes, recordCount, cancellationToken ), commitVersion);
     }
 
-    private static (string? mstRootHex, int commitVersion) ReadCommitDataLinkAndVersion( ReadOnlyMemory<byte> commitBytes ) {
+    private static (string mstRootHex, int commitVersion) ReadCommitDataLinkAndVersion( ReadOnlyMemory<byte> commitBytes ) {
         try {
             CborReader reader = new( commitBytes, CborConformanceMode.Lax );
             _ = reader.ReadStartMap( );
 
-            string? mstRootHex = null;
+            string? mstRootHexParsed = null;
             int commitVersion = 0;
 
             while (reader.PeekState( ) != CborReaderState.EndMap) {
@@ -64,7 +61,7 @@ internal static class MstWalker {
                             throw new CarParseException( $"Commit 'data' field has unexpected tag {(ulong)tag}." );
                         }
                         byte[] linkBytes = reader.ReadByteString( );
-                        mstRootHex = Cid.FromDagCborLinkBytes( linkBytes ).KeyHex;
+                        mstRootHexParsed = Cid.FromDagCborLinkBytes( linkBytes ).KeyHex;
                     }
                 } else if (key == "version") {
                     commitVersion = reader.ReadInt32( );
@@ -73,11 +70,11 @@ internal static class MstWalker {
                 }
             }
 
-            if (mstRootHex is null && commitVersion == 0) {
-                throw new CarParseException( "Commit block missing 'data' field." );
+            if (mstRootHexParsed is null) {
+                throw new CarParseException( "Commit block missing required 'data' link." );
             }
 
-            return (mstRootHex, commitVersion);
+            return (mstRootHexParsed, commitVersion);
         } catch (CarParseException) {
             throw;
         } catch (Exception ex) when (ex is CborContentException or OverflowException or InvalidOperationException) {

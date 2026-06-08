@@ -612,6 +612,100 @@ internal static class TestCarBuilder {
         return i;
     }
 
+    // ─── Malformed-input helpers (hardening tests) ────────────────────────────
+
+    /// <summary>
+    /// Builds a CAR header whose "roots" array contains a CID byte string that is one byte longer
+    /// than the expected 36 bytes (37 bytes total). Used to verify that ParseFromBytes rejects
+    /// oversized CID byte sequences rather than silently truncating them.
+    /// </summary>
+    internal static byte[] BuildCarWithOversizedCidInHeader( ) {
+        byte[] normalCid = ComputeCidBytes( new byte[] { 0xAA } );
+        // Produce a 37-byte link: 0x00 multibase prefix + 36-byte CID + 1 extra trailing byte
+        byte[] oversizedLinkBytes = new byte[1 + normalCid.Length + 1];
+        oversizedLinkBytes[0] = 0x00; // multibase prefix
+        normalCid.CopyTo( oversizedLinkBytes, 1 );
+        oversizedLinkBytes[^1] = 0xFF; // extra trailing byte
+
+        CborWriter writer = new( CborConformanceMode.Lax );
+        writer.WriteStartMap( null );
+
+        WriteCborTextString( writer, "roots" );
+        writer.WriteStartArray( null );
+        writer.WriteTag( (CborTag)42 );
+        writer.WriteByteString( oversizedLinkBytes );
+        writer.WriteEndArray( );
+
+        WriteCborTextString( writer, "version" );
+        writer.WriteInt32( 1 );
+
+        writer.WriteEndMap( );
+        byte[] header = writer.Encode( );
+
+        using MemoryStream ms = new( );
+        WriteVarint( ms, (ulong)header.Length );
+        ms.Write( header );
+        return ms.ToArray( );
+    }
+
+    /// <summary>
+    /// Builds a CAR whose header DAG-CBOR map contains only "roots" — the "version" key is absent.
+    /// Used to verify that ParseRootCidFromRawHeader rejects headers missing the required version field.
+    /// </summary>
+    internal static byte[] BuildCarWithHeaderMissingVersion( ) {
+        byte[] fakeCid = ComputeCidBytes( new byte[] { 0xBB } );
+
+        CborWriter writer = new( CborConformanceMode.Lax );
+        writer.WriteStartMap( null );
+
+        WriteCborTextString( writer, "roots" );
+        writer.WriteStartArray( null );
+        writer.WriteTag( (CborTag)42 );
+        writer.WriteByteString( MakeLinkBytes( fakeCid ) );
+        writer.WriteEndArray( );
+
+        // "version" key intentionally omitted
+
+        writer.WriteEndMap( );
+        byte[] header = writer.Encode( );
+
+        using MemoryStream ms = new( );
+        WriteVarint( ms, (ulong)header.Length );
+        ms.Write( header );
+        return ms.ToArray( );
+    }
+
+    /// <summary>
+    /// Builds a commit block where the "data" field is explicitly set to CBOR null.
+    /// Used to verify that ReadCommitDataLinkAndVersion rejects null/absent data links.
+    /// </summary>
+    internal static byte[] BuildCommitWithNullData( string did, int version = 3 ) {
+        CborWriter writer = new( CborConformanceMode.Lax );
+        writer.WriteStartMap( null );
+
+        // Same key ordering as BuildCommit: did(3) < rev(3) < sig(3) < data(4) < prev(4) < version(7)
+        WriteCborTextString( writer, "did" );
+        WriteCborTextString( writer, did );
+
+        WriteCborTextString( writer, "rev" );
+        WriteCborTextString( writer, "3" );
+
+        WriteCborTextString( writer, "sig" );
+        writer.WriteByteString( new byte[64] );
+
+        WriteCborTextString( writer, "data" );
+        writer.WriteNull( ); // explicitly null — no data link
+
+        WriteCborTextString( writer, "prev" );
+        writer.WriteNull( );
+
+        WriteCborTextString( writer, "version" );
+        writer.WriteInt32( version );
+
+        writer.WriteEndMap( );
+        return writer.Encode( );
+    }
+
     /// <summary>
     /// Comparer for byte array dictionary keys.
     /// </summary>

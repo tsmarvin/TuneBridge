@@ -292,6 +292,31 @@ public class MstWalkerTests {
         } );
     }
 
+    // ─── Hardening: null/absent "data" link rejected ─────────────────────────
+
+    /// <summary>
+    /// Verifies that a commit block whose "data" field is explicitly CBOR null is rejected with
+    /// CarParseException, regardless of the commit version.
+    /// Failure-first evidence: before Fix 3, the condition was `mstRootHex is null &amp;&amp; commitVersion == 0`;
+    /// with a version=3 commit, a null data link was accepted and EnumerateRecords returned an empty
+    /// sequence instead of throwing — so this test would have failed on ThrowsExactly.
+    /// </summary>
+    [TestMethod]
+    public void EnumerateRecords_CommitWithNullDataLink_ThrowsCarParseException( ) {
+        byte[] commitBytes = TestCarBuilder.BuildCommitWithNullData( "did:plc:test", version: 3 );
+        byte[] commitCid = TestCarBuilder.ComputeCidBytes( commitBytes );
+
+        Dictionary<byte[], byte[]> blocks = new( ByteArrayKeyComparer.Instance ) {
+            [commitCid] = commitBytes
+        };
+        byte[] carBytes = TestCarBuilder.BuildCar( commitCid, blocks );
+        CarFile car = CarV1Reader.Read( carBytes );
+
+        _ = Assert.ThrowsExactly<CarParseException>( ( ) => {
+            _ = MstWalker.EnumerateRecords( car, CancellationToken.None ).Records.ToList( );
+        } );
+    }
+
     // ─── CancellationToken propagation ───────────────────────────────────────
 
     /// <summary>
