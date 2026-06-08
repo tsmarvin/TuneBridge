@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -10,6 +9,7 @@ using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Logging;
 using BridgeBeats.Core.Infrastructure.Storage.Car;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using idunno.AtProto;
 using idunno.AtProto.Repo;
 using idunno.Bluesky;
@@ -126,7 +126,7 @@ public partial class ATProtoStorageService(
                 // Convert the custom record back to MediaLinkResult DTO
                 return ConvertFromRecord( getRecordResult.Result.Value );
             } else if (!getRecordResult.Succeeded) {
-                string errorMsg = getRecordResult.AtErrorDetail?.Message ?? $"HTTP {getRecordResult.StatusCode}";
+                string errorMsg = (getRecordResult.AtErrorDetail?.Message ?? $"HTTP {getRecordResult.StatusCode}").SanitizeForLogging( );
                 LogGetRecordFailed( logger, errorMsg );
             }
 
@@ -369,7 +369,7 @@ public partial class ATProtoStorageService(
                 // MST keys come from an operator-controlled PDS; an attacker could inject
                 // control characters or path separators. Skip invalid rkeys with a warning.
                 if (!IsValidRkey( rkey )) {
-                    LogCarRecordSkipped( logger, TruncateForLog( rkey, 64 ), "invalid rkey" );
+                    LogCarRecordSkipped( logger, rkey.SanitizeForLogging( ), "invalid rkey" );
                     skippedCount++;
                     continue;
                 }
@@ -400,7 +400,7 @@ public partial class ATProtoStorageService(
                     results.Add( (atUri, converted) );
                     recordCount++;
                 } catch (Exception ex) when (ex is not OperationCanceledException) {
-                    LogCarRecordSkipped( logger, rkey, ex.Message );
+                    LogCarRecordSkipped( logger, rkey, ex.Message.SanitizeForLogging( ) );
                     skippedCount++;
                 }
             }
@@ -442,32 +442,6 @@ public partial class ATProtoStorageService(
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// Returns the first <paramref name="maxLen"/> characters of <paramref name="value"/>,
-    /// appending "…" if truncated, and replaces ASCII control characters (\r, \n, \t and
-    /// other C0 codes) with spaces to prevent CWE-117 log-forging on plain-text sinks.
-    /// </summary>
-    private static string TruncateForLog( string value, int maxLen ) {
-        ReadOnlySpan<char> source = value.Length <= maxLen
-            ? value.AsSpan( )
-            : value.AsSpan( 0, maxLen );
-        bool hasControl = false;
-        foreach (char c in source) {
-            if (c < ' ' || c == 127) { hasControl = true; break; }
-        }
-        if (!hasControl) {
-            return value.Length <= maxLen ? value : string.Concat( source, "..." );
-        }
-        System.Text.StringBuilder sb = new( source.Length + 3 );
-        foreach (char c in source) {
-            _ = sb.Append( c < ' ' || c == 127 ? ' ' : c );
-        }
-        if (value.Length > maxLen) {
-            _ = sb.Append( "..." );
-        }
-        return sb.ToString( );
     }
 
     #endregion

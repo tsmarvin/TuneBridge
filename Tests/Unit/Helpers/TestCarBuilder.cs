@@ -1,6 +1,5 @@
 using System.Formats.Cbor;
 using System.Security.Cryptography;
-using System.Text.Json.Serialization;
 using BridgeBeats.Contracts.Records;
 
 #pragma warning disable CS1591
