@@ -33,8 +33,7 @@ internal static class MstWalker {
         (string mstRootHex, int commitVersion) = ReadCommitDataLinkAndVersion( commitBytes );
 
         // Visited-node set: a valid MST is a tree — no node may appear twice.
-        // Caps are derived from block count: a valid walk cannot visit more nodes
-        // than there are blocks in the file, and cannot yield more records than blocks.
+        // Cap derived from block count: a valid walk cannot yield more records than there are blocks in the file.
         HashSet<string> visited = new( car.Blocks.Count );
         int maxNodes = car.Blocks.Count;
         int[] recordCount = [0];
@@ -102,12 +101,6 @@ internal static class MstWalker {
         if (!visited.Add( nodeHex )) {
             throw new CarParseException(
                 $"MST node {nodeHex} encountered more than once; CAR contains a cycle or doubling DAG." );
-        }
-
-        // Hard cap: cannot visit more nodes than there are blocks in the file.
-        if (visited.Count > maxNodes) {
-            throw new CarParseException(
-                $"MST walk visited {visited.Count} nodes, exceeding the block-count cap of {maxNodes}." );
         }
 
         if (!car.Blocks.TryGetValue( nodeHex, out ReadOnlyMemory<byte> nodeBytes )) {

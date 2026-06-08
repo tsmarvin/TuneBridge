@@ -330,14 +330,7 @@ public class ATProtoStorageServiceListRecordsTests {
     /// </summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_RkeyWithControlChars_SkipsInvalidRkeyAndYieldsGoodRecord( ) {
-        // Arrange: build a CAR with one good rkey and one rkey containing a slash (invalid).
-        // The invalid rkey is "bad\x01rkey" (contains control char 0x01).
-        byte[] goodCarBytes = TestCarBuilder.BuildCarWithRawRkey(
-            "link.bridgebeats.lookup",
-            "valid-rkey-123"
-        );
-
-        // Merge the invalid-rkey block into a single CAR by building both entries in one MST node.
+        // Arrange: build a single CAR containing one good rkey and one rkey containing a control char (0x01, invalid).
         byte[] recGoodBytes = TestCarBuilder.BuildRecordBlock( MakeRecord( "Good" ) );
         byte[] recBadBytes = TestCarBuilder.BuildRecordBlock( MakeRecord( "Bad" ) );
         byte[] cidGood = TestCarBuilder.ComputeCidBytes( recGoodBytes );

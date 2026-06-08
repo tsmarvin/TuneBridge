@@ -317,6 +317,109 @@ public class MstWalkerTests {
         } );
     }
 
+    // ─── Resource-exhaustion guards ──────────────────────────────────────────
+
+    /// <summary>
+    /// Verifies that a left-child chain of 66 MST nodes throws CarParseException due to the
+    /// MaxWalkDepth guard at the start of WalkNode (depth &gt; MaxWalkDepth),
+    /// before the duplicate-Add cycle check or the block-not-found throw.
+    ///
+    /// Construction: nodes[0]..nodes[65] form a pure left-child chain (no entries).
+    /// nodes[65] is a leaf (l=null, e=[]). Commit → nodes[0].
+    /// Walk: nodes[0]@depth=0 → nodes[1]@depth=1 → ... → nodes[64]@depth=64 →
+    ///        nodes[65]@depth=65 → 65 &gt; 64 → CarParseException.
+    ///
+    /// Failure-first evidence: without the MaxWalkDepth guard, the walk enters
+    /// nodes[65] at depth=65 without throwing, parses it as a leaf (l=null, e=[]), yields nothing,
+    /// and unwinds back to nodes[0]. The enumeration returns an empty list — no exception is thrown —
+    /// so ThrowsExactly&lt;CarParseException&gt; fails, confirming the guard is load-bearing.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 5000 )]
+    public void EnumerateRecords_DepthExceeded_ThrowsCarParseException( ) {
+        // Build a chain of 66 nodes in reverse (leaf first, root last).
+        // nodes[0]..nodes[64] each have l=nodes[i+1]; nodes[65] is the leaf.
+        // Depth 65 (nodes[65]) is the first call that exceeds MaxWalkDepth (64).
+        const int ChainLength = 66;
+        byte[][] nodeCids = new byte[ChainLength][];
+        byte[][] nodeBlocks = new byte[ChainLength][];
+
+        nodeBlocks[ChainLength - 1] = TestCarBuilder.BuildMstNode( null, [] );
+        nodeCids[ChainLength - 1] = TestCarBuilder.ComputeCidBytes( nodeBlocks[ChainLength - 1] );
+
+        for (int i = ChainLength - 2; i >= 0; i--) {
+            nodeBlocks[i] = TestCarBuilder.BuildMstNode( nodeCids[i + 1], [] );
+            nodeCids[i] = TestCarBuilder.ComputeCidBytes( nodeBlocks[i] );
+        }
+
+        byte[] commitBytes = TestCarBuilder.BuildCommit( "did:plc:depth-test", nodeCids[0] );
+        byte[] commitCid = TestCarBuilder.ComputeCidBytes( commitBytes );
+
+        Dictionary<byte[], byte[]> blocks = new( ByteArrayKeyComparer.Instance );
+        blocks[commitCid] = commitBytes;
+        for (int i = 0; i < ChainLength; i++) {
+            blocks[nodeCids[i]] = nodeBlocks[i];
+        }
+
+        byte[] carBytes = TestCarBuilder.BuildCar( commitCid, blocks );
+        CarFile car = CarV1Reader.Read( carBytes );
+
+        _ = Assert.ThrowsExactly<CarParseException>( ( ) => {
+            _ = MstWalker.EnumerateRecords( car, CancellationToken.None ).Records.ToList( );
+        } );
+    }
+
+    /// <summary>
+    /// Verifies that a single MST node whose entry count exceeds car.Blocks.Count throws
+    /// CarParseException due to the recordCount cap in the entry loop
+    /// (recordCount[0] &gt; maxNodes).
+    ///
+    /// Construction: 1 commit block + 1 MST node = 2 blocks total; maxNodes = 2.
+    /// The MST node contains 3 entries (all with p=0, distinct keys, shared placeholder value CID).
+    /// Walk sequence: entry[0] → recordCount=1 ≤ 2, yield; entry[1] → recordCount=2 ≤ 2, yield;
+    ///                entry[2] → recordCount=3 &gt; 2 → CarParseException.
+    /// MstWalker does not resolve value-block CIDs during WalkNode (they are yielded as hex
+    /// strings), so the placeholder CID not being in car.Blocks is irrelevant.
+    ///
+    /// Guard ordering: the MaxWalkDepth guard and the duplicate-Add cycle check do not fire
+    /// first because there is only one root node at depth=0 visited exactly once.
+    ///
+    /// Failure-first evidence: without the recordCount cap in the entry loop, all 3
+    /// entries yield normally, the enumeration returns a 3-element list, and
+    /// ThrowsExactly&lt;CarParseException&gt; fails because no exception is thrown.
+    /// </summary>
+    [TestMethod]
+    public void EnumerateRecords_RecordCountExceedsBlockCount_ThrowsCarParseException( ) {
+        // Placeholder value CID — not in blocks; WalkNode never resolves value-block CIDs.
+        byte[] placeholderValueCid = TestCarBuilder.ComputeCidBytes( [0xDE, 0xAD] );
+
+        // 3 entries in a single root node; 1 commit + 1 MST node = 2 blocks → maxNodes = 2.
+        byte[] mstNodeBytes = TestCarBuilder.BuildMstNode(
+            null,
+            [
+                new TestCarBuilder.MstEntry( 0, "col/key1", placeholderValueCid ),
+                new TestCarBuilder.MstEntry( 0, "col/key2", placeholderValueCid ),
+                new TestCarBuilder.MstEntry( 0, "col/key3", placeholderValueCid ),
+            ] );
+        byte[] mstCid = TestCarBuilder.ComputeCidBytes( mstNodeBytes );
+
+        byte[] commitBytes = TestCarBuilder.BuildCommit( "did:plc:amp-test", mstCid );
+        byte[] commitCid = TestCarBuilder.ComputeCidBytes( commitBytes );
+
+        Dictionary<byte[], byte[]> blocks = new( ByteArrayKeyComparer.Instance ) {
+            [commitCid] = commitBytes,
+            [mstCid] = mstNodeBytes
+            // placeholderValueCid block intentionally absent — value blocks are not resolved by WalkNode
+        };
+
+        byte[] carBytes = TestCarBuilder.BuildCar( commitCid, blocks );
+        CarFile car = CarV1Reader.Read( carBytes );
+
+        _ = Assert.ThrowsExactly<CarParseException>( ( ) => {
+            _ = MstWalker.EnumerateRecords( car, CancellationToken.None ).Records.ToList( );
+        } );
+    }
+
     // ─── CancellationToken propagation ───────────────────────────────────────
 
     /// <summary>
