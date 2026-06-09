@@ -49,4 +49,23 @@ public sealed class LookupStatistics {
     /// Status of the cache bootstrap background service.
     /// </summary>
     public CacheBootstrapStatus? CacheBootstrapStatus { get; init; }
+
+    /// <summary>
+    /// Returns a copy of this instance with <see cref="CacheBootstrapStatus"/> replaced by
+    /// <paramref name="status"/>. All other properties are carried forward unchanged.
+    /// </summary>
+    /// <param name="status">The bootstrap status to overlay. May be null.</param>
+    /// <returns>A new <see cref="LookupStatistics"/> with the updated status.</returns>
+    public LookupStatistics WithBootstrapStatus( CacheBootstrapStatus? status ) =>
+        new( ) {
+            TotalRecords = TotalRecords,
+            AlbumCount = AlbumCount,
+            TrackCount = TrackCount,
+            ProviderCounts = ProviderCounts,
+            RecentEntries = RecentEntries,
+            EarliestLookup = EarliestLookup,
+            LatestLookup = LatestLookup,
+            GeneratedAt = GeneratedAt,
+            CacheBootstrapStatus = status
+        };
 }

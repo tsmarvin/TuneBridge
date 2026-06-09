@@ -20,10 +20,15 @@ public class StatisticsControllerTests {
     public void Initialize( ) {
         _statisticsServiceMock = new Mock<IStatisticsService>( );
         _loggerMock = new Mock<ILogger<StatisticsController>>( );
+
+        // Default: live status returns null (no bootstrap has run yet)
+        _ = _statisticsServiceMock
+            .Setup( x => x.GetLiveBootstrapStatusAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( (CacheBootstrapStatus?)null );
     }
 
     [TestMethod]
-    public void Index_WithCachedStats_ReturnsViewWithStats( ) {
+    public async Task Index_WithCachedStats_ReturnsViewWithStats( ) {
         LookupStatistics expectedStats = CreateTestStatistics( );
         _ = _statisticsServiceMock
             .Setup( x => x.GetCachedStatistics( ) )
@@ -34,7 +39,7 @@ public class StatisticsControllerTests {
 
         StatisticsController controller = CreateController( );
 
-        IActionResult result = controller.Index();
+        IActionResult result = await controller.Index( );
 
         ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
         LookupStatistics model = Assert.IsInstanceOfType<LookupStatistics>( viewResult.Model );
@@ -43,14 +48,14 @@ public class StatisticsControllerTests {
     }
 
     [TestMethod]
-    public void Index_WithNoCachedStats_ReturnsGeneratingView( ) {
+    public async Task Index_WithNoCachedStats_ReturnsGeneratingView( ) {
         _ = _statisticsServiceMock
             .Setup( x => x.GetCachedStatistics( ) )
             .Returns( (LookupStatistics?)null );
 
-        StatisticsController controller = CreateController();
+        StatisticsController controller = CreateController( );
 
-        IActionResult result = controller.Index();
+        IActionResult result = await controller.Index( );
 
         ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
         Assert.AreEqual( "Generating", viewResult.ViewName );
@@ -58,19 +63,81 @@ public class StatisticsControllerTests {
     }
 
     [TestMethod]
-    public void Index_WithNullService_ReturnsErrorView( ) {
+    public async Task Index_WithNullService_ReturnsErrorView( ) {
         StatisticsController controller = new(
             null,
             _loggerMock.Object
         );
 
-        IActionResult result = controller.Index();
+        IActionResult result = await controller.Index( );
 
         ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
         Assert.AreEqual( "Error", viewResult.ViewName );
         ErrorViewModel model = Assert.IsInstanceOfType<ErrorViewModel>( viewResult.Model );
         Assert.IsNotNull( model.Message );
         Assert.Contains( "not configured", model.Message );
+    }
+
+    [TestMethod]
+    public async Task Index_WithLiveBootstrapStatus_OverlaysStatusOntoCachedStats( ) {
+        // Arrange: cached stats have no bootstrap status; live status has a running flag
+        LookupStatistics cachedStats = CreateTestStatistics( );
+        CacheBootstrapStatus liveStatus = new( ) {
+            IsRunning = true,
+            LastRunTime = DateTimeOffset.UtcNow.AddHours( -1 ),
+            LastSuccessCount = 247404
+        };
+
+        _ = _statisticsServiceMock
+            .Setup( x => x.GetCachedStatistics( ) )
+            .Returns( cachedStats );
+        _ = _statisticsServiceMock
+            .Setup( x => x.IsRefreshing )
+            .Returns( false );
+        _ = _statisticsServiceMock
+            .Setup( x => x.GetLiveBootstrapStatusAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( liveStatus );
+
+        StatisticsController controller = CreateController( );
+
+        // Act
+        IActionResult result = await controller.Index( );
+
+        // Assert: model reflects live status, not cached status
+        ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
+        LookupStatistics model = Assert.IsInstanceOfType<LookupStatistics>( viewResult.Model );
+        Assert.IsNotNull( model.CacheBootstrapStatus );
+        Assert.IsTrue( model.CacheBootstrapStatus.IsRunning );
+        Assert.AreEqual( 247404, model.CacheBootstrapStatus.LastSuccessCount );
+        // Other cached stats fields are preserved
+        Assert.AreEqual( 100, model.TotalRecords );
+    }
+
+    [TestMethod]
+    public async Task Index_WhenLiveStatusReturnsNull_ModelHasNullBootstrapStatus( ) {
+        // Arrange: live status unavailable (Redis failure or no prior run)
+        LookupStatistics cachedStats = CreateTestStatistics( );
+
+        _ = _statisticsServiceMock
+            .Setup( x => x.GetCachedStatistics( ) )
+            .Returns( cachedStats );
+        _ = _statisticsServiceMock
+            .Setup( x => x.IsRefreshing )
+            .Returns( false );
+        _ = _statisticsServiceMock
+            .Setup( x => x.GetLiveBootstrapStatusAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( (CacheBootstrapStatus?)null );
+
+        StatisticsController controller = CreateController( );
+
+        // Act: should not throw even when live status is null
+        IActionResult result = await controller.Index( );
+
+        // Assert: page renders successfully with null bootstrap status
+        ViewResult viewResult = Assert.IsInstanceOfType<ViewResult>( result );
+        LookupStatistics model = Assert.IsInstanceOfType<LookupStatistics>( viewResult.Model );
+        Assert.IsNull( model.CacheBootstrapStatus );
+        Assert.AreEqual( 100, model.TotalRecords );
     }
 
     [TestMethod]
@@ -81,7 +148,7 @@ public class StatisticsControllerTests {
 
         StatisticsController controller = CreateController( );
 
-        IActionResult result = controller.Refresh();
+        IActionResult result = controller.Refresh( );
 
         RedirectToActionResult redirectResult = Assert.IsInstanceOfType<RedirectToActionResult>( result );
         Assert.AreEqual( "Index", redirectResult.ActionName );
@@ -96,7 +163,7 @@ public class StatisticsControllerTests {
 
         StatisticsController controller = CreateController( );
 
-        IActionResult result = controller.Refresh();
+        IActionResult result = controller.Refresh( );
 
         RedirectToActionResult redirectResult = Assert.IsInstanceOfType<RedirectToActionResult>( result );
         Assert.AreEqual( "Index", redirectResult.ActionName );

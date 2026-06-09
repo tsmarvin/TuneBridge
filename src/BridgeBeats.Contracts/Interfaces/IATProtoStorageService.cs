@@ -27,12 +27,19 @@ public interface IATProtoStorageService {
 
     /// <summary>
     /// Lists all MediaLinkResult records from the ATProto PDS collection.
-    /// Uses unauthenticated access for public records with cursor-based pagination.
+    /// Issues a single HTTP GET to <c>com.atproto.sync.getRepo</c> and parses the resulting
+    /// CAR v1 file locally — one request per call instead of ⌈N/100⌉ paginated listRecords calls.
     /// </summary>
     /// <param name="pdsUri">The PDS URI to query (e.g., "https://pds.bridgebeats.link").</param>
     /// <param name="userDid">The DID of the account whose collection to query.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>An async enumerable of tuples containing the AT-URI and MediaLinkResult for each record.</returns>
+    /// <remarks>
+    /// Throws on download failure (<see cref="System.Net.Http.HttpRequestException"/>) or CAR/MST
+    /// structural errors. Callers outside Core can only catch broadly because the internal
+    /// <c>CarParseException</c> type is not visible across the assembly boundary.
+    /// Per-record deserialization failures are skipped with a warning log rather than aborting the batch.
+    /// </remarks>
     IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ListAllRecordsAsync(
         Uri pdsUri,
         string userDid,

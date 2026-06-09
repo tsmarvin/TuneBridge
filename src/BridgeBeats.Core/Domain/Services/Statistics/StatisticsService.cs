@@ -68,6 +68,10 @@ public sealed partial class StatisticsService(
         return await RefreshStatisticsAsync( false, cancellationToken );
     }
 
+    /// <inheritdoc/>
+    public async Task<CacheBootstrapStatus?> GetLiveBootstrapStatusAsync( CancellationToken cancellationToken = default ) =>
+        await GetCacheBootstrapStatusAsync( ).WaitAsync( cancellationToken );
+
     /// <summary>
     /// Refreshes cached statistics, optionally forcing recomputation even when cache is fresh.
     /// </summary>

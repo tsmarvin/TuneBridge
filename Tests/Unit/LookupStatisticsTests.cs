@@ -72,6 +72,54 @@ public class LookupStatisticsTests {
 
     #endregion
 
+    /// <summary>
+    /// Reflection-based round-trip guard: every init-only property on <see cref="LookupStatistics"/>
+    /// is carried forward by <see cref="LookupStatistics.WithBootstrapStatus"/> unchanged
+    /// (except <see cref="LookupStatistics.CacheBootstrapStatus"/> which is replaced).
+    /// If a new property is added to <see cref="LookupStatistics"/> without updating
+    /// <see cref="LookupStatistics.WithBootstrapStatus"/>, this test fails.
+    /// </summary>
+    [TestMethod]
+    public void WithBootstrapStatus_CarriesForwardAllProperties_ReflectionRoundTrip( ) {
+        // Arrange: build a source with every property set to a non-default value
+        DateTimeOffset t = new( 2024, 1, 1, 0, 0, 0, TimeSpan.Zero );
+        LookupStatistics source = new( ) {
+            TotalRecords = 42,
+            AlbumCount = 7,
+            TrackCount = 35,
+            ProviderCounts = new Dictionary<string, int> { ["Spotify"] = 10, ["AppleMusic"] = 5 },
+            RecentEntries = [new RecentLookupEntry { Title = "T" }],
+            EarliestLookup = t,
+            LatestLookup = t.AddDays( 1 ),
+            GeneratedAt = t.AddDays( 2 ),
+            CacheBootstrapStatus = new CacheBootstrapStatus { IsRunning = true, LastSuccessCount = 1 }
+        };
+
+        CacheBootstrapStatus? newStatus = new( ) { IsRunning = false, LastSuccessCount = 99 };
+
+        // Act
+        LookupStatistics result = source.WithBootstrapStatus( newStatus );
+
+        // Assert: every property except CacheBootstrapStatus matches the source
+        System.Reflection.PropertyInfo[] props = typeof( LookupStatistics ).GetProperties(
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance );
+
+        foreach (System.Reflection.PropertyInfo prop in props) {
+            object? sourceVal = prop.GetValue( source );
+            object? resultVal = prop.GetValue( result );
+
+            if (prop.Name == nameof( LookupStatistics.CacheBootstrapStatus )) {
+                // Must be replaced with newStatus
+                Assert.AreSame( newStatus, resultVal,
+                    $"Property {prop.Name} was expected to be the new status object." );
+            } else {
+                // Must be carried forward unchanged
+                Assert.AreEqual( sourceVal, resultVal,
+                    $"Property {prop.Name} was not carried forward by WithBootstrapStatus." );
+            }
+        }
+    }
+
     #region RecentLookupEntry Tests
 
     /// <summary>

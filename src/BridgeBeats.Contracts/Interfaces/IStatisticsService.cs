@@ -42,4 +42,12 @@ public interface IStatisticsService {
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>The refreshed lookup statistics.</returns>
     Task<LookupStatistics> RefreshStatisticsAsync( CancellationToken cancellationToken = default );
+
+    /// <summary>
+    /// Reads the current cache bootstrap status directly from Redis, bypassing the
+    /// statistics cache. Returns null if the status is absent or cannot be read.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>The live bootstrap status, or null if unavailable.</returns>
+    Task<CacheBootstrapStatus?> GetLiveBootstrapStatusAsync( CancellationToken cancellationToken = default );
 }

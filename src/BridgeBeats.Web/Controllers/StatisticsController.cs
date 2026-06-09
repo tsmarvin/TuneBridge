@@ -25,22 +25,28 @@ public partial class StatisticsController(
     /// Displays the statistics page with lookup collection metrics.
     /// </summary>
     /// <returns>The statistics view.</returns>
-    public IActionResult Index( ) {
+    public async Task<IActionResult> Index( ) {
         if (statisticsService is null) {
             LogNotAvailable( );
             return View( "Error", new ErrorViewModel { Message = "Statistics service is not configured." } );
         }
 
         try {
-            LookupStatistics? stats = statisticsService.GetCachedStatistics();
+            LookupStatistics? stats = statisticsService.GetCachedStatistics( );
 
             if (stats is null) {
                 ViewBag.IsRefreshing = true;
                 return View( "Generating" );
             }
 
+            // Overlay live bootstrap status so the page reflects the current run state
+            // without waiting for the full statistics cache to expire.
+            CacheBootstrapStatus? liveStatus =
+                await statisticsService.GetLiveBootstrapStatusAsync( HttpContext?.RequestAborted ?? CancellationToken.None );
+            LookupStatistics displayStats = stats.WithBootstrapStatus( liveStatus );
+
             ViewBag.IsRefreshing = statisticsService.IsRefreshing;
-            return View( stats );
+            return View( displayStats );
         } catch (Exception ex) {
             LogRetrieveError( ex );
             return View( "Error", new ErrorViewModel { Message = "Unable to retrieve statistics. Please try again later." } );
