@@ -152,7 +152,6 @@ internal static class MstWalker {
 
             if (entry.RightChildHex is not null) {
                 foreach ((string childKey, string childValueCidHex) in WalkNode( car, entry.RightChildHex, key, depth + 1, visited, maxNodes, recordCount, cancellationToken )) {
-                    currentPrefix = childKey;
                     yield return (childKey, childValueCidHex);
                 }
             }
