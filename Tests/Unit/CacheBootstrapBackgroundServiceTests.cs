@@ -366,19 +366,18 @@ public class CacheBootstrapBackgroundServiceTests {
                 It.IsAny<Expiration>( ),
                 It.IsAny<StackExchange.Redis.ValueCondition>( ),
                 It.IsAny<CommandFlags>( ) ) )
-            .Callback<RedisKey, RedisValue, Expiration, StackExchange.Redis.ValueCondition, CommandFlags>(
-                ( _, v, _, _, _ ) => {
-                    string json = v.ToString( );
-                    lock (writtenJsons) { writtenJsons.Add( json ); }
-                    try {
-                        System.Text.Json.JsonDocument d2 = System.Text.Json.JsonDocument.Parse( json );
-                        bool isRunning = d2.RootElement.GetProperty( "IsRunning" ).GetBoolean( );
-                        bool hasLastRunTime = d2.RootElement.GetProperty( "LastRunTime" ).ValueKind != System.Text.Json.JsonValueKind.Null;
-                        if (!isRunning && hasLastRunTime) {
-                            _ = completionTcs.TrySetResult( );
-                        }
-                    } catch { }
-                } )
+            .Callback( ( RedisKey _, RedisValue v, Expiration _, StackExchange.Redis.ValueCondition _, CommandFlags _ ) => {
+                string json = v.ToString( );
+                lock (writtenJsons) { writtenJsons.Add( json ); }
+                try {
+                    System.Text.Json.JsonDocument d2 = System.Text.Json.JsonDocument.Parse( json );
+                    bool isRunning = d2.RootElement.GetProperty( "IsRunning" ).GetBoolean( );
+                    bool hasLastRunTime = d2.RootElement.GetProperty( "LastRunTime" ).ValueKind != System.Text.Json.JsonValueKind.Null;
+                    if (!isRunning && hasLastRunTime) {
+                        _ = completionTcs.TrySetResult( );
+                    }
+                } catch { }
+            } )
             .ReturnsAsync( true );
 
         SetupRecordList( [CreateTestRecord( "at://test/1" )] );
@@ -437,17 +436,16 @@ public class CacheBootstrapBackgroundServiceTests {
                 It.IsAny<Expiration>( ),
                 It.IsAny<StackExchange.Redis.ValueCondition>( ),
                 It.IsAny<CommandFlags>( ) ) )
-            .Callback<RedisKey, RedisValue, Expiration, StackExchange.Redis.ValueCondition, CommandFlags>(
-                ( _, v, _, _, _ ) => {
-                    string json = v.ToString( );
-                    writtenJsons.Add( json );
-                    try {
-                        System.Text.Json.JsonDocument d2 = System.Text.Json.JsonDocument.Parse( json );
-                        if (d2.RootElement.GetProperty( "IsRunning" ).GetBoolean( )) {
-                            _ = startTcs.TrySetResult( );
-                        }
-                    } catch { }
-                } )
+            .Callback( ( RedisKey _, RedisValue v, Expiration _, StackExchange.Redis.ValueCondition _, CommandFlags _ ) => {
+                string json = v.ToString( );
+                writtenJsons.Add( json );
+                try {
+                    System.Text.Json.JsonDocument d2 = System.Text.Json.JsonDocument.Parse( json );
+                    if (d2.RootElement.GetProperty( "IsRunning" ).GetBoolean( )) {
+                        _ = startTcs.TrySetResult( );
+                    }
+                } catch { }
+            } )
             .ReturnsAsync( true );
 
         SetupEmptyRecordList( );
@@ -503,19 +501,18 @@ public class CacheBootstrapBackgroundServiceTests {
                 It.IsAny<Expiration>( ),
                 It.IsAny<StackExchange.Redis.ValueCondition>( ),
                 It.IsAny<CommandFlags>( ) ) )
-            .Callback<RedisKey, RedisValue, Expiration, StackExchange.Redis.ValueCondition, CommandFlags>(
-                ( _, v, _, _, _ ) => {
-                    string json = v.ToString( );
-                    writtenJsons.Add( json );
-                    try {
-                        System.Text.Json.JsonDocument d2 = System.Text.Json.JsonDocument.Parse( json );
-                        bool isRunning = d2.RootElement.GetProperty( "IsRunning" ).GetBoolean( );
-                        bool hasNextScheduled = d2.RootElement.GetProperty( "NextScheduledRun" ).ValueKind != System.Text.Json.JsonValueKind.Null;
-                        if (!isRunning && hasNextScheduled) {
-                            _ = errorCompletionTcs.TrySetResult( );
-                        }
-                    } catch { }
-                } )
+            .Callback( ( RedisKey _, RedisValue v, Expiration _, StackExchange.Redis.ValueCondition _, CommandFlags _ ) => {
+                string json = v.ToString( );
+                writtenJsons.Add( json );
+                try {
+                    System.Text.Json.JsonDocument d2 = System.Text.Json.JsonDocument.Parse( json );
+                    bool isRunning = d2.RootElement.GetProperty( "IsRunning" ).GetBoolean( );
+                    bool hasNextScheduled = d2.RootElement.GetProperty( "NextScheduledRun" ).ValueKind != System.Text.Json.JsonValueKind.Null;
+                    if (!isRunning && hasNextScheduled) {
+                        _ = errorCompletionTcs.TrySetResult( );
+                    }
+                } catch { }
+            } )
             .ReturnsAsync( true );
 
         _ = _atProtoStorageMock

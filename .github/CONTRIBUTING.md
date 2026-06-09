@@ -312,7 +312,7 @@ See [.editorconfig](.editorconfig) for complete style rules and the [Copilot Ins
 
 ## Testing Guidelines
 
-All code changes should include appropriate tests. BridgeBeats uses MSTest with Moq and FluentAssertions.
+All code changes should include appropriate tests. BridgeBeats uses MSTest with Moq.
 
 ### Test Organization
 
@@ -324,7 +324,6 @@ All code changes should include appropriate tests. BridgeBeats uses MSTest with 
 
 - Use **MSTest** attributes: `[TestClass]`, `[TestMethod]`, `[TestInitialize]`, `[TestCleanup]`
 - Use **Moq** for mocking dependencies
-- Use **FluentAssertions** for readable assertions (e.g., `result.Should().NotBeNull()`)
 - Use **WebApplicationFactory** for integration testing web endpoints
 - Test both success and failure scenarios
 - Name tests clearly to describe what they test
