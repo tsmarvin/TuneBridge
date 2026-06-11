@@ -46,6 +46,7 @@
     <ProjectReference Include="..\src\BridgeBeats.Web\BridgeBeats.Web.csproj" />
     <ProjectReference Include="..\src\BridgeBeats.Worker.Discord\BridgeBeats.Worker.Discord.csproj" />
     <ProjectReference Include="..\src\BridgeBeats.Worker.SagaCoordinator\BridgeBeats.Worker.SagaCoordinator.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Worker.JetStreamWatcher\BridgeBeats.Worker.JetStreamWatcher.csproj" />
     <ProjectReference Include="..\src\BridgeBeats.Worker.Spotify\BridgeBeats.Worker.Spotify.csproj" />
     <ProjectReference Include="..\src\BridgeBeats.Worker.CacheBootstrap\BridgeBeats.Worker.CacheBootstrap.csproj" />
   </ItemGroup>

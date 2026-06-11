@@ -1,4 +1,5 @@
 using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Providers.AppleMusic;
 using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Spotify;
@@ -181,6 +182,9 @@ namespace BridgeBeats.Core.Domain.Extensions {
             _ = services.AddSingleton( new SpotifyCredentials( clientId, clientSecret ) );
             _ = services.AddTransient<SpotifyTokenHandler>( );
             _ = services.AddTransient<SpotifyLookupService>( );
+            // Register as ISpotifyBulkLookupService so SpotifyBulkProcessorService
+            // can receive a testable interface rather than the sealed concrete class.
+            _ = services.AddTransient<ISpotifyBulkLookupService>( sp => sp.GetRequiredService<SpotifyLookupService>( ) );
 
             _ = enabledProviders.Add( SupportedProviders.Spotify );
             return true;

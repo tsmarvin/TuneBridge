@@ -42,7 +42,9 @@ public static class Program {
         // Add Redis client from Aspire (for queue submission)
         builder.AddRedisClient( "redis" );
 
-        // Register queue infrastructure for submitting to provider queues
+        // Register queue infrastructure for submitting to provider queues.
+        // AddAllProviderQueues automatically applies SpotifyBulkQueueDecorator for QueuedLookupRequest,
+        // routing Spotify SongIdLookup/AlbumIdLookup to the type-specific bulk streams.
         _ = builder.Services.AddQueueInfrastructure( );
         _ = builder.Services.AddAllProviderQueues<QueuedLookupRequest>( );
 

@@ -67,7 +67,9 @@ public static class Program {
         // Register queue infrastructure services
         _ = builder.Services.AddQueueInfrastructure( );
 
-        // Register all provider queues for secondary lookups
+        // Register all provider queues for secondary lookups.
+        // AddAllProviderQueues automatically applies SpotifyBulkQueueDecorator for QueuedLookupRequest,
+        // routing Spotify SongIdLookup/AlbumIdLookup to the type-specific bulk streams.
         _ = builder.Services.AddAllProviderQueues<QueuedLookupRequest>( );
 
         // Register ATProto session manager and storage service (centralized authentication)

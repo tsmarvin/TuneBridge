@@ -369,7 +369,7 @@ public partial class ATProtoStorageService(
                 // MST keys come from an operator-controlled PDS; an attacker could inject
                 // control characters or path separators. Skip invalid rkeys with a warning.
                 if (!IsValidRkey( rkey )) {
-                    LogCarRecordSkipped( logger, rkey.SanitizeForLogging( ), "invalid rkey" );
+                    LogCarRecordSkipped( logger, TruncateForLog( rkey, 64 ), "invalid rkey" );
                     skippedCount++;
                     continue;
                 }
@@ -442,6 +442,32 @@ public partial class ATProtoStorageService(
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Returns the first <paramref name="maxLen"/> characters of <paramref name="value"/>,
+    /// appending "..." if truncated, and replaces ASCII control characters (\r, \n, \t and
+    /// other C0 codes) with spaces to prevent CWE-117 log-forging on plain-text sinks.
+    /// </summary>
+    private static string TruncateForLog( string value, int maxLen ) {
+        ReadOnlySpan<char> source = value.Length <= maxLen
+            ? value.AsSpan( )
+            : value.AsSpan( 0, maxLen );
+        bool hasControl = false;
+        foreach (char c in source) {
+            if (c < ' ' || c == 127) { hasControl = true; break; }
+        }
+        if (!hasControl) {
+            return value.Length <= maxLen ? value : string.Concat( source, "..." );
+        }
+        System.Text.StringBuilder sb = new( source.Length + 3 );
+        foreach (char c in source) {
+            _ = sb.Append( c < ' ' || c == 127 ? ' ' : c );
+        }
+        if (value.Length > maxLen) {
+            _ = sb.Append( "..." );
+        }
+        return sb.ToString( );
     }
 
     #endregion

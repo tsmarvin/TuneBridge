@@ -6,19 +6,20 @@ namespace BridgeBeats.Providers.Spotify {
 
     /// <summary>
     /// Utility class for parsing Spotify URLs and constructing Spotify Web API request URIs.
-    /// Extracts entity types (track, album, artist, playlist) and IDs from open.spotify.com URLs,
+    /// Recognizes track, album, and prerelease entities from open.spotify.com URLs,
     /// then maps them to the corresponding API v1 endpoints for metadata retrieval.
     /// </summary>
     /// <remarks>
-    /// Spotify uses a consistent URL structure: open.spotify.com/{type}/{id} where {type} is
-    /// "track", "album", "artist", or "playlist", and {id} is a Base62-encoded identifier.
-    /// This parser validates the URL structure and extracts both components for API calls.
+    /// The parser recognizes open.spotify.com/{type}/{id} URLs where {type} is "track",
+    /// "album", or "prerelease", and {id} is a Base62-encoded identifier. Artist and
+    /// playlist URLs are not recognized by the regex and are dropped by design
+    /// (director ruling 2026-06-07); neither entity type is processed anywhere in the system.
     /// </remarks>
     public static partial class SpotifyLinkParser {
 
         /// <summary>
         /// Parses a Spotify web URL to extract the entity type and Spotify ID. Validates URL structure
-        /// and determines whether the link points to a track, album, artist, or playlist.
+        /// and determines whether the link points to a track, album, or prerelease.
         /// </summary>
         /// <param name="link">
         /// Spotify URL in the format "https://open.spotify.com/{type}/{id}" or "https://spotify.link/{code}".
@@ -26,13 +27,14 @@ namespace BridgeBeats.Providers.Spotify {
         /// </param>
         /// <returns>
         /// A tuple containing: (bool success, SpotifyEntity kind, string id).
-        /// - success: True if the URL was successfully parsed and recognized.
+        /// - success: True if the URL was successfully parsed and recognized as track, album, or prerelease.
         /// - kind: The entity type extracted from the URL.
         /// - id: The Spotify ID (Base62 alphanumeric string, typically 22 characters).
         /// </returns>
         /// <remarks>
-        /// Only track and album URLs are currently utilized for music lookup. Artist and playlist URLs
-        /// are parsed but may not be fully supported by all downstream operations.
+        /// Recognized entity types are track, album, and prerelease. Artist and playlist URLs
+        /// are not matched by the regex and are dropped by design — neither entity type is
+        /// processed anywhere in the system (director ruling 2026-06-07).
         /// For spotify.link URLs, the method follows the redirect to obtain the actual open.spotify.com URL.
         /// </remarks>
         public static async Task<(bool, SpotifyEntity kind, string id)> TryParseUriAsync(
@@ -57,7 +59,6 @@ namespace BridgeBeats.Providers.Spotify {
                     "track" => SpotifyEntity.Track,
                     "album" => SpotifyEntity.Album,
                     "prerelease" => SpotifyEntity.PreRelease,
-                    "playlists" => SpotifyEntity.Playlist,
                     _ => SpotifyEntity.Unknown
                 };
             }

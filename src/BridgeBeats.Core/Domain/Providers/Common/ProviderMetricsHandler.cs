@@ -56,6 +56,11 @@ public sealed partial class ProviderMetricsHandler : DelegatingHandler {
     [GeneratedRegex( @"/+", RegexOptions.Compiled )]
     private static partial Regex MultipleSlashRegex( );
 
+    // Spotify bulk-endpoint ids= query parameter (e.g. tracks?ids=ID1,ID2,... or albums?ids=...)
+    // Normalizes to a stable placeholder so bulk URIs don't emit unbounded tag cardinality.
+    [GeneratedRegex( @"(\?|&)ids=[^&]+", RegexOptions.Compiled )]
+    private static partial Regex SpotifyBulkIdsRegex( );
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ProviderMetricsHandler"/> class.
     /// </summary>
@@ -142,7 +147,13 @@ public sealed partial class ProviderMetricsHandler : DelegatingHandler {
     }
 
     private static string NormalizeSpotifyEndpoint( string path ) {
-        // Replace Spotify IDs (22-character base62 strings)
+        // Normalize the bulk-endpoint ids= parameter first so the stable placeholder
+        // (e.g. tracks?ids={ids}) is in place before the per-ID regex runs.
+        // Without this step each unique comma-separated ID list produces a distinct
+        // endpoint tag value, causing unbounded metric series growth (CR-M-1).
+        path = SpotifyBulkIdsRegex( ).Replace( path, "$1ids={ids}" );
+
+        // Replace Spotify IDs (22-character base62 strings) in path segments
         path = SpotifyIdRegex( ).Replace( path, "/{id}" );
 
         // Replace ISRCs in query params

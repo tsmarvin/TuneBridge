@@ -181,7 +181,7 @@ public sealed partial class LookupOrchestrator(
 
         string normalizedId = providerId.Trim( );
         LookupRequestType lookupType = isAlbum ? LookupRequestType.AlbumIdLookup : LookupRequestType.SongIdLookup;
-        string lookupKey = $"{lookupType}:{provider}:{normalizedId}";
+        string lookupKey = LookupKeyBuilder.TypedKey( lookupType, provider, normalizedId );
 
         return await PerformLookupAsync(
             lookupKey: lookupKey,
@@ -194,7 +194,7 @@ public sealed partial class LookupOrchestrator(
     }
 
     private async Task<LookupResult> LookupByUrlAsync( string url, SupportedProviders provider, TimeSpan? waitBudget = null ) {
-        string lookupKey = $"{LookupRequestType.UriLookup}:{HashUtility.HashUrl( url )}";
+        string lookupKey = LookupKeyBuilder.UrlKey( url );
 
         return await PerformLookupAsync(
             lookupKey: lookupKey,

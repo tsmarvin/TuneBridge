@@ -24,7 +24,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         ILogger<SpotifyLookupService> logger,
         JsonSerializerOptions serializerOptions,
         IGenreCacheService? genreCache = null
-    ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
+    ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService, ISpotifyBulkLookupService {
 
         /// <inheritdoc/>
         public override SupportedProviders Provider => SupportedProviders.Spotify;

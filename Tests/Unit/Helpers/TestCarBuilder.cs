@@ -339,6 +339,30 @@ internal static class TestCarBuilder {
     }
 
     /// <summary>
+    /// Builds a CAR with <paramref name="blockCount"/> tiny blocks (each containing 4 bytes of
+    /// unique content) plus a valid commit and MST root. Used to test the block-count cap.
+    /// </summary>
+    internal static byte[] BuildCarWithManyTinyBlocks( int blockCount ) {
+        Dictionary<byte[], byte[]> blocks = new( ByteArrayComparer.Instance );
+
+        for (int i = 0; i < blockCount; i++) {
+            byte[] blockBytes = [(byte)(i >> 24), (byte)(i >> 16), (byte)(i >> 8), (byte)i];
+            byte[] cid = ComputeCidBytes( blockBytes );
+            blocks[cid] = blockBytes;
+        }
+
+        byte[] mstNodeBytes = BuildMstNode( null, [] );
+        byte[] mstCid = ComputeCidBytes( mstNodeBytes );
+        blocks[mstCid] = mstNodeBytes;
+
+        byte[] commitBytes = BuildCommit( "did:plc:test", mstCid );
+        byte[] commitCid = ComputeCidBytes( commitBytes );
+        blocks[commitCid] = commitBytes;
+
+        return BuildCar( commitCid, blocks );
+    }
+
+    /// <summary>
     /// Builds a CAR whose first block section has a declared length larger than 2 MB,
     /// which should be rejected by CarV1Reader before any block content is read.
     /// </summary>
@@ -403,6 +427,34 @@ internal static class TestCarBuilder {
         WriteBlock( commitCid, commitBytes );
 
         return ms.ToArray( );
+    }
+
+    /// <summary>
+    /// Builds a CAR containing an MST entry with the given raw rkey string.
+    /// Used to exercise SEC-005 rkey validation in ATProtoStorageService.
+    /// </summary>
+    internal static byte[] BuildCarWithRawRkey( string collection, string rawRkey ) {
+        byte[] recBytes = BuildRecordBlock( new BridgeBeats.Contracts.Records.MediaLinkResultRecord(
+            results: [new BridgeBeats.Contracts.Records.ProviderResultRecord(
+                "spotify", "Artist", "Track",
+                "https://open.spotify.com/track/x", "US" )],
+            lookedUpAt: new DateTimeOffset( 2024, 1, 1, 0, 0, 0, TimeSpan.Zero )
+        ) );
+        byte[] recCid = ComputeCidBytes( recBytes );
+
+        string fullKey = $"{collection}/{rawRkey}";
+        byte[] mstNodeBytes = BuildMstNode( null,
+            [new MstEntry( 0, fullKey, recCid )] );
+        byte[] mstCid = ComputeCidBytes( mstNodeBytes );
+        byte[] commitBytes = BuildCommit( "did:plc:test", mstCid );
+        byte[] commitCid = ComputeCidBytes( commitBytes );
+
+        Dictionary<byte[], byte[]> blocks = new( ByteArrayComparer.Instance ) {
+            [commitCid] = commitBytes,
+            [mstCid] = mstNodeBytes,
+            [recCid] = recBytes,
+        };
+        return BuildCar( commitCid, blocks );
     }
 
     /// <summary>

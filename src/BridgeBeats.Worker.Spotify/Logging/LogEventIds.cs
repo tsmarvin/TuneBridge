@@ -49,7 +49,7 @@ public static class LogEventIds {
     /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogEnqueuedToBulkStream"/>.</summary>
     public const int EnqueuedToBulkStream = 5302;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogCollectionWarning"/>.</summary>
+    /// <summary>EventId for a collection-warning log event (reserved, no longer used by <c>SpotifyBatchQueueHelper</c>).</summary>
     public const int CollectionWarning = 5303;
 
     /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogDeserializationError"/>.</summary>
@@ -66,6 +66,18 @@ public static class LogEventIds {
 
     /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogMessageRequeued"/>.</summary>
     public const int MessageRequeued = 5308;
+
+    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogAutoClaimRecovered"/>.</summary>
+    public const int AutoClaimRecovered = 5309;
+
+    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogAutoClaimNotSupported"/>.</summary>
+    public const int AutoClaimNotSupported = 5310;
+
+    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogMaxRetriesExceeded"/>.</summary>
+    public const int MaxRetriesExceeded = 5311;
+
+    /// <summary>EventId 5312 (formerly LogSagaUpdateError — retired when saga writes moved to service layer).</summary>
+    public const int SagaUpdateError = 5312;
 
     // SpotifyBulkProcessorService (5350-5399)
     /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogServiceStarting"/>.</summary>
@@ -130,4 +142,16 @@ public static class LogEventIds {
 
     /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogPublishCompletionError"/>.</summary>
     public const int PublishCompletionError = 5370;
+
+    /// <summary>EventId for SpotifyBulkProcessorService rate-limit-parity saga-partial event.</summary>
+    public const int BulkSagaMarkedPartial = 5371;
+
+    /// <summary>EventId for SpotifyBulkProcessorService dispatch empty-dict requeue-all.</summary>
+    public const int BulkDispatchRequeuingAll = 5372;
+
+    /// <summary>EventId for SpotifyBulkProcessorService dispatch absent-key single requeue.</summary>
+    public const int BulkDispatchRequeuingOne = 5373;
+
+    /// <summary>EventId for SpotifyBulkProcessorService rate-limit sentinel publish error.</summary>
+    public const int BulkPublishRateLimitSentinelError = 5374;
 }

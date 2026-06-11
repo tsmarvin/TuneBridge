@@ -3,6 +3,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Core.Domain.Extensions;
 using BridgeBeats.Core.Domain.Providers.Spotify;
 using BridgeBeats.Core.Infrastructure.Extensions;
+using BridgeBeats.Worker.Spotify.Metrics;
 using Serilog;
 
 namespace BridgeBeats.Worker.Spotify;
@@ -61,6 +62,11 @@ public static class Program {
 
         // Register queue processor background service for consuming from Redis streams
         _ = builder.Services.AddQueueProcessor<SpotifyLookupService>( SupportedProviders.Spotify );
+
+        // Configure Spotify batch settings (linger, configurable under BridgeBeats:Spotify:Batch)
+        _ = builder.Services.Configure<SpotifyBatchSettings>(
+            builder.Configuration.GetSection( SpotifyBatchSettings.SectionKey )
+        );
 
         // Register Spotify-specific batch queue helper and bulk processor service
         _ = builder.Services.AddSingleton<SpotifyBatchQueueHelper>( );
