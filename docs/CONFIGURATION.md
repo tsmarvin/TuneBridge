@@ -159,6 +159,23 @@ For local development, you can use an `appsettings.json` file instead of environ
 }
 ```
 
+### HTTP Resilience
+
+The `BridgeBeats:Resilience` block tunes the global HTTP resilience pipeline applied to all
+outbound HTTP clients (provider APIs, the Discord worker's calls to the Web API, and CAR
+repo downloads).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `AttemptTimeoutSeconds` | `120` | Per-attempt timeout. Set above the ~90s server-side lookup budget so legitimate slow lookups are not killed mid-flight. |
+| `TotalTimeoutMinutes` | `10` | Ceiling across all retry attempts for one logical request. Must exceed `AttemptTimeoutSeconds`. |
+| `MaxRetryAttempts` | `5` | Retry count for transient failures on safe (GET) methods. POST is never auto-retried. |
+| `MaxRetryAfterSeconds` | `120` | Largest `Retry-After` value honored before failing fast. |
+
+The circuit-breaker sampling window is fixed at `2 x AttemptTimeoutSeconds` (240s at the
+default) to satisfy the standard-handler validator. Raising `AttemptTimeoutSeconds` slows
+failure detection on hung endpoints; the total timeout and retry cap still bound the operation.
+
 ### Docker Configuration
 
 When using Docker, environment variables are passed via the `-e` flag or docker compose:

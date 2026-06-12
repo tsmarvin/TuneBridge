@@ -21,6 +21,12 @@ public static class AspireServiceExtensions {
     private const string HealthPath = "/health";
 
     /// <summary>
+    /// Default AttemptTimeout in seconds, consumed by both AddServiceDefaults overloads.
+    /// Exposed as internal so tests can assert against the canonical value rather than restating it.
+    /// </summary>
+    internal const int DefaultAttemptTimeoutSeconds = 120;
+
+    /// <summary>
     /// Adds service discovery, HTTP resilience defaults, health checks, and OpenTelemetry exporters.
     /// </summary>
     /// <param name="builder">The web application builder.</param>
@@ -32,7 +38,7 @@ public static class AspireServiceExtensions {
         // Read resilience configuration with defaults
         int maxRetryAttempts = builder.Configuration.GetValue( "BridgeBeats:Resilience:MaxRetryAttempts", 5 );
         int totalTimeoutMinutes = builder.Configuration.GetValue( "BridgeBeats:Resilience:TotalTimeoutMinutes", 10 );
-        int attemptTimeoutSeconds = builder.Configuration.GetValue( "BridgeBeats:Resilience:AttemptTimeoutSeconds", 10 );
+        int attemptTimeoutSeconds = builder.Configuration.GetValue( "BridgeBeats:Resilience:AttemptTimeoutSeconds", DefaultAttemptTimeoutSeconds );
 
         _ = builder.Services.ConfigureHttpClientDefaults( http => {
             _ = http.AddServiceDiscovery( );
@@ -56,6 +62,8 @@ public static class AspireServiceExtensions {
 
                 options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( totalTimeoutMinutes );
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( attemptTimeoutSeconds );
+                // Standard-handler validator requires SamplingDuration >= 2 x AttemptTimeout; 30s floor matches the option default.
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds( Math.Max( 2 * attemptTimeoutSeconds, 30 ) );
             } );
 
             _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {
@@ -116,7 +124,7 @@ public static class AspireServiceExtensions {
         // Read resilience configuration with defaults
         int maxRetryAttempts = builder.Configuration.GetValue( "BridgeBeats:Resilience:MaxRetryAttempts", 5 );
         int totalTimeoutMinutes = builder.Configuration.GetValue( "BridgeBeats:Resilience:TotalTimeoutMinutes", 10 );
-        int attemptTimeoutSeconds = builder.Configuration.GetValue( "BridgeBeats:Resilience:AttemptTimeoutSeconds", 10 );
+        int attemptTimeoutSeconds = builder.Configuration.GetValue( "BridgeBeats:Resilience:AttemptTimeoutSeconds", DefaultAttemptTimeoutSeconds );
 
         _ = builder.Services.ConfigureHttpClientDefaults( http => {
             _ = http.AddServiceDiscovery( );
@@ -140,6 +148,8 @@ public static class AspireServiceExtensions {
 
                 options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( totalTimeoutMinutes );
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( attemptTimeoutSeconds );
+                // Standard-handler validator requires SamplingDuration >= 2 x AttemptTimeout; 30s floor matches the option default.
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds( Math.Max( 2 * attemptTimeoutSeconds, 30 ) );
             } );
 
             _ = resilienceBuilder.SelectPipelineByAuthority( ).Configure( ( options, sp ) => {

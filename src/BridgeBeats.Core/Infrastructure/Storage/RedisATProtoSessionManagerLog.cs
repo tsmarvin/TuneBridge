@@ -1,3 +1,4 @@
+using System.Net;
 using BridgeBeats.Core.Infrastructure.Logging;
 
 namespace BridgeBeats.Core.Infrastructure.Storage;
@@ -70,22 +71,22 @@ public sealed partial class RedisATProtoSessionManager {
     private partial void LogRestoreException( Exception ex, string identifier );
 
     /// <summary>
-    /// Logs that another instance is performing login.
+    /// Logs that another instance holds the distributed lock and this process is waiting.
     /// </summary>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.RedisATProtoSessionManagerWaitingForLock,
         Level = LogLevel.Debug,
-        Message = "Another instance is performing login for {Identifier}, waiting..." )]
+        Message = "Another instance holds the credential-mutation lock for {Identifier}, waiting..." )]
     private partial void LogWaitingForLock( string identifier );
 
     /// <summary>
-    /// Logs that login is proceeding after waiting.
+    /// Logs that the distributed lock wait timed out (lock TTL elapsed without release).
     /// </summary>
     [LoggerMessage(
-        EventId = LogEventIds.Infrastructure.Storage.RedisATProtoSessionManagerProceedingWithLogin,
+        EventId = LogEventIds.Infrastructure.Storage.RedisATProtoSessionManagerLockWaitTimeout,
         Level = LogLevel.Warning,
-        Message = "Still no session after waiting - proceeding with login for {Identifier}" )]
-    private partial void LogProceedingWithLogin( string identifier );
+        Message = "Distributed lock wait timed out for {Identifier} — proceeding without lock (crash-recovery path)" )]
+    private partial void LogLockWaitTimeout( string identifier );
 
     /// <summary>
     /// Logs that a fresh login is being performed.
@@ -142,13 +143,24 @@ public sealed partial class RedisATProtoSessionManager {
     private partial void LogPersistUpdateFailed( Exception ex, string identifier );
 
     /// <summary>
-    /// Logs that token refresh failed.
+    /// Logs a token refresh failure. Demoted to Debug because with background refresh disabled
+    /// this event fires only on explicit refresh calls; the relevant diagnostic is in the exception
+    /// path logs, not here. StatusCode is included to aid triage of unrecoverable vs. transport failures.
     /// </summary>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.RedisATProtoSessionManagerTokenRefreshFailed,
-        Level = LogLevel.Warning,
-        Message = "Token refresh failed for {Identifier} - clearing stored credentials" )]
-    private partial void LogTokenRefreshFailed( string identifier );
+        Level = LogLevel.Debug,
+        Message = "Token refresh failed for {Identifier} (StatusCode: {StatusCode})" )]
+    private partial void LogTokenRefreshFailed( string identifier, HttpStatusCode? statusCode );
+
+    /// <summary>
+    /// Logs that a credential clear was suppressed by the cooldown guard.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.RedisATProtoSessionManagerClearSuppressedByCooldown,
+        Level = LogLevel.Debug,
+        Message = "Credential clear suppressed by cooldown for {Identifier}" )]
+    private partial void LogClearSuppressedByCooldown( string identifier );
 
     /// <summary>
     /// Logs failure to clear credentials after token refresh failure.
@@ -203,4 +215,13 @@ public sealed partial class RedisATProtoSessionManager {
         Level = LogLevel.Debug,
         Message = "Cleared stored credentials from Redis for {Identifier}" )]
     private partial void LogCleared( string identifier );
+
+    /// <summary>
+    /// Logs failure to release the distributed lock.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.RedisATProtoSessionManagerLockReleaseFailed,
+        Level = LogLevel.Error,
+        Message = "Failed to release distributed credential-mutation lock for {Identifier}" )]
+    private partial void LogLockReleaseFailed( Exception ex, string identifier );
 }

@@ -35,10 +35,12 @@ curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/contain
 ### What the Installation Script Does
 
 1. **Validates dependencies** - Checks for Docker, Docker Compose v2+, curl/wget, and optionally openssl
-2. **Downloads configuration files** - Fetches `docker-compose.yml`, `Caddyfile`, and `.env.example` from GitHub
-3. **Sets up secrets** - Creates the `secrets/` directory with placeholder files and auto-generates random secrets for `api_key_salt.txt` and `redis_password.txt`
-4. **Configures environment** - Creates `.env` from `.env.example` if not present
-5. **Handles updates** - On subsequent runs:
+2. **Downloads configuration files** - Fetches `docker-compose.yml`, `Caddyfile`, `.env.example`, and `truncate_seq.sh` from GitHub
+3. **Sets up logs and data directories** - Creates `./logs/`, `./logs/caddy/`, and `./data/{app,dp-keys,redis,pds}/`; sets ownership for each directory to match the UID of the writing container (`1654` for the app, `root` for PDS/redis/caddy)
+4. **Sets up secrets** - Creates the `secrets/` directory with placeholder files and auto-generates random secrets for `api_key_salt.txt` and `redis_password.txt`
+5. **Configures environment** - Creates `.env` from `.env.example` if not present
+6. **Registers PDS sequencer trim** - Installs `sqlite3` on the host if missing and writes `/etc/cron.d/bridgebeats-pds-trim` (daily at 04:17, 14-day retention); see [PDS Sequencer Retention](#pds-sequencer-retention) below
+7. **Handles updates** - On subsequent runs:
    - Backs up existing `docker-compose.yml` and `Caddyfile` with timestamps
    - Logs current container image SHAs to `upgrade.log` for rollback reference
    - Detects new environment variables in `.env.example` and displays them for manual addition
@@ -105,7 +107,7 @@ SPOTIFY_CLIENT_ID=your_client_id
 TIDAL_CLIENT_ID=your_client_id
 ```
 
-Sensitive values go in the `secrets/` directory (created by `setup-secrets.sh`).
+Sensitive values go in the `secrets/` directory (created by `install.sh`, or manually with `mkdir -p secrets && chmod 700 secrets`).
 
 ### Using Pre-built Images
 
@@ -232,24 +234,48 @@ The Discord worker calls the main BridgeBeats Web API for music lookups, so ensu
 
 ## Backup and Recovery
 
-### SQLite Cache
+### Persistent Data
 
-If using the local SQLite cache:
+All persistent state lives under the host `./data/` bind-mount tree, alongside `./secrets/` and `.env`. Backup is a host-side file copy — no `docker cp` is needed.
+
+Key paths:
+- `./data/app/bridgebeats.db` — application SQLite database
+- `./data/dp-keys/` — Data Protection key ring (losing these forces a session re-auth for all users)
+- `./data/pds/` — PDS repo SQLite databases, DID/key material, and blob store
+- `./data/redis/` — Redis AOF/RDB persistence
+
+A concrete backup recipe (run from the deployment directory):
 
 ```bash
-# Backup
-docker cp bridgebeats:/app/cache/medialinkscache.db ./backup/
+# For a consistent snapshot, bring the stack down first (avoids WAL-mode split copies)
+docker compose down
 
-# Restore
-docker cp ./backup/medialinkscache.db bridgebeats:/app/cache/
+# Archive everything needed to restore the deployment
+tar -czf "../bridgebeats-backup-$(date +%Y%m%d-%H%M%S).tar.gz" \
+    data secrets .env docker-compose.yml Caddyfile
+
+# Bring the stack back up
+docker compose up -d
 ```
+
+If a brief outage is not acceptable, a hot copy is also possible — SQLite databases are in WAL mode, so copy the db file together with its `-wal` and `-shm` sidecar files if present. A brief `docker compose stop` is still the safest path.
 
 ### Configuration
 
 Keep a secure backup of:
 - API credentials
 - Private keys (.p8 files)
-- Configuration files
+- Configuration files (`.env`, `docker-compose.yml`, `Caddyfile`)
+
+### PDS Sequencer Retention
+
+The PDS `sequencer.sqlite` holds the firehose event log (`repo_seq` table). The stock Bluesky PDS never trims this table, so it grows without bound at bot-write volume — the BridgeBeats deployment reached **~14 GB**.
+
+**Automated trim:** `install.sh` registers a daily cron job (`/etc/cron.d/bridgebeats-pds-trim`) that runs the vendored `truncate_seq.sh` script (by [Bailey Townsend](https://tangled.org/strings/did:plc:rnpkyqnmsw4ipey6eotbdnnf/3milxyxx2hl22)) with a **14-day (336-hour)** retention window. The script runs directly on the host using the host `sqlite3` binary (installed by `install.sh`); trim output is appended to `./logs/pds-trim.log`. The host `sqlite3` package is a requirement for this feature.
+
+**Why no recurring VACUUM:** `truncate_seq.sh` runs `DELETE` only — no `VACUUM`. In SQLite, `DELETE` frees pages for internal reuse but does not return space to the OS. The already-bloated ~14 GB file was reclaimed once via a manual `VACUUM`; the recurring `DELETE` keeps `repo_seq` **bounded** going forward so the file size plateaus near the 14-day steady-state rather than growing without limit. A periodic automatic `VACUUM` is intentionally not scheduled — `VACUUM` rewrites the entire database (requires ~2x free disk space and an exclusive lock that stalls the PDS for the duration). Run `VACUUM` manually only if the file needs hard reclamation again after a long unmanaged growth period.
+
+**Relay-cursor caveat:** trimming `repo_seq` below a downstream consumer's last-seen cursor means that consumer (a relay or AppView) cannot resume from that cursor and must re-crawl or backfill. With 14-day retention this is only a concern if a consumer is offline for more than 14 consecutive days; under normal operation it is safe.
 
 ## Troubleshooting
 

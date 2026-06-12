@@ -19,5 +19,8 @@ public static class LogEventIds {
     /// <summary>Failed to deserialize store card response.</summary>
     public const int StoreCardDeserializeError = 6003;
 
+    /// <summary>Music lookup API call timed out or was cancelled.</summary>
+    public const int LookupApiTimeout = 6004;
+
     #endregion
 }

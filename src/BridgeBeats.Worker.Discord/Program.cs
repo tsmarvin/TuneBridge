@@ -51,13 +51,10 @@ public static class Program {
         // Uses Aspire service discovery to resolve "bridgebeats" service
         string? internalServiceKey = builder.Configuration["BridgeBeats:InternalServiceKey"];
         _ = builder.Services.AddHttpClient<BridgeBeatsApiClient>( client => {
-            // The base address will be set via Aspire service discovery
+            // Base address resolved via Aspire service discovery.
             client.BaseAddress = new Uri( "http://bridgebeats" );
-            // Multi-link lookups wait server-side for up to 90s in total (see
-            // LookupOrchestrator.LookupByContentAsync) - keep the transport timeout above
-            // that so the server-side budget, not HttpClient's default 100s, is the
-            // binding constraint
-            client.Timeout = TimeSpan.FromSeconds( 120 );
+            // Transport backstop above the global 120s AttemptTimeout so the resilience pipeline is the binding constraint.
+            client.Timeout = TimeSpan.FromSeconds( 130 );
             client.DefaultRequestHeaders.Add( "User-Agent", "BridgeBeats-Discord-Worker/1.0" );
             if (!string.IsNullOrWhiteSpace( internalServiceKey )) {
                 client.DefaultRequestHeaders.Add( "X-Service-Key", internalServiceKey );

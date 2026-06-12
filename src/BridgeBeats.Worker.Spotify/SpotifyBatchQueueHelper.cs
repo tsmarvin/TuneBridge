@@ -141,9 +141,18 @@ public sealed partial class SpotifyBatchQueueHelper {
             }
 
             string? enqueuedAtStr = entries[0][QueueStreamFieldNames.EnqueuedAt];
-            return !string.IsNullOrEmpty( enqueuedAtStr )
-                ? DateTimeOffset.ParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture )
-                : null;
+            if (string.IsNullOrEmpty( enqueuedAtStr )) {
+                return null;
+            }
+
+            if (!DateTimeOffset.TryParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset parsed )) {
+                // Malformed enqueuedAt — treat as absent (return null) so the age trigger
+                // does not permanently strand a low-volume stream at the 24-hour horizon (D3).
+                LogMalformedEnqueuedAt( _logger, enqueuedAtStr, stream );
+                return null;
+            }
+
+            return parsed;
         } catch (RedisServerException) {
             return null;
         }
@@ -235,9 +244,12 @@ public sealed partial class SpotifyBatchQueueHelper {
                             continue;
                         }
 
-                        DateTimeOffset enqueuedAt = !string.IsNullOrEmpty( enqueuedAtStr )
-                            ? DateTimeOffset.ParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture )
-                            : DateTimeOffset.UtcNow;
+                        DateTimeOffset enqueuedAt = DateTimeOffset.UtcNow;
+                        if (!string.IsNullOrEmpty( enqueuedAtStr ) &&
+                            !DateTimeOffset.TryParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out enqueuedAt )) {
+                            LogMalformedEnqueuedAt( _logger, enqueuedAtStr, stream );
+                            enqueuedAt = DateTimeOffset.UtcNow;
+                        }
 
                         string compositeId = $"{stream}:{entry.Id}";
                         messages.Add( new QueuedMessage<QueuedLookupRequest>( compositeId, request, enqueuedAt ) );
@@ -292,9 +304,12 @@ public sealed partial class SpotifyBatchQueueHelper {
                         continue;
                     }
 
-                    DateTimeOffset enqueuedAt = !string.IsNullOrEmpty( enqueuedAtStr )
-                        ? DateTimeOffset.ParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture )
-                        : DateTimeOffset.UtcNow;
+                    DateTimeOffset enqueuedAt = DateTimeOffset.UtcNow;
+                    if (!string.IsNullOrEmpty( enqueuedAtStr ) &&
+                        !DateTimeOffset.TryParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out enqueuedAt )) {
+                        LogMalformedEnqueuedAt( _logger, enqueuedAtStr, stream );
+                        enqueuedAt = DateTimeOffset.UtcNow;
+                    }
 
                     string compositeId = $"{stream}:{entry.Id}";
                     messages.Add( new QueuedMessage<QueuedLookupRequest>( compositeId, request, enqueuedAt ) );
@@ -417,8 +432,8 @@ public sealed partial class SpotifyBatchQueueHelper {
 
         if (request is null) {
             // Payload could not be deserialized — cannot safely increment AttemptCount.
-            // Drop and signal caller so the saga is not left incomplete.
-            LogMaxRetriesExceeded( _logger, id, 0, sagaId );
+            // Drop the message and signal CapReached so the caller writes failed saga state.
+            LogPoisonPayloadDiscarded( _logger, id, sagaId );
             return RequeueOutcome.CapReached;
         }
 
@@ -532,6 +547,20 @@ public sealed partial class SpotifyBatchQueueHelper {
         Level = LogLevel.Warning,
         Message = "Message {MessageId} in bulk stream exceeded {MaxRetries} retry attempts; discarding (saga={SagaId})" )]
     private static partial void LogMaxRetriesExceeded( ILogger logger, string messageId, int maxRetries, string sagaId );
+
+    /// <summary>Logs that an unserializable payload was discarded from the bulk stream.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.PoisonPayloadDiscarded,
+        Level = LogLevel.Warning,
+        Message = "Message {MessageId} in bulk stream has an unserializable payload; discarding (saga={SagaId})" )]
+    private static partial void LogPoisonPayloadDiscarded( ILogger logger, string messageId, string sagaId );
+
+    /// <summary>Logs that a malformed enqueuedAt field was skipped in GetOldestEnqueuedAtAsync.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.MalformedEnqueuedAt,
+        Level = LogLevel.Warning,
+        Message = "Malformed enqueuedAt field '{EnqueuedAtStr}' in stream {Stream}; treating as absent (D3)" )]
+    private static partial void LogMalformedEnqueuedAt( ILogger logger, string enqueuedAtStr, string stream );
 
     #endregion
 }

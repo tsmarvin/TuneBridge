@@ -162,9 +162,9 @@ public static class LogEventIds {
             public const int RedisATProtoSessionManagerWaitingForLock = 1107;
 
             /// <summary>
-            /// EventId for <see cref="RedisATProtoSessionManager.LogProceedingWithLogin"/>.
+            /// EventId for <see cref="RedisATProtoSessionManager.LogLockWaitTimeout"/>.
             /// </summary>
-            public const int RedisATProtoSessionManagerProceedingWithLogin = 1108;
+            public const int RedisATProtoSessionManagerLockWaitTimeout = 1108;
 
             /// <summary>
             /// EventId for <see cref="RedisATProtoSessionManager.LogFreshLogin"/>.
@@ -230,6 +230,16 @@ public static class LogEventIds {
             /// EventId for <see cref="RedisATProtoSessionManager.LogCleared"/>.
             /// </summary>
             public const int RedisATProtoSessionManagerCleared = 1121;
+
+            /// <summary>
+            /// EventId for <see cref="RedisATProtoSessionManager.LogClearSuppressedByCooldown"/>.
+            /// </summary>
+            public const int RedisATProtoSessionManagerClearSuppressedByCooldown = 1122;
+
+            /// <summary>
+            /// EventId for <see cref="RedisATProtoSessionManager.LogLockReleaseFailed"/>.
+            /// </summary>
+            public const int RedisATProtoSessionManagerLockReleaseFailed = 1123;
 
             // UserPlaylistATProtoService (1150-1199)
 
@@ -414,6 +424,22 @@ public static class LogEventIds {
             /// EventId for <see cref="RedisRequestQueue.LogNoNewMessagesInStream"/>.
             /// </summary>
             public const int RedisRequestQueueNoNewMessagesInStream = 1272;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestQueue.LogAgingIntervalMisconfigured"/>.
+            /// Emitted at startup when InteractiveAgingInterval is ≤ 1 (misconfiguration guard).
+            /// </summary>
+            public const int RedisRequestQueueAgingIntervalMisconfigured = 1273;
+
+            // SpotifyBulkQueueDecorator (1274-1299)
+
+            /// <summary>
+            /// EventId for <see cref="BridgeBeats.Core.Infrastructure.Queue.SpotifyBulkQueueDecorator.LogInteractivePriorityOnBulkStream"/>.
+            /// Emitted when a SongIdLookup/AlbumIdLookup arrives with Interactive priority —
+            /// the item still routes to the 24 h-linger bulk stream. Callers must never pass
+            /// SupportedProviders.Spotify to the interactive provider-ID entry point.
+            /// </summary>
+            public const int SpotifyBulkDecoratorInteractivePriority = 1274;
 
             // RedisSagaStateManager (1300-1349)
 

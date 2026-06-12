@@ -3,6 +3,7 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using QueueFieldNames = BridgeBeats.Core.Infrastructure.Queue.QueueStreamFieldNames;
@@ -86,6 +87,15 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
         CancellationToken cancellationToken = default
     ) {
         if (request.LookupType is LookupRequestType.SongIdLookup or LookupRequestType.AlbumIdLookup) {
+            // Invariant: interactive lookups never wait. SongIdLookup/AlbumIdLookup are always
+            // routed to the 24 h-linger bulk stream regardless of the priority argument, so a
+            // caller that passes QueuePriority.Interactive will wait up to 24 h — not the
+            // interactive wait budget. Callers must never pass SupportedProviders.Spotify to
+            // the interactive provider-ID entry point (ICachingMediaLinkService.GetInfoByProviderIdAsync).
+            if (priority == QueuePriority.Interactive) {
+                LogInteractivePriorityOnBulkStream( _logger, request.LookupType, request.SagaId );
+            }
+
             string stream = request.LookupType == LookupRequestType.SongIdLookup
                 ? SpotifyConstants.BulkTrackIdStream
                 : SpotifyConstants.BulkAlbumIdStream;
@@ -162,6 +172,20 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
         LookupRequestType lookupType,
         string sagaId,
         string stream );
+
+    /// <summary>
+    /// Logs a warning when a SongIdLookup or AlbumIdLookup arrives with Interactive priority.
+    /// The item still routes to the 24 h-linger bulk stream — callers must never pass
+    /// SupportedProviders.Spotify to the interactive provider-ID entry point.
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.SpotifyBulkDecoratorInteractivePriority,
+        Level = LogLevel.Warning,
+        Message = "SpotifyBulkQueueDecorator received {LookupType} (SagaId={SagaId}) with Interactive priority; item routes to the 24 h-linger bulk stream — interactive caller will not receive a timely result" )]
+    private static partial void LogInteractivePriorityOnBulkStream(
+        ILogger logger,
+        LookupRequestType lookupType,
+        string sagaId );
 
     #endregion
 }

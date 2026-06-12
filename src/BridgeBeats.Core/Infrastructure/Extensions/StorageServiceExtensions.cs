@@ -42,17 +42,16 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
         /// <summary>
         /// Adds ATProto storage services if credentials are provided.
         /// Requires <see cref="IATProtoSessionManager"/> to be registered first via <see cref="AddATProtoSessionManager"/>.
-        /// Registers a named HTTP client for the sync (getRepo) endpoint with a 10-minute timeout.
+        /// Registers a named HTTP client for the sync (getRepo) endpoint with a 130-second transport timeout.
         /// </summary>
         /// <param name="services">The service collection to configure.</param>
         /// <returns>The configured service collection.</returns>
         public static IServiceCollection AddATProtoStorage( this IServiceCollection services ) {
-            // Register named client for com.atproto.sync.getRepo (large CAR downloads).
-            // Do NOT add AddStandardResilienceHandler here — AspireServiceExtensions attaches
-            // one globally via ConfigureHttpClientDefaults, which would stack two retry pipelines.
+            // CAR downloads (com.atproto.sync.getRepo) join the global resilience pipeline.
+            // HttpClient.Timeout is a transport backstop above the global 120s AttemptTimeout.
             _ = services
                 .AddHttpClient( ATProtoStorageService.ATProtoSyncHttpClientName )
-                .ConfigureHttpClient( c => c.Timeout = TimeSpan.FromMinutes( 10 ) );
+                .ConfigureHttpClient( c => c.Timeout = TimeSpan.FromSeconds( 130 ) );
 
             _ = services.AddSingleton<IATProtoStorageService>( sp =>
                 new ATProtoStorageService(

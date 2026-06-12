@@ -5,16 +5,8 @@ namespace BridgeBeats.Worker.Spotify;
 /// </summary>
 /// <remarks>
 /// Bind under <c>BridgeBeats:Spotify:Batch</c> in appsettings.json.
-/// Example:
-/// <code>
-/// "BridgeBeats": {
-///   "Spotify": {
-///     "Batch": {
-///       "LingerMs": 500
-///     }
-///   }
-/// }
-/// </code>
+/// Size is the primary flush trigger (50 tracks / 20 albums fires immediately).
+/// The linger age is a staleness backstop for low-volume streams, not a latency bound.
 /// </remarks>
 public sealed class SpotifyBatchSettings {
 
@@ -26,8 +18,12 @@ public sealed class SpotifyBatchSettings {
     /// </summary>
     public const string SectionKey = "BridgeBeats:Spotify:Batch";
 
-    /// <summary>Default linger value used when <see cref="LingerMs"/> is ≤ 0.</summary>
-    public const int DefaultLingerMs = 500;
+    /// <summary>
+    /// Default staleness backstop used when <see cref="LingerMs"/> is ≤ 0.
+    /// Equal to 24 hours (86 400 000 ms). Size flush (50 tracks / 20 albums) is the
+    /// primary trigger; this backstop drains low-volume streams that never reach the size threshold.
+    /// </summary>
+    public const int DefaultLingerMs = 86_400_000;
 
     /// <summary>
     /// Default initial cooldown after a bulk request failure before the stream is flushed again.
@@ -42,16 +38,13 @@ public sealed class SpotifyBatchSettings {
     public const int MaxRequestFailureCooldownSeconds = 60;
 
     /// <summary>
-    /// Gets or sets the maximum age in milliseconds that a message in the type-specific bulk
-    /// stream may wait before the batch is flushed, regardless of whether the count threshold
-    /// has been reached.
+    /// Gets or sets the staleness backstop in milliseconds.
+    /// A stream with fewer messages than the size threshold is flushed once the oldest pending
+    /// entry reaches this age, preventing low-volume streams from waiting indefinitely.
     /// </summary>
     /// <remarks>
-    /// This is the "size-OR-age" age half of the flush policy. A batch of even 1 message is
-    /// flushed after this many milliseconds, preventing indefinite delays on low-volume streams.
-    /// Default: 500ms — matches the poll interval so low-volume messages are flushed within
-    /// one extra poll cycle. Tune upward if API call overhead outweighs the latency benefit.
-    /// Values ≤ 0 are clamped to <see cref="DefaultLingerMs"/> (500ms).
+    /// Fires only when <c>0 &lt; count &lt; threshold</c> and the oldest entry is at least this old.
+    /// Default: 86 400 000 ms (24 h). Values ≤ 0 are clamped to <see cref="DefaultLingerMs"/>.
     /// Config key: <c>BridgeBeats:Spotify:Batch:LingerMs</c>.
     /// </remarks>
     public int LingerMs {
@@ -64,14 +57,8 @@ public sealed class SpotifyBatchSettings {
     /// (empty-dict response indicating a network or auth error).
     /// </summary>
     /// <remarks>
-    /// On the first consecutive failure the flush is suppressed for this many seconds.
-    /// Each subsequent consecutive failure doubles the cooldown (exponential backoff),
-    /// up to <see cref="MaxRequestFailureCooldownSeconds"/> (60s).
-    /// The cooldown resets on the next successful batch dispatch.
-    /// <para>
-    /// Default: 5s. Tune upward on slow-recovering infra or downward if aggressive retry
-    /// recovery is preferred. Values ≤ 0 are clamped to <see cref="DefaultRequestFailureCooldownSeconds"/>.
-    /// </para>
+    /// Exponential backoff per consecutive failure (doubles each time, capped at <see cref="MaxRequestFailureCooldownSeconds"/>).
+    /// Resets on the next successful batch dispatch. Default: 5s. Values ≤ 0 clamped to <see cref="DefaultRequestFailureCooldownSeconds"/>.
     /// Config key: <c>BridgeBeats:Spotify:Batch:RequestFailureCooldownSeconds</c>.
     /// </remarks>
     public int RequestFailureCooldownSeconds {

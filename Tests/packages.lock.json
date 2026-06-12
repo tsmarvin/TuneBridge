@@ -1750,6 +1750,7 @@
         "type": "Project",
         "dependencies": {
           "BridgeBeats.Core": "[1.0.0, )",
+          "Microsoft.Extensions.Http.Resilience": "[10.6.0, )",
           "NetCord.Hosting": "[1.0.0-beta.2, )"
         }
       },

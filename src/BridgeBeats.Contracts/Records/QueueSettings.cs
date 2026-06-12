@@ -17,8 +17,14 @@ public sealed record QueueSettings {
     /// <summary>
     /// Gets the number of minutes before an incomplete job/saga expires.
     /// </summary>
+    /// <remarks>
+    /// Must exceed the Spotify bulk-batch linger backstop (<c>BridgeBeats:Spotify:Batch:LingerMs</c>,
+    /// default 24 h / 1 440 min) so that a saga created before a bulk flush is not evicted before
+    /// the flush writes its result. Default is 2 880 min (48 h) = 2× the 24 h backstop, giving
+    /// visible margin. See <c>spotify-bulk-flush-semantics.md</c> D-decision-1 for the trade-off.
+    /// </remarks>
     [JsonPropertyName( "jobExpirationMinutes" )]
-    public int JobExpirationMinutes { get; init; } = 60;
+    public int JobExpirationMinutes { get; init; } = 2880;
 
     /// <summary>
     /// Gets the total time budget (in seconds) an interactive caller waits for a complete
@@ -28,8 +34,26 @@ public sealed record QueueSettings {
     public int InteractiveWaitSeconds { get; init; } = 30;
 
     /// <summary>
-    /// Gets the priority weighting configuration.
+    /// Gets the number of dequeue-ordering calls between aging slots.
+    /// Every <c>InteractiveAgingInterval</c> calls the dequeue ordering promotes a lower-priority
+    /// tier (background or bulk) to the head of the order so that interactive load cannot starve
+    /// background and bulk streams indefinitely.
     /// </summary>
+    /// <remarks>
+    /// Default is 8. Values ≤ 1 are treated as misconfiguration and fall back to the default.
+    /// </remarks>
+    [JsonPropertyName( "interactiveAgingInterval" )]
+    public int InteractiveAgingInterval { get; init; } = 8;
+
+    /// <summary>
+    /// Gets the priority aging configuration.
+    /// </summary>
+    /// <remarks>
+    /// The <see cref="PriorityWeights"/> values no longer drive weighted-random selection.
+    /// They are retained for backwards-compatible configuration and documentation purposes.
+    /// Queue ordering is now deterministic: interactive-first with a bounded aging escape hatch
+    /// controlled by <see cref="InteractiveAgingInterval"/>.
+    /// </remarks>
     [JsonPropertyName( "weights" )]
     public PriorityWeights Weights { get; init; } = new( );
 

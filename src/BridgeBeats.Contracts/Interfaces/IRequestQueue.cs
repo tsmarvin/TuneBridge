@@ -8,8 +8,11 @@ namespace BridgeBeats.Contracts.Interfaces;
 /// </summary>
 /// <typeparam name="T">The type of request to queue. Must implement <see cref="IQueueableRequest"/>.</typeparam>
 /// <remarks>
-/// Implementations should use Redis Streams with consumer groups for reliable message delivery.
-/// Priority weighting is applied during dequeue to balance interactive, background, and bulk requests.
+/// Implementations use Redis Streams with consumer groups for reliable message delivery.
+/// Dequeue ordering is deterministic: interactive-first with a bounded aging escape hatch
+/// (see <see cref="QueueSettings.InteractiveAgingInterval"/>) that guarantees background and
+/// bulk streams are visited at least once every N dequeue-ordering calls, preventing starvation
+/// under sustained interactive load.
 /// </remarks>
 public interface IRequestQueue<T> where T : class, IQueueableRequest {
     /// <summary>

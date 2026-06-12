@@ -18,37 +18,8 @@ namespace BridgeBeats.Worker.Spotify;
 /// Background service that processes bulk ID lookups for Spotify when count or age thresholds are met.
 /// </summary>
 /// <remarks>
-/// <para>
-/// This service monitors the type-specific bulk streams for track and album ID lookups.
-/// A flush is triggered when count ≥ MaxTracksPerBatchLookup (50) / MaxAlbumsPerBatchLookup (20)
-/// OR when the oldest pending entry is older than <c>BridgeBeats:Spotify:Batch:LingerMs</c>
-/// (default 500ms). This size-OR-age policy ensures low-volume streams don't starve
-/// indefinitely and high-volume streams still batch efficiently.
-/// </para>
-/// <para>
-/// Worker race analysis (§1.4): the opportunistic top-up from priority streams
-/// (<c>CollectIdLookupsFromPriorityStreamsAsync</c>) is intentionally NOT used here.
-/// That method claimed messages via <c>XCLAIM</c> with <c>min-idle-time=0</c>, which
-/// can steal a message already delivered to (but not yet acknowledged by)
-/// <c>QueueProcessorBackgroundService</c> in the same consumer group. The window of
-/// time between XREADGROUP delivery and ACK is a live race: both workers would hold
-/// the message, produce duplicate API calls, and attempt double saga updates. After
-/// §1.1 routes all Spotify track/album ID lookups directly to the type-specific
-/// streams via <c>SpotifyBulkQueueDecorator</c>, there are no ID lookups left in the
-/// generic priority streams for a top-up to collect, making the top-up both unsafe
-/// and unnecessary. ID lookups that arrive via the orchestrator interactive path also
-/// go through the decorator. The top-up is therefore dropped entirely.
-/// </para>
-/// <para>
-/// The service:
-/// <list type="bullet">
-///   <item>Polls the type-specific bulk streams every 500ms</item>
-///   <item>Flushes when count threshold OR linger age threshold is met</item>
-///   <item>For each flushed message: GetOrCreateAsync (fire-and-forget) + InitializeProviderStates + UpdateProviderState</item>
-///   <item>Publishes saga completion and lookup completion events</item>
-///   <item>Handles rate limiting with separate endpoint keys for bulk operations</item>
-/// </list>
-/// </para>
+/// Processes type-specific bulk track/album ID streams. Size is the primary flush trigger;
+/// the linger age is a staleness backstop, not a latency bound.
 /// </remarks>
 public sealed partial class SpotifyBulkProcessorService : BackgroundService {
 
@@ -260,8 +231,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         LogProcessingBulkTracks( _logger );
 
         // Dequeue directly from the type-specific stream only.
-        // The opportunistic top-up from generic priority streams is intentionally omitted
-        // (see class-level remarks §1.4 for the race analysis).
+        // Top-up from generic priority streams is intentionally omitted (would race the generic worker's unacked deliveries).
         List<QueuedMessage<QueuedLookupRequest>> messages =
             [.. await _batchHelper.DequeueTrackIdBatchAsync( SpotifyConstants.MaxTracksPerBatchLookup, ct )];
 
@@ -335,7 +305,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     internal async Task ProcessBulkAlbumLookupsAsync( CancellationToken ct ) {
         LogProcessingBulkAlbums( _logger );
 
-        // Dequeue directly from the type-specific stream only (see track method for top-up rationale)
+        // Type-specific stream only; no priority-stream top-up.
         List<QueuedMessage<QueuedLookupRequest>> messages =
             [.. await _batchHelper.DequeueAlbumIdBatchAsync( SpotifyConstants.MaxAlbumsPerBatchLookup, ct )];
 
@@ -403,19 +373,9 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     /// Processes the result for a single message from a bulk lookup.
     /// </summary>
     /// <remarks>
-    /// Parity with <c>QueueProcessorBackgroundService.ProcessMessageAsync</c> (§1.5):
-    /// <list type="bullet">
-    ///   <item><see cref="ISagaStateManager.GetOrCreateAsync"/> is called first so JetStream
-    ///   fire-and-forget messages — which pre-compute a SagaId but never create the saga object —
-    ///   have their saga materialized before any state is written.</item>
-    ///   <item><see cref="ISagaStateManager.InitializeProviderStatesAsync"/> allocates the Spotify
-    ///   slot in the saga's provider-state map before <see cref="ISagaStateManager.UpdateProviderStateAsync"/>
-    ///   writes the result.</item>
-    ///   <item>Both <see cref="CheckAndPublishSagaCompletionAsync"/> and
-    ///   <see cref="PublishLookupCompletionAsync"/> are called, matching the generic worker.</item>
-    /// </list>
-    /// Only called for the "key present" case (result may be null for genuine not-found).
-    /// The "empty dict" and "absent key" cases are handled upstream with requeue-only paths.
+    /// Mirrors the generic worker's saga write order: GetOrCreate (materializes JetStream fire-and-forget sagas)
+    /// -&gt; InitializeProviderStates -&gt; UpdateProviderState -&gt; publish completion.
+    /// Only the key-present case reaches here.
     /// </remarks>
     private async Task ProcessBulkResultAsync(
         QueuedMessage<QueuedLookupRequest> message,
@@ -428,8 +388,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
             // Ensure the saga exists. JetStream fire-and-forget messages pre-compute a
             // SagaId and enqueue without creating the saga (the generic worker normally does
             // this). GetOrCreateAsync is idempotent — if the saga already exists it returns it.
-            // Use LookupKeyBuilder so the lookupKey matches the orchestrator's format exactly
-            // (§1.5 parity, M5): {LookupType}:{Provider}:{LookupValue} for typed ID lookups.
+            // Use LookupKeyBuilder so the lookupKey matches the orchestrator format for typed ID lookups.
             string lookupKey = LookupKeyBuilder.TypedKey( request.LookupType, SupportedProviders.Spotify, request.LookupValue );
             _ = await _sagaManager.GetOrCreateAsync(
                 request.SagaId,
@@ -476,10 +435,8 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Handles rate limiting for bulk operations.
-    /// Mirrors <c>QueueProcessorBackgroundService.HandleRateLimitExceptionAsync</c>:
-    /// records the rate-limit state, marks each saga as partial, merges rate-limit info,
-    /// and publishes the rate-limited sentinel so interactive callers are not left hanging.
+    /// Records rate-limit state, marks each saga partial, merges rate-limit info, and publishes
+    /// the rate-limited sentinel so interactive callers do not hang on a 429.
     /// </summary>
     internal async Task HandleBulkRateLimitAsync(
         IReadOnlyList<QueuedMessage<QueuedLookupRequest>> messages,
@@ -492,15 +449,16 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         DateTimeOffset retryAfter = DateTimeOffset.UtcNow.Add( ex.RetryAfterValue );
         await _rateLimitTracker.SetRateLimitedAsync( SupportedProviders.Spotify, endpoint, retryAfter, ct );
 
-        // Per-saga rate-limit parity (M2): SetIsPartialAsync + merge SetRateLimitInfoAsync +
-        // publish rate-limited sentinel. The orchestrator's all-providers-rate-limited escape
-        // hatch requires every rate-limited provider entry to be present (documented in
-        // QueueProcessorBackgroundService.cs:245-249). Without this, interactive callers
-        // whose request lands in a bulk batch will hang until timeout on any 429.
+        // SetIsPartialAsync + merge SetRateLimitInfoAsync + publish rate-limited sentinel so
+        // interactive callers whose request lands in a bulk batch do not hang until timeout on a 429.
         foreach (QueuedMessage<QueuedLookupRequest> message in messages) {
             if (ct.IsCancellationRequested) { break; }
             QueuedLookupRequest request = message.Payload;
             try {
+                // Ensure the saga hash exists before writing provider state — JetStream fire-and-forget items pre-compute a SagaId without creating the saga.
+                string lookupKey = LookupKeyBuilder.TypedKey( request.LookupType, SupportedProviders.Spotify, request.LookupValue );
+                _ = await _sagaManager.GetOrCreateAsync( request.SagaId, lookupKey, request.LookupType, request.LookupValue, request.OriginPriority, ct );
+
                 await _sagaManager.SetIsPartialAsync( request.SagaId, true, ct );
 
                 LookupSagaState? saga = await _sagaManager.GetAsync( request.SagaId, ct );
@@ -557,6 +515,10 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
             // Cap hit or unrecoverable payload — write the failed provider state and
             // publish completion so the saga coordinator and interactive waiters unblock.
             try {
+                // Ensure the saga hash exists before writing provider state — JetStream fire-and-forget items pre-compute a SagaId without creating the saga.
+                string lookupKey = LookupKeyBuilder.TypedKey( request.LookupType, SupportedProviders.Spotify, request.LookupValue );
+                _ = await _sagaManager.GetOrCreateAsync( request.SagaId, lookupKey, request.LookupType, request.LookupValue, request.OriginPriority, ct );
+
                 await _sagaManager.UpdateProviderStateAsync(
                     request.SagaId,
                     new ProviderLookupState(

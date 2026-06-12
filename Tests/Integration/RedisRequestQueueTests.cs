@@ -523,17 +523,287 @@ public partial class RedisRequestQueueTests {
         Assert.IsLessThanOrEqualTo( 60, consumerId3.Length, $"Consumer ID '{consumerId3}' should be reasonably short (length: {consumerId3.Length})" );
     }
 
+    // -------------------------------------------------------------------------
+    // B7–B12: Interactive-first ordering with aging (new deterministic algorithm)
+    // -------------------------------------------------------------------------
+
     /// <summary>
-    /// Creates a test <see cref="QueuedLookupRequest"/> with a unique ID for the specified provider.
+    /// B7 — Interactive preemption end-to-end.
+    /// Background is enqueued first; then an interactive message arrives.
+    /// On the very next non-aging dequeue the interactive message must be served first.
+    /// Failure-first: before the deterministic algorithm, weighted-random might deliver background first.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task B7_InteractivePreemption_DequeuesInteractiveBeforeBackground( ) {
+        // Arrange — background arrives first, interactive arrives second
+        IOptions<QueueSettings> testSettings = Options.Create( new QueueSettings {
+            DefaultMinBulkQueueThreshold = 0,
+            InteractiveAgingInterval = 8 // default; first aging slot at counter=8
+        } );
+        Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> testLogger = new( );
+        RedisRequestQueue<QueuedLookupRequest> testQueue = new(
+            s_redis!,
+            testLogger.Object,
+            testSettings,
+            SupportedProviders.Spotify
+        );
+        await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+
+        QueuedLookupRequest bgRequest = CreateTestRequest( );
+        QueuedLookupRequest interactiveRequest = CreateTestRequest( );
+
+        await testQueue.EnqueueAsync( bgRequest, QueuePriority.Background, TestContext.CancellationToken );
+        await testQueue.EnqueueAsync( interactiveRequest, QueuePriority.Interactive, TestContext.CancellationToken );
+
+        // Act — counter=1 (not an aging slot); interactive must lead
+        QueuedMessage<QueuedLookupRequest>? first = await testQueue.DequeueAsync( TestContext.CancellationToken );
+
+        // Assert
+        Assert.IsNotNull( first );
+        Assert.AreEqual( interactiveRequest.RequestId, first.Payload.RequestId,
+            "Interactive message must be dequeued before background on a normal (non-aging) slot" );
+    }
+
+    /// <summary>
+    /// B8 — Bounded starvation over a >N window.
+    /// Enqueues only background messages and drives N dequeues.
+    /// The Nth dequeue is the first aging slot (backgroundLeads=true), so background must be served.
+    /// This is the highest-value guard: verifies starvation is bounded within N calls.
+    /// Failure-first: without the aging algorithm, background would never be served
+    /// (interactive stream checked first every time, returning nothing, but background also checked).
+    /// Actually without aging, background IS served when interactive is empty — so the real guard is
+    /// that interactive does NOT block background when interactive is empty, AND that with only
+    /// background+interactive mixed, aging ensures background gets a turn within N.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task B8_BoundedStarvation_BackgroundServedWithinAgingWindow( ) {
+        // Arrange — use N=4 so the test stays fast; first aging slot at counter=4
+        const int AgingInterval = 4;
+        IOptions<QueueSettings> testSettings = Options.Create( new QueueSettings {
+            DefaultMinBulkQueueThreshold = 0,
+            InteractiveAgingInterval = AgingInterval
+        } );
+        Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> testLogger = new( );
+        RedisRequestQueue<QueuedLookupRequest> testQueue = new(
+            s_redis!,
+            testLogger.Object,
+            testSettings,
+            SupportedProviders.Spotify
+        );
+        await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+
+        // Enqueue AgingInterval interactive messages AND AgingInterval background messages
+        // so interactive stream is not empty on the first (N-1) dequeues.
+        const int MsgCount = AgingInterval;
+        for (int i = 0; i < MsgCount; i++) {
+            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Interactive, TestContext.CancellationToken );
+            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Background, TestContext.CancellationToken );
+        }
+
+        // Act — dequeue exactly N times (counters 1..N), tracking priority of each result
+        List<QueuePriority> servedPriorities = [];
+        for (int call = 1; call <= AgingInterval; call++) {
+            QueuedMessage<QueuedLookupRequest>? msg = await testQueue.DequeueAsync( TestContext.CancellationToken );
+            Assert.IsNotNull( msg, $"Expected a message on dequeue call {call}" );
+
+            // Determine which stream the message came from (messageId starts with stream key)
+            QueuePriority priority = msg.MessageId.Contains( ":background:" ) || msg.MessageId.Contains( "background:" )
+                ? QueuePriority.Background
+                : QueuePriority.Interactive;
+            servedPriorities.Add( priority );
+
+            await testQueue.AcknowledgeAsync( msg.MessageId, TestContext.CancellationToken );
+        }
+
+        // Assert — at least one background message must have been served (the aging slot at call N)
+        bool backgroundServed = servedPriorities.Contains( QueuePriority.Background );
+        Assert.IsTrue( backgroundServed,
+            $"Background must be served within {AgingInterval} dequeues (aging slot at call {AgingInterval}). " +
+            $"Served: [{string.Join( ", ", servedPriorities )}]" );
+
+        // Assert — calls 1..(N-1) must all be interactive (aging slot only at call N)
+        for (int i = 0; i < AgingInterval - 1; i++) {
+            Assert.AreEqual( QueuePriority.Interactive, servedPriorities[i],
+                $"Call {i + 1} (non-aging slot) must serve interactive; served {servedPriorities[i]}" );
+        }
+
+        // Assert — call N must be background (first aging slot, backgroundLeads=true for agingSlotIndex=1)
+        Assert.AreEqual( QueuePriority.Background, servedPriorities[AgingInterval - 1],
+            $"Call {AgingInterval} (aging slot) must serve background; served {servedPriorities[AgingInterval - 1]}" );
+    }
+
+    /// <summary>
+    /// B9 — Bulk gating two-phase.
+    /// Phase 1: bulk depth below threshold → bulk messages not served.
+    /// Phase 2: bulk depth reaches threshold → bulk messages eligible.
+    /// Failure-first: without bulk gating, bulk would be served in phase 1.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task B9_BulkGating_TwoPhase_BulkServedOnlyAboveThreshold( ) {
+        const int BulkThreshold = 3;
+        IOptions<QueueSettings> testSettings = Options.Create( new QueueSettings {
+            DefaultMinBulkQueueThreshold = BulkThreshold,
+            InteractiveAgingInterval = 100 // large N so aging slot doesn't interfere
+        } );
+        Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> testLogger = new( );
+        RedisRequestQueue<QueuedLookupRequest> testQueue = new(
+            s_redis!,
+            testLogger.Object,
+            testSettings,
+            SupportedProviders.Spotify
+        );
+        await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+
+        // Phase 1: enqueue fewer bulk messages than threshold (BulkThreshold - 1)
+        QueuedLookupRequest bgRequest = CreateTestRequest( );
+        await testQueue.EnqueueAsync( bgRequest, QueuePriority.Background, TestContext.CancellationToken );
+        for (int i = 0; i < BulkThreshold - 1; i++) {
+            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Bulk, TestContext.CancellationToken );
+        }
+
+        // Dequeue — must get background (bulk gated out)
+        QueuedMessage<QueuedLookupRequest>? phase1Msg = await testQueue.DequeueAsync( TestContext.CancellationToken );
+        Assert.IsNotNull( phase1Msg );
+        Assert.AreEqual( bgRequest.RequestId, phase1Msg.Payload.RequestId,
+            "Phase 1: background must be served when bulk depth is below threshold" );
+        await testQueue.AcknowledgeAsync( phase1Msg.MessageId, TestContext.CancellationToken );
+
+        // Phase 2: add more bulk to reach threshold
+        for (int i = 0; i < BulkThreshold - (BulkThreshold - 1); i++) {
+            await testQueue.EnqueueAsync( CreateTestRequest( ), QueuePriority.Bulk, TestContext.CancellationToken );
+        }
+        // Now bulk depth = BulkThreshold; add interactive so interactive is still first
+        QueuedLookupRequest interactiveRequest = CreateTestRequest( );
+        await testQueue.EnqueueAsync( interactiveRequest, QueuePriority.Interactive, TestContext.CancellationToken );
+
+        // Normal dequeue: interactive first (non-aging slot)
+        QueuedMessage<QueuedLookupRequest>? phase2First = await testQueue.DequeueAsync( TestContext.CancellationToken );
+        Assert.IsNotNull( phase2First );
+        await testQueue.AcknowledgeAsync( phase2First.MessageId, TestContext.CancellationToken );
+
+        // Drain remaining: with no interactive left and bulk eligible, bulk must eventually appear
+        bool bulkServed = false;
+        QueuedMessage<QueuedLookupRequest>? next;
+        while ((next = await testQueue.DequeueAsync( TestContext.CancellationToken )) is not null) {
+            if (next.MessageId.Contains( "bulk:" )) {
+                bulkServed = true;
+            }
+            await testQueue.AcknowledgeAsync( next.MessageId, TestContext.CancellationToken );
+        }
+        Assert.IsTrue( bulkServed,
+            "Phase 2: bulk messages must be served once depth reaches threshold" );
+    }
+
+    /// <summary>
+    /// B10 — Rate-limited interactive stream must not block eligible background.
+    /// Enqueues an interactive message whose lookup type is "blocked" and a background message
+    /// whose lookup type is not blocked. DequeueAsync(rateLimitTracker) must skip the interactive
+    /// message and return the background message.
+    /// Failure-first: before the rate-limit-aware dequeue, interactive would be returned regardless.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task B10_RateLimitedInteractive_DoesNotBlockEligibleBackground( ) {
+        // Arrange
+        IOptions<QueueSettings> testSettings = Options.Create( new QueueSettings {
+            DefaultMinBulkQueueThreshold = 0,
+            InteractiveAgingInterval = 100
+        } );
+        Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> testLogger = new( );
+        RedisRequestQueue<QueuedLookupRequest> testQueue = new(
+            s_redis!,
+            testLogger.Object,
+            testSettings,
+            SupportedProviders.Spotify
+        );
+        await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+
+        // Interactive request uses IsrcLookup (will be blocked)
+        string blockedEndpoint = LookupRequestType.IsrcLookup.ToString( );
+        QueuedLookupRequest interactiveRequest = CreateTestRequest( lookupType: LookupRequestType.IsrcLookup );
+        // Background request uses SongIdLookup (not blocked)
+        QueuedLookupRequest bgRequest = CreateTestRequest( lookupType: LookupRequestType.SongIdLookup );
+
+        await testQueue.EnqueueAsync( interactiveRequest, QueuePriority.Interactive, TestContext.CancellationToken );
+        await testQueue.EnqueueAsync( bgRequest, QueuePriority.Background, TestContext.CancellationToken );
+
+        // Mock rate limit tracker: IsrcLookup is blocked for Spotify
+        Mock<BridgeBeats.Contracts.Interfaces.IRateLimitTracker> trackerMock = new( );
+        _ = trackerMock
+            .Setup( t => t.GetAllRateLimitedAsync( SupportedProviders.Spotify, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( (IReadOnlyList<RateLimitedEndpoint>)[
+                new RateLimitedEndpoint( blockedEndpoint, DateTimeOffset.UtcNow.AddMinutes( 1 ) )
+            ] );
+
+        // Act — rate-limit-aware dequeue must skip interactive and serve background
+        QueuedMessage<QueuedLookupRequest>? message = await testQueue.DequeueAsync( trackerMock.Object, TestContext.CancellationToken );
+
+        // Assert
+        Assert.IsNotNull( message );
+        Assert.AreEqual( bgRequest.RequestId, message.Payload.RequestId,
+            "Background message must be served when the interactive message's endpoint is rate-limited" );
+    }
+
+    /// <summary>
+    /// B11 — Control: interactive served first when not blocked.
+    /// With both interactive and background messages present and no rate limiting,
+    /// the first dequeue must return the interactive message.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task B11_Control_InteractiveServedFirstWhenNotBlocked( ) {
+        // Arrange
+        IOptions<QueueSettings> testSettings = Options.Create( new QueueSettings {
+            DefaultMinBulkQueueThreshold = 0,
+            InteractiveAgingInterval = 100
+        } );
+        Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> testLogger = new( );
+        RedisRequestQueue<QueuedLookupRequest> testQueue = new(
+            s_redis!,
+            testLogger.Object,
+            testSettings,
+            SupportedProviders.Spotify
+        );
+        await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+
+        QueuedLookupRequest bgRequest = CreateTestRequest( );
+        QueuedLookupRequest interactiveRequest = CreateTestRequest( );
+        await testQueue.EnqueueAsync( bgRequest, QueuePriority.Background, TestContext.CancellationToken );
+        await testQueue.EnqueueAsync( interactiveRequest, QueuePriority.Interactive, TestContext.CancellationToken );
+
+        // Mock tracker: nothing rate-limited
+        Mock<BridgeBeats.Contracts.Interfaces.IRateLimitTracker> trackerMock = new( );
+        _ = trackerMock
+            .Setup( t => t.GetAllRateLimitedAsync( SupportedProviders.Spotify, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( (IReadOnlyList<RateLimitedEndpoint>)[] );
+
+        // Act
+        QueuedMessage<QueuedLookupRequest>? message = await testQueue.DequeueAsync( trackerMock.Object, TestContext.CancellationToken );
+
+        // Assert
+        Assert.IsNotNull( message );
+        Assert.AreEqual( interactiveRequest.RequestId, message.Payload.RequestId,
+            "Interactive must be served first when no rate limiting is active" );
+    }
+
+    /// <summary>
+    /// Creates a test <see cref="QueuedLookupRequest"/> with a unique ID for the specified provider and lookup type.
     /// </summary>
     /// <param name="provider">The music provider for the request. Defaults to Spotify.</param>
+    /// <param name="lookupType">The lookup type for the request. Defaults to IsrcLookup.</param>
     /// <returns>A new <see cref="QueuedLookupRequest"/> instance.</returns>
-    private static QueuedLookupRequest CreateTestRequest( SupportedProviders provider = SupportedProviders.Spotify ) {
+    private static QueuedLookupRequest CreateTestRequest(
+        SupportedProviders provider = SupportedProviders.Spotify,
+        LookupRequestType lookupType = LookupRequestType.IsrcLookup
+    ) {
         string id = Guid.NewGuid( ).ToString( "N" )[..8];
         return new QueuedLookupRequest {
             RequestId = $"req-{id}",
             Provider = provider,
-            LookupType = LookupRequestType.IsrcLookup,
+            LookupType = lookupType,
             LookupValue = $"USRC{id}",
             SagaId = $"saga-{id}",
             CreatedAt = DateTimeOffset.UtcNow

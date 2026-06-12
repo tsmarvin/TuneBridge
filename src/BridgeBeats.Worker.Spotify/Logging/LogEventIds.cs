@@ -154,4 +154,10 @@ public static class LogEventIds {
 
     /// <summary>EventId for SpotifyBulkProcessorService rate-limit sentinel publish error.</summary>
     public const int BulkPublishRateLimitSentinelError = 5374;
+
+    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogPoisonPayloadDiscarded"/> — unserializable payload discarded in RequeueAsync.</summary>
+    public const int PoisonPayloadDiscarded = 5375;
+
+    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogMalformedEnqueuedAt"/> — malformed enqueuedAt field skipped in GetOldestEnqueuedAtAsync.</summary>
+    public const int MalformedEnqueuedAt = 5376;
 }
