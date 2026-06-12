@@ -7,39 +7,11 @@ using BridgeBeats.Worker.JetStreamWatcher;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for the Spotify JetStream type-routing logic introduced in §1.1.
+/// Unit tests for the Spotify JetStream type-routing logic.
 /// Covers the contract between <see cref="SpotifyLinkParser"/> entity recognition
 /// and the lookup-key / saga-ID format used by
 /// <c>JetStreamWatcherService.EnqueueMusicLinkAsync</c>.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The JetStream routing logic (§1.1) classifies Spotify URLs as follows:
-/// <list type="bullet">
-///   <item>open.spotify.com/track/{id} → SongIdLookup, lookupValue = trackId</item>
-///   <item>open.spotify.com/album/{id} → AlbumIdLookup, lookupValue = albumId</item>
-///   <item>open.spotify.com/artist/{id} → not recognised; link is dropped (no artist processing)</item>
-///   <item>open.spotify.com/playlist/{id} → not recognised; link is dropped (no playlist processing)</item>
-///   <item>open.spotify.com/prerelease/{id} → UriLookup, lookupValue = URL</item>
-///   <item>spotify.link/… → UriLookup (short-link, requires HTTP resolve; handled as pass-through)</item>
-/// </list>
-/// </para>
-/// <para>
-/// The saga-ID format for typed ID lookups must be:
-/// <c>{LookupType}:{Provider}:{lookupValue}</c> (case-folded by <c>GenerateSagaId</c>).
-/// This ensures JetStream-produced requests share saga state with orchestrator-produced requests
-/// for the same Spotify entity.
-/// </para>
-/// <para>
-/// Failure-first discipline: all tests were authored against the production implementation.
-/// The parser-recognition tests (§SpotifyLinkParser Entity Recognition) exercise
-/// <c>SpotifyLinkParser.TryParseUriAsync</c> directly — the same logic consumed by
-/// <c>IdentifyProviderAsync</c>. Direct tests of <c>IdentifyProviderAsync</c> are in the
-/// §IdentifyProviderAsync Direct Coverage section below, which verifies the
-/// <see cref="SpotifyEntity"/>→<see cref="LookupRequestType"/> mapping and the
-/// lookupValue format selected by <c>JetStreamWatcherService.IdentifyProviderAsync</c>.
-/// </para>
-/// </remarks>
 [TestClass]
 public class SpotifyLinkTypeRoutingTests {
 
@@ -50,8 +22,6 @@ public class SpotifyLinkTypeRoutingTests {
 
     /// <summary>
     /// Verifies that a Spotify track URL produces SpotifyEntity.Track with the correct ID.
-    /// Failure-first: before §1.1, TryParseUriAsync was not consulted for routing decisions;
-    /// this documents the parser behavior the routing logic depends on.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithTrackUrl_ShouldReturnTrackEntityAndId( ) {
@@ -89,7 +59,6 @@ public class SpotifyLinkTypeRoutingTests {
 
     /// <summary>
     /// Verifies that a Spotify album URL produces SpotifyEntity.Album with the correct ID.
-    /// Failure-first: before §1.1, album links were not converted to AlbumIdLookup.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithAlbumUrl_ShouldReturnAlbumEntityAndId( ) {
@@ -187,11 +156,6 @@ public class SpotifyLinkTypeRoutingTests {
     /// <summary>
     /// Verifies that <see cref="LookupKeyBuilder.TypedKey"/> for a SongIdLookup produces
     /// the canonical three-segment format <c>{LookupType}:{Provider}:{id}</c>.
-    /// Failure-first: before §1.1/M5, JetStreamWatcherService built
-    /// <c>"{LookupType}:{LookupValue}"</c> (two segments, no provider), while the
-    /// LookupOrchestrator used three segments. The mismatch meant JetStream-originated
-    /// and orchestrator-originated requests for the same track always produced different
-    /// saga IDs and could never share state.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_TypedKey_ForSongIdLookup_ShouldContainThreeSegments( ) {
@@ -324,8 +288,6 @@ public class SpotifyLinkTypeRoutingTests {
     /// <summary>
     /// Verifies that a Spotify track URL produces SongIdLookup with the Spotify track ID
     /// as the lookupValue — the ID, not the URL.
-    /// Failure-first: before §1.1 this method emitted UriLookup for every Spotify URL,
-    /// which prevented typed ID lookups from reaching the bulk streams.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyTrackUrl_ShouldReturnSongIdLookupAndId( ) {
@@ -346,8 +308,6 @@ public class SpotifyLinkTypeRoutingTests {
 
     /// <summary>
     /// Verifies that a Spotify album URL produces AlbumIdLookup with the Spotify album ID.
-    /// Failure-first: before §1.1, album links were classified as UriLookup;
-    /// this verifies the §1.1 fix routes them to AlbumIdLookup for bulk processing.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyAlbumUrl_ShouldReturnAlbumIdLookupAndId( ) {
@@ -446,8 +406,7 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a Tidal link produces SupportedProviders.Tidal with UriLookup,
-    /// unchanged by the Spotify §1.1 changes.
+    /// Verifies that a Tidal link produces SupportedProviders.Tidal with UriLookup.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithTidalUrl_ShouldReturnTidalProvider( ) {
@@ -464,8 +423,7 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that an Apple Music link produces SupportedProviders.AppleMusic with UriLookup,
-    /// unchanged by the Spotify §1.1 changes.
+    /// Verifies that an Apple Music link produces SupportedProviders.AppleMusic with UriLookup.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithAppleMusicUrl_ShouldReturnAppleMusicProvider( ) {

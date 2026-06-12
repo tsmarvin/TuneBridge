@@ -15,38 +15,16 @@ namespace BridgeBeats.Core.Infrastructure.Storage;
 /// ATProto session management across all service instances.
 /// </summary>
 /// <remarks>
-/// <para>
-/// This service solves the problem of excessive PDS API calls (refreshSession, getSession, createSession)
-/// by persisting session credentials to Redis and sharing them across all worker instances.
-/// </para>
-/// <para>
-/// Token rotation is serialized through a distributed Redis lock so that only one process at a time
-/// calls <c>refreshSession</c> on the PDS. Lock-losers block-acquire the lock and rotate sequentially;
-/// there is no concurrent rotation across processes.
-/// </para>
-/// <para>
-/// Agents are constructed with background token refresh disabled (<c>EnableBackgroundTokenRefresh = false</c>).
-/// The session manager refreshes credentials lazily and lock-coordinated inside
-/// <c>GetAuthenticatedAgentAsync</c>.
-/// </para>
-/// <para>
-/// Invariant: <c>2 × s_refreshTimeout &lt; s_lockExpiry</c>. The worst-case pair (one
-/// <c>refreshSession</c> call followed by one <c>createSession</c> call) must both complete
-/// within the lock TTL. If the lock TTL is changed, update <c>s_refreshTimeout</c> so that
-/// the pair stays under the TTL.
-/// </para>
-/// <para>
-/// Redis Key Pattern: <c>atproto:session:{identifier}</c> → JSON <see cref="ATProtoPersistedCredentials"/>
-/// </para>
+/// Session credentials are persisted to Redis and shared across worker instances. Token rotation
+/// is serialized via a distributed lock so only one process calls <c>refreshSession</c> at a time.
+/// Key pattern: <c>atproto:session:{identifier}</c>.
 /// </remarks>
 public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager, IDisposable {
 
     private const string SessionKeyPrefix = "atproto:session:";
     private const string LockKeyPrefix = "atproto:auth:lock:";
 
-    // s_lockExpiry is the distributed lock TTL and the upper bound for crash-recovery RTO.
-    // s_refreshTimeout < s_lockExpiry / 2: the worst-case refresh-then-login pair (2 × s_refreshTimeout)
-    // must complete within s_lockExpiry (30s). At 12s each, the pair costs at most 24s, safely under 30s.
+    // s_refreshTimeout < s_lockExpiry / 2 — worst-case refresh+login pair (2×12s=24s) must stay under lock TTL (30s).
     private static readonly TimeSpan s_lockExpiry = TimeSpan.FromSeconds( 30 );
     private static readonly TimeSpan s_refreshTimeout = TimeSpan.FromSeconds( 12 );
     private static readonly TimeSpan s_lockPollInterval = TimeSpan.FromMilliseconds( 200 );

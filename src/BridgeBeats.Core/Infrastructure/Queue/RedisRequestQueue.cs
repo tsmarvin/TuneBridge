@@ -28,20 +28,8 @@ internal static partial class RedisQueuePatterns {
 /// Redis Streams-based implementation of <see cref="IRequestQueue{T}"/> for a specific music provider.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Uses Redis Streams with consumer groups for reliable message delivery.
-/// Each provider has three priority streams (interactive, background, bulk)
-/// and a Dead Letter Queue for failed messages.
-/// </para>
-/// <para>
-/// Stream naming convention:
-/// <list type="bullet">
-///   <item><c>queue:{provider}:interactive</c> - Interactive priority stream</item>
-///   <item><c>queue:{provider}:background</c> - Background priority stream</item>
-///   <item><c>queue:{provider}:bulk</c> - Bulk priority stream</item>
-///   <item><c>queue:{provider}:dlq</c> - Dead Letter Queue</item>
-/// </list>
-/// </para>
+/// Uses Redis Streams with consumer groups. Stream keys: <c>queue:{provider}:interactive</c>,
+/// <c>queue:{provider}:background</c>, <c>queue:{provider}:bulk</c>, <c>queue:{provider}:dlq</c>.
 /// </remarks>
 /// <typeparam name="T">The type of request to queue.</typeparam>
 public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQueueableRequest {

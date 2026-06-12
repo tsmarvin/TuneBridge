@@ -7,31 +7,12 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for the size-OR-age flush policy added in §1.3.
+/// Unit tests for the size-OR-age flush policy.
 /// Exercises <see cref="SpotifyBatchQueueHelper.GetIdLookupDepthAsync"/> and
 /// <see cref="SpotifyBatchQueueHelper.GetOldestEnqueuedAtAsync"/> — the two methods
 /// that <c>SpotifyBulkProcessorService.ShouldProcessBulkTracksAsync</c> /
 /// <c>ShouldProcessBulkAlbumsAsync</c> call to make the flush decision.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The flush policy (§1.3) is:
-/// <list type="bullet">
-///   <item>Flush immediately when <c>BulkTrackIdCount ≥ 50</c> (MaxTracksPerBatchLookup).</item>
-///   <item>Flush immediately when <c>BulkAlbumIdCount ≥ 20</c> (MaxAlbumsPerBatchLookup).</item>
-///   <item>Flush when count &gt; 0 AND the oldest entry age ≥ linger (default 500ms),
-///         even if count is only 1.</item>
-/// </list>
-/// </para>
-/// <para>
-/// Failure-first discipline: before §1.3 there was no linger-based flush.
-/// The bulk processor uses <em>disjoint streams</em>: track lookups route to
-/// <c>queue:spotify:bulk:track-id</c> and album lookups to
-/// <c>queue:spotify:bulk:album-id</c>. There is no generic bulk scan — the type-specific
-/// streams are the only input. Tests were written to observe the new §1.3 behavior and
-/// would fail against the pre-§1.3 implementation (count-only check, no age flush).
-/// </para>
-/// </remarks>
 [TestClass]
 public class SpotifyBulkFlushPolicyTests {
 
@@ -78,8 +59,6 @@ public class SpotifyBulkFlushPolicyTests {
     /// <summary>
     /// Verifies that BulkTrackIdCount reflects only the type-specific track-id stream,
     /// not the generic priority streams.
-    /// Failure-first: before §1.3, GetIdLookupDepthAsync only populated TrackIdCount
-    /// (all-priority scan) and not BulkTrackIdCount.
     /// </summary>
     [TestMethod]
     public async Task GetIdLookupDepthAsync_WhenTrackIdStreamHasMessages_ShouldReturnBulkTrackIdCount( ) {
@@ -115,8 +94,6 @@ public class SpotifyBulkFlushPolicyTests {
     /// <summary>
     /// Verifies that BulkTrackIdCount equals exactly the max threshold (50) when 50 messages are
     /// in the track-id stream — this is the size-flush trigger boundary.
-    /// Failure-first: before §1.3, there was no BulkTrackIdCount field; ShouldProcessBulkTracksAsync
-    /// would never reach the size threshold because the stream was never populated.
     /// </summary>
     [TestMethod]
     public async Task GetIdLookupDepthAsync_WhenTrackIdStreamAtThreshold_ShouldReflectMaxCount( ) {
@@ -154,7 +131,6 @@ public class SpotifyBulkFlushPolicyTests {
 
     /// <summary>
     /// Verifies that GetOldestEnqueuedAtAsync returns null when the stream is empty.
-    /// Failure-first: this method was added in §1.3; it did not exist before.
     /// </summary>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_WhenStreamIsEmpty_ShouldReturnNull( ) {
@@ -171,7 +147,6 @@ public class SpotifyBulkFlushPolicyTests {
     /// <summary>
     /// Verifies that GetOldestEnqueuedAtAsync parses the enqueuedAt field from the oldest entry
     /// in the track-id stream.
-    /// Failure-first: before §1.3, no method existed to read the oldest entry's enqueuedAt.
     /// </summary>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_WhenTrackStreamHasEntry_ShouldReturnEnqueuedAtTimestamp( ) {
@@ -199,7 +174,6 @@ public class SpotifyBulkFlushPolicyTests {
 
     /// <summary>
     /// Verifies that GetOldestEnqueuedAtAsync checks the album-id stream when isTracks=false.
-    /// Failure-first: before §1.3, there was no method to poll album stream age.
     /// </summary>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_WhenAlbumStreamHasEntry_ShouldReturnEnqueuedAtTimestamp( ) {
@@ -273,7 +247,6 @@ public class SpotifyBulkFlushPolicyTests {
     /// <summary>
     /// Verifies that count below threshold with an old-enough message triggers the age flush.
     /// This is the low-volume correctness guarantee: a single stale message must not wait forever.
-    /// Failure-first: the linger branch was added in §1.3; the extracted predicate preserves it.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_WhenCountBelowThresholdAndAgeExceedsLinger_ShouldReturnTrue( ) {

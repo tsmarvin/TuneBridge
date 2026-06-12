@@ -1,12 +1,12 @@
 # Deployment Guide
 
-BridgeBeats is designed for easy deployment across various platforms. This guide covers deployment options and best practices.
+This guide covers production deployment of BridgeBeats with Docker Compose.
 
-> **Note**: This guide covers **production deployment**. For local development with the Aspire Dashboard, see the [Local Development Guide](LOCAL_DEVELOPMENT.md).
+> **Note**: For local development with the Aspire Dashboard, see the [Local Development Guide](LOCAL_DEVELOPMENT.md).
 
 ## Quick Start with Installation Script
 
-The fastest way to deploy BridgeBeats is with the installation script. No need to clone the repository.
+The installation script is the supported deployment path. It downloads the configuration files, creates the directory layout with correct ownership, generates secrets, and registers the PDS maintenance cron job. You do not need to clone the repository.
 
 ### Linux / macOS
 
@@ -37,7 +37,7 @@ curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/contain
 1. **Validates dependencies** - Checks for Docker, Docker Compose v2+, curl/wget, and optionally openssl
 2. **Downloads configuration files** - Fetches `docker-compose.yml`, `Caddyfile`, `.env.example`, and `truncate_seq.sh` from GitHub
 3. **Sets up logs and data directories** - Creates `./logs/`, `./logs/caddy/`, and `./data/{app,dp-keys,redis,pds}/`; sets ownership for each directory to match the UID of the writing container (`1654` for the app, `root` for PDS/redis/caddy)
-4. **Sets up secrets** - Creates the `secrets/` directory with placeholder files and auto-generates random secrets for `api_key_salt.txt` and `redis_password.txt`
+4. **Sets up secrets** - Creates the `secrets/` directory. Auto-generates `api_key_salt.txt`, `redis_password.txt`, `internal_service_key.txt`, and the `atproto_oauth_key.json` ES256 signing key; writes placeholders for the credentials you supply (Apple, Spotify, Tidal, Discord, ATProto, Cloudflare)
 5. **Configures environment** - Creates `.env` from `.env.example` if not present
 6. **Registers PDS sequencer trim** - Installs `sqlite3` on the host if missing and writes `/etc/cron.d/bridgebeats-pds-trim` (daily at 04:17, 14-day retention); see [PDS Sequencer Retention](#pds-sequencer-retention) below
 7. **Handles updates** - On subsequent runs:
@@ -50,27 +50,28 @@ After running the script, edit your secrets and `.env` file, then start with `do
 
 ---
 
-## Manual Quick Start with Docker Compose
+## Manual Setup with Docker Compose
 
-If you prefer manual setup:
+The installation script handles secret generation, directory ownership, and the PDS cron job for you. Set up manually only if you need to. The compose stack mounts each secret as a file under `./secrets/` and persists data under `./data/`, so a working deployment needs all secret files present, the data directories owned by the correct UIDs, and the PDS environment variables set in `.env`.
 
 ```bash
 git clone https://github.com/tsmarvin/BridgeBeats.git
 cd BridgeBeats/containers
-mkdir -p secrets && chmod 700 secrets
-openssl rand -base64 32 > secrets/api_key_salt.txt
-openssl rand -base64 32 > secrets/redis_password.txt
-# Create other secret files and add your credentials
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env: set DOMAIN, CADDY_ADMIN_EMAIL, the PDS_* values, and at least one music provider
+```
+
+Create the `secrets/` directory and populate every file the compose stack mounts (see the `volumes:` block in `docker-compose.yml`). The script's secret generation is the reference for what each file holds; replicating it by hand is error-prone, which is why the script is the supported path.
+
+Once secrets, `.env`, and the `./data/` ownership are in place:
+
+```bash
 docker compose up -d
 ```
 
-Visit `https://localhost` (or your configured domain) to access BridgeBeats.
+Visit `https://localhost` (or your configured domain) to reach BridgeBeats. The Aspire Dashboard is served on a dedicated subdomain: `https://dashboard.<your-domain>`.
 
-For production, the Aspire Dashboard is served on a dedicated subdomain: `https://dashboard.<your-domain>`.
-
-For detailed step-by-step instructions, see the [Quick Start Guide](QUICKSTART.md).
+For step-by-step instructions, see the [Quick Start Guide](QUICKSTART.md).
 
 ## Docker Deployment
 
@@ -157,29 +158,19 @@ The entrypoint script automatically reads secrets from `/run/secrets/` and falls
 
 ### Production Settings
 
-Update `BridgeBeats__Domain` to your public domain:
+Set `DOMAIN` in `.env` (or `-e DOMAIN=...` for a raw `docker run`) to your public domain. The container entrypoint reads it into `BridgeBeats:Domain`, which OpenGraph cards use to generate correct URLs.
 
 ```bash
--e BridgeBeats__Domain=bridgebeats.link
+DOMAIN=bridgebeats.link
 ```
-
-This ensures OpenGraph cards generate correct URLs.
 
 ### Logging
 
-Set appropriate log levels for production:
+Set log levels for production:
 
 ```bash
 -e DEFAULT_LOGLEVEL=Warning
 -e HOSTING_DEFAULT_LOGLEVEL=Warning
-```
-
-### Allowed Hosts
-
-Restrict allowed hosts for security:
-
-```bash
--e ALLOWED_HOSTS=bridgebeats.link
 ```
 
 ## Monitoring
@@ -258,7 +249,7 @@ tar -czf "../bridgebeats-backup-$(date +%Y%m%d-%H%M%S).tar.gz" \
 docker compose up -d
 ```
 
-If a brief outage is not acceptable, a hot copy is also possible — SQLite databases are in WAL mode, so copy the db file together with its `-wal` and `-shm` sidecar files if present. A brief `docker compose stop` is still the safest path.
+For a hot copy without downtime, copy each SQLite database together with its `-wal` and `-shm` sidecar files (the databases run in WAL mode). A brief `docker compose stop` is still the safest path.
 
 ### Configuration
 
@@ -269,13 +260,13 @@ Keep a secure backup of:
 
 ### PDS Sequencer Retention
 
-The PDS `sequencer.sqlite` holds the firehose event log (`repo_seq` table). The stock Bluesky PDS never trims this table, so it grows without bound at bot-write volume — the BridgeBeats deployment reached **~14 GB**.
+The PDS `sequencer.sqlite` holds the firehose event log in its `repo_seq` table. The stock Bluesky PDS never trims this table, so at bot-write volume it grows without bound — the BridgeBeats deployment reached ~14 GB before this was addressed.
 
-**Automated trim:** `install.sh` registers a daily cron job (`/etc/cron.d/bridgebeats-pds-trim`) that runs the vendored `truncate_seq.sh` script (by [Bailey Townsend](https://tangled.org/strings/did:plc:rnpkyqnmsw4ipey6eotbdnnf/3milxyxx2hl22)) with a **14-day (336-hour)** retention window. The script runs directly on the host using the host `sqlite3` binary (installed by `install.sh`); trim output is appended to `./logs/pds-trim.log`. The host `sqlite3` package is a requirement for this feature.
+`install.sh` registers a daily cron job at `/etc/cron.d/bridgebeats-pds-trim` that runs the vendored `truncate_seq.sh` (by [Bailey Townsend](https://tangled.org/strings/did:plc:rnpkyqnmsw4ipey6eotbdnnf/3milxyxx2hl22)) with a 14-day (336-hour) retention window. The script runs on the host using the host `sqlite3` binary, which `install.sh` installs if missing. Trim output appends to `./logs/pds-trim.log`.
 
-**Why no recurring VACUUM:** `truncate_seq.sh` runs `DELETE` only — no `VACUUM`. In SQLite, `DELETE` frees pages for internal reuse but does not return space to the OS. The already-bloated ~14 GB file was reclaimed once via a manual `VACUUM`; the recurring `DELETE` keeps `repo_seq` **bounded** going forward so the file size plateaus near the 14-day steady-state rather than growing without limit. A periodic automatic `VACUUM` is intentionally not scheduled — `VACUUM` rewrites the entire database (requires ~2x free disk space and an exclusive lock that stalls the PDS for the duration). Run `VACUUM` manually only if the file needs hard reclamation again after a long unmanaged growth period.
+The script runs `DELETE` only, never `VACUUM`. `DELETE` frees pages for SQLite to reuse but does not return space to the operating system, so the daily trim keeps `repo_seq` bounded and the file size plateaus near its 14-day steady state — it does not shrink an already-bloated file. `VACUUM` is not scheduled because it rewrites the whole database, needs roughly twice the file size in free disk, and holds an exclusive lock that stalls the PDS for its duration. Run `VACUUM` by hand if the file ever needs hard reclamation after a period of unmanaged growth.
 
-**Relay-cursor caveat:** trimming `repo_seq` below a downstream consumer's last-seen cursor means that consumer (a relay or AppView) cannot resume from that cursor and must re-crawl or backfill. With 14-day retention this is only a concern if a consumer is offline for more than 14 consecutive days; under normal operation it is safe.
+> **Relay-cursor caveat:** Trimming `repo_seq` below a downstream consumer's last-seen cursor forces that consumer (a relay or AppView) to re-crawl or backfill rather than resume. With 14-day retention this matters only if a consumer is offline for more than 14 consecutive days.
 
 ## Troubleshooting
 
@@ -345,5 +336,5 @@ docker run -d --name bridgebeats ...
 If you need to rollback after an update:
 
 1. Check `upgrade.log` for the previous container image SHAs
-2. Restore backed-up configuration files (e.g., `docker-compose.yml.bak.20260204-143022`)
+2. Restore backed-up configuration files (for example, `docker-compose.yml.bak.20260204-143022`)
 3. Pull the specific image version: `docker pull tsmarvin/bridgebeats:sha-<commit>`

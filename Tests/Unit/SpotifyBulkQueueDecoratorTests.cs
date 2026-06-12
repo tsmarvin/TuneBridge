@@ -106,8 +106,7 @@ public class SpotifyBulkQueueDecoratorTests {
 
     /// <summary>
     /// Verifies that SongIdLookup is written to the track-id bulk stream, not the inner queue.
-    /// Failure-first: before §1.2, SongIdLookup was forwarded to inner queue (UriLookup path);
-    /// this test verifies the XADD interception added in §1.2.
+    /// Failure-first: SongIdLookup must be intercepted and written to the track-id bulk stream.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenSongIdLookup_ShouldWriteToTrackIdStream( ) {
@@ -140,8 +139,7 @@ public class SpotifyBulkQueueDecoratorTests {
 
     /// <summary>
     /// Verifies that AlbumIdLookup is written to the album-id bulk stream, not the inner queue.
-    /// Failure-first: before §1.2, AlbumIdLookup was forwarded to inner queue;
-    /// this test verifies the XADD interception added in §1.2.
+    /// Failure-first: AlbumIdLookup must be intercepted and written to the album-id bulk stream.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenAlbumIdLookup_ShouldWriteToAlbumIdStream( ) {
@@ -174,8 +172,7 @@ public class SpotifyBulkQueueDecoratorTests {
 
     /// <summary>
     /// Verifies that UriLookup is forwarded to the inner queue, not written to any stream.
-    /// Failure-first: the pre-§1.2 state forwarded everything; this test verifies the passthrough
-    /// path is preserved for UriLookup after the interception for typed IDs is added.
+    /// Failure-first: UriLookup must not be intercepted; the passthrough path must be preserved.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenUriLookup_ShouldDelegateToInnerQueue( ) {
@@ -235,8 +232,7 @@ public class SpotifyBulkQueueDecoratorTests {
 
     /// <summary>
     /// Verifies that the payload field in the XADD call is valid JSON containing the request.
-    /// Failure-first: before §1.2 the payload field was never set; this verifies the serialized
-    /// request written to the stream matches the original request.
+    /// Failure-first: the serialized request written to the stream must match the original request.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenSongIdLookup_ShouldSerializePayloadField( ) {

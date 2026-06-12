@@ -37,15 +37,7 @@ public interface IRequestQueue<T> where T : class, IQueueableRequest {
     /// Dequeue the next request, skipping messages for rate-limited endpoints.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This method peeks at pending messages and skips any whose endpoint is currently
-    /// rate-limited. Rate-limited messages remain in the stream in their original position
-    /// and will be processed once the rate limit expires.
-    /// </para>
-    /// <para>
-    /// Use this method when processing provider queues to avoid repeatedly hitting
-    /// rate limits while still processing non-blocked endpoints.
-    /// </para>
+    /// Skips messages whose endpoint is currently rate-limited; they remain in the stream until the limit expires.
     /// </remarks>
     /// <param name="rateLimitTracker">The rate limit tracker to check endpoint availability.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>

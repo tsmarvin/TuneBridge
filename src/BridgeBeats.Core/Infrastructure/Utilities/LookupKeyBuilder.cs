@@ -8,33 +8,9 @@ namespace BridgeBeats.Core.Infrastructure.Utilities;
 /// produced by different components for the same entity are always identical.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Two key shapes are defined:
-/// <list type="bullet">
-///   <item>
-///     <b>Typed ID key</b> — for <c>SongIdLookup</c> / <c>AlbumIdLookup</c>:
-///     <c>{lookupType}:{provider}:{normalizedId}</c>. The ID is Trim-only; no case
-///     folding at this level (saga generation hashes the full key case-insensitively).
-///   </item>
-///   <item>
-///     <b>URL key</b> — for <c>UriLookup</c>:
-///     <c>UriLookup:{HashUrl(url)}</c>. The URL is normalized by
-///     <see cref="HashUtility.HashUrl"/> (strips query params, protocol, www, etc.)
-///     before hashing to ensure consistent lookups regardless of superficial variations.
-///   </item>
-/// </list>
-/// </para>
-/// <para>
-/// All of the following call sites consume this builder; none may hand-interpolate the
-/// format string:
-/// <list type="bullet">
-///   <item><c>LookupOrchestrator.LookupByProviderIdAsync</c></item>
-///   <item><c>LookupOrchestrator.LookupByUrlAsync</c></item>
-///   <item><c>JetStreamWatcherService.EnqueueMusicLinkAsync</c></item>
-///   <item><c>SpotifyBulkProcessorService.ProcessBulkResultAsync</c></item>
-///   <item><c>QueueProcessorBackgroundService.ProcessMessageAsync</c></item>
-/// </list>
-/// </para>
+/// Typed-ID shape: <c>{lookupType}:{provider}:{normalizedId}</c> (Trim-only; saga hashes case-insensitively).
+/// URL shape: <c>UriLookup:{HashUrl(url)}</c> (normalized via <see cref="HashUtility.HashUrl"/>).
+/// All producers must use this builder; no hand-interpolated format strings.
 /// </remarks>
 public static class LookupKeyBuilder {
 

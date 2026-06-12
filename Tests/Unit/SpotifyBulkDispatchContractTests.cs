@@ -1214,7 +1214,7 @@ public class SpotifyBulkDispatchContractTests {
 
     /// <summary>
     /// Verifies that <c>CheckAndPublishSagaCompletionAsync</c> skips the completion publish
-    /// when the saga already has a <c>FinalResultUri</c> set (§4.2 pre-check dedup guard).
+    /// when the saga already has a <c>FinalResultUri</c> set (dedup guard).
     /// With deterministic saga IDs, a re-shared URL hitting a lingering completed saga is
     /// the common case in V2; without this guard every re-share would re-publish, causing
     /// duplicate coordinator writes.

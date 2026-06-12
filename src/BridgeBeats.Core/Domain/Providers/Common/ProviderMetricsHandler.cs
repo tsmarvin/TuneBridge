@@ -7,18 +7,8 @@ namespace BridgeBeats.Core.Domain.Providers.Common;
 /// HTTP message handler that records OpenTelemetry metrics for all provider API requests.
 /// </summary>
 /// <remarks>
-/// <para>
-/// This handler intercepts all HTTP requests to provider APIs and records:
-/// <list type="bullet">
-///   <item>Request count with provider, endpoint, method, status code tags</item>
-///   <item>Request duration histogram</item>
-///   <item>Error count for failed requests</item>
-/// </list>
-/// </para>
-/// <para>
-/// Endpoint paths are normalized to replace dynamic segments (IDs, ISRCs, etc.)
-/// with placeholders to reduce cardinality.
-/// </para>
+/// Records request count, duration, and error count for all provider API calls.
+/// Endpoint paths are normalized to replace dynamic segments with placeholders to reduce cardinality.
 /// </remarks>
 public sealed partial class ProviderMetricsHandler : DelegatingHandler {
 
@@ -56,8 +46,7 @@ public sealed partial class ProviderMetricsHandler : DelegatingHandler {
     [GeneratedRegex( @"/+", RegexOptions.Compiled )]
     private static partial Regex MultipleSlashRegex( );
 
-    // Spotify bulk-endpoint ids= query parameter (e.g. tracks?ids=ID1,ID2,... or albums?ids=...)
-    // Normalizes to a stable placeholder so bulk URIs don't emit unbounded tag cardinality.
+    // Normalizes Spotify bulk ids= query parameters to a stable placeholder to prevent unbounded tag cardinality.
     [GeneratedRegex( @"(\?|&)ids=[^&]+", RegexOptions.Compiled )]
     private static partial Regex SpotifyBulkIdsRegex( );
 

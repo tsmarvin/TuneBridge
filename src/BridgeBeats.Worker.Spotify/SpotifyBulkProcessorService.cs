@@ -110,7 +110,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     }
 
     // -------------------------------------------------------------------------
-    // Pure flush predicate — extracted for testability (M7a)
+    // Pure flush predicate — extracted for testability
     // -------------------------------------------------------------------------
 
     /// <summary>

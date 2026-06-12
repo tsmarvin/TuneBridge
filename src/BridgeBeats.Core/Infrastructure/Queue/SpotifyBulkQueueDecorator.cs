@@ -16,35 +16,9 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// priority queue.
 /// </summary>
 /// <remarks>
-/// <para>
-/// When <see cref="EnqueueAsync"/> is called with a <see cref="QueuedLookupRequest"/>
-/// whose <see cref="QueuedLookupRequest.LookupType"/> is
-/// <see cref="LookupRequestType.SongIdLookup"/> or
-/// <see cref="LookupRequestType.AlbumIdLookup"/>, this decorator writes directly to
-/// <c>queue:spotify:bulk:track-id</c> (<see cref="SpotifyConstants.BulkTrackIdStream"/>)
-/// or <c>queue:spotify:bulk:album-id</c> (<see cref="SpotifyConstants.BulkAlbumIdStream"/>)
-/// respectively, using the same field shape (<c>payload</c> + <c>enqueuedAt</c>)
-/// that <c>RedisRequestQueue</c> uses. All other call sites — dequeue, acknowledge,
-/// requeue, depth, DLQ — are delegated unchanged to the inner queue.
-/// </para>
-/// <para>
-/// Race safety: both <c>SpotifyBulkProcessorService</c> and the generic
-/// <c>QueueProcessorBackgroundService</c> share the consumer group
-/// <c>spotify-workers</c>, but they read from <em>disjoint</em> streams:
-/// the type-specific bulk streams (<c>queue:spotify:bulk:track-id</c> /
-/// <c>queue:spotify:bulk:album-id</c>) are only consumed by
-/// <c>SpotifyBulkProcessorService</c>, while the generic priority streams
-/// (<c>queue:spotify:interactive</c> / <c>queue:spotify:background</c> /
-/// <c>queue:spotify:bulk</c>) are only consumed by the generic worker.
-/// Disjoint streams with a single consumer service per stream is the correct
-/// safety invariant — consumer group membership alone is not sufficient.
-/// </para>
-/// <para>
-/// Registration: this decorator is applied automatically by
-/// <c>QueueServiceExtensions.ApplySpotifyBulkDecorator</c>, which is called from both
-/// <c>CreateProviderQueue</c> and the <c>AddAllProviderQueues</c> resolver factory.
-/// Producers do not need any extra registration step.
-/// </para>
+/// <c>SongIdLookup</c> and <c>AlbumIdLookup</c> enqueues write to the type-specific bulk streams
+/// (<see cref="SpotifyConstants.BulkTrackIdStream"/> / <see cref="SpotifyConstants.BulkAlbumIdStream"/>);
+/// all other calls are delegated to the inner queue unchanged.
 /// </remarks>
 public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLookupRequest> {
 

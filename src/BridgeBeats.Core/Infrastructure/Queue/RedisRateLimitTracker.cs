@@ -11,20 +11,8 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// rate limit state with TTL-based automatic expiration.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Key patterns:
-/// <list type="bullet">
-///   <item><c>ratelimit:{provider}:{endpoint}</c> - String with RetryAfter timestamp, TTL = time until RetryAfter</item>
-/// </list>
-/// </para>
-/// <para>
-/// Rate limits automatically expire when their TTL elapses, so no manual cleanup is required
-/// for normal operation. The <see cref="ClearAsync"/> method is provided for explicit clearing
-/// after a successful request (optional optimization).
-/// </para>
-/// </remarks>
-/// <remarks>
-/// Initializes a new instance of the <see cref="RedisRateLimitTracker"/> class.
+/// Key pattern: <c>ratelimit:{provider}:{endpoint}</c> — string with RetryAfter timestamp, TTL = time until RetryAfter.
+/// Entries expire automatically; <see cref="ClearAsync"/> clears them early after a successful request.
 /// </remarks>
 /// <param name="redis">The Redis connection multiplexer.</param>
 /// <param name="logger">Logger for diagnostic information.</param>

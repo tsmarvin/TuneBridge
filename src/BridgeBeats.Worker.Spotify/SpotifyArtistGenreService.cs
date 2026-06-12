@@ -11,22 +11,8 @@ namespace BridgeBeats.Worker.Spotify;
 /// Background service that processes artist genre lookups for Spotify on a schedule.
 /// </summary>
 /// <remarks>
-/// <para>
-/// This service runs on a configurable schedule (default: weekly on Sunday at midnight)
-/// to batch-process artist genre lookups. Artists are queued during track lookups
-/// and processed in batches of 50 (Spotify's API limit).
-/// </para>
-/// <para>
-/// The service:
-/// <list type="bullet">
-///   <item>Dequeues up to 50 artists from the refresh queue</item>
-///   <item>Calls Spotify bulk artists API to get genres</item>
-///   <item>Caches artist genres for future track genre resolution</item>
-/// </list>
-/// </para>
-/// </remarks>
-/// <remarks>
-/// Initializes a new instance of the <see cref="SpotifyArtistGenreService"/> class.
+/// Runs on a configurable schedule (default: weekly on Sunday at midnight). Dequeues up to 50 artists,
+/// calls the Spotify bulk artists API, and caches genres for future track lookups.
 /// </remarks>
 public sealed partial class SpotifyArtistGenreService(
     IConnectionMultiplexer redis,

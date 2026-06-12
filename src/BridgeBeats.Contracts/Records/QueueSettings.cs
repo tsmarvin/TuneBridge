@@ -63,15 +63,7 @@ public sealed record QueueSettings {
     /// for providers that support bulk lookup endpoints.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// When the bulk queue depth is below this threshold, bulk messages are skipped
-    /// during dequeue until the threshold is reached. Once reached, bulk messages
-    /// are processed according to normal priority weighting.
-    /// </para>
-    /// <para>
-    /// Set to 0 or 1 to process bulk requests immediately (no batching).
-    /// Default is 5.
-    /// </para>
+    /// Below this threshold bulk messages are skipped during dequeue; set to 0 or 1 to disable batching. Default is 5.
     /// </remarks>
     [JsonPropertyName( "defaultMinBulkQueueThreshold" )]
     public int DefaultMinBulkQueueThreshold { get; init; } = 5;
@@ -80,18 +72,6 @@ public sealed record QueueSettings {
     /// Gets per-provider minimum bulk queue thresholds.
     /// If a provider is not specified, <see cref="DefaultMinBulkQueueThreshold"/> is used.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// // Configuration example:
-    /// {
-    ///   "providerMinBulkThresholds": {
-    ///     "AppleMusic": 5,
-    ///     "Spotify": 20,
-    ///     "Tidal": 5
-    ///   }
-    /// }
-    /// </code>
-    /// </example>
     [JsonPropertyName( "providerMinBulkThresholds" )]
     public Dictionary<SupportedProviders, int> ProviderMinBulkThresholds { get; init; } = [];
 

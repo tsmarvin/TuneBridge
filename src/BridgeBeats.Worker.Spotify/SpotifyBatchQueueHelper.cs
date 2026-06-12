@@ -14,21 +14,9 @@ namespace BridgeBeats.Worker.Spotify;
 /// for track and album ID lookups consumed by <c>SpotifyBulkProcessorService</c>.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Stream naming convention (constants in <see cref="SpotifyConstants"/>):
-/// <list type="bullet">
-///   <item><c>queue:spotify:bulk:track-id</c> — <see cref="LookupRequestType.SongIdLookup"/> bulk messages.</item>
-///   <item><c>queue:spotify:bulk:album-id</c> — <see cref="LookupRequestType.AlbumIdLookup"/> bulk messages.</item>
-/// </list>
-/// </para>
-/// <para>
-/// Pending-entry (PEL) recovery: at the start of each <see cref="DequeueBatchFromStreamAsync"/>
-/// call an <c>XAUTOCLAIM</c> sweep reclaims entries that have been idle in the PEL
-/// for more than <see cref="AutoClaimMinIdleMs"/> milliseconds. This prevents crash-between-read-and-ACK
-/// from stranding messages in a dead consumer's PEL indefinitely, which would otherwise
-/// cause the age trigger to fire every 500ms against empty dequeues (the project's
-/// known log-flood failure mode).
-/// </para>
+/// Manages <c>queue:spotify:bulk:track-id</c> and <c>queue:spotify:bulk:album-id</c> streams.
+/// An XAUTOCLAIM sweep at the start of each dequeue reclaims PEL entries idle longer than
+/// <see cref="AutoClaimMinIdleMs"/> ms, preventing stranded messages after a consumer crash.
 /// </remarks>
 public sealed partial class SpotifyBatchQueueHelper {
 
@@ -146,8 +134,7 @@ public sealed partial class SpotifyBatchQueueHelper {
             }
 
             if (!DateTimeOffset.TryParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset parsed )) {
-                // Malformed enqueuedAt — treat as absent (return null) so the age trigger
-                // does not permanently strand a low-volume stream at the 24-hour horizon (D3).
+                // Malformed enqueuedAt — treat as absent so the age trigger does not strand a low-volume stream.
                 LogMalformedEnqueuedAt( _logger, enqueuedAtStr, stream );
                 return null;
             }
@@ -365,15 +352,7 @@ public sealed partial class SpotifyBatchQueueHelper {
     /// after XAUTOCLAIM re-claim), this method returns <see cref="RequeueOutcome.NotFound"/>
     /// and the caller must leave the saga untouched (it was processed by another consumer).
     /// The caller is responsible for writing the complete-failed saga state and
-    /// publishing the completion events for <see cref="RequeueOutcome.CapReached"/> —
-    /// keeping service-layer saga writes out of this infrastructure helper.
-    /// <para>
-    /// DLQ note: the bulk streams do not have a reference to the underlying
-    /// <c>IRequestQueue</c> instance, so <c>MoveToDlqAsync</c> is not reachable from
-    /// this helper. The ACK+XDEL in the cap path removes the message from the stream;
-    /// this helper's own WARNING log (<see cref="LogMaxRetriesExceeded"/>) is the audit
-    /// trail. If DLQ access is needed in future, thread the queue reference through.
-    /// </para>
+    /// publishing the completion events for <see cref="RequeueOutcome.CapReached"/>.
     /// </remarks>
     /// <param name="messageId">The composite message ID (stream:id format).</param>
     /// <param name="sagaId">The saga ID of the associated request (for logging).</param>
@@ -559,7 +538,7 @@ public sealed partial class SpotifyBatchQueueHelper {
     [LoggerMessage(
         EventId = LogEventIds.MalformedEnqueuedAt,
         Level = LogLevel.Warning,
-        Message = "Malformed enqueuedAt field '{EnqueuedAtStr}' in stream {Stream}; treating as absent (D3)" )]
+        Message = "Malformed enqueuedAt field '{EnqueuedAtStr}' in stream {Stream}; treating as absent" )]
     private static partial void LogMalformedEnqueuedAt( ILogger logger, string enqueuedAtStr, string stream );
 
     #endregion

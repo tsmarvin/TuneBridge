@@ -14,17 +14,8 @@ namespace BridgeBeats.Services.LinkResolver;
 /// Orchestrates lookup operations through the queue-based infrastructure.
 /// </summary>
 /// <remarks>
-/// <para>
-/// All lookup operations flow through this orchestrator:
-/// 1. Check Redis cache for existing results
-/// 2. Check deduplication (is another request in-flight?)
-/// 3. If in-flight, subscribe to completion notification
-/// 4. Otherwise, create saga, queue initial provider lookup
-/// 5. Wait for initial result via Pub/Sub
-/// 6. On a partial result (secondary lookups pending), keep waiting with the
-///    remaining time budget until the final result is published
-/// 7. Return result to caller (partial only when rate-limited or the budget is exhausted)
-/// </para>
+/// All lookups flow through cache check → deduplication → saga creation → queue submission → Pub/Sub wait.
+/// Returns a partial result only when a provider is rate-limited or the interactive time budget is exhausted.
 /// </remarks>
 /// <remarks>
 /// Initializes a new instance of the <see cref="LookupOrchestrator"/> class.

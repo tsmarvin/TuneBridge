@@ -159,18 +159,8 @@ public static class ServiceExtensions {
     /// Adds the queue processor background service and related infrastructure to a provider worker.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This method registers:
-    /// <list type="bullet">
-    ///   <item>Queue settings configuration</item>
-    ///   <item>Provider-specific request queue</item>
-    ///   <item>Shared queue infrastructure (deduplicator, rate limit tracker, saga manager)</item>
-    ///   <item>Queue processor background service</item>
-    /// </list>
-    /// </para>
-    /// <para>
-    /// The lookup service must be registered separately before calling this method.
-    /// </para>
+    /// Registers queue settings, the provider-specific request queue, shared queue infrastructure,
+    /// and the queue processor background service. The lookup service must be registered separately.
     /// </remarks>
     /// <typeparam name="TLookupService">The concrete lookup service type for the provider.</typeparam>
     /// <param name="services">The service collection to configure.</param>
@@ -192,7 +182,7 @@ public static class ServiceExtensions {
         _ = services.AddQueueInfrastructure( );
 
         // Register the provider-specific queue via the single factory that owns the
-        // "wrap with SpotifyBulkQueueDecorator if Spotify" conditional (AA-F1).
+        // "wrap with SpotifyBulkQueueDecorator if Spotify" conditional.
         _ = services.AddSingleton<IRequestQueue<QueuedLookupRequest>>(
             sp => QueueServiceExtensions.CreateProviderQueue( sp, provider ) );
 
@@ -237,7 +227,7 @@ public static class ServiceExtensions {
         _ = services.AddQueueInfrastructure( );
 
         // Register the provider-specific queue via the single factory that owns the
-        // "wrap with SpotifyBulkQueueDecorator if Spotify" conditional (AA-F1).
+        // "wrap with SpotifyBulkQueueDecorator if Spotify" conditional.
         _ = services.AddSingleton<IRequestQueue<QueuedLookupRequest>>(
             sp => QueueServiceExtensions.CreateProviderQueue( sp, provider ) );
 

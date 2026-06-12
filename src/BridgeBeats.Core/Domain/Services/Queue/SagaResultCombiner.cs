@@ -10,16 +10,8 @@ namespace BridgeBeats.Core.Domain.Services.Queue;
 /// Combines results from multiple providers into a unified <see cref="MediaLinkResult"/>.
 /// </summary>
 /// <remarks>
-/// <para>
-/// When a saga completes (all providers have finished their lookups), this service
-/// assembles the final <see cref="MediaLinkResult"/> by merging successful results
-/// from each provider.
-/// </para>
-/// <para>
-/// The combiner takes the best available metadata from successful lookups and
-/// creates a unified result that includes links to all providers where the
-/// track/album was found.
-/// </para>
+/// Assembles the final <see cref="MediaLinkResult"/> when a saga completes by merging
+/// the best available metadata from each provider's successful lookup.
 /// </remarks>
 public sealed partial class SagaResultCombiner {
     private readonly ILogger<SagaResultCombiner> _logger;

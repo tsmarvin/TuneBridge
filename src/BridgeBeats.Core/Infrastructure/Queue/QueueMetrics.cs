@@ -9,14 +9,7 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// OpenTelemetry metrics for the BridgeBeats queue system.
 /// </summary>
 /// <remarks>
-/// <para>
-/// All metrics are prefixed with <c>bridgebeats.queue.</c> and include appropriate
-/// tags for filtering by provider, priority, and status.
-/// </para>
-/// <para>
-/// Register this meter with OpenTelemetry using <c>.AddMeter("BridgeBeats.Queue")</c>
-/// in your OpenTelemetry configuration.
-/// </para>
+/// All metrics prefixed with <c>bridgebeats.queue.</c>; register with <c>.AddMeter("BridgeBeats.Queue")</c>.
 /// </remarks>
 public static class QueueMetrics {
 
@@ -160,11 +153,7 @@ public static class QueueMetrics {
                 description: "Current number of requests in queue"
             );
 
-            // Separate gauges for the Spotify type-specific bulk streams.
-            // These streams sit outside the generic priority-stream layout so they
-            // need their own measurement series. A nonzero depth here that grows
-            // without bound indicates the XAUTOCLAIM sweep (M3) is not running or
-            // SpotifyBulkProcessorService is unhealthy.
+            // Spotify type-specific bulk streams sit outside the generic priority layout and need separate gauges.
             _ = Meter.CreateObservableGauge(
                 "bridgebeats.queue.spotify.bulk.track.depth",
                 ( ) => GetSpotifyBulkStreamDepth( redis, SpotifyConstants.BulkTrackIdStream ),

@@ -19,23 +19,9 @@ namespace BridgeBeats.Core.Domain.Services.Queue;
 /// and processes them using the provider's lookup service.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Each provider worker hosts an instance of this service configured for its specific provider.
-/// The service:
-/// <list type="bullet">
-///   <item>Reads messages from the provider's Redis stream using consumer groups</item>
-///   <item>Checks rate limit state before processing</item>
-///   <item>Calls the provider's lookup service to perform the lookup</item>
-///   <item>Updates saga state with results</item>
-///   <item>Acknowledges or requeues messages based on outcome</item>
-///   <item>Publishes saga completion events for the coordinator</item>
-/// </list>
-/// </para>
-/// <para>
-/// When a lookup encounters a rate limit exception, the request is requeued with
-/// a delay matching the Retry-After period. The rate limit is also recorded for
-/// the specific endpoint to prevent other requests from immediately hitting the same limit.
-/// </para>
+/// One instance per provider worker. Reads messages from the provider's Redis stream, performs
+/// lookups, updates saga state, and publishes completion events. Rate-limited requests are
+/// requeued with a delay matching the Retry-After period.
 /// </remarks>
 public sealed partial class QueueProcessorBackgroundService : BackgroundService {
     private readonly IConnectionMultiplexer _redis;
