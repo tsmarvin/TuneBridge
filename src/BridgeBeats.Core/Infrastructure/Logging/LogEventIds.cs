@@ -26,8 +26,6 @@ using SpotifyTokenHandler = BridgeBeats.Core.Domain.Providers.Spotify.SpotifyTok
 using StatisticsService = BridgeBeats.Core.Domain.Services.StatisticsService;
 using TidalLookupService = BridgeBeats.Core.Domain.Providers.Tidal.TidalLookupService;
 using TidalTokenHandler = BridgeBeats.Core.Domain.Providers.Tidal.TidalTokenHandler;
-using UserPlaylistATProtoService = BridgeBeats.Core.Infrastructure.Storage.UserPlaylistATProtoService;
-
 namespace BridgeBeats.Core.Infrastructure.Logging;
 
 /// <summary>
@@ -240,68 +238,6 @@ public static class LogEventIds {
             /// EventId for <see cref="RedisATProtoSessionManager.LogLockReleaseFailed"/>.
             /// </summary>
             public const int RedisATProtoSessionManagerLockReleaseFailed = 1123;
-
-            // UserPlaylistATProtoService (1150-1199)
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogPlaylistCreated"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceCreated = 1150;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogCreateFailed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceCreateFailed = 1151;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogGetFailed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceGetFailed = 1152;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogRetrieveError"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceRetrieveError = 1153;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogPlaylistUpdated"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceUpdated = 1154;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogUpdateFailed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceUpdateFailed = 1155;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogDeleteWarning"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceDeleteWarning = 1156;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogPlaylistDeleted"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceDeleted = 1157;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogDeleteError"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceDeleteError = 1158;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogListFailed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceListFailed = 1159;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogRefreshingTokens"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceRefreshingTokens = 1160;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogTokensRefreshed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceTokensRefreshed = 1161;
         }
 
         /// <summary>

@@ -199,10 +199,7 @@ public static class LogEventIds {
         /// </summary>
         public const int RateLimitingMiddlewareRateLimitExceeded = 4500;
 
-        /// <summary>
-        /// EventId for <see cref="RateLimitingMiddleware.LogRateLimitExceededConcurrent"/>.
-        /// </summary>
-        public const int RateLimitingMiddlewareRateLimitExceededConcurrent = 4501;
+        // 4501 retired (concurrent-check path removed)
 
         // HealthEndpointAuthorizationMiddleware (4525-4549)
 
