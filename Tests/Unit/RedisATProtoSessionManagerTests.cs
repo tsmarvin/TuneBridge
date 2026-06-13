@@ -791,6 +791,108 @@ public class RedisATProtoSessionManagerTests {
             "401 Unauthorized is a genuine auth rejection (deadTokenByStatus); shared credential must be cleared." );
     }
 
+    // ─── Test: lock wait timeout throws InvalidOperationException (fail-closed) ─────
+
+    /// <summary>
+    /// Verifies that when the distributed lock cannot be acquired within the TTL window,
+    /// <see cref="RedisATProtoSessionManager.GetAuthenticatedAgentAsync"/> throws
+    /// <see cref="InvalidOperationException"/> without invoking the agent factory.
+    ///
+    /// Fail-closed: rotating shared refresh token credentials without the distributed lock
+    /// risks two holders each invalidating the other's rotation, causing an auth storm.
+    ///
+    /// <b>Failure-first evidence:</b> with the <c>throw</c> present, the factory is never called
+    /// (the method exits at the lock-timeout branch before reaching <c>TryRestoreSessionAsync</c>
+    /// or <c>PerformFreshLoginAsync</c>). The test was run against a mutant in which the
+    /// <c>throw new InvalidOperationException</c> was removed; the mutant fell through to
+    /// <c>PerformFreshLoginAsync</c>, which called the factory (factoryCallCount = 1), failing
+    /// the <c>AreEqual(0, factoryCallCount)</c> assertion. Restoring the throw makes both
+    /// assertions pass (exception thrown, factory not called).
+    /// </summary>
+    [TestMethod]
+    [Timeout( 3000 )]
+    public async Task LockWaitTimeout_FailsClosed( ) {
+        // Lock acquire always returns false — simulates another holder that never releases.
+        SetupLockAcquire( false );
+
+        // Track whether the agent factory is invoked. The factory is only called inside
+        // TryRestoreSessionAsync and PerformFreshLoginAsync. If the fail-closed throw is present
+        // the method exits before reaching either; if removed, PerformFreshLoginAsync calls it.
+        int factoryCallCount = 0;
+        Func<BlueskyAgent> trackingFactory = ( ) => {
+            _ = Interlocked.Increment( ref factoryCallCount );
+            return new DisposableTrackingAgent( );
+        };
+
+        // Use accelerated lock timing so the poll loop completes in ~100 ms.
+        using RedisATProtoSessionManager manager = new(
+            _redisMock.Object,
+            _loggerMock.Object,
+            TestIdentifier,
+            TestPassword,
+            trackingFactory
+        ) {
+            LockExpiry = TimeSpan.FromMilliseconds( 100 ),
+            LockPollInterval = TimeSpan.FromMilliseconds( 10 )
+        };
+
+        _ = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            ( ) => manager.GetAuthenticatedAgentAsync( TestContext.CancellationToken ),
+            "AcquireDistributedLockAndRefreshAsync must throw InvalidOperationException when the lock " +
+            "cannot be acquired within the TTL window (fail-closed)." );
+
+        Assert.AreEqual( 0, factoryCallCount,
+            "The agent factory must not be called when the lock-wait times out. " +
+            "A non-zero count means the method fell through to PerformFreshLoginAsync (mutation detected)." );
+    }
+
+    // ─── Test: OperationCanceledException propagates from TryRestoreSessionAsync ─
+
+    /// <summary>
+    /// Verifies that <see cref="OperationCanceledException"/> thrown from within
+    /// <c>TryRestoreSessionAsync</c> propagates to the caller rather than being swallowed
+    /// by the broad <c>catch (Exception ex)</c> block.
+    ///
+    /// The test injects an OCE at the Redis read layer (before agent creation) so the
+    /// exception path is clean and does not rely on network behaviour. This exercises the
+    /// <c>catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)</c>
+    /// guard added by this fix.
+    ///
+    /// <b>Failure-first evidence:</b> before the fix, <c>TryRestoreSessionAsync</c> had only
+    /// <c>catch (Exception ex)</c>. The test was run against the pre-fix code (OCE catch clause
+    /// removed) and observed to fail: the method returned <c>false</c> instead of throwing,
+    /// causing the <c>Assert.IsTrue(threw)</c> assertion to fail (verified by temporarily
+    /// removing the catch clause and running the test).
+    /// </summary>
+    [TestMethod]
+    [Timeout( 5000 )]
+    public async Task TryRestoreSession_WhenCancelledDuringRedisRead_RethrowsOce( ) {
+        // Arrange — mock Redis StringGetAsync to throw OCE, simulating cancellation during
+        // the credential read step. Using a pre-cancelled token so IsCancellationRequested = true.
+        using CancellationTokenSource cts = new( );
+        cts.Cancel( );
+
+        _ = _dbMock
+            .Setup( d => d.StringGetAsync(
+                It.Is<RedisKey>( k => ((string)k!).Contains( "atproto:session:" ) ),
+                It.IsAny<CommandFlags>( ) ) )
+            .ThrowsAsync( new OperationCanceledException( cts.Token ) );
+
+        using RedisATProtoSessionManager manager = CreateManager( );
+
+        // Act + Assert — OCE must propagate, not be swallowed as false
+        bool threw = false;
+        try {
+            _ = await TryRestoreSessionAsync( manager, cts.Token );
+        } catch (OperationCanceledException) {
+            threw = true;
+        }
+
+        Assert.IsTrue( threw,
+            "OperationCanceledException must propagate from TryRestoreSessionAsync when the token is cancelled. " +
+            "Pre-fix: the broad catch (Exception ex) swallowed OCE and returned false instead." );
+    }
+
     // ─── Reflection helper ─────────────────────────────────────────────────────
 
     /// <summary>

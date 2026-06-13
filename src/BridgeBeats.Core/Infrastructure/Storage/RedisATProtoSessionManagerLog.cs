@@ -80,12 +80,12 @@ public sealed partial class RedisATProtoSessionManager {
     private partial void LogWaitingForLock( string identifier );
 
     /// <summary>
-    /// Logs that the distributed lock wait timed out (lock TTL elapsed without release).
+    /// Logs that the distributed lock wait timed out and the request is being rejected.
     /// </summary>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.RedisATProtoSessionManagerLockWaitTimeout,
-        Level = LogLevel.Warning,
-        Message = "Distributed lock wait timed out for {Identifier} — proceeding without lock (crash-recovery path)" )]
+        Level = LogLevel.Error,
+        Message = "Distributed lock wait timed out for {Identifier} — failing closed to protect shared refresh token" )]
     private partial void LogLockWaitTimeout( string identifier );
 
     /// <summary>

@@ -158,7 +158,9 @@ The entrypoint script automatically reads secrets from `/run/secrets/` and falls
 
 ### Production Settings
 
-Set `DOMAIN` in `.env` (or `-e DOMAIN=...` for a raw `docker run`) to your public domain. The container entrypoint reads it into `BridgeBeats:Domain`, which OpenGraph cards use to generate correct URLs.
+Set `DOMAIN` in `.env` (or `-e DOMAIN=...` for a raw `docker run`) to your public domain. The container entrypoint reads it into `BridgeBeats:Domain`, which governs auth-cookie scoping and OpenGraph card URL generation.
+
+> **Migration note:** The `bridgebeats` service environment variable was renamed from `BASEURL` to `DOMAIN`. Deployments that set `BASEURL` must rename it to `DOMAIN`.
 
 ```bash
 DOMAIN=bridgebeats.link

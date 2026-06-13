@@ -90,7 +90,16 @@ jobs:
         # pass the integration lane.
         run: |
           TRX=$(find . -name "integration-test-results.trx" | head -1)
+          if [ -z "$TRX" ]; then
+            echo "ERROR: no integration-test-results.trx file found — dotnet test may not have run."; exit 1
+          fi
+          if [ ! -f "$TRX" ]; then
+            echo "ERROR: integration-test-results.trx path does not exist: $TRX"; exit 1
+          fi
           EXECUTED=$(grep -oP 'executed="\K[0-9]+' "$TRX" | head -1)
+          if ! [[ "$EXECUTED" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: could not parse executed count from $TRX (got: '$EXECUTED')"; exit 1
+          fi
           echo "Integration tests executed: $EXECUTED"
           [ "$EXECUTED" -gt 0 ] || { echo "ERROR: zero integration tests executed — all tests skipped (Inconclusive). Fix the test suite or integration environment."; exit 1; }
 

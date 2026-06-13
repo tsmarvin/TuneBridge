@@ -30,6 +30,10 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     private static readonly TimeSpan s_lockPollInterval = TimeSpan.FromMilliseconds( 200 );
     private static readonly TimeSpan s_cooldownWindow = TimeSpan.FromSeconds( 5 );
 
+    // Test seam: overridable lock timing. Production defaults match the static fields above.
+    internal TimeSpan LockExpiry { get; init; } = s_lockExpiry;
+    internal TimeSpan LockPollInterval { get; init; } = s_lockPollInterval;
+
     // Lua script for atomic compare-and-delete of the distributed lock.
     // Returns 1 if the key was deleted (we still owned it), 0 otherwise.
     private const string ReleaseLockScript =
@@ -146,22 +150,21 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
 
         // Block-acquire the distributed lock: try immediately, then poll until acquired
         // or the lock TTL elapses (covers the crash-while-holding case).
-        bool lockAcquired = await db.StringSetAsync( _lockKey, lockValue, s_lockExpiry, When.NotExists );
+        bool lockAcquired = await db.StringSetAsync( _lockKey, lockValue, LockExpiry, When.NotExists );
 
         if (!lockAcquired) {
             LogWaitingForLock( _identifier );
             TimeSpan waited = TimeSpan.Zero;
-            while (!lockAcquired && waited < s_lockExpiry) {
-                await Task.Delay( s_lockPollInterval, cancellationToken );
-                waited += s_lockPollInterval;
-                lockAcquired = await db.StringSetAsync( _lockKey, lockValue, s_lockExpiry, When.NotExists );
+            while (!lockAcquired && waited < LockExpiry) {
+                await Task.Delay( LockPollInterval, cancellationToken );
+                waited += LockPollInterval;
+                lockAcquired = await db.StringSetAsync( _lockKey, lockValue, LockExpiry, When.NotExists );
             }
 
             if (!lockAcquired) {
-                // Lock TTL elapsed without release — either the holder crashed and the TTL has
-                // not yet expired on this Redis call, or something is very wrong. Log and attempt
-                // anyway; worst case the two concurrent holders each rotate once.
                 LogLockWaitTimeout( _identifier );
+                throw new InvalidOperationException(
+                    $"Could not acquire the credential-mutation lock for '{_identifier}' within the TTL window." );
             }
         }
 
@@ -250,6 +253,9 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
             agent.Dispose( );
             agent = null;
             return false;
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            agent?.Dispose( );
+            throw;
         } catch (Exception ex) {
             LogRestoreException( ex, _identifier );
             agent?.Dispose( );
