@@ -112,6 +112,14 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="settings">Queue configuration settings.</param>
     /// <param name="provider">The provider this queue serves.</param>
+    /// <param name="keyPrefix">
+    /// Optional segment inserted between <c>"queue:"</c> and the provider in every stream
+    /// key. The value carries no separators — they are added internally — so
+    /// <c>"runtoken"</c> yields <c>"queue:runtoken:{provider}:interactive"</c>. When
+    /// <see langword="null"/> or empty the default <c>"queue:{provider}:…"</c> layout is
+    /// used. This parameter exists for test isolation only; do not supply it from
+    /// production callers.
+    /// </param>
     /// <remarks>
     /// A configured aging interval of 1 or less is treated as a misconfiguration and replaced with
     /// a default of 8 (logged), keeping the starvation-prevention logic well-defined.
@@ -121,7 +129,8 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         IConnectionMultiplexer redis,
         ILogger<RedisRequestQueue<T>> logger,
         IOptions<QueueSettings> settings,
-        SupportedProviders provider
+        SupportedProviders provider,
+        string? keyPrefix = null
     ) {
         _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
@@ -142,10 +151,13 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         }
 
         string providerName = provider.ToString( ).ToLowerInvariant( );
-        _interactiveStream = $"queue:{providerName}:interactive";
-        _backgroundStream = $"queue:{providerName}:background";
-        _bulkStream = $"queue:{providerName}:bulk";
-        _dlqStream = $"queue:{providerName}:dlq";
+        string queuePrefix = string.IsNullOrEmpty( keyPrefix )
+            ? $"queue:{providerName}"
+            : $"queue:{keyPrefix}:{providerName}";
+        _interactiveStream = $"{queuePrefix}:interactive";
+        _backgroundStream = $"{queuePrefix}:background";
+        _bulkStream = $"{queuePrefix}:bulk";
+        _dlqStream = $"{queuePrefix}:dlq";
 
         _consumerGroup = $"{providerName}-workers";
         _consumerId = $"{providerName}-worker-{Guid.NewGuid( ):N}";

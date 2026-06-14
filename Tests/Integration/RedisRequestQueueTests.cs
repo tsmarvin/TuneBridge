@@ -26,6 +26,13 @@ public partial class RedisRequestQueueTests {
     /// <summary>The shared Redis connection used by the queue under test.</summary>
     private static IConnectionMultiplexer? s_redis;
 
+    /// <summary>
+    /// Per-run token used to namespace all stream keys so concurrent test classes cannot delete
+    /// each other's in-flight data. Generated once in <see cref="ClassInitialize"/> and stable
+    /// for the entire class run.
+    /// </summary>
+    private static string s_runToken = string.Empty;
+
     /// <summary>Mock logger captured for the queue under test.</summary>
     private Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> _mockLogger = null!;
     /// <summary>Queue settings supplied to the queue under test.</summary>
@@ -37,13 +44,15 @@ public partial class RedisRequestQueueTests {
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Requires the shared Redis container and opens a connection to it for the test class.
+    /// Requires the shared Redis container, opens a connection, and generates a stable per-run key
+    /// prefix token so every stream key created by this class is isolated from other concurrent classes.
     /// </summary>
     /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
+        s_runToken = Guid.NewGuid( ).ToString( "N" )[..8];
     }
 
     /// <summary>
@@ -58,30 +67,40 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Clears leftover <c>queue:*</c> keys, constructs a fresh Spotify queue, and ensures its consumer
-    /// groups exist before each test.
+    /// Clears only this run's prefixed <c>queue:{runToken}:*</c> keys, constructs a fresh Spotify
+    /// queue using the same prefix, and ensures its consumer groups exist before each test.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
-        // Clear only queue-related keys before each test
-        IDatabase db = s_redis!.GetDatabase( );
-        IServer server = s_redis.GetServer( s_redis.GetEndPoints( )[0] );
-        await foreach (RedisKey key in server.KeysAsync( pattern: "queue:*" )) {
-            _ = await db.KeyDeleteAsync( key );
-        }
+        await CleanupOwnKeysAsync( );
 
         _mockLogger = new Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>>( );
         _settings = Options.Create( new QueueSettings( ) );
 
         _queue = new RedisRequestQueue<QueuedLookupRequest>(
-            s_redis,
+            s_redis!,
             _mockLogger.Object,
             _settings,
-            SupportedProviders.Spotify
+            SupportedProviders.Spotify,
+            keyPrefix: s_runToken
         );
 
         // Ensure consumer groups exist
         await _queue.EnsureConsumerGroupsAsync( CancellationToken.None );
+    }
+
+    /// <summary>
+    /// Deletes this run's own prefixed <c>queue:{runToken}:*</c> keys. Uses the run-token-namespaced
+    /// pattern only — no bare wildcard — so keys owned by other concurrently executing test classes
+    /// are never touched.
+    /// </summary>
+    private async Task CleanupOwnKeysAsync( ) {
+        IDatabase db = s_redis!.GetDatabase( );
+        IServer server = s_redis.GetServer( s_redis.GetEndPoints( )[0] );
+        string ownPattern = $"queue:{s_runToken}:*";
+        await foreach (RedisKey key in server.KeysAsync( pattern: ownPattern )) {
+            _ = await db.KeyDeleteAsync( key );
+        }
     }
 
     /// <summary>
@@ -295,7 +314,8 @@ public partial class RedisRequestQueueTests {
             s_redis!,
             appleLogger.Object,
             _settings,
-            SupportedProviders.AppleMusic
+            SupportedProviders.AppleMusic,
+            keyPrefix: s_runToken
         );
         await appleQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
@@ -334,7 +354,8 @@ public partial class RedisRequestQueueTests {
         // Arrange - add multiple messages to each priority
         const int MessagesPerPriority = 10;
 
-        // Create a queue with bulk gating disabled for this test
+        // Create a queue with bulk gating disabled for this test; use the run-token prefix so
+        // this instance shares the namespaced stream with _queue and TestInitialize cleanup.
         IOptions<QueueSettings> testSettings = Options.Create( new QueueSettings {
             DefaultMinBulkQueueThreshold = 0 // Disable bulk gating
         } );
@@ -343,7 +364,8 @@ public partial class RedisRequestQueueTests {
             s_redis!,
             testLogger.Object,
             testSettings,
-            SupportedProviders.Spotify
+            SupportedProviders.Spotify,
+            keyPrefix: s_runToken
         );
         await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
@@ -377,13 +399,15 @@ public partial class RedisRequestQueueTests {
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ConsumerGroups_AllowMultipleWorkerInstances( ) {
-        // Arrange - create two queue instances (simulating two workers)
+        // Arrange - create two queue instances (simulating two workers); both must share
+        // the same run-token prefix so they operate on the same namespaced stream.
         Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> logger2 = new( );
         RedisRequestQueue<QueuedLookupRequest> worker2Queue = new(
             s_redis!,
             logger2.Object,
             _settings,
-            SupportedProviders.Spotify
+            SupportedProviders.Spotify,
+            keyPrefix: s_runToken
         );
         await worker2Queue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
@@ -561,7 +585,8 @@ public partial class RedisRequestQueueTests {
             s_redis!,
             testLogger.Object,
             testSettings,
-            SupportedProviders.Spotify
+            SupportedProviders.Spotify,
+            keyPrefix: s_runToken
         );
         await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
@@ -605,7 +630,8 @@ public partial class RedisRequestQueueTests {
             s_redis!,
             testLogger.Object,
             testSettings,
-            SupportedProviders.Spotify
+            SupportedProviders.Spotify,
+            keyPrefix: s_runToken
         );
         await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
@@ -668,7 +694,8 @@ public partial class RedisRequestQueueTests {
             s_redis!,
             testLogger.Object,
             testSettings,
-            SupportedProviders.Spotify
+            SupportedProviders.Spotify,
+            keyPrefix: s_runToken
         );
         await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
@@ -732,7 +759,8 @@ public partial class RedisRequestQueueTests {
             s_redis!,
             testLogger.Object,
             testSettings,
-            SupportedProviders.Spotify
+            SupportedProviders.Spotify,
+            keyPrefix: s_runToken
         );
         await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
@@ -780,7 +808,8 @@ public partial class RedisRequestQueueTests {
             s_redis!,
             testLogger.Object,
             testSettings,
-            SupportedProviders.Spotify
+            SupportedProviders.Spotify,
+            keyPrefix: s_runToken
         );
         await testQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
 
@@ -824,6 +853,32 @@ public partial class RedisRequestQueueTests {
             SagaId = $"saga-{id}",
             CreatedAt = DateTimeOffset.UtcNow
         };
+    }
+
+    /// <summary>
+    /// Regression guard: verifies that <see cref="CleanupOwnKeysAsync"/> never touches keys outside
+    /// this run's own prefix. A bare <c>queue:*</c> wipe would delete the sentinel and fail this
+    /// test, proving the cleanup is scoped to this class's namespaced keyspace.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task TestIsolation_ForeignPrefixKeys_AreNeverTouched( ) {
+        IDatabase db = s_redis!.GetDatabase( );
+
+        // Seed a sentinel under a foreign prefix before the cleanup runs
+        string foreignKey = "queue:__sentinel__:guard";
+        _ = await db.StringSetAsync( foreignKey, "exists", TimeSpan.FromMinutes( 5 ) );
+
+        // Exercise the real cleanup method (same code path as TestInitialize)
+        await CleanupOwnKeysAsync( );
+
+        // The sentinel must survive: cleanup must be scoped to this run's prefix only
+        bool sentinelStillExists = await db.KeyExistsAsync( foreignKey );
+        Assert.IsTrue( sentinelStillExists,
+            "CleanupOwnKeysAsync touched a key outside this class's prefix; isolation is broken." );
+
+        // Cleanup: remove the sentinel we placed
+        _ = await db.KeyDeleteAsync( foreignKey );
     }
 
     [GeneratedRegex( "^[0-9a-f]{32}$" )]

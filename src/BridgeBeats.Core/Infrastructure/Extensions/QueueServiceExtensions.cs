@@ -2,6 +2,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Queue;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
@@ -50,13 +51,11 @@ public static class QueueServiceExtensions {
             sp.GetRequiredService<IOptions<QueueSettings>>( )
         ) );
 
-        // Register queue depth metrics if requested
+        // Register queue depth metrics if requested. A hosted service is used so the gauges
+        // are registered eagerly at host start after the DI container is built and Redis is
+        // connected, rather than lazily on first resolution (which never happens for a marker).
         if (registerMetrics) {
-            _ = services.AddSingleton( sp => {
-                IConnectionMultiplexer redis = sp.GetRequiredService<IConnectionMultiplexer>( );
-                QueueMetrics.RegisterQueueDepthGauges( redis );
-                return new QueueMetricsRegistration( );
-            } );
+            _ = services.AddHostedService<QueueMetricsRegistration>( );
         }
 
         return services;
@@ -276,7 +275,18 @@ internal sealed class ProviderQueueResolver<T>(
 }
 
 /// <summary>
-/// Marker class to indicate queue metrics have been registered. Used as a singleton dependency to
-/// ensure metrics are registered exactly once during container build.
+/// Hosted service that eagerly registers the queue-depth observable gauges at host start, after
+/// the DI container is built and the Redis connection is available. Runs once per host startup;
+/// the underlying registration is idempotent so multiple hosts each registering is safe.
 /// </summary>
-internal sealed class QueueMetricsRegistration;
+internal sealed class QueueMetricsRegistration( IConnectionMultiplexer redis ) : IHostedService {
+
+    /// <inheritdoc/>
+    public Task StartAsync( CancellationToken cancellationToken ) {
+        QueueMetrics.RegisterQueueDepthGauges( redis );
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public Task StopAsync( CancellationToken cancellationToken ) => Task.CompletedTask;
+}

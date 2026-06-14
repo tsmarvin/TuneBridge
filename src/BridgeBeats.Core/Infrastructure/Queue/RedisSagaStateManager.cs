@@ -83,6 +83,9 @@ public sealed partial class RedisSagaStateManager(
     /// <summary>Core hash field: single-winner marker that secondary lookups were queued. Literal: <c>"secondariesQueued"</c>.</summary>
     private const string FieldSecondariesQueued = "secondariesQueued";
 
+    /// <summary>Core hash field: single-winner marker that finalization has been claimed. Literal: <c>"finalizeClaimed"</c>.</summary>
+    private const string FieldFinalizeClaimed = "finalizeClaimed";
+
     // Hash field names for provider state
 
     /// <summary>Provider hash field: whether the provider has finished. Literal: <c>"isComplete"</c>.</summary>
@@ -154,14 +157,14 @@ public sealed partial class RedisSagaStateManager(
             }
         }
 
-        // Create new saga
+        // Create new saga. finalResultUri is intentionally not pre-populated so the
+        // When.NotExists guard in SetFinalResultUriAsync can enforce first-writer-wins.
         List<HashEntry> sagaHashEntries = [
             new HashEntry( FieldLookupKey, lookupKey ),
             new HashEntry( FieldLookupType, lookupType.ToString() ),
             new HashEntry( FieldLookupValue, lookupValue ),
             new HashEntry( FieldCreatedAt, DateTimeOffset.UtcNow.ToString( "O" ) ),
             new HashEntry( FieldPartialResultUri, RedisValue.EmptyString ),
-            new HashEntry( FieldFinalResultUri, RedisValue.EmptyString )
         ];
 
         if (originPriority.HasValue) {
@@ -368,7 +371,7 @@ public sealed partial class RedisSagaStateManager(
         IDatabase db = _redis.GetDatabase( );
         TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
 
-        _ = await db.HashSetAsync( key, FieldFinalResultUri, uri );
+        _ = await db.HashSetAsync( key, FieldFinalResultUri, uri, When.NotExists );
         _ = await db.KeyExpireAsync( key, ttl );
 
         // Remove from pending index since saga is now finalized
@@ -500,6 +503,51 @@ public sealed partial class RedisSagaStateManager(
         LogSecondariesQueuedMarker( _logger, sagaId, acquired );
 
         return acquired;
+    }
+
+    /// <summary>
+    /// Atomically claims the exclusive right to finalize a saga, so exactly one concurrent
+    /// trigger performs the PDS write.
+    /// </summary>
+    /// <param name="sagaId">The saga to claim finalization for.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>True if this caller won the claim (and must finalize); false if another caller already holds it.</returns>
+    /// <remarks>Uses a hash set with "when not exists" semantics (HSETNX) so exactly one caller wins.</remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
+    public async Task<bool> TryClaimFinalizeAsync( string sagaId, CancellationToken cancellationToken = default ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+
+        string key = GetSagaKey( sagaId );
+        IDatabase db = _redis.GetDatabase( );
+        TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
+
+        bool acquired = await db.HashSetAsync( key, FieldFinalizeClaimed, true.ToString( ), When.NotExists );
+        _ = await db.KeyExpireAsync( key, ttl );
+
+        LogFinalizeClaimMarker( _logger, sagaId, acquired );
+
+        return acquired;
+    }
+
+    /// <summary>
+    /// Releases a finalize claim so a legitimate retry can re-finalize after a failed PDS write.
+    /// Must only be called on the failure path; successful finalizations leave the claim set until TTL expiry.
+    /// </summary>
+    /// <param name="sagaId">The saga whose finalize claim should be released.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the claim field has been deleted.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
+    public async Task ReleaseFinalizeClaimAsync( string sagaId, CancellationToken cancellationToken = default ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+
+        string key = GetSagaKey( sagaId );
+        IDatabase db = _redis.GetDatabase( );
+        TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
+
+        _ = await db.HashDeleteAsync( key, FieldFinalizeClaimed );
+        _ = await db.KeyExpireAsync( key, ttl );
+
+        LogFinalizeClaimReleased( _logger, sagaId );
     }
 
     /// <summary>
@@ -884,6 +932,25 @@ public sealed partial class RedisSagaStateManager(
         Level = LogLevel.Debug,
         Message = "Secondaries-queued marker for saga {SagaId}: acquired={Acquired}" )]
     internal static partial void LogSecondariesQueuedMarker( ILogger logger, string sagaId, bool acquired );
+
+    /// <summary>Logs the outcome of the atomic finalize claim attempt.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="acquired">Whether this caller won the claim.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerFinalizeClaimMarker,
+        Level = LogLevel.Debug,
+        Message = "Finalize claim for saga {SagaId}: acquired={Acquired}" )]
+    internal static partial void LogFinalizeClaimMarker( ILogger logger, string sagaId, bool acquired );
+
+    /// <summary>Logs that a finalize claim was released so a retry can re-finalize.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerFinalizeClaimReleased,
+        Level = LogLevel.Debug,
+        Message = "Finalize claim released for saga {SagaId}" )]
+    internal static partial void LogFinalizeClaimReleased( ILogger logger, string sagaId );
 
     #endregion
 }
