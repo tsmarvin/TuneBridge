@@ -3,45 +3,46 @@ using BridgeBeats.Contracts.Enums;
 
 namespace BridgeBeats.Web.Models {
     /// <summary>
-    /// View model for displaying music lookup results.
+    /// View model for a music lookup result page, holding the resolved result items and an optional message.
     /// </summary>
     public class MusicLookupViewModel {
         /// <summary>
-        /// List of music lookup result items with card URLs.
+        /// The resolved lookup result items.
         /// </summary>
         public List<MusicLookupResultItem> Items { get; set; } = [];
 
         /// <summary>
-        /// Message to display when there are no results.
+        /// An optional message describing the outcome (for example, when no results were found).
         /// </summary>
         public string? Message { get; set; }
 
         /// <summary>
-        /// Individual result item with card URL and metadata.
+        /// A single resolved lookup result, pairing the cross-provider media link with its shareable card,
+        /// ATProto record URI, and the provider it was primarily resolved from.
         /// </summary>
         public class MusicLookupResultItem {
             /// <summary>
-            /// URL to the stored OpenGraph card.
+            /// The URL of the shareable Open Graph card for this result, when one has been generated.
             /// </summary>
             public string? CardUrl { get; set; }
 
             /// <summary>
-            /// ATProto URI for the stored record (at://...).
+            /// The ATProto record URI where this result is stored, when available.
             /// </summary>
             public string? ATProtoUri { get; set; }
 
             /// <summary>
-            /// The raw result data.
+            /// The cross-provider media link result.
             /// </summary>
             public MediaLinkResult Result { get; set; } = null!;
 
             /// <summary>
-            /// Primary provider for this result (for styling).
+            /// The provider this result was primarily resolved from.
             /// </summary>
             public SupportedProviders PrimaryProvider { get; set; }
 
             /// <summary>
-            /// Primary result data (for display).
+            /// The per-provider lookup result for <see cref="PrimaryProvider"/>.
             /// </summary>
             public MusicLookupResult PrimaryResult { get; set; } = null!;
         }

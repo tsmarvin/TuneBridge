@@ -3,65 +3,48 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Contracts.Records;
 
 /// <summary>
-/// Represents persisted ATProto session credentials for storage in Redis.
-/// Contains the minimum data needed to restore a session without re-authenticating.
+/// The persisted, serialized form of a user's AT Protocol credentials, written to storage
+/// as camelCase JSON. This is the at-rest counterpart to the live <see cref="ATProtoOAuthResult"/>
+/// produced during an OAuth exchange.
 /// </summary>
 /// <remarks>
-/// Per idunno.Bluesky documentation, access tokens are short-lived and should NOT be persisted.
-/// Only the refresh token and related metadata are stored for session restoration.
-/// See: https://bluesky.idunno.dev/docs/savingAndRestoringAuthentication.html
+/// Per idunno.Bluesky guidance, access tokens are short-lived and are NOT persisted; only the
+/// refresh token and related metadata are stored so a session can be restored without
+/// re-authenticating. See: https://bluesky.idunno.dev/docs/savingAndRestoringAuthentication.html.
+/// Holds credential material. Today the dominant writer persists this record as plaintext JSON in
+/// Redis with no encryption and no TTL; no separate protection layer is applied at rest.
 /// </remarks>
 public sealed record ATProtoPersistedCredentials {
 
-    /// <summary>
-    /// The refresh token for obtaining new access tokens.
-    /// </summary>
+    /// <summary>The OAuth refresh token used to mint new access tokens for this account.</summary>
     [JsonPropertyName( "refreshToken" )]
     public required string RefreshToken { get; init; }
 
-    /// <summary>
-    /// The DPoP proof key serialized as Base64, if DPoP authentication is used.
-    /// May be null for legacy authentication.
-    /// </summary>
+    /// <summary>The DPoP proof key serialized as Base64, when one is persisted for this account; otherwise <see langword="null"/> for legacy authentication.</summary>
     [JsonPropertyName( "dPoPProofKey" )]
     public string? DPoPProofKey { get; init; }
 
-    /// <summary>
-    /// The DPoP nonce value from the server, if DPoP authentication is used.
-    /// May be null for legacy authentication.
-    /// </summary>
+    /// <summary>The most recent DPoP nonce from the server, when one is persisted; otherwise <see langword="null"/> for legacy authentication.</summary>
     [JsonPropertyName( "dPoPNonce" )]
     public string? DPoPNonce { get; init; }
 
-    /// <summary>
-    /// The service URI that issued the tokens (e.g., the PDS endpoint).
-    /// </summary>
+    /// <summary>The service endpoint (PDS) that issued these credentials.</summary>
     [JsonPropertyName( "service" )]
     public required string Service { get; init; }
 
-    /// <summary>
-    /// The DID (Decentralized Identifier) of the authenticated account.
-    /// </summary>
+    /// <summary>The decentralized identifier (DID) of the authenticated account.</summary>
     [JsonPropertyName( "did" )]
     public required string Did { get; init; }
 
-    /// <summary>
-    /// The handle of the authenticated account.
-    /// Useful for logging and debugging.
-    /// </summary>
+    /// <summary>The handle of the authenticated account; useful for logging and debugging.</summary>
     [JsonPropertyName( "handle" )]
     public required string Handle { get; init; }
 
-    /// <summary>
-    /// The authentication type (e.g., "Bearer" or "DPoP").
-    /// </summary>
+    /// <summary>The authentication type (for example, <c>Bearer</c> or <c>DPoP</c>).</summary>
     [JsonPropertyName( "authenticationType" )]
     public required string AuthenticationType { get; init; }
 
-    /// <summary>
-    /// Timestamp when these credentials were persisted.
-    /// Used for monitoring and debugging credential age.
-    /// </summary>
+    /// <summary>The absolute instant at which these credentials were written to storage; used to monitor credential age.</summary>
     [JsonPropertyName( "persistedAt" )]
     public required DateTimeOffset PersistedAt { get; init; }
 

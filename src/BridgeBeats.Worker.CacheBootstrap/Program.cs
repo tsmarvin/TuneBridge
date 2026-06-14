@@ -9,14 +9,20 @@ using StackExchange.Redis;
 namespace BridgeBeats.Worker.CacheBootstrap;
 
 /// <summary>
-/// Entry point for the CacheBootstrap worker service.
+/// Entry point and composition root for the CacheBootstrap worker process. The worker is a headless
+/// background host (no HTTP endpoint): it builds a generic host, registers the Redis client, ATProto
+/// storage, the media-link cache, and the <see cref="CacheBootstrapBackgroundService"/> that rebuilds
+/// the Redis lookup index from the PDS.
 /// </summary>
 public static class Program {
 
     /// <summary>
-    /// The main entry point for the CacheBootstrap worker application.
+    /// Builds the host, verifies Redis is reachable with a write/read-back smoke test, and runs the
+    /// worker. Configuration is validated during service registration so missing credentials surface
+    /// at startup.
     /// </summary>
-    /// <param name="args">Command line arguments.</param>
+    /// <param name="args">Command-line arguments forwarded to the host builder.</param>
+    /// <returns>A task that completes when the host has stopped.</returns>
     public static async Task Main( string[] args ) {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder( args );
 
@@ -34,9 +40,12 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the services for the CacheBootstrap worker application.
+    /// Registers the worker's services: file logging, Aspire service defaults, the Redis client, the
+    /// ATProto session and storage, the media-link cache, the <see cref="CacheBootstrapSettings"/>
+    /// built from configuration, and the hosted <see cref="CacheBootstrapBackgroundService"/>.
+    /// Validates configuration before wiring dependent services.
     /// </summary>
-    /// <param name="builder">The host application builder.</param>
+    /// <param name="builder">The host application builder being configured.</param>
     private static void ConfigureServices( HostApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "CacheBootstrap" );
@@ -77,11 +86,19 @@ public static class Program {
     }
 
     /// <summary>
-    /// Validates the required configuration for the CacheBootstrap worker.
+    /// Reads and validates the ATProto credentials and bootstrap settings from configuration. The PDS
+    /// URI, cache-retention days, and bootstrap interval fall back to defaults when unset; the user DID
+    /// is validated with
+    /// <see cref="Core.Infrastructure.Storage.ATProtoUriHelper.ValidateDid(string, string)"/>.
     /// </summary>
-    /// <param name="builder">The host application builder.</param>
-    /// <returns>A tuple containing the validated ATProto credentials and settings.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
+    /// <param name="builder">The host application builder whose configuration is read.</param>
+    /// <returns>
+    /// A tuple of the ATProto identifier, app password, user DID, PDS URI, cache-retention days
+    /// (default 30), and bootstrap interval in hours (default 6).
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when any of the required ATProto credentials are missing or blank.
+    /// </exception>
     private static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID,
         string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours) ValidateConfiguration(
             HostApplicationBuilder builder
@@ -110,9 +127,12 @@ public static class Program {
     }
 
     /// <summary>
-    /// Validates the Redis connection on startup by performing test read/write operations.
+    /// Verifies the Redis connection at startup by logging connection details, writing a short-lived
+    /// test key and reading it back, and reporting the key count per endpoint. A failed write/read-back
+    /// is logged as an error but does not abort startup.
     /// </summary>
-    /// <param name="app">The host application.</param>
+    /// <param name="app">The built host whose Redis client and logger factory are resolved.</param>
+    /// <returns>A task that completes when the verification steps have run.</returns>
     private static async Task ValidateRedisConnectionAsync( IHost app ) {
         IConnectionMultiplexer redis = app.Services.GetRequiredService<IConnectionMultiplexer>();
         ILoggerFactory loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();

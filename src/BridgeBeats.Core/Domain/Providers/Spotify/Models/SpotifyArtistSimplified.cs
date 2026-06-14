@@ -3,48 +3,35 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Spotify.Models {
 
     /// <summary>
-    /// A simplified artist object returned in track/album responses and search results.
-    /// Contains basic identification but not full artist details.
+    /// Deserialization target mirroring the Spotify Web API simplified <c>artist</c> object — the artist
+    /// shape embedded in album and track objects and search results. Compared with
+    /// <see cref="SpotifyArtist"/> it omits followers, genres, images, and popularity. The authoritative
+    /// meaning of each field is the Spotify Web API object model; <c>[JsonPropertyName]</c> attributes map
+    /// each property to its wire field.
     /// </summary>
-    /// <remarks>
-    /// Endpoint: Embedded in track/album objects
-    /// Documentation: https://developer.spotify.com/documentation/web-api/reference/get-an-artist
-    /// </remarks>
     public sealed class SpotifyArtistSimplified {
 
-        /// <summary>
-        /// Known external URLs for this artist.
-        /// </summary>
+        /// <summary>Known external URLs for the artist, primarily the Spotify web link. Maps to <c>external_urls</c>.</summary>
         [JsonPropertyName( "external_urls" )]
         public SpotifyExternalUrls? ExternalUrls { get; set; }
 
-        /// <summary>
-        /// A link to the Web API endpoint providing full details of the artist.
-        /// </summary>
+        /// <summary>Spotify Web API endpoint URL providing full details for the artist. Maps to <c>href</c>.</summary>
         [JsonPropertyName( "href" )]
         public string Href { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The Spotify ID for the artist.
-        /// </summary>
+        /// <summary>Spotify id for the artist. Maps to <c>id</c>.</summary>
         [JsonPropertyName( "id" )]
         public string Id { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The name of the artist.
-        /// </summary>
+        /// <summary>Artist name. Maps to <c>name</c>.</summary>
         [JsonPropertyName( "name" )]
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The object type. Always "artist".
-        /// </summary>
+        /// <summary>Object type, always <c>artist</c> for this object. Maps to <c>type</c>.</summary>
         [JsonPropertyName( "type" )]
         public string Type { get; set; } = "artist";
 
-        /// <summary>
-        /// The Spotify URI for the artist.
-        /// </summary>
+        /// <summary>Spotify URI for the artist. Maps to <c>uri</c>.</summary>
         [JsonPropertyName( "uri" )]
         public string Uri { get; set; } = string.Empty;
     }

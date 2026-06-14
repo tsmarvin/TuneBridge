@@ -8,26 +8,36 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests.EndToEnd;
 
 /// <summary>
-/// End-to-end tests for the MusicLookupController API endpoints.
-/// These tests verify the full request/response cycle including routing, serialization, and service integration.
-/// Tests use direct provider mode (not queue-based) for fast API validation.
+/// End-to-end tests for the <see cref="MusicLookupController"/> lookup API, running the real web app
+/// in-memory via <see cref="CustomWebApplicationFactory"/> against the shared Redis container. Registers
+/// a test user to obtain an API key, then exercises the URL, ISRC, UPC, title, and streaming endpoints
+/// against live providers, and verifies the authorization model across API-key, anonymous, and internal
+/// service-key callers. Tests use direct provider mode (not queue-based) for fast API validation.
 /// </summary>
 [TestClass]
 [DoNotParallelize] // Prevent parallel execution to avoid overwhelming external APIs with rate limits
 [TestCategory( "EndToEnd" )] // Mark as end-to-end tests
 public class MusicLookupControllerTests {
+    /// <summary>The shared web application factory hosting the app for this test class.</summary>
     private static CustomWebApplicationFactory? s_factory;
+    /// <summary>HTTP client carrying a valid API key in the <c>X-API-Key</c> header.</summary>
     private static HttpClient? s_client;
+    /// <summary>HTTP client with no credentials, used for anonymous-access tests.</summary>
     private static HttpClient? s_anonymousClient;
+    /// <summary>HTTP client carrying a valid internal service key in the <c>X-Service-Key</c> header.</summary>
     private static HttpClient? s_internalClient;
+    /// <summary>HTTP client carrying an invalid internal service key, used for negative auth tests.</summary>
     private static HttpClient? s_badInternalClient;
+    /// <summary>The API key extracted from the registered test user.</summary>
     private static string? s_apiKey;
+    /// <summary>The internal service key configured for the test host and sent by the internal client.</summary>
     private const string TestInternalServiceKey = "test-internal-service-key-abc123";
 
     /// <summary>
-    /// Initializes the test factory, HTTP client, and registers a test user with an API key.
+    /// Builds the test host with worker services disabled, registers a test user to obtain an API key,
+    /// and creates API-key, anonymous, valid-internal, and invalid-internal clients for the auth tests.
     /// </summary>
-    /// <param name="context">The test context provided by the test framework.</param>
+    /// <param name="context">The MSTest class context, used for its cancellation token.</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext context ) {
         // Load configuration from appsettings.json and user secrets
@@ -118,7 +128,7 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Disposes of the test factory after all tests complete.
+    /// Disposes the test host and clears the internal service key environment variable.
     /// </summary>
     [ClassCleanup]
     public static void ClassCleanup( ) {
@@ -127,7 +137,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the URL list lookup endpoint returns results for a valid Apple Music URL.
+    /// Posts a valid Apple Music album URL to the URL-list endpoint and verifies 200 OK with a result
+    /// list (inconclusive when the provider returns nothing, signalling rate limiting).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -154,7 +165,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the URL list lookup endpoint returns results for a valid Spotify URL.
+    /// Posts a valid Spotify album URL to the URL-list endpoint and verifies 200 OK with a result list
+    /// (inconclusive when the provider returns nothing, signalling rate limiting).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -181,7 +193,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the URL list lookup endpoint returns results for a valid Tidal URL.
+    /// Posts a valid Tidal track URL to the URL-list endpoint and verifies 200 OK with a result list
+    /// (inconclusive when the provider returns nothing, signalling rate limiting).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -208,7 +221,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the URL list lookup endpoint returns multiple results when given multiple URLs.
+    /// Posts two URLs (Spotify and Apple Music) to the URL-list endpoint and verifies 200 OK with two
+    /// results (inconclusive when the count differs, signalling rate limiting).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -240,7 +254,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the ISRC lookup endpoint returns results for a valid ISRC code.
+    /// Posts a valid ISRC to the ISRC endpoint and verifies 200 OK with a non-empty result (inconclusive
+    /// when no results are returned, signalling rate limiting).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -249,7 +264,6 @@ public class MusicLookupControllerTests {
     [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByIsrc_WithValidIsrc_ReturnsOkWithResult( ) {
-
         // Arrange
         MusicLookupController.IsrcReq request = new( "GBUM71029604" );
 
@@ -270,7 +284,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the UPC lookup endpoint returns results for a valid UPC code.
+    /// Posts a valid UPC to the UPC endpoint and verifies 200 OK with a non-empty result (inconclusive
+    /// when no results are returned, signalling rate limiting).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -279,7 +294,6 @@ public class MusicLookupControllerTests {
     [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByUpc_WithValidUpc_ReturnsOkWithResult( ) {
-
         // Arrange
         MusicLookupController.UpcReq request = new( "00602547202307" );
 
@@ -300,7 +314,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the title lookup endpoint returns results for a valid title and artist combination.
+    /// Posts a valid title and artist to the title endpoint and verifies 200 OK with a non-empty result
+    /// (inconclusive when no results are returned, signalling rate limiting).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -309,7 +324,6 @@ public class MusicLookupControllerTests {
     [TestCategory( "Tidal" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByTitle_WithValidTitleAndArtist_ReturnsOkWithResult( ) {
-
         // Arrange
         MusicLookupController.TitleReq request = new( "Bohemian Rhapsody", "Queen" );
 
@@ -330,14 +344,14 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the streaming URL endpoint returns results for a valid Spotify URL.
+    /// Posts a Spotify track URL to the streaming URL endpoint and verifies 200 OK with a non-empty body
+    /// (inconclusive when the body is empty or an empty array, signalling rate limiting).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "Spotify" )]
     [Timeout( 30000, CooperativeCancellation = true )] // 30 second timeout
     public async Task ByUrl_StreamingEndpoint_ReturnsResults( ) {
-
         // Arrange
         MusicLookupController.UrlReq request = new(  "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv"  );
 
@@ -357,7 +371,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that /music/lookup/url accepts requests without an API key.
+    /// Verifies the single-URL endpoint is public: an anonymous caller (no API key) receives 200 OK
+    /// rather than 401 Unauthorized.
     /// Failure-first: before [AllowAnonymous] was added, the class-level [Authorize] returned 401
     /// for any unauthenticated request; the anonymous client would have received 401, not 200.
     /// </summary>
@@ -380,7 +395,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that /music/lookup/urlList accepts requests without an API key.
+    /// Verifies the URL-list endpoint is public: an anonymous caller (no API key) receives 200 OK rather
+    /// than 401 Unauthorized.
     /// Failure-first: before [AllowAnonymous] was added, the class-level [Authorize] returned 401
     /// for any unauthenticated request; the anonymous client would have received 401, not 200.
     /// </summary>
@@ -403,7 +419,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that /music/lookup/isrc still requires authentication (representative for isrc/upc/title).
+    /// Verifies the ISRC endpoint requires authentication: an anonymous caller (no API key) receives 401
+    /// Unauthorized (representative for isrc/upc/title).
     /// Failure-first: this test verifies the class-level [Authorize] still applies to non-URL actions.
     /// If [AllowAnonymous] were incorrectly placed at class level, this test would fail with 200.
     /// </summary>
@@ -424,8 +441,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that a valid <c>X-Service-Key</c> authenticates against a protected endpoint
-    /// (<c>/music/lookup/isrc</c>) via the InternalService scheme.
+    /// Verifies the ISRC endpoint accepts internal service authentication: a caller presenting a valid
+    /// <c>X-Service-Key</c> is not rejected with 401 Unauthorized.
     /// Failure-first: before the InternalService scheme was registered (or if the controller's
     /// <c>[Authorize]</c> did not list <c>InternalService</c>), a valid service key would
     /// have received 401 because no scheme would accept it.
@@ -447,7 +464,8 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Verifies that an invalid <c>X-Service-Key</c> is rejected with 401 on a protected endpoint.
+    /// Verifies the ISRC endpoint rejects a bad internal service key: a caller presenting an invalid
+    /// <c>X-Service-Key</c> receives 401 Unauthorized.
     /// Failure-first: a lenient auth handler that accepted any non-empty key would return 200,
     /// not 401, causing this test to fail.
     /// </summary>
@@ -468,7 +486,7 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Gets or sets the test context which provides information about the current test run.
+    /// The MSTest-injected test context, used here to obtain the per-test cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
 }

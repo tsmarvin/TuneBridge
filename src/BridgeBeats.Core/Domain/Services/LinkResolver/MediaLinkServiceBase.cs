@@ -10,58 +10,81 @@ using BridgeBeats.Core.Infrastructure.Utilities;
 namespace BridgeBeats.Services.LinkResolver {
 
     /// <summary>
-    /// Abstract base class providing shared infrastructure for media link aggregation services.
-    /// Implements common patterns for querying multiple music provider APIs in parallel, deduplicating
-    /// results based on external IDs (ISRC/UPC), and merging metadata from different sources into unified
-    /// <see cref="MediaLinkResult"/> objects.
+    /// Shared base for the in-process <see cref="IMediaLinkService"/> resolvers. Holds the common
+    /// machinery for resolving links across providers: extracting links from free text with the
+    /// <see cref="ValidLink"/> regex, running each through every enabled provider, deduplicating
+    /// results based on external IDs (ISRC/UPC), and combining the per-provider hits into one
+    /// <see cref="MediaLinkResult"/> per distinct entity. One result is marked primary; alternates
+    /// are matched by external id first, then by case-insensitive artist and title. Missing
+    /// providers are back-filled by a secondary lookup off the first hit.
     /// </summary>
-    /// <param name="enabledProvidersCollection">
-    /// Dictionary mapping <see cref="SupportedProviders"/> to their respective API service implementations.
-    /// Allows runtime configuration of which providers are active (e.g., only Spotify, only Apple Music, or both).
-    /// </param>
-    /// <param name="logger">Logger for tracking API failures, cross-platform matching issues, and performance metrics.</param>
-    /// <param name="serializerOptions">
-    /// JSON serialization settings used when logging complex API responses for debugging. Typically configured
-    /// with indentation enabled to improve readability in log files.
-    /// </param>
     /// <remarks>
-    /// Derived classes must implement the four core lookup methods. The base class provides helper methods for
-    /// parallel provider queries, URL extraction, and result deduplication.
+    /// Concrete derived type: <see cref="BridgeBeats.Core.Domain.Services.LinkResolver.DefaultMediaLinkService"/>
+    /// (the synchronous, in-process path). The caching path uses a separate orchestrated implementation
+    /// and does not derive from this base. Prerelease Spotify links short-circuit to a user-facing
+    /// message rather than a result.
     /// </remarks>
+    /// <param name="enabledProvidersCollection">The enabled providers mapped to their direct lookup services, allowing runtime configuration of which providers are active.</param>
+    /// <param name="logger">The logger used for structured error and trace diagnostics.</param>
+    /// <param name="serializerOptions">JSON options used when tracing serialized inputs.</param>
     public abstract partial class MediaLinkServiceBase(
         Dictionary<SupportedProviders, IMusicLookupService> enabledProvidersCollection,
         ILogger<MediaLinkServiceBase> logger,
         JsonSerializerOptions serializerOptions
     ) : IMediaLinkService {
 
-        /// <inheritdoc/>
+        /// <summary>Resolves every supported link in free text into a stream of combined results. Implemented by derived types.</summary>
+        /// <param name="content">Free text that may contain one or more provider links.</param>
+        /// <returns>An async stream of combined multi-provider results.</returns>
         public abstract IAsyncEnumerable<MediaLinkResult> GetInfoAsync( string content );
-        /// <inheritdoc/>
+
+        /// <summary>Resolves a track by title and artist into a combined result. Implemented by derived types.</summary>
+        /// <param name="title">The track or album title to search for.</param>
+        /// <param name="artist">The artist name to search for.</param>
+        /// <returns>The combined result, or <see langword="null"/> when nothing matched.</returns>
         public abstract Task<MediaLinkResult?> GetInfoAsync( string title, string artist );
-        /// <inheritdoc/>
+
+        /// <summary>Resolves a track by ISRC into a combined result. Implemented by derived types.</summary>
+        /// <param name="isrc">The International Standard Recording Code identifying the track.</param>
+        /// <returns>The combined result, or <see langword="null"/> when nothing matched.</returns>
         public abstract Task<MediaLinkResult?> GetInfoByISRCAsync( string isrc );
-        /// <inheritdoc/>
+
+        /// <summary>Resolves an album by UPC into a combined result. Implemented by derived types.</summary>
+        /// <param name="upc">The Universal Product Code identifying the album.</param>
+        /// <returns>The combined result, or <see langword="null"/> when nothing matched.</returns>
         public abstract Task<MediaLinkResult?> GetInfoByUPCAsync( string upc );
-        /// <inheritdoc/>
+
+        /// <summary>Resolves an entity by a provider's own id into a combined result. Implemented by derived types.</summary>
+        /// <param name="providerId">The entity id within the originating provider.</param>
+        /// <param name="provider">The provider that <paramref name="providerId"/> belongs to.</param>
+        /// <param name="isAlbum"><see langword="true"/> when the id refers to an album; otherwise a track.</param>
+        /// <returns>The combined result, or <see langword="null"/> when nothing matched.</returns>
         public abstract Task<MediaLinkResult?> GetInfoByProviderIdAsync( string providerId, SupportedProviders provider, bool isAlbum );
 
         #region Base Class Defaults
 
-        /// <summary>Logger for tracking API failures and cross-platform matching issues.</summary>
+        /// <summary>The logger shared with derived types for error and trace diagnostics.</summary>
         protected readonly ILogger<MediaLinkServiceBase> Logger = logger;
-        /// <summary>JSON serialization settings for logging API responses.</summary>
+        /// <summary>JSON options used when tracing serialized lookup inputs.</summary>
         protected readonly JsonSerializerOptions SerializerOptions = serializerOptions;
-        /// <summary>Dictionary of active music provider service implementations.</summary>
+        /// <summary>The enabled providers and their direct lookup services, iterated for every lookup.</summary>
         protected readonly Dictionary<SupportedProviders, IMusicLookupService> EnabledProviders = enabledProvidersCollection;
 
-        /// <summary>Regex pattern for validating HTTPS links.</summary>
+        /// <summary>
+        /// The regex used to extract candidate links from free text. Defaults to an HTTPS link matcher;
+        /// derived types may override it.
+        /// </summary>
         protected virtual Regex ValidLink { get; init; } = ValidHttpsLink( );
 
         /// <summary>
-        /// Performs the initial link extraction and lookup for all services.
+        /// Extracts every link from free-text <paramref name="content"/> using <see cref="ValidLink"/>
+        /// and runs each through every enabled provider, collecting the successful
+        /// <see cref="MusicLookupResult"/>s keyed to their originating provider and input link. Provider
+        /// failures are logged (with a sanitized link at trace level) and skipped; an outer failure is
+        /// logged and yields whatever was gathered so far.
         /// </summary>
-        /// <param name="content">The string content to parse for links.</param>
-        /// <returns>A dictionary with the <see cref="MusicLookupResult"/> as the key, and a tuple containing the provider and inputlink information as the value.</returns>
+        /// <param name="content">Free text that may contain one or more provider links.</param>
+        /// <returns>A map of each successful provider result to the provider and input link it came from.</returns>
         protected async Task<Dictionary<MusicLookupResult, (SupportedProviders provider, string inputLink)>> GetMusicLookupResults( string content ) {
             Dictionary<MusicLookupResult, (SupportedProviders provider, string inputLink)> linkResults = [];
             try {
@@ -92,11 +115,13 @@ namespace BridgeBeats.Services.LinkResolver {
         }
 
         /// <summary>
-        /// Performs the initial title/artist lookup for all services.
+        /// Searches the enabled providers in order for a title/artist match and returns the first hit
+        /// with the provider that produced it. Returns <see langword="null"/> when either input is blank
+        /// or no provider matched. Provider failures are logged and skipped.
         /// </summary>
-        /// <param name="title">The name of the track or album.</param>
-        /// <param name="artist">The artist that created the track or album.</param>
-        /// <returns>A tuple containing the <see cref="MusicLookupResult"/> and <see cref="SupportedProviders"/>.</returns>
+        /// <param name="title">The track or album title to search for.</param>
+        /// <param name="artist">The artist name to search for.</param>
+        /// <returns>The first matching result and its provider, or <see langword="null"/> when none matched.</returns>
         protected async Task<(MusicLookupResult result, SupportedProviders provider)?> GetMusicLookupResults( string title, string artist ) {
             try {
                 if (string.IsNullOrWhiteSpace( title ) || string.IsNullOrWhiteSpace( artist )) { return null; }
@@ -126,11 +151,14 @@ namespace BridgeBeats.Services.LinkResolver {
         }
 
         /// <summary>
-        /// Performs the initial external_id lookup for all services.
+        /// Searches the enabled providers in order for an external id, treating it as a UPC when
+        /// <paramref name="isAlbum"/> is <see langword="true"/> or an ISRC otherwise, and returns the
+        /// first hit with its provider. Returns <see langword="null"/> when the id is blank or no
+        /// provider matched. Provider failures are logged and skipped.
         /// </summary>
-        /// <param name="externalId">The string content to parse for links.</param>
-        /// <param name="isAlbum">Indicates whether to search for UPC entries (true) or ISRC entries (false).</param>
-        /// <returns>A tuple containing the <see cref="MusicLookupResult"/> and <see cref="SupportedProviders"/>.</returns>
+        /// <param name="externalId">The ISRC (track) or UPC (album) to look up.</param>
+        /// <param name="isAlbum"><see langword="true"/> to treat <paramref name="externalId"/> as a UPC; otherwise an ISRC.</param>
+        /// <returns>The first matching result and its provider, or <see langword="null"/> when none matched.</returns>
         protected async Task<(MusicLookupResult result, SupportedProviders provider)?> GetMusicLookupResults( string externalId, bool isAlbum ) {
             try {
                 if (string.IsNullOrWhiteSpace( externalId )) { return null; }
@@ -162,12 +190,14 @@ namespace BridgeBeats.Services.LinkResolver {
         }
 
         /// <summary>
-        /// Performs the initial provider ID lookup for a specific service.
+        /// Looks up an entity directly against a single named provider by that provider's own id,
+        /// marking the result primary. Returns <see langword="null"/> when the id is blank, the provider
+        /// is not enabled, or the lookup found nothing. Failures are logged and swallowed.
         /// </summary>
-        /// <param name="providerId">The provider-specific identifier.</param>
+        /// <param name="providerId">The entity id within <paramref name="provider"/>.</param>
         /// <param name="provider">The provider to query.</param>
-        /// <param name="isAlbum">Indicates whether to search for album entries (true) or track entries (false).</param>
-        /// <returns>The <see cref="MusicLookupResult"/> for the <paramref name="provider"/>.</returns>
+        /// <param name="isAlbum"><see langword="true"/> when the id refers to an album; otherwise a track.</param>
+        /// <returns>The matching result marked primary, or <see langword="null"/> when none was found.</returns>
         protected async Task<MusicLookupResult?> GetMusicLookupResultsByProviderId(
             string providerId,
             SupportedProviders provider,
@@ -197,10 +227,12 @@ namespace BridgeBeats.Services.LinkResolver {
         }
 
         /// <summary>
-        /// Combines lookup results from a single provider into a MediaLinkResult and syncs with other providers.
+        /// Wraps a single provider result into a <see cref="MediaLinkResult"/> and back-fills the
+        /// remaining enabled providers via <see cref="SyncLookupResult"/>. Returns <see langword="null"/>
+        /// when <paramref name="lookupResults"/> is <see langword="null"/>.
         /// </summary>
-        /// <param name="lookupResults">Optional tuple containing the DTO and provider information.</param>
-        /// <returns>A MediaLinkResult with cross-platform data, or null if input is null.</returns>
+        /// <param name="lookupResults">A single provider result and the provider it came from, or null.</param>
+        /// <returns>The combined multi-provider result, or <see langword="null"/> when no input was given.</returns>
         protected async Task<MediaLinkResult?> CombineLookupInfoAsync(
             (MusicLookupResult dto, SupportedProviders provider)? lookupResults
         ) {
@@ -211,10 +243,16 @@ namespace BridgeBeats.Services.LinkResolver {
         }
 
         /// <summary>
-        /// Combines lookup results from multiple providers and input links into deduplicated MediaLinkResults.
+        /// Combines the per-link, per-provider results into one <see cref="MediaLinkResult"/> per
+        /// distinct entity, streaming each as it is built. For each result it marks the originating
+        /// provider's hit primary, records the input link, and attaches matching alternates from the
+        /// other providers — matched first by external id, then by case-insensitive artist and title.
+        /// Entries already represented in an earlier result are skipped, and a Spotify prerelease link
+        /// yields a user-facing message instead of a result. Each combined result is then back-filled
+        /// for any still-missing provider via <see cref="SyncLookupResult"/>.
         /// </summary>
-        /// <param name="linkResults">Dictionary mapping DTOs to their provider and input link information.</param>
-        /// <returns>Async enumerable of MediaLinkResults with cross-platform data.</returns>
+        /// <param name="linkResults">The per-link provider results gathered from the input content.</param>
+        /// <returns>An async stream of combined results, one per distinct entity.</returns>
         protected async IAsyncEnumerable<MediaLinkResult> CombineLookupInfoAsync(
             Dictionary<MusicLookupResult, (SupportedProviders provider, string inputLink)> linkResults
         ) {
@@ -272,6 +310,15 @@ namespace BridgeBeats.Services.LinkResolver {
 
         #region Base Class Private Implementations
 
+        /// <summary>
+        /// Back-fills a combined result by querying every enabled provider not already present, using
+        /// the first existing result as the lookup seed (each provider's
+        /// <c>GetInfoAsync(MusicLookupResult)</c>). Newly found provider results are added in place.
+        /// Per-provider failures are logged (with the serialized input at trace level) and skipped. A
+        /// result with no existing entries is returned unchanged.
+        /// </summary>
+        /// <param name="input">The partially populated combined result to complete.</param>
+        /// <returns>The same result instance, with any newly resolved providers added.</returns>
         private protected virtual async Task<MediaLinkResult> SyncLookupResult( MediaLinkResult input ) {
             if (input.Results.Count == 0) { return input; }
 
@@ -295,6 +342,12 @@ namespace BridgeBeats.Services.LinkResolver {
             return input;
         }
 
+        /// <summary>
+        /// Source-generated regex that matches HTTPS URLs in free text, capturing the full match as
+        /// <c>Url</c> and the post-scheme remainder as <c>Link</c>. Backs the default
+        /// <see cref="ValidLink"/>.
+        /// </summary>
+        /// <returns>The compiled HTTPS-link regex.</returns>
         [GeneratedRegex( @"(?<Url>[Hh][Tt]{2}[Pp][Ss]:\/\/(?<Link>\w[\w\/\=\?\.\:\-%&]*))" )]
         private protected static partial Regex ValidHttpsLink( );
 
@@ -302,153 +355,168 @@ namespace BridgeBeats.Services.LinkResolver {
 
         #region LoggerMessage Definitions
 
-        /// <summary>
-        /// Logs an error when URL lookup fails for a specific provider.
-        /// </summary>
+        /// <summary>Logs (Error) that a provider failed while resolving a link by URL.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception raised by the provider lookup.</param>
+        /// <param name="provider">The provider that failed.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.UrlLookupProviderError,
             Level = LogLevel.Error,
             Message = "Failed while getting initial media link lookup data by URL for {Provider}." )]
         private static partial void LogUrlLookupProviderError( ILogger logger, Exception ex, SupportedProviders provider );
 
-        /// <summary>
-        /// Logs trace-level information for URL lookup.
-        /// </summary>
+        /// <summary>Logs (Trace) the sanitized link involved in a failed URL provider lookup.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="link">The sanitized link.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.UrlLookupProviderTrace,
             Level = LogLevel.Trace,
             Message = "link: {Link}" )]
         private static partial void LogUrlLookupProviderTrace( ILogger logger, string link );
 
-        /// <summary>
-        /// Logs an error when URL lookup fails.
-        /// </summary>
+        /// <summary>Logs (Error) that the overall URL-based lookup failed.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception raised during the lookup.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.UrlLookupError,
             Level = LogLevel.Error,
             Message = "Failed while getting initial media link lookup data by URL." )]
         private static partial void LogUrlLookupError( ILogger logger, Exception ex );
 
-        /// <summary>
-        /// Logs trace-level content for URL lookup.
-        /// </summary>
+        /// <summary>Logs (Trace) the sanitized free-text content of a failed URL-based lookup.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="content">The sanitized content.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.UrlLookupTrace,
             Level = LogLevel.Trace,
             Message = "Content: {Content}" )]
         private static partial void LogUrlLookupTrace( ILogger logger, string content );
 
-        /// <summary>
-        /// Logs an error when artist/title lookup fails for a specific provider.
-        /// </summary>
+        /// <summary>Logs (Error) that a provider failed while resolving by artist and title.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception raised by the provider lookup.</param>
+        /// <param name="provider">The provider that failed.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ArtistTitleLookupProviderError,
             Level = LogLevel.Error,
             Message = "Failed while getting initial media link lookup data by artist/title for {Provider}." )]
         private static partial void LogArtistTitleLookupProviderError( ILogger logger, Exception ex, SupportedProviders provider );
 
-        /// <summary>
-        /// Logs trace-level information for artist/title lookup.
-        /// </summary>
+        /// <summary>Logs (Trace) the sanitized title and artist of a failed per-provider artist/title lookup.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="title">The sanitized title.</param>
+        /// <param name="artist">The sanitized artist.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ArtistTitleLookupProviderTrace,
             Level = LogLevel.Trace,
             Message = "title: '{Title}', artist: '{Artist}'" )]
         private static partial void LogArtistTitleLookupProviderTrace( ILogger logger, string title, string artist );
 
-        /// <summary>
-        /// Logs an error when artist/title lookup fails.
-        /// </summary>
+        /// <summary>Logs (Error) that the overall artist/title lookup failed.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception raised during the lookup.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ArtistTitleLookupError,
             Level = LogLevel.Error,
             Message = "Failed while getting initial media link lookup data by artist/title." )]
         private static partial void LogArtistTitleLookupError( ILogger logger, Exception ex );
 
-        /// <summary>
-        /// Logs trace-level information for artist/title lookup.
-        /// </summary>
+        /// <summary>Logs (Trace) the sanitized title and artist of a failed overall artist/title lookup.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="title">The sanitized title.</param>
+        /// <param name="artist">The sanitized artist.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ArtistTitleLookupTrace,
             Level = LogLevel.Trace,
             Message = "title: '{Title}', artist: '{Artist}'" )]
         private static partial void LogArtistTitleLookupTrace( ILogger logger, string title, string artist );
 
-        /// <summary>
-        /// Logs an error when external ID lookup fails for a specific provider.
-        /// </summary>
+        /// <summary>Logs (Error) that a provider failed while resolving by external id (ISRC/UPC).</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception raised by the provider lookup.</param>
+        /// <param name="provider">The provider that failed.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ExternalIdLookupProviderError,
             Level = LogLevel.Error,
             Message = "Failed while getting initial media link lookup data by externalId for {Provider}." )]
         private static partial void LogExternalIdLookupProviderError( ILogger logger, Exception ex, SupportedProviders provider );
 
-        /// <summary>
-        /// Logs trace-level information for external ID lookup.
-        /// </summary>
+        /// <summary>Logs (Trace) the sanitized external id and album flag of a failed per-provider external-id lookup.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="externalId">The sanitized external id.</param>
+        /// <param name="isAlbum">Whether the id was treated as a UPC (album) rather than an ISRC.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ExternalIdLookupProviderTrace,
             Level = LogLevel.Trace,
             Message = "externalId: '{ExternalId}', isAlbum: {IsAlbum}" )]
         private static partial void LogExternalIdLookupProviderTrace( ILogger logger, string externalId, bool isAlbum );
 
-        /// <summary>
-        /// Logs an error when external ID lookup fails.
-        /// </summary>
+        /// <summary>Logs (Error) that the overall external-id lookup failed.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception raised during the lookup.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ExternalIdLookupError,
             Level = LogLevel.Error,
             Message = "Failed while getting initial media link lookup data by externalId." )]
         private static partial void LogExternalIdLookupError( ILogger logger, Exception ex );
 
-        /// <summary>
-        /// Logs trace-level information for external ID lookup.
-        /// </summary>
+        /// <summary>Logs (Trace) the sanitized external id and album flag of a failed overall external-id lookup.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="externalId">The sanitized external id.</param>
+        /// <param name="isAlbum">Whether the id was treated as a UPC (album) rather than an ISRC.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ExternalIdLookupTrace,
             Level = LogLevel.Trace,
             Message = "externalId: '{ExternalId}', isAlbum: {IsAlbum}" )]
         private static partial void LogExternalIdLookupTrace( ILogger logger, string externalId, bool isAlbum );
 
-        /// <summary>
-        /// Logs a warning when a provider is not enabled.
-        /// </summary>
+        /// <summary>Logs (Warning) that a requested provider is not enabled or configured.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="provider">The provider that was requested but not enabled.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ProviderNotEnabled,
             Level = LogLevel.Warning,
             Message = "Provider {Provider} is not enabled or configured" )]
         private static partial void LogProviderNotEnabled( ILogger logger, SupportedProviders provider );
 
-        /// <summary>
-        /// Logs an error when provider ID lookup fails.
-        /// </summary>
+        /// <summary>Logs (Error) that the provider-id lookup failed.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception raised during the lookup.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ProviderIdLookupError,
             Level = LogLevel.Error,
             Message = "Failed while getting initial media link lookup data by providerId." )]
         private static partial void LogProviderIdLookupError( ILogger logger, Exception ex );
 
-        /// <summary>
-        /// Logs trace-level information for provider ID lookup.
-        /// </summary>
+        /// <summary>Logs (Trace) the sanitized provider id, provider, and album flag of a failed provider-id lookup.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="providerId">The sanitized provider id.</param>
+        /// <param name="provider">The provider that was queried.</param>
+        /// <param name="isAlbum">Whether the id referred to an album.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.ProviderIdLookupTrace,
             Level = LogLevel.Trace,
             Message = "providerId: '{ProviderId}', provider: {Provider}, isAlbum: {IsAlbum}" )]
         private static partial void LogProviderIdLookupTrace( ILogger logger, string providerId, SupportedProviders provider, bool isAlbum );
 
-        /// <summary>
-        /// Logs an error when secondary lookup fails.
-        /// </summary>
+        /// <summary>Logs (Error) that a secondary (back-fill) lookup against another provider failed.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception raised during the secondary lookup.</param>
+        /// <param name="additionalProvider">The provider being back-filled when the failure occurred.</param>
+        /// <param name="artist">The seed result's artist.</param>
+        /// <param name="title">The seed result's title.</param>
+        /// <param name="externalId">The seed result's external id.</param>
+        /// <param name="isAlbum">Whether the seed result is an album.</param>
+        /// <param name="provider">The originating provider(s) already present in the result.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.SecondaryLookupError,
             Level = LogLevel.Error,
             Message = "Error during secondary lookup via {AdditionalProvider} for artist '{Artist}', title '{Title}' externalId '{ExternalId}' isAlbum={IsAlbum} originalProvider(s)={Provider}" )]
         private static partial void LogSecondaryLookupError( ILogger logger, Exception ex, SupportedProviders additionalProvider, string artist, string title, string externalId, bool isAlbum, string provider );
 
-        /// <summary>
-        /// Logs trace-level input data for secondary lookup.
-        /// </summary>
+        /// <summary>Logs (Trace) the serialized combined result that a failed secondary lookup was completing.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="inputData">The serialized input result.</param>
         [LoggerMessage(
             EventId = LogEventIds.Services.LinkResolver.SecondaryLookupTrace,
             Level = LogLevel.Trace,

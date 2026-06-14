@@ -36,12 +36,13 @@ curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/contain
 
 1. **Validates dependencies** - Checks for Docker, Docker Compose v2+, curl/wget, and optionally openssl
 2. **Downloads configuration files** - Fetches `docker-compose.yml`, `Caddyfile`, `.env.example`, and `truncate_seq.sh` from GitHub
-3. **Sets up logs and data directories** - Creates `./logs/`, `./logs/caddy/`, and `./data/{app,dp-keys,redis,pds}/`; sets ownership for each directory to match the UID of the writing container (`1654` for the app, `root` for PDS/redis/caddy)
-4. **Sets up secrets** - Creates the `secrets/` directory. Auto-generates `api_key_salt.txt`, `redis_password.txt`, `internal_service_key.txt`, and the `atproto_oauth_key.json` ES256 signing key; writes placeholders for the credentials you supply (Apple, Spotify, Tidal, Discord, ATProto, Cloudflare)
+3. **Sets up logs and data directories** - Creates `./logs/`, `./logs/caddy/`, and `./data/{app,dp-keys,redis,pds}/`; sets ownership for each directory to match the writing UID (`1654` for the app's `./data/app` and `./data/dp-keys`, `root` for `./data/pds`, `./data/redis`, and `./logs/caddy`)
+4. **Sets up secrets** - Creates the `secrets/` directory. Auto-generates `api_key_salt.txt`, `redis_password.txt`, `internal_service_key.txt`, and the `atproto_oauth_key.json` ES256 signing key; writes placeholders for the credentials you supply (`apple_key.p8`, `spotify_client_secret.txt`, `tidal_client_secret.txt`, `discord_token.txt`, `atproto_password.txt`, `cloudflare_api_token.txt`)
 5. **Configures environment** - Creates `.env` from `.env.example` if not present
 6. **Registers PDS sequencer trim** - Installs `sqlite3` on the host if missing and writes `/etc/cron.d/bridgebeats-pds-trim` (daily at 04:17, 14-day retention); see [PDS Sequencer Retention](#pds-sequencer-retention) below
 7. **Handles updates** - On subsequent runs:
    - Backs up existing `docker-compose.yml` and `Caddyfile` with timestamps
+   - Backs up the `secrets/` directory (keeps the three most recent backups)
    - Logs current container image SHAs to `upgrade.log` for rollback reference
    - Detects new environment variables in `.env.example` and displays them for manual addition
    - Prompts to pull latest container images
@@ -78,19 +79,22 @@ For step-by-step instructions, see the [Quick Start Guide](QUICKSTART.md).
 ### Using Docker Compose (Recommended)
 
 Docker Compose deployment includes:
-- **Caddy reverse proxy** - Automatic HTTPS with Let's Encrypt
-- **Security headers** - HSTS, CSP, X-Frame-Options, and more
-- **Docker secrets** - Secure credential management
+- **Caddy reverse proxy** - Automatic HTTPS via the custom `caddy-cloudflare` image
+- **Security headers** - HSTS, CSP, X-Content-Type-Options, Referrer-Policy, and more
+- **Docker secret files** - Credentials mounted read-only from `./secrets/`
 - **Health checks** - Automatic monitoring and restarts
-- **Persistent volumes** - Data and certificate storage
+- **Persistent volumes** - Application data, Redis persistence, PDS storage, and Caddy certificates
 
 #### Architecture
 
-The Docker Compose setup consists of:
-1. **BridgeBeats Application** - .NET 9.0 web application (port 10000)
-2. **Caddy Reverse Proxy** - Automatic HTTPS with Let's Encrypt (ports 80/443)
-3. **Docker Secrets** - Secure credential management
-4. **Persistent Volumes** - Data and certificate storage
+The Docker Compose stack defines four services (see `containers/docker-compose.yml`):
+
+1. **bridgebeats** - The .NET application container. Its entrypoint launches the Aspire AppHost orchestrator, which runs the Web app (port 10000) and the in-process worker services (provider workers, Discord, saga coordinator) together. Depends on `redis` being healthy.
+2. **redis** (`redis:8-alpine`, container `bridgebeats-redis`) - Backs the media-link cache, the request queue (Redis Streams), the rate-limit tracker, and saga state. Runs with `appendonly yes`; password-protected when `redis_password.txt` is present.
+3. **bridgebeats-pds** (`ghcr.io/bluesky-social/pds:latest`) - The ATProto Personal Data Server used to store lookup results.
+4. **bridgebeats-caddy** (`tsmarvin/caddy-cloudflare`) - Reverse proxy terminating HTTPS on ports 80/443. See [Caddy + Cloudflare Guide](CADDY_CLOUDFLARE.md).
+
+The `bridgebeats` and `redis` services join an `internal` bridge network. The Caddy service joins both `public` (ports 80/443) and `internal`.
 
 #### Configuration
 
@@ -108,57 +112,46 @@ SPOTIFY_CLIENT_ID=your_client_id
 TIDAL_CLIENT_ID=your_client_id
 ```
 
-Sensitive values go in the `secrets/` directory (created by `install.sh`, or manually with `mkdir -p secrets && chmod 700 secrets`).
+Sensitive values go in the `secrets/` directory (created by `install.sh`, or manually with `mkdir -p secrets && chmod 700 secrets`). See the [Configuration Guide](CONFIGURATION.md) for the full environment-variable and secret reference.
 
 ### Using Pre-built Images
 
-Pull the latest image from Docker Hub:
+Pull the application image from Docker Hub:
 
 ```bash
+# main branch builds publish :latest; develop builds publish :develop
 docker pull tsmarvin/bridgebeats:latest
 ```
 
-Run the container:
-
-```bash
-docker run -p 10000:10000 \
-  -e SPOTIFY_CLIENT_ID="your_client_id" \
-  -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  $DOCKERHUB_USERNAME/bridgebeats:latest
-```
+The supported way to run the full stack is `docker compose up -d`, because the application depends on Redis and reads its credentials from mounted secret files. A bare `docker run` of `tsmarvin/bridgebeats` requires a reachable Redis instance and the secret mounts (including `internal_service_key`, which the entrypoint treats as required), so use the compose stack rather than a standalone container.
 
 **Note**: Images are built for `linux/amd64` and `linux/arm64` platforms.
 
 ### SBOM and Provenance
 
-All Docker images include Software Bill of Materials (SBOM) and provenance attestations for supply chain security. These attestations allow you to:
-- Verify the image was built from official sources
-- Inspect all software components and dependencies
-- Check for known vulnerabilities
-- Trace back to the exact source code and build process
+The application and Caddy images carry Software Bill of Materials (SBOM) and provenance attestations generated at build time. These attestations let you:
+- Trace an image back to the source repository and commit
+- Inspect the software components and dependencies
+- Scan for known vulnerabilities
 
-See the [SBOM and Provenance Guide](SBOM_AND_PROVENANCE.md) for detailed instructions on accessing and verifying these attestations.
+See the [SBOM and Provenance Guide](SBOM_AND_PROVENANCE.md) for instructions on accessing and inspecting these attestations.
 
-### Docker Secrets
+### Credentials and Secrets
 
-For production deployments, use Docker secrets instead of environment variables:
+The compose stack mounts credentials as read-only files under `/run/secrets/` from the host `./secrets/` directory. The entrypoint script reads each secret file (stripping any BOM and trailing newlines) and assembles the application's `appsettings.json` at startup. Provider workers are enabled only when both the client ID (from `.env`) and the matching client secret (from `./secrets/`) are present.
+
+For Docker Swarm, the same files can be supplied as Swarm secrets:
 
 ```bash
-# Create secrets
-echo "your_spotify_secret" | docker secret create spotify_client_secret -
-echo "your_api_salt" | docker secret create api_key_salt -
-
 # Deploy with Docker Swarm
 docker stack deploy -c docker-compose.yml bridgebeats
 ```
-
-The entrypoint script automatically reads secrets from `/run/secrets/` and falls back to environment variables if secrets are not available.
 
 ## Environment Configuration
 
 ### Production Settings
 
-Set `DOMAIN` in `.env` (or `-e DOMAIN=...` for a raw `docker run`) to your public domain. The container entrypoint reads it into `BridgeBeats:Domain`, which governs auth-cookie scoping and OpenGraph card URL generation.
+Set `DOMAIN` in `.env` to your public domain. The container entrypoint reads it into `BridgeBeats:Domain`, which governs auth-cookie scoping and OpenGraph card URL generation. `SHORT_DOMAIN` (default `bbeats.link`) sets the short-link host served by Caddy.
 
 > **Migration note:** The `bridgebeats` service environment variable was renamed from `BASEURL` to `DOMAIN`. Deployments that set `BASEURL` must rename it to `DOMAIN`.
 
@@ -171,59 +164,61 @@ DOMAIN=bridgebeats.link
 Set log levels for production:
 
 ```bash
--e DEFAULT_LOGLEVEL=Warning
--e HOSTING_DEFAULT_LOGLEVEL=Warning
+DEFAULT_LOGLEVEL=Warning
+HOSTING_DEFAULT_LOGLEVEL=Warning
 ```
 
 ## Monitoring
 
 ### Application Logs
 
-BridgeBeats logs to stdout/stderr by default. Configure log aggregation based on your platform:
+BridgeBeats writes logs both to stdout/stderr and to the bind-mounted `./logs/` directory (Serilog file sink). Inspect container logs with:
 
-**Docker:**
 ```bash
 docker logs -f bridgebeats
+```
+
+Or read the host-side log files directly under `./logs/`.
+
+### Health Checks
+
+The `bridgebeats` service exposes `/health`, which the compose health check and Caddy both poll. Check service health with:
+
+```bash
+docker compose ps
 ```
 
 ## Scaling
 
 ### Horizontal Scaling
 
-BridgeBeats is stateless (except for the optional SQLite cache) and can be horizontally scaled by deploying multiple instances behind a load balancer.
+BridgeBeats keeps its durable state in Redis (cache, request queue, rate-limit tracker, saga state) and SQLite (the Identity store) plus the ATProto PDS. The web tier itself holds no per-request session state beyond the Data Protection key ring under `./data/dp-keys/`. Running multiple application instances against shared Redis and a shared Identity store is possible, but it is not a configuration the current single-host compose stack sets up for you, and the in-process worker model (below) means each instance also runs its own workers.
+
+> **Verify before relying on multi-instance scaling:** the shipped `docker-compose.yml` defines a single `bridgebeats` instance. A multi-instance topology (shared Redis, shared Identity DB, a single Discord shard owner, deduplicated workers) is not provided as a turnkey configuration. Confirm the worker and Discord-shard behavior against `src/BridgeBeats.AppHost/Program.cs` before scaling horizontally.
 
 ### Discord Bot Sharding
 
-The Discord integration runs as a separate worker service (`BridgeBeats.Worker.Discord`). For large Discord deployments, run multiple instances with different node numbers:
+The Discord integration runs as a worker **inside** the application container, spawned by the Aspire AppHost when a Discord token is present (`src/BridgeBeats.AppHost/Program.cs`). It is not a separate container or a separate published image. The worker's shard identity comes from the `NODE_NUMBER` environment variable (`BridgeBeats__NodeNumber`).
+
+If you run more than one BridgeBeats instance that connects to Discord, each must have a unique `NODE_NUMBER`. Two instances sharing a node number will produce duplicate responses to the same messages.
 
 ```bash
-# Instance 1 - shard 0
-docker run -p 10001:10000 \
-  -e BridgeBeats__DiscordToken=your_token \
-  -e BridgeBeats__NodeNumber=0 \
-  -e BridgeBeats__Domain=bridgebeats.link \
-  tsmarvin/bridgebeats-discord:latest
+# .env for instance 1
+NODE_NUMBER=0
 
-# Instance 2 - shard 1
-docker run -p 10002:10000 \
-  -e BridgeBeats__DiscordToken=your_token \
-  -e BridgeBeats__NodeNumber=1 \
-  -e BridgeBeats__Domain=bridgebeats.link \
-  tsmarvin/bridgebeats-discord:latest
+# .env for instance 2
+NODE_NUMBER=1
 ```
 
-**Important**: Each shard must have a unique `NODE_NUMBER`. Running multiple instances with the same node number will cause duplicate responses to the same messages.
-
-The Discord worker calls the main BridgeBeats Web API for music lookups, so ensure `BridgeBeats__Domain` is set to the BridgeBeats host value (for example `bridgebeats.link`) for a running BridgeBeats Web instance.
-
+> **Verify:** multi-shard Discord operation depends on the node-number wiring in `src/BridgeBeats.AppHost/Program.cs` and the Discord worker. The single-host compose stack runs one instance (default `NODE_NUMBER=100`); confirm shard assignment before deploying multiple Discord-connected instances.
 
 ## Security Considerations
 
-1. **Use HTTPS** - Always deploy behind SSL/TLS
-2. **Secure secrets** - Use secret management systems (not environment variables in production)
-3. **Rate limiting** - Configure reverse proxy rate limiting as an additional layer
+1. **Use HTTPS** - The Caddy service terminates TLS; do not expose the app container directly
+2. **Secure secrets** - Keep `./secrets/` owned by the container UID and mode `600`; use Swarm/orchestrator secrets in production
+3. **Rate limiting** - The app enforces a per-user hourly limit (`RATE_LIMIT_REQUESTS_PER_HOUR`); a reverse-proxy layer can add another
 4. **API key rotation** - Regularly regenerate API keys
-5. **Minimal permissions** - Run containers with minimal privileges
+5. **Minimal permissions** - The app runs as non-root UID 1654
 
 ## Backup and Recovery
 
@@ -232,10 +227,10 @@ The Discord worker calls the main BridgeBeats Web API for music lookups, so ensu
 All persistent state lives under the host `./data/` bind-mount tree, alongside `./secrets/` and `.env`. Backup is a host-side file copy — no `docker cp` is needed.
 
 Key paths:
-- `./data/app/bridgebeats.db` — application SQLite database
+- `./data/app/bridgebeats.db` — SQLite Identity store (users, API keys, ATProto OAuth state)
 - `./data/dp-keys/` — Data Protection key ring (losing these forces a session re-auth for all users)
 - `./data/pds/` — PDS repo SQLite databases, DID/key material, and blob store
-- `./data/redis/` — Redis AOF/RDB persistence
+- `./data/redis/` — Redis AOF/RDB persistence (cache, queue, rate-limit, saga state)
 
 A concrete backup recipe (run from the deployment directory):
 
@@ -257,14 +252,14 @@ For a hot copy without downtime, copy each SQLite database together with its `-w
 
 Keep a secure backup of:
 - API credentials
-- Private keys (.p8 files)
+- Private keys (`.p8` files, the ATProto OAuth signing key)
 - Configuration files (`.env`, `docker-compose.yml`, `Caddyfile`)
 
 ### PDS Sequencer Retention
 
 The PDS `sequencer.sqlite` holds the firehose event log in its `repo_seq` table. The stock Bluesky PDS never trims this table, so at bot-write volume it grows without bound — the BridgeBeats deployment reached ~14 GB before this was addressed.
 
-`install.sh` registers a daily cron job at `/etc/cron.d/bridgebeats-pds-trim` that runs the vendored `truncate_seq.sh` (by [Bailey Townsend](https://tangled.org/strings/did:plc:rnpkyqnmsw4ipey6eotbdnnf/3milxyxx2hl22)) with a 14-day (336-hour) retention window. The script runs on the host using the host `sqlite3` binary, which `install.sh` installs if missing. Trim output appends to `./logs/pds-trim.log`.
+`install.sh` registers a daily cron job at `/etc/cron.d/bridgebeats-pds-trim` that runs the vendored `truncate_seq.sh` (by [Bailey Townsend](https://tangled.org/strings/did:plc:rnpkyqnmsw4ipey6eotbdnnf/3milxyxx2hl22)) with a 14-day (336-hour) retention window. The job runs daily at 04:17 on the host using the host `sqlite3` binary, which `install.sh` installs if missing. Trim output appends to `./logs/pds-trim.log`.
 
 The script runs `DELETE` only, never `VACUUM`. `DELETE` frees pages for SQLite to reuse but does not return space to the operating system, so the daily trim keeps `repo_seq` bounded and the file size plateaus near its 14-day steady state — it does not shrink an already-bloated file. `VACUUM` is not scheduled because it rewrites the whole database, needs roughly twice the file size in free disk, and holds an exclusive lock that stalls the PDS for its duration. Run `VACUUM` by hand if the file ever needs hard reclamation after a period of unmanaged growth.
 
@@ -280,23 +275,24 @@ docker logs bridgebeats
 ```
 
 Common issues:
-- Missing required environment variables
-- Invalid API credentials
-- Missing .p8 key file mount
+- `INTERNAL_SERVICE_KEY is not set` — the `internal_service_key` secret is missing; the entrypoint requires it and exits. Re-run `install.sh` or create `./secrets/internal_service_key.txt`.
+- Redis not healthy — the app `depends_on` a healthy `redis`; check `docker logs bridgebeats-redis`.
+- Missing required environment variables or invalid provider credentials.
+- Missing `.p8` key file mount for Apple Music.
 
 ### Connection refused
 
 Verify:
-- Container is running: `docker ps`
-- Port mapping is correct: `-p 10000:10000`
-- Firewall allows traffic on port 10000
+- Containers are running: `docker compose ps`
+- Caddy is reachable on ports 80/443 and DNS points at the host
+- The app's internal port is 10000 (proxied by Caddy, not published directly)
 
 ### Discord bot not responding
 
 Check:
-- `DISCORD_TOKEN` is set correctly
-- Bot has required permissions in Discord server
-- Bot is invited to the server
+- `discord_token.txt` secret is set correctly
+- Bot has required permissions in the Discord server and is invited
+- For multiple instances, each has a unique `NODE_NUMBER`
 
 ## Updates
 
@@ -308,35 +304,32 @@ The installation script handles updates gracefully:
 # Navigate to your BridgeBeats installation directory
 cd /path/to/bridgebeats
 
-# Re-run the installation script
+# Re-run the installation script against the current directory
 curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.sh | bash -s -- --directory .
 ```
 
 The script will:
 - Back up your existing `docker-compose.yml` and `Caddyfile` with timestamps
-- Log current container image SHAs to `upgrade.log` before pulling new images
+- Back up the `secrets/` directory (retaining the three most recent backups)
+- Log current container image digests to `upgrade.log` before pulling new images
 - Detect any new environment variables in `.env.example` and show you what to add
 - Prompt whether to pull the latest container images
-- Preserve all your existing secrets and `.env` configuration
+- Preserve your existing secrets and `.env` configuration
 
 ### Manual Update
 
 ```bash
-# Pull latest image from Docker Hub
-docker pull tsmarvin/bridgebeats:latest
-
-# Stop and remove old container
-docker stop bridgebeats
-docker rm bridgebeats
-
-# Start new container
-docker run -d --name bridgebeats ...
+# From the deployment directory, pull the latest images and recreate
+docker compose pull
+docker compose up -d
 ```
 
 ### Rollback
 
-If you need to rollback after an update:
+If you need to roll back after an update:
 
-1. Check `upgrade.log` for the previous container image SHAs
-2. Restore backed-up configuration files (for example, `docker-compose.yml.bak.20260204-143022`)
-3. Pull the specific image version: `docker pull tsmarvin/bridgebeats:sha-<commit>`
+1. Check `upgrade.log` for the previous container image digests (the log records each container's `image` and `RepoDigests` entry before the pull)
+2. Restore the backed-up configuration files (for example, `docker-compose.yml.bak.20260204-143022`)
+3. Pin the image to the recorded digest in `docker-compose.yml`, for example `tsmarvin/bridgebeats@sha256:<digest>`, then run `docker compose up -d`
+
+> **Note:** The publish workflow tags images as `latest` (main), `develop` (develop), and per-PR refs. It does not publish per-commit `sha-<commit>` tags, so roll back by digest (recorded in `upgrade.log`) rather than by a commit-SHA tag.

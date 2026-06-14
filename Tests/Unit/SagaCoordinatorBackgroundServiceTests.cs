@@ -11,34 +11,54 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="SagaCoordinatorBackgroundService"/> to verify
-/// saga completion handling, partial result writing, final result writing, and polling.
+/// Unit tests for <see cref="SagaCoordinatorBackgroundService"/>, the hosted service that finalizes
+/// completed lookup sagas. Covers constructor dependency validation; the polling loop that picks up
+/// completed-but-unfinalized sagas and writes their final result, releases the deduplicator, and
+/// clears the partial flag; the write-failure path that continues to the next saga; the no-success
+/// path that releases with a null URI and deletes the saga; and the secondary-lookup orchestration
+/// driven by the <c>saga:completed</c> Redis subscription — marking partial, materializing cached
+/// provider results to finalize early, queuing remaining providers at the priority implied by the
+/// saga's origin, deferring finalization until secondaries return, and the
+/// initialize-then-mark-then-claim ordering that guards the secondaries marker.
 /// </summary>
 [TestClass]
 public class SagaCoordinatorBackgroundServiceTests {
+    /// <summary>Mock Redis multiplexer supplying the subscriber for saga-completion events.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mock Redis subscriber whose registered handlers the tests invoke directly.</summary>
     private Mock<ISubscriber> _subscriberMock = null!;
+    /// <summary>Mock saga state manager the service reads and updates.</summary>
     private Mock<ISagaStateManager> _sagaManagerMock = null!;
+    /// <summary>Mock AT Protocol storage used to assert final and partial record writes.</summary>
     private Mock<IATProtoStorageService> _atProtoStorageMock = null!;
+    /// <summary>Mock cache repository for result caching and cached-by-ISRC lookups.</summary>
     private Mock<IMediaLinkCacheRepository> _cacheRepositoryMock = null!;
+    /// <summary>Mock request deduplicator the service releases on finalization.</summary>
     private Mock<IRequestDeduplicator> _deduplicatorMock = null!;
+    /// <summary>Mock logger for the result combiner.</summary>
     private Mock<ILogger<SagaResultCombiner>> _combinerLoggerMock = null!;
+    /// <summary>Real result combiner the service uses to merge provider results.</summary>
     private SagaResultCombiner _resultCombiner = null!;
+    /// <summary>Mock provider-queue resolver used to assert secondary-lookup enqueues.</summary>
     private Mock<IProviderQueueResolver<QueuedLookupRequest>> _queueResolverMock = null!;
+    /// <summary>The set of enabled providers (Spotify, Apple Music, Tidal) the service considers.</summary>
     private HashSet<SupportedProviders> _enabledProviders = null!;
+    /// <summary>Mock logger for the background service.</summary>
     private Mock<ILogger<SagaCoordinatorBackgroundService>> _loggerMock = null!;
 
+    /// <summary>Fixed saga id used across the tests.</summary>
     private const string TestSagaId = "test-saga-id-12345678";
+    /// <summary>Fixed lookup key for the complete-saga fixtures.</summary>
     private const string TestLookupKey = "isrc:USRC12345678";
+    /// <summary>Fixed record URI the storage mock returns for written results.</summary>
     private const string TestRecordUri = "at://did:plc:test/com.bridgebeats.medialink/abc123";
 
-    /// <summary>
-    /// Gets or sets the test context for the current test run.
-    /// </summary>
+    /// <summary>MSTest-injected context; its cancellation token bounds the in-test delays.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes mocks before each test.
+    /// Creates fresh mocks before each test, wires the subscriber, builds a real combiner, seeds the
+    /// enabled-providers set, and defaults the secondaries-queued marker claim to succeed.
     /// </summary>
     [TestInitialize]
     public void Initialize( ) {
@@ -65,7 +85,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     #region Constructor Tests
 
     /// <summary>
-    /// Verifies that the constructor creates a valid instance with valid dependencies.
+    /// Verifies that valid dependencies produce a usable service instance.
     /// </summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
@@ -77,7 +97,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when Redis is null.
+    /// Verifies that a null Redis multiplexer throws <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullRedis_ShouldThrowArgumentNullException( ) {
@@ -98,7 +118,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when saga manager is null.
+    /// Verifies that a null saga state manager throws <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullSagaManager_ShouldThrowArgumentNullException( ) {
@@ -119,7 +139,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when ATProto storage is null.
+    /// Verifies that a null AT Protocol storage service throws <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullAtProtoStorage_ShouldThrowArgumentNullException( ) {
@@ -140,7 +160,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when cache repository is null.
+    /// Verifies that a null cache repository throws <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullCacheRepository_ShouldThrowArgumentNullException( ) {
@@ -161,7 +181,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when deduplicator is null.
+    /// Verifies that a null request deduplicator throws <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullDeduplicator_ShouldThrowArgumentNullException( ) {
@@ -182,7 +202,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when result combiner is null.
+    /// Verifies that a null result combiner throws <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullResultCombiner_ShouldThrowArgumentNullException( ) {
@@ -203,7 +223,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when logger is null.
+    /// Verifies that a null logger throws <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
@@ -228,7 +248,8 @@ public class SagaCoordinatorBackgroundServiceTests {
     #region Polling Tests
 
     /// <summary>
-    /// Verifies that the service processes unfinalized sagas during polling.
+    /// Verifies that when completed-but-unfinalized sagas exist, the polling loop queries for them
+    /// at least once and processes them.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -274,7 +295,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the service does not write anything when no unfinalized sagas exist.
+    /// Verifies that when no unfinalized sagas are found, the polling loop writes nothing to storage.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -309,7 +330,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the service writes final results when sagas are complete.
+    /// Verifies the full finalization of a complete saga: the final result is written to storage
+    /// once, the saga's final result URI is set, the result is cached, and the deduplicator is
+    /// released with the resulting record URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -369,7 +392,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the service writes partial results first when sagas are partial.
+    /// Verifies that a partial saga with no existing partial URI has its partial result written
+    /// first (partial URI set), then is finalized (final URI set), confirming the partial-then-final
+    /// write order.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -420,7 +445,8 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the service continues processing when a write fails.
+    /// Verifies the failure-isolation contract: when writing the first saga's result throws, the
+    /// loop still attempts the second saga, so one bad saga does not block the rest of the batch.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -469,7 +495,8 @@ public class SagaCoordinatorBackgroundServiceTests {
     #region Final Result Writing Tests
 
     /// <summary>
-    /// Verifies that failed sagas release the lock with null and delete the saga.
+    /// Verifies that a saga whose only provider failed (no successful results to combine) releases
+    /// the deduplicator with a null URI and deletes the saga, rather than writing an empty result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -525,7 +552,8 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that finalizing a saga clears its partial flag so callers no longer treat it as partial.
+    /// Verifies that finalizing a saga clears its partial flag (sets <c>IsPartial</c> false), so a
+    /// finalized saga is no longer treated as partial.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -571,9 +599,10 @@ public class SagaCoordinatorBackgroundServiceTests {
     #region Secondary Lookup Tests
 
     /// <summary>
-    /// Verifies that when secondary lookups are queued for a completed initial lookup, the saga
-    /// is marked partial and the secondary requests are enqueued at Interactive priority so a
-    /// waiting caller receives the complete result as fast as possible.
+    /// Verifies the secondary-lookup path triggered by the <c>saga:completed</c> event: when the
+    /// primary provider has resolved but no cached results exist for the others, the saga is marked
+    /// partial, the two remaining providers are queued at interactive priority, a partial result is
+    /// written to storage, and the deduplicator is released with the partial record URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -657,9 +686,10 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that cached provider results found via the external ID are materialized into the
-    /// saga as completed provider states so the final result includes them, instead of a
-    /// one-provider final overwriting the richer existing record.
+    /// Verifies the cache-hit short circuit: when the remaining providers already have cached
+    /// results, the service materializes those provider states (complete and successful) instead of
+    /// queuing lookups, writes a complete three-provider non-partial result, and finalizes the saga
+    /// without enqueuing anything.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -762,9 +792,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies the mixed case: providers found in cache are materialized into the saga while
-    /// the remaining providers are queued for secondary lookups, so cached data is never dropped
-    /// from the partial (or eventual final) result.
+    /// Verifies the mixed cache path: when one of two remaining providers is cached, the service
+    /// materializes the cached provider state, queues only the uncached provider (Tidal) at
+    /// interactive priority, writes a two-provider partial result, and does not finalize the saga.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -869,8 +899,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that secondary lookups for a bulk-origin saga (e.g. JetStream firehose) are
-    /// queued at Background priority instead of competing with interactive lookups.
+    /// Verifies that secondaries inherit a priority derived from the saga's origin: a saga that
+    /// originated from a bulk request queues its two secondary lookups at background priority (with
+    /// the bulk origin preserved) and never at interactive priority.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -945,10 +976,10 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that when a concurrent handler already claimed the secondaries-queued marker,
-    /// the losing handler queues nothing but still runs the idempotent state initialization
-    /// and partial marking (so its published partial can never read as final) and defers
-    /// finalization (writes the partial).
+    /// Verifies the marker-contention path: when the secondaries-queued marker is already taken by a
+    /// concurrent worker (the claim returns false), this worker does not enqueue any lookups but
+    /// still initializes provider states, marks the saga partial, writes a partial result, and
+    /// defers finalization, so the marker holder remains responsible for completion.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1041,11 +1072,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that pending provider states are initialized and the saga is marked partial
-    /// BEFORE the secondaries-queued marker is claimed. The marker loser's caller publishes
-    /// the partial and releases waiters immediately, so the saga must already read as
-    /// incomplete and partial by then - otherwise a waiting orchestrator could see
-    /// IsComplete=true with IsPartial=false and mistake the one-provider result for a final.
+    /// Verifies the ordering invariant on the secondaries path: provider states are initialized and
+    /// the saga is marked partial before the secondaries-queued marker is claimed, so a concurrent
+    /// worker that loses the marker race still observes initialized state.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1125,10 +1154,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that finalization is still deferred when every secondary enqueue fails:
-    /// pending provider states were initialized and the saga marked partial, so finalizing
-    /// would publish a result missing providers as complete and overwrite richer cached
-    /// data. The partial is written instead and the stale-partial cache path retries later.
+    /// Verifies resilience when every secondary enqueue throws: both enqueues are attempted, the
+    /// saga is still marked partial and a partial result is written, and finalization is deferred —
+    /// a queue outage must not finalize a saga whose secondaries never ran.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1214,9 +1242,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the polling fallback runs the same secondary-lookup check as the Pub/Sub
-    /// handlers: a saga discovered via polling must not be finalized as complete while other
-    /// providers still need secondary lookups.
+    /// Verifies that the same secondary-lookup behavior is reached through the polling path (not just
+    /// the subscription): a URI saga picked up by polling that still needs secondaries queues both at
+    /// interactive priority and writes a partial result instead of finalizing.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1282,9 +1310,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     #region Helper Methods
 
     /// <summary>
-    /// Creates a new <see cref="SagaCoordinatorBackgroundService"/> instance with the configured mocks.
+    /// Builds a service wired to all the mocks, the real combiner, and the enabled-providers set.
     /// </summary>
-    /// <returns>A new <see cref="SagaCoordinatorBackgroundService"/> instance.</returns>
+    /// <returns>A service under test.</returns>
     private SagaCoordinatorBackgroundService CreateService( ) {
         return new SagaCoordinatorBackgroundService(
             _redisMock.Object,
@@ -1300,11 +1328,12 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Creates a test <see cref="LookupSagaState"/> for a completed URL lookup whose result
-    /// carries an external ID, making it eligible for secondary provider lookups.
+    /// Builds a URI-lookup saga whose only resolved provider is Spotify (with a sample result JSON),
+    /// used for secondary-lookup tests. The origin priority is parameterized so tests can assert the
+    /// priority secondaries inherit.
     /// </summary>
-    /// <param name="originPriority">The origin priority recorded on the saga.</param>
-    /// <returns>A new <see cref="LookupSagaState"/> instance for a URI lookup.</returns>
+    /// <param name="originPriority">The saga's origin priority; defaults to interactive.</param>
+    /// <returns>A URI-lookup saga with one resolved primary provider.</returns>
     private static LookupSagaState CreateUriLookupSaga( QueuePriority originPriority = QueuePriority.Interactive ) {
         string resultJson = """
         {
@@ -1342,11 +1371,12 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Creates a test <see cref="MediaLinkResult"/> representing cached external-ID data
-    /// containing results for the specified providers.
+    /// Builds a cached <c>MediaLinkResult</c> carrying a sample result for each of the given
+    /// providers, used to simulate cache hits for secondary providers in the materialize-from-cache
+    /// tests.
     /// </summary>
-    /// <param name="providers">The providers with cached results.</param>
-    /// <returns>A new <see cref="MediaLinkResult"/> instance.</returns>
+    /// <param name="providers">The providers to include in the cached result.</param>
+    /// <returns>A cached result populated for each requested provider.</returns>
     private static MediaLinkResult CreateCachedExternalIdResult( params SupportedProviders[] providers ) {
         MediaLinkResult cachedResult = new( );
 
@@ -1364,9 +1394,11 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Creates a test <see cref="LookupSagaState"/> representing a completed saga with one successful provider.
+    /// Builds a complete ISRC-lookup saga with a single successful Spotify provider state (carrying
+    /// a sample result JSON), used as the baseline fixture for the polling and finalization tests;
+    /// individual tests adjust it via <c>with</c> expressions.
     /// </summary>
-    /// <returns>A new <see cref="LookupSagaState"/> instance with complete status.</returns>
+    /// <returns>A complete, finalizable saga.</returns>
     private static LookupSagaState CreateCompleteSaga( ) {
         string resultJson = """
         {

@@ -3,12 +3,15 @@ using BridgeBeats.Worker.CacheBootstrap.Logging;
 namespace BridgeBeats.Worker.CacheBootstrap;
 
 /// <summary>
-/// LoggerMessage methods for CacheBootstrap Program startup.
+/// Source-generated structured-logging helpers for the CacheBootstrap startup path. These wrap the
+/// Redis-connection verification messages emitted from <see cref="Program"/> before the worker runs.
 /// </summary>
 internal static partial class ProgramLog {
-    /// <summary>
-    /// Logs Redis connection details.
-    /// </summary>
+    /// <summary>Logs the Redis connection configuration and state at startup.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="configuration">The Redis connection configuration string.</param>
+    /// <param name="isConnected">Whether the multiplexer reports a live connection.</param>
+    /// <param name="database">The Redis database number in use.</param>
     [LoggerMessage(
         EventId = LogEventIds.RedisConnectionInfo,
         Level = LogLevel.Information,
@@ -19,9 +22,10 @@ internal static partial class ProgramLog {
         bool isConnected,
         int database );
 
-    /// <summary>
-    /// Logs Redis write test result.
-    /// </summary>
+    /// <summary>Logs the result of the startup Redis write/read-back smoke test.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="setResult">Whether the test key was written successfully.</param>
+    /// <param name="readBack">The value read back from the test key.</param>
     [LoggerMessage(
         EventId = LogEventIds.RedisWriteTest,
         Level = LogLevel.Information,
@@ -31,9 +35,10 @@ internal static partial class ProgramLog {
         bool setResult,
         string? readBack );
 
-    /// <summary>
-    /// Logs Redis write verification failure.
-    /// </summary>
+    /// <summary>Logs that the startup Redis write/read-back smoke test failed to verify.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="setResult">Whether the test key was reported as written.</param>
+    /// <param name="readBack">The value read back from the test key, if any.</param>
     [LoggerMessage(
         EventId = LogEventIds.RedisWriteVerificationFailed,
         Level = LogLevel.Error,
@@ -43,9 +48,10 @@ internal static partial class ProgramLog {
         bool setResult,
         string? readBack );
 
-    /// <summary>
-    /// Logs Redis server key count.
-    /// </summary>
+    /// <summary>Logs the Redis key count for an endpoint at startup.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="endpoint">The Redis endpoint that was measured.</param>
+    /// <param name="keyCount">The number of keys present on that endpoint.</param>
     [LoggerMessage(
         EventId = LogEventIds.RedisKeyCount,
         Level = LogLevel.Information,

@@ -5,23 +5,27 @@ using BridgeBeats.Contracts.DTOs;
 namespace BridgeBeats.Core.Infrastructure.Storage;
 
 /// <summary>
-/// Provides deterministic generation of ATProto record keys (rkeys) and card IDs
-/// based on media metadata to ensure consistent mapping and prevent duplication.
+/// Generates deterministic record keys (rkeys) and card identifiers for media-link records, to
+/// ensure consistent mapping and prevent duplication.
 /// </summary>
+/// <remarks>
+/// Determinism is the point: the same input always produces the same rkey, so writes are idempotent
+/// and the same logical record naturally deduplicates. An rkey is derived from an external id when
+/// one is present (<c>album:</c> or <c>track:</c> plus the sanitized id); otherwise it is derived
+/// from a SHA-256 hash of the title, artist, and album/track kind, encoded as RFC 4648 base32.
+/// </remarks>
 public static class RecordKeyGenerator {
 
     /// <summary>
-    /// Generates a deterministic rkey for a MediaLinkResult based on the first available
-    /// externalId (ISRC/UPC) and media type from the results. If no externalId is found,
-    /// generates a fallback rkey based on metadata hash.
+    /// Generates the rkey for a media-link result, preferring an external-id-based key and falling
+    /// back to a metadata-based key.
     /// </summary>
-    /// <param name="result">The MediaLinkResult containing provider results.</param>
-    /// <returns>A deterministic rkey string.</returns>
-    /// <remarks>
-    /// Primary format: "track:{externalId}" or "album:{externalId}"
-    /// Fallback format: "metadata:{hash}" where hash is base32(sha256(title|artist|isAlbum))
-    /// The externalId is sanitized to be URL-safe (alphanumeric and hyphens only).
-    /// </remarks>
+    /// <param name="result">The media-link result; must contain at least one provider result.</param>
+    /// <returns>
+    /// An external-id-based rkey (<c>album:{id}</c> or <c>track:{id}</c>) when any result carries an
+    /// external id (ISRC/UPC) that survives sanitization; otherwise a metadata-based rkey.
+    /// </returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="result"/> has no results, or when no usable external id or metadata is available.</exception>
     public static string GenerateRkey( MediaLinkResult result ) {
         if (result?.Results == null || result.Results.Count == 0) {
             throw new ArgumentException( "MediaLinkResult must contain at least one result", nameof( result ) );
@@ -40,8 +44,15 @@ public static class RecordKeyGenerator {
     }
 
     /// <summary>
-    /// Generates a fallback rkey based on metadata when no externalId is available.
+    /// Generates a metadata-based rkey of the form <c>metadata:{hash}</c> from the first result's
+    /// title, artist, and album/track kind, used as a fallback when no external id is available.
     /// </summary>
+    /// <param name="result">The media-link result; its first provider result supplies the metadata.</param>
+    /// <returns>
+    /// An rkey <c>metadata:{hash}</c>, where the hash is the first 16 characters of the lowercase
+    /// base32 encoding of the SHA-256 of the normalized <c>title|artist|kind</c> string.
+    /// </returns>
+    /// <exception cref="ArgumentException">Thrown when both title and artist of the first result are empty.</exception>
     private static string GenerateMetadataBasedRkey( MediaLinkResult result ) {
         // Get first result to extract metadata
         MusicLookupResult firstResult = result.Results.Values.First( );
@@ -64,11 +75,12 @@ public static class RecordKeyGenerator {
     }
 
     /// <summary>
-    /// Generates a deterministic rkey from a specific externalId and media type.
+    /// Generates an external-id-based rkey of the form <c>album:{id}</c> or <c>track:{id}</c>.
     /// </summary>
-    /// <param name="externalId">The ISRC or UPC identifier.</param>
-    /// <param name="isAlbum">True for albums (UPC), false for tracks (ISRC).</param>
-    /// <returns>A deterministic rkey string.</returns>
+    /// <param name="externalId">The provider external id (a UPC or ISRC). Sanitized to letters, digits, and hyphen before use.</param>
+    /// <param name="isAlbum">When <see langword="true"/>, the key uses the <c>album</c> prefix (UPC); otherwise <c>track</c> (ISRC).</param>
+    /// <returns>The rkey <c>{album|track}:{sanitizedId}</c>.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="externalId"/> is null, empty, or contains no valid characters after sanitization.</exception>
     public static string GenerateRkey( string externalId, bool isAlbum ) {
         if (string.IsNullOrWhiteSpace( externalId )) {
             throw new ArgumentException( "ExternalId cannot be null or empty", nameof( externalId ) );
@@ -83,15 +95,16 @@ public static class RecordKeyGenerator {
     }
 
     /// <summary>
-    /// Generates a deterministic card ID based on the rkey using base32-encoded SHA-256 hash.
+    /// Generates a deterministic, URL-safe card identifier from an rkey by hashing it and encoding the
+    /// hash as base32.
     /// </summary>
-    /// <param name="rkey">The record key to generate a card ID from.</param>
-    /// <param name="maxLength">Maximum length of the card ID (default 32 characters).</param>
-    /// <returns>A deterministic, URL-safe card ID string.</returns>
-    /// <remarks>
-    /// The card ID is generated as: base32(sha256(rkey)) truncated to maxLength.
-    /// Base32 is used to ensure URL-safe, case-insensitive identifiers.
-    /// </remarks>
+    /// <param name="rkey">The record key to derive the card id from; must be non-empty.</param>
+    /// <param name="maxLength">The maximum length of the returned id (default 32). Must be positive.</param>
+    /// <returns>
+    /// The lowercase base32 encoding of <c>SHA-256(rkey)</c>, truncated to at most
+    /// <paramref name="maxLength"/> characters. Base32 keeps the id URL-safe and case-insensitive.
+    /// </returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="rkey"/> is null, empty, or whitespace, or when <paramref name="maxLength"/> is not positive.</exception>
     public static string GenerateCardId( string rkey, int maxLength = 32 ) {
         if (string.IsNullOrWhiteSpace( rkey )) {
             throw new ArgumentException( "Rkey cannot be null or empty", nameof( rkey ) );
@@ -112,9 +125,10 @@ public static class RecordKeyGenerator {
     }
 
     /// <summary>
-    /// Sanitizes an externalId to be URL-safe for use in an rkey.
-    /// Removes all characters except alphanumerics and hyphens.
+    /// Strips an external id down to the characters allowed in an rkey: letters, digits, and hyphen.
     /// </summary>
+    /// <param name="externalId">The raw external id.</param>
+    /// <returns>The id with all characters other than letters, digits, and hyphen removed, or an empty string when the input is null or whitespace.</returns>
     private static string SanitizeForRkey( string externalId ) {
         if (string.IsNullOrWhiteSpace( externalId )) {
             return string.Empty;
@@ -130,8 +144,11 @@ public static class RecordKeyGenerator {
     }
 
     /// <summary>
-    /// Converts a byte array to a base32 string using RFC 4648 alphabet.
+    /// Encodes bytes as RFC 4648 base32 using the uppercase alphabet, then trims the <c>=</c> padding
+    /// for URL safety.
     /// </summary>
+    /// <param name="input">The bytes to encode.</param>
+    /// <returns>The unpadded base32 string, or an empty string when <paramref name="input"/> is null or empty.</returns>
     private static string ToBase32( byte[] input ) {
         if (input == null || input.Length == 0) {
             return string.Empty;

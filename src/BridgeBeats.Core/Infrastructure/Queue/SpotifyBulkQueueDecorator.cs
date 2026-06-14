@@ -15,23 +15,37 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// priority queue.
 /// </summary>
 /// <remarks>
-/// <c>SongIdLookup</c> and <c>AlbumIdLookup</c> enqueues write to the type-specific bulk streams
-/// (<see cref="SpotifyConstants.BulkTrackIdStream"/> / <see cref="SpotifyConstants.BulkAlbumIdStream"/>);
-/// all other calls are delegated to the inner queue unchanged.
+/// Applied only to the Spotify <see cref="QueuedLookupRequest"/> queue. Spotify's API supports
+/// multi-id batch fetches, so non-interactive <c>SongIdLookup</c> and <c>AlbumIdLookup</c>
+/// enqueues are re-routed to <see cref="BridgeBeats.Contracts.Constants.SpotifyConstants.BulkTrackIdStream"/>
+/// (<c>queue:spotify:bulk:track-id</c>) or
+/// <see cref="BridgeBeats.Contracts.Constants.SpotifyConstants.BulkAlbumIdStream"/>
+/// (<c>queue:spotify:bulk:album-id</c>), where a separate bulk processor drains them in batches.
+/// Interactive-priority requests and every other lookup type pass straight through to the inner
+/// queue, and all queue operations other than enqueue delegate to the inner queue unchanged.
 /// </remarks>
 public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLookupRequest> {
 
+    /// <summary>The wrapped queue that handles normal (non-bulk-routed) operations.</summary>
     private readonly IRequestQueue<QueuedLookupRequest> _inner;
+
+    /// <summary>Redis connection used to write directly to the bulk streams.</summary>
     private readonly IConnectionMultiplexer _redis;
+
+    /// <summary>Logger for bulk-routing diagnostics.</summary>
     private readonly ILogger<SpotifyBulkQueueDecorator> _logger;
+
+    /// <summary>Camel-case, non-indented options used to serialize the request payload.</summary>
     private readonly JsonSerializerOptions _jsonOptions;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="SpotifyBulkQueueDecorator"/> class.
+    /// Initializes a new instance of the <see cref="SpotifyBulkQueueDecorator"/> class around an
+    /// inner queue.
     /// </summary>
-    /// <param name="inner">The underlying Spotify request queue.</param>
-    /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
+    /// <param name="inner">The underlying Spotify request queue, which handles non-bulk operations.</param>
+    /// <param name="redis">The Redis connection multiplexer, used to write bulk-stream entries.</param>
+    /// <param name="logger">Logger for bulk-routing diagnostics.</param>
+    /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
     public SpotifyBulkQueueDecorator(
         IRequestQueue<QueuedLookupRequest> inner,
         IConnectionMultiplexer redis,
@@ -47,15 +61,24 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
         };
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Enqueues a request, routing non-interactive single-id Spotify track/album lookups onto a
+    /// dedicated bulk stream and delegating everything else to the inner queue.
+    /// </summary>
+    /// <param name="request">The request to enqueue.</param>
+    /// <param name="priority">The requested priority. Interactive requests are never bulk-routed.</param>
+    /// <param name="cancellationToken">Token used when delegating to the inner queue.</param>
+    /// <returns>A task that completes once the request is written.</returns>
     /// <remarks>
-    /// Intercepts <see cref="LookupRequestType.SongIdLookup"/> and
-    /// <see cref="LookupRequestType.AlbumIdLookup"/> requests with a non-interactive priority
-    /// and writes them to the type-specific bulk streams.
-    /// When <paramref name="priority"/> is <see cref="QueuePriority.Interactive"/>, typed ID lookups
-    /// pass through to the inner queue so they are served on the interactive stream with a
-    /// single-item <c>GetInfoByIDAsync</c> call, preserving the interactive latency budget.
-    /// All other lookup types are forwarded to the underlying queue unchanged regardless of priority.
+    /// When the lookup type is <see cref="LookupRequestType.SongIdLookup"/> or
+    /// <see cref="LookupRequestType.AlbumIdLookup"/> and the priority is not
+    /// <see cref="QueuePriority.Interactive"/>, the request is serialized and added directly to the
+    /// matching bulk stream with <c>payload</c> and <c>enqueuedAt</c> fields, and an enqueue metric
+    /// is recorded at bulk priority. When <paramref name="priority"/> is
+    /// <see cref="QueuePriority.Interactive"/>, typed ID lookups pass through to the inner queue so
+    /// they are served on the interactive stream with a single-item <c>GetInfoByIDAsync</c> call,
+    /// preserving the interactive latency budget. All other lookup types are forwarded to the
+    /// underlying queue unchanged regardless of priority.
     /// </remarks>
     public async Task EnqueueAsync(
         QueuedLookupRequest request,
@@ -93,47 +116,79 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
         await _inner.EnqueueAsync( request, priority, cancellationToken );
     }
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue. See <see cref="IRequestQueue{T}.DequeueAsync(CancellationToken)"/>.</summary>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>The next message, or null if none is available.</returns>
     public Task<QueuedMessage<QueuedLookupRequest>?> DequeueAsync( CancellationToken cancellationToken = default )
         => _inner.DequeueAsync( cancellationToken );
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue's rate-limit-aware dequeue.</summary>
+    /// <param name="rateLimitTracker">Tracker that identifies currently rate-limited endpoints.</param>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>The next eligible message, or null if none is available.</returns>
     public Task<QueuedMessage<QueuedLookupRequest>?> DequeueAsync( IRateLimitTracker rateLimitTracker, CancellationToken cancellationToken = default )
         => _inner.DequeueAsync( rateLimitTracker, cancellationToken );
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue to acknowledge (XACK + XDEL) a message.</summary>
+    /// <param name="messageId">Composite message id to acknowledge.</param>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>A task that completes when the message is acknowledged.</returns>
     public Task AcknowledgeAsync( string messageId, CancellationToken cancellationToken = default )
         => _inner.AcknowledgeAsync( messageId, cancellationToken );
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue to requeue a message.</summary>
+    /// <param name="messageId">Composite message id to requeue.</param>
+    /// <param name="delay">Requested delay; honored only to the extent the inner queue honors it.</param>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>A task that completes when the message is requeued.</returns>
     public Task RequeueAsync( string messageId, TimeSpan? delay = null, CancellationToken cancellationToken = default )
         => _inner.RequeueAsync( messageId, delay, cancellationToken );
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue to read current per-lane depths.</summary>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>The current queue depth across the priority lanes.</returns>
     public Task<QueueDepth> GetDepthAsync( CancellationToken cancellationToken = default )
         => _inner.GetDepthAsync( cancellationToken );
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue to read dead-letter messages.</summary>
+    /// <param name="limit">Maximum number of dead-letter messages to return.</param>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>The dead-letter messages, up to <paramref name="limit"/>.</returns>
     public Task<IReadOnlyList<QueuedMessage<QueuedLookupRequest>>> GetDlqMessagesAsync( int limit, CancellationToken cancellationToken = default )
         => _inner.GetDlqMessagesAsync( limit, cancellationToken );
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue to move a message out of the dead-letter queue.</summary>
+    /// <param name="messageId">Composite dead-letter message id.</param>
+    /// <param name="priority">Priority lane to requeue the message onto.</param>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>A task that completes when the message is requeued.</returns>
     public Task RequeueFromDlqAsync( string messageId, QueuePriority priority, CancellationToken cancellationToken = default )
         => _inner.RequeueFromDlqAsync( messageId, priority, cancellationToken );
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue to move a message into the dead-letter queue.</summary>
+    /// <param name="messageId">Composite message id to move.</param>
+    /// <param name="reason">Reason recorded with the dead-letter entry.</param>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>A task that completes when the message is moved.</returns>
     public Task MoveToDlqAsync( string messageId, string reason, CancellationToken cancellationToken = default )
         => _inner.MoveToDlqAsync( messageId, reason, cancellationToken );
 
-    /// <inheritdoc/>
+    /// <summary>Delegates to the inner queue to delete a dead-letter message.</summary>
+    /// <param name="messageId">Composite dead-letter message id to delete.</param>
+    /// <param name="cancellationToken">Token forwarded to the inner queue.</param>
+    /// <returns>True if a message was deleted; otherwise false.</returns>
     public Task<bool> DeleteFromDlqAsync( string messageId, CancellationToken cancellationToken = default )
         => _inner.DeleteFromDlqAsync( messageId, cancellationToken );
 
     #region LoggerMessage Methods
 
     /// <summary>
-    /// Logs that a typed ID lookup was routed to a type-specific bulk stream.
+    /// Logs (at debug level) that a typed ID lookup was routed to a Spotify type-specific bulk stream.
     /// </summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="lookupType">The lookup type that was routed.</param>
+    /// <param name="sagaId">The saga id of the routed request.</param>
+    /// <param name="stream">The bulk stream the request was written to.</param>
     [LoggerMessage(
         Level = LogLevel.Debug,
         Message = "SpotifyBulkQueueDecorator routed {LookupType} (SagaId={SagaId}) to {Stream}" )]

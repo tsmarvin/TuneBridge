@@ -1,45 +1,54 @@
 namespace BridgeBeats.Core.Infrastructure.Queue;
 
 /// <summary>
-/// Standard tag keys for queue-related OpenTelemetry metrics.
+/// Standard tag (dimension) key names attached to queue and rate-limit metrics.
 /// </summary>
 /// <remarks>
-/// Use these constants when recording metrics to ensure consistent tag naming
-/// across all queue instrumentation points.
+/// These literals are part of the observability contract: dashboards and alerts group and
+/// filter on these exact tag keys, so renaming a value breaks downstream queries. The tag
+/// values themselves (provider names, priorities, and so on) are lower-cased at the call
+/// site before being recorded.
 /// </remarks>
 public static class QueueMetricTags {
     /// <summary>
-    /// The music provider (spotify, applemusic, tidal).
+    /// Tag key for the provider a measurement belongs to (spotify, applemusic, tidal).
+    /// Literal value: <c>"provider"</c>.
     /// </summary>
     public const string Provider = "provider";
 
     /// <summary>
-    /// The queue priority level (interactive, background, bulk).
+    /// Tag key for the queue priority lane (interactive, background, or bulk).
+    /// Literal value: <c>"priority"</c>.
     /// </summary>
     public const string Priority = "priority";
 
     /// <summary>
-    /// The API endpoint or lookup type being processed.
+    /// Tag key for the provider endpoint or lookup type a measurement relates to.
+    /// Literal value: <c>"endpoint"</c>.
     /// </summary>
     public const string Endpoint = "endpoint";
 
     /// <summary>
-    /// The type of lookup operation (IsrcLookup, UpcLookup, etc.).
+    /// Tag key for the lookup request type (IsrcLookup, UpcLookup, etc.).
+    /// Literal value: <c>"lookup_type"</c>.
     /// </summary>
     public const string LookupType = "lookup_type";
 
     /// <summary>
-    /// The processing status (success, failure, rate_limited).
+    /// Tag key for the outcome status of an operation (success, failure, rate_limited).
+    /// Literal value: <c>"status"</c>.
     /// </summary>
     public const string Status = "status";
 
     /// <summary>
-    /// HTTP status code for provider API requests.
+    /// Tag key for the HTTP status code of a provider API request.
+    /// Literal value: <c>"status_code"</c>.
     /// </summary>
     public const string StatusCode = "status_code";
 
     /// <summary>
-    /// The HTTP method used for provider API requests.
+    /// Tag key for the HTTP method used for a provider API request.
+    /// Literal value: <c>"method"</c>.
     /// </summary>
     public const string Method = "method";
 }

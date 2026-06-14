@@ -7,16 +7,24 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for WellKnownController to verify dynamic client-metadata.json
-/// and jwks.json endpoint behavior for ATProto OAuth confidential client support.
+/// Unit tests for <see cref="WellKnownController"/>, which serves the AT Protocol OAuth discovery
+/// documents at <c>/.well-known/client-metadata.json</c> and <c>/.well-known/jwks.json</c>. Covers
+/// the confidential-client shape emitted when a signing key is present, the public-client shape
+/// emitted when it is absent, the not-found responses when the configured domain or signing key is
+/// missing, dynamic-domain substitution into every emitted URI, and the JWKS guarantee that the
+/// private key component is never exposed.
 /// </summary>
 [TestClass]
 public class WellKnownControllerTests {
+    /// <summary>Domain used to build the configuration under test and to assert emitted absolute URIs.</summary>
     private const string TestDomain = "https://example.com";
 
     /// <summary>
-    /// Creates an IConfiguration with the specified Domain.
+    /// Builds an in-memory <see cref="IConfiguration"/> with <c>BridgeBeats:Domain</c> set to
+    /// <paramref name="domain"/> (or absent when null), the single setting the controller reads.
     /// </summary>
+    /// <param name="domain">The domain value to seed, or null to omit the key entirely.</param>
+    /// <returns>A configuration exposing only the <c>BridgeBeats:Domain</c> setting.</returns>
     private static IConfiguration CreateConfiguration( string? domain ) {
         Dictionary<string, string?> settings = new( ) {
             ["BridgeBeats:Domain"] = domain
@@ -28,15 +36,20 @@ public class WellKnownControllerTests {
     }
 
     /// <summary>
-    /// Creates a test signing key provider with a generated ES256 key.
+    /// Creates an <see cref="ATProtoSigningKeyProvider"/> backed by a freshly generated ES256 JWK,
+    /// giving the controller a key so it produces confidential-client metadata and a JWKS response.
     /// </summary>
+    /// <returns>A signing-key provider holding a new private key.</returns>
     private static ATProtoSigningKeyProvider CreateTestSigningKeyProvider( ) {
         string jwk = ATProtoSigningKeyProvider.GenerateNewSigningKeyJwk( );
         return new ATProtoSigningKeyProvider( jwk );
     }
 
     /// <summary>
-    /// Verifies that ClientMetadata returns JSON with confidential client fields when signing key is present.
+    /// Verifies that when a signing key is supplied, the client-metadata document describes a
+    /// confidential client: <c>private_key_jwt</c> auth method with an <c>ES256</c> signing
+    /// algorithm, a <c>jwks_uri</c>, DPoP-bound access tokens, the single callback redirect URI,
+    /// and the expected client id, name, and scope.
     /// </summary>
     [TestMethod]
     public void ClientMetadata_WithSigningKey_ShouldReturnConfidentialClientMetadata( ) {
@@ -73,7 +86,9 @@ public class WellKnownControllerTests {
     }
 
     /// <summary>
-    /// Verifies that ClientMetadata returns public client fields when no signing key is present.
+    /// Verifies that when no signing key is supplied, the client-metadata document describes a
+    /// public client: the auth method is <c>none</c> and neither <c>token_endpoint_auth_signing_alg</c>
+    /// nor <c>jwks_uri</c> is present.
     /// </summary>
     [TestMethod]
     public void ClientMetadata_WithoutSigningKey_ShouldReturnPublicClientMetadata( ) {
@@ -98,7 +113,8 @@ public class WellKnownControllerTests {
     }
 
     /// <summary>
-    /// Verifies that ClientMetadata returns NotFound when Domain is not configured.
+    /// Verifies that when <c>BridgeBeats:Domain</c> is not configured, the client-metadata endpoint
+    /// returns a not-found result rather than emitting a document with an empty or invalid base URI.
     /// </summary>
     [TestMethod]
     public void ClientMetadata_WithoutDomain_ShouldReturnNotFound( ) {
@@ -114,7 +130,9 @@ public class WellKnownControllerTests {
     }
 
     /// <summary>
-    /// Verifies that ClientMetadata uses the configured Domain for all URLs.
+    /// Verifies that the configured domain is substituted into every emitted URI: the
+    /// <c>client_id</c>, <c>client_uri</c>, and redirect URI all derive from the custom domain
+    /// rather than from a hard-coded host.
     /// </summary>
     [TestMethod]
     public void ClientMetadata_ShouldUseDynamicDomain( ) {
@@ -139,7 +157,9 @@ public class WellKnownControllerTests {
     }
 
     /// <summary>
-    /// Verifies that Jwks returns valid JWKS JSON with the public key.
+    /// Verifies that with a signing key present, the JWKS endpoint returns an
+    /// <c>application/json</c> document containing exactly one EC P-256 / ES256 key, and that the
+    /// private component (<c>d</c>) is omitted so only the public key is published.
     /// </summary>
     [TestMethod]
     public void Jwks_WithSigningKey_ShouldReturnPublicJwks( ) {
@@ -172,7 +192,8 @@ public class WellKnownControllerTests {
     }
 
     /// <summary>
-    /// Verifies that Jwks returns NotFound when no signing key is configured.
+    /// Verifies that without a signing key, the JWKS endpoint returns a not-found result: there is
+    /// no public key to publish for a public client.
     /// </summary>
     [TestMethod]
     public void Jwks_WithoutSigningKey_ShouldReturnNotFound( ) {

@@ -4,7 +4,7 @@ This guide covers how to configure BridgeBeats with API credentials and environm
 
 ## Environment Variables
 
-BridgeBeats requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord integration is optional.
+BridgeBeats requires API credentials for at least one music provider (Apple Music, Spotify, or Tidal). Discord and ATProto integrations are optional.
 
 ### Required Music Provider Credentials
 
@@ -14,34 +14,48 @@ At least one complete set of music provider credentials is required:
 |----------|-------------|----------|
 | `APPLE_TEAM_ID` | Your Apple Developer Team ID | No* |
 | `APPLE_KEY_ID` | Your Apple Music API Key ID | No* |
-| `APPLE_KEY_PATH` | Path to your Apple Music private key (.p8 file) | No* |
+| `APPLE_KEY_PATH` | Container path to the Apple Music private key (`.p8`); the compose file mounts the secret at `/run/secrets/apple_key` | No* |
 | `SPOTIFY_CLIENT_ID` | Your Spotify API Client ID | No* |
-| `SPOTIFY_CLIENT_SECRET` | Your Spotify API Client Secret | No* |
+| `SPOTIFY_CLIENT_SECRET` | Your Spotify API Client Secret (provided via the `spotify_client_secret` Docker secret) | No* |
 | `TIDAL_CLIENT_ID` | Your Tidal API Client ID | No* |
-| `TIDAL_CLIENT_SECRET` | Your Tidal API Client Secret | No* |
+| `TIDAL_CLIENT_SECRET` | Your Tidal API Client Secret (provided via the `tidal_client_secret` Docker secret) | No* |
 
 \* At least one complete set of music provider credentials is required.
+
+In the Docker topology, the public half of each provider's credentials (client IDs, Apple Team/Key IDs) is set as an environment variable in `.env`, and the secret half (client secrets, the Apple `.p8` key) is supplied as a Docker secret. The container entrypoint reads the secrets and assembles the application configuration.
+
+### Required Service Credentials
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `INTERNAL_SERVICE_KEY` | Shared key worker services present to authenticate to the web API. Read from the environment or the `internal_service_key` Docker secret. **The container refuses to start when this is empty.** Must persist across restarts. | Yes |
+
+The installation script auto-generates `internal_service_key.txt`. When configuring by hand, generate a value (for example `openssl rand -base64 32`) and provide it through the secret or the environment variable.
 
 ### Optional Integration Credentials
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `ATPROTO_IDENTIFIER` | ATProto account identifier (handle or DID) | No* |
-| `ATPROTO_PASSWORD` | ATProto app password | No* |
+| `ATPROTO_IDENTIFIER` | ATProto account identifier (handle) | No* |
+| `ATPROTO_PASSWORD` | ATProto app password (provided via the `atproto_password` Docker secret) | No* |
+| `ATPROTO_USER_DID` | DID of the ATProto user whose records are read and written | No* |
+| `ATPROTO_PDS_URI` | Base URI of the ATProto Personal Data Server. Default `https://pds.bridgebeats.link` | No |
 
-\* Required only if using ATProto PDS storage for caching lookup results. See [ATProto Lexicon Resolution Setup Guide](ATPROTO_LEXICON.md) for complete configuration instructions.
+\* Required only when using ATProto PDS storage for caching lookup results. See the [ATProto Lexicon Resolution Setup Guide](ATPROTO_LEXICON.md) for complete configuration instructions.
+
+The ATProto OAuth signing key is supplied separately as the `atproto_oauth_key` Docker secret (an ES256 JWK). The container reads it from `/run/secrets/atproto_oauth_key`; the application setting is `ATProtoOAuthSigningKeyPath`. When the file is absent, empty, or `{}`, the ATProto OAuth service runs as a public client.
 
 ### Discord Worker Configuration
 
-The Discord integration runs as a separate worker service (`BridgeBeats.Worker.Discord`). These settings are only required if deploying the Discord worker:
+The Discord integration runs as a separate worker service (`BridgeBeats.Worker.Discord`). These settings apply when deploying the Discord worker:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `BridgeBeats__DiscordToken` | Your Discord bot token | Yes** |
-| `BridgeBeats__NodeNumber` | Node number for Discord sharding | No (default: `0`) |
-| `BridgeBeats__Domain` | Base host for API calls (for example, `bridgebeats.link`) | Yes** |
+| `DISCORD_TOKEN` | Your Discord bot token (provided via the `discord_token` Docker secret) | Yes** |
+| `NODE_NUMBER` | Node number for Discord sharding | No (default: `0`) |
+| `DOMAIN` | Base host the worker calls back to (for example `bridgebeats.link`) | Yes** |
 
-\*\* Required only when deploying the Discord worker service
+\*\* Required only when deploying the Discord worker service.
 
 ### Optional Configuration
 
@@ -49,25 +63,32 @@ The Discord integration runs as a separate worker service (`BridgeBeats.Worker.D
 |----------|-------------|---------|
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
-| `OTLP_ENDPOINT` | OpenTelemetry OTLP endpoint for Aspire Dashboard | empty (disabled) |
 | `LOG_DIR_PATH` | Directory for log files | `/app/data/logs` |
-| `CACHE_DAYS` | Number of days to cache ATProto PDS lookup results | `7` |
+| `CACHE_DAYS` | Days to cache ATProto PDS lookup results | `7` |
 | `REDIS_HOST` | Redis hostname | `redis` |
 | `REDIS_PORT` | Redis port | `6379` |
-| `IDENTITY_CONNECTION_STRING` | SQLite connection string for identity database | `Data Source=/app/data/bridgebeats.db` |
-| `BridgeBeats__Domain` | Base domain for the application (for OpenGraph card URLs and dashboard auth cookie scope) | `localhost` |
-| `CARD_CACHE_EXPIRATION_HOURS` | Number of hours to cache OpenGraph cards in memory | `1` |
-| `CARD_CACHE_CLEANUP_INTERVAL` | Number of operations between cleanup cycles for expired cards | `500` |
+| `IDENTITY_CONNECTION_STRING` | SQLite connection string for the identity database | `Data Source=/app/data/bridgebeats.db` |
+| `RATE_LIMIT_REQUESTS_PER_HOUR` | Rate-limited lookup requests permitted per user per hour | `20` |
+| `DOMAIN` | Base domain for the application (HTTPS certificates, cookie scope, OpenGraph card URLs) | `bridgebeats.link` (container default) |
+| `DATA_PROTECTION_KEY_PATH` | Directory where ASP.NET Data Protection keys are persisted | `/app/keys` |
+| `CARD_CACHE_EXPIRATION_HOURS` | Hours to cache OpenGraph cards in memory | `1` |
+| `CARD_CACHE_CLEANUP_INTERVAL` | Operations between cleanup cycles for expired cards | `500` |
 
-The container entrypoint reads `REDIS_HOST` and `REDIS_PORT` (plus the `redis_password` secret) and assembles the connection string the application consumes; there is no single `REDIS_CONNECTION_STRING` variable to set.
+> Note: `RATE_LIMIT_REQUESTS_PER_HOUR` defaults to `20` in the container entrypoint and application code. The shipped `.env.example` sets it to `100`; whichever value you place in `.env` wins for a Docker deployment.
+
+`IDENTITY_CONNECTION_STRING` points at the SQLite identity database (`bridgebeats.db`), which stores user accounts and protected personal data. SQLite remains the identity store; Redis holds the media-link cache, request queue, and rate-limit tracker, not identity data.
+
+`DATA_PROTECTION_KEY_PATH` must be a persistent location. The keys it holds decrypt Identity personal-data fields, so they must survive container restarts. In Docker this is a mounted volume (`./data/dp-keys:/app/keys`).
+
+The container entrypoint reads `REDIS_HOST` and `REDIS_PORT` (plus the `redis_password` secret) and assembles the connection string the application consumes as `ConnectionStrings:redis`. There is no single `REDIS_CONNECTION_STRING` variable to set in the compose environment.
 
 The container image fixes `AllowedHosts` to `*` and reads no `ALLOWED_HOSTS` environment variable; host filtering is Caddy's responsibility in this topology.
 
-Job-queue tuning (`RateLimitRetryThreshold`, default `00:02:00`; `JobExpirationMinutes`, default `2880`) lives under the `BridgeBeats:Queue` configuration section. Set these through `appsettings.json` rather than the container environment.
+Job-queue tuning (`RateLimitRetryThreshold`, default `00:02:00`; `JobExpirationMinutes`, default `2880`) lives under the `BridgeBeats:Queue` configuration section. Set these through `appsettings.json` rather than the container environment. See the [Spotify Batch and Routing Guide](SPOTIFY_BATCH_AND_ROUTING.md) for the queue-tuning constants.
 
-**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (for example, `BridgeBeats__Domain` maps to `BridgeBeats:Domain` in configuration).
+**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (for example, `BridgeBeats__Domain` maps to `BridgeBeats:Domain` in configuration). The container entrypoint accepts the flat aliases shown above (`DOMAIN`, `CACHE_DAYS`, and so on) and maps them to the nested keys.
 
-`BridgeBeats__Domain` must be a host-only value (no `http://`/`https://`, no path, and no port).
+`DOMAIN` must be a host-only value (no `http://`/`https://`, no path, and no port).
 
 ## Obtaining API Credentials
 
@@ -99,26 +120,25 @@ Job-queue tuning (`RateLimitRetryThreshold`, default `00:02:00`; `JobExpirationM
 
 ### ATProto PDS Credentials (Optional - for caching)
 
-If you want to store lookup results on a ATProto PDS for persistent caching:
+To store lookup results on an ATProto PDS for persistent caching:
 
-1. Create a ATProto account at [bsky.app](https://bsky.app) if you don't have one
+1. Create an ATProto account at [bsky.app](https://bsky.app) if you do not have one
 2. Go to Settings → App Passwords
 3. Create a new app password for BridgeBeats
-4. Use your handle (for example, `yourname.bsky.social`) as `ATPROTO_IDENTIFIER`
-5. Use the generated app password as `ATPROTO_PASSWORD`
+4. Use your handle (for example `yourname.bsky.social`) as `ATPROTO_IDENTIFIER`
+5. Use the generated app password as the `atproto_password` secret
 
-**Note**: Lookup results are stored as custom AT Protocol lexicon records on your PDS. Input links with tracking parameters are kept private in Redis for efficient lookup (URL hashes only) and are never exposed publicly.
+**Note**: Lookup results are stored as custom AT Protocol lexicon records on the PDS. Input links with tracking parameters are kept private in Redis (URL hashes only) and are never exposed publicly.
 
-### Redis Configuration (Required - provided by Aspire)
+### Redis Configuration (Required)
 
-Redis is used for distributed caching, request queuing, and rate limit tracking. In development, Aspire provides and configures Redis automatically. In production:
+Redis is used for the media-link cache, request queue, and rate-limit tracking. Redis is required in every environment; nothing provisions it for you.
 
-1. Deploy a Redis instance (standalone or cluster)
-2. Set `REDIS_HOST` and `REDIS_PORT` to your Redis endpoint, and provide the `redis_password` secret for authentication
-3. Recommended: Use Redis with persistence (RDB or AOF) for queue durability
-4. Recommended: Enable TLS and authentication for production deployments
+- **Docker Compose**: the supplied `docker-compose.yml` runs Redis as the `redis` service, secured with the `redis_password` secret. No extra steps are needed.
+- **Local development with Aspire**: the AppHost adds Redis as a connection-string resource only. Run Redis yourself and set the `redis` connection string. See the [Local Development Guide](LOCAL_DEVELOPMENT.md#provide-redis).
+- **Production (non-compose)**: deploy a Redis instance, set `REDIS_HOST`/`REDIS_PORT`, and provide the `redis_password` secret. Enable persistence (RDB or AOF) for queue durability, and enable TLS and authentication.
 
-**Note**: Redis stores only lookup indices and queue messages. All actual MediaLinkResult data is stored on ATProto PDS.
+**Note**: Redis stores lookup indices and queue messages. Cached `MediaLinkResult` data is stored on the ATProto PDS.
 
 ## Configuration Files
 
@@ -128,6 +148,9 @@ For local development, you can use an `appsettings.json` file instead of environ
 
 ```json
 {
+  "ConnectionStrings": {
+    "redis": "localhost:6379"
+  },
   "BridgeBeats": {
     "NodeNumber": 100,
     "AppleTeamId": "your_team_id",
@@ -140,10 +163,13 @@ For local development, you can use an `appsettings.json` file instead of environ
     "DiscordToken": "your_bot_token",
     "IdentityConnectionString": "Data Source=bridgebeats.db",
     "ApiKeySalt": "your_api_key_salt",
+    "InternalServiceKey": "your_internal_service_key",
     "RateLimitRequestsPerHour": 20,
     "ATProtoIdentifier": "your-handle.bsky.social",
     "ATProtoPassword": "your-app-password",
     "ATProtoUserDID": "",
+    "ATProtoPdsUri": "https://pds.bridgebeats.link",
+    "ATProtoOAuthSigningKeyPath": "/path/to/atproto_oauth_key.json",
     "CacheDays": 7,
     "Domain": "localhost",
     "LogDirPath": "./logs",
@@ -156,14 +182,15 @@ For local development, you can use an `appsettings.json` file instead of environ
       "TotalTimeoutMinutes": 10,
       "AttemptTimeoutSeconds": 120
     },
+    "Workers": {
+      "UseWorkerServices": true,
+      "SpotifyWorkerEnabled": true,
+      "AppleMusicWorkerEnabled": false,
+      "TidalWorkerEnabled": false
+    },
     "Queue": {
       "RateLimitRetryThreshold": "00:02:00",
-      "JobExpirationMinutes": 2880,
-      "Weights": {
-        "Interactive": 5,
-        "Background": 2,
-        "Bulk": 1
-      }
+      "JobExpirationMinutes": 2880
     }
   },
   "Logging": {
@@ -172,58 +199,54 @@ For local development, you can use an `appsettings.json` file instead of environ
       "Microsoft.Hosting.Lifetime": "Information"
     }
   },
-  "OpenTelemetry": {
-    "OtlpEndpoint": "",
-    "EnableTracing": true,
-    "EnableMetrics": true
-  },
-  "AllowedHosts": "localhost;127.0.0.1"
+  "AllowedHosts": "*"
 }
 ```
 
-### HTTP Resilience
+### Worker Settings
 
-The `BridgeBeats:Resilience` block tunes the HTTP resilience pipeline applied to all outbound HTTP clients: provider APIs, the Discord worker's calls to the Web API, and CAR repo downloads.
+The `BridgeBeats:Workers` block controls how provider lookups are dispatched:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `AttemptTimeoutSeconds` | `120` | Per-attempt timeout. Keep it above the ~90s server-side lookup budget so slow but legitimate lookups are not killed mid-flight. |
-| `TotalTimeoutMinutes` | `10` | Ceiling across all retry attempts for one logical request. Must exceed `AttemptTimeoutSeconds`. |
-| `MaxRetryAttempts` | `5` | Retry count for transient failures on safe (GET) requests. POST is never retried automatically. |
-| `MaxRetryAfterSeconds` | `120` | Largest `Retry-After` value honored before failing fast. |
+| `UseWorkerServices` | `false` in code; `true` in the container | When `true`, the web host calls remote provider workers over HTTP. When `false`, provider lookups run in-process from the configured credentials. |
+| `SpotifyWorkerEnabled` | `false` | Enables the Spotify worker when `UseWorkerServices` is set. |
+| `AppleMusicWorkerEnabled` | `false` | Enables the Apple Music worker when `UseWorkerServices` is set. |
+| `TidalWorkerEnabled` | `false` | Enables the Tidal worker when `UseWorkerServices` is set. |
 
-The circuit-breaker sampling window is derived as `2 × AttemptTimeoutSeconds` (240s at the default). Raising `AttemptTimeoutSeconds` widens that window and slows failure detection on hung endpoints; the total timeout and retry cap still bound the operation.
+In the container, the entrypoint sets `UseWorkerServices` to `true` and turns each provider flag on only when that provider's credentials are present.
+
+### HTTP Resilience
+
+The `BridgeBeats:Resilience` block tunes the HTTP resilience pipeline applied to outbound HTTP clients: provider APIs, the Discord worker's calls to the web API, and CAR repo downloads.
+
+| Key | Code default | Container default | Meaning |
+|---|---|---|---|
+| `AttemptTimeoutSeconds` | `10` | `120` | Per-attempt timeout. Keep it above the server-side lookup budget so slow but legitimate lookups are not killed mid-flight. The container sets `120`. |
+| `TotalTimeoutMinutes` | `10` | `10` | Ceiling across all retry attempts for one logical request. Must exceed `AttemptTimeoutSeconds`. |
+| `MaxRetryAttempts` | `5` | `5` | Retry count for transient failures on safe (GET) requests. POST is never retried automatically. |
+| `MaxRetryAfterSeconds` | `120` | `120` | Largest `Retry-After` value honored before failing fast. |
+
+The application code defaults `AttemptTimeoutSeconds` to `10`, but the container entrypoint overrides it to `120` (env var `RESILIENCE_ATTEMPT_TIMEOUT_SECONDS`). Use the container value as the operational default for Docker deployments.
 
 ### Docker Configuration
 
-When using Docker, environment variables are passed via the `-e` flag or docker compose:
-
-```bash
-docker run -p 10000:10000 \
-  -e APPLE_TEAM_ID="your_team_id" \
-  -e APPLE_KEY_ID="your_key_id" \
-  -e APPLE_KEY_PATH="/app/key.p8" \
-  -e SPOTIFY_CLIENT_ID="your_client_id" \
-  -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  -v /path/to/your/AuthKey_KEYID.p8:/app/key.p8 \
-  bridgebeats
-```
-
-**Important:** The `APPLE_KEY_PATH` environment variable must match the container mount path.
+In the supported deployment, configuration is supplied through `.env` and Docker secrets, and the entrypoint assembles `appsettings.json` at container start. See the [Quick Start Guide](QUICKSTART.md) and [Deployment Guide](DEPLOYMENT.md) for the full workflow.
 
 ## Security Best Practices
 
-1. **Never commit credentials to source control** - Always use environment variables or secure secret management
-2. **Use app passwords for ATProto** - Generate dedicated app passwords instead of using your main account password
-3. **Rotate API keys regularly** - Periodically regenerate API keys and update your configuration
-4. **Restrict API key permissions** - Only grant the minimum required permissions for each service
-5. **Use HTTPS in production** - Always deploy behind a reverse proxy with SSL/TLS enabled
+1. **Never commit credentials to source control** - use environment variables or Docker secrets.
+2. **Use app passwords for ATProto** - generate dedicated app passwords instead of your main account password.
+3. **Keep `INTERNAL_SERVICE_KEY` and the Data Protection keys stable** - rotating them between restarts breaks worker authentication and prevents decryption of stored personal data.
+4. **Rotate provider API keys periodically** and update the matching secrets.
+5. **Restrict API key permissions** - grant only the minimum required for each service.
+6. **Use HTTPS in production** - deploy behind Caddy with SSL/TLS enabled.
 
 ## Validation
 
-BridgeBeats validates configuration at startup. If required credentials are missing or invalid, the application will log warnings and disable features that depend on those credentials.
+BridgeBeats validates configuration at startup. The container aborts when `INTERNAL_SERVICE_KEY` is missing. Other missing or invalid credentials produce warnings and disable the dependent features rather than stopping startup.
 
-Check the application logs on startup for any configuration warnings:
+Check the application logs on startup for configuration warnings:
 
 ```
 [Warning] Apple Music credentials not configured - Apple Music lookups will be unavailable
@@ -233,70 +256,65 @@ Check the application logs on startup for any configuration warnings:
 
 ## Logging Configuration
 
-BridgeBeats supports two logging destinations that work simultaneously:
+BridgeBeats writes logs to two destinations that work simultaneously.
 
 ### File Logging
 
 Logs are written to persistent files with automatic rotation and retention:
 
 - **Location**: the directory set by `LOG_DIR_PATH` (default `/app/data/logs`); files are named `bridgebeats-<date>.log`
-- **Rotation**: Daily rotation plus size-based rotation (50MB per file)
-- **Retention**: Maximum 5 log files per service (oldest files are deleted)
-- **Total Size**: Up to ~250MB per service
+- **Rotation**: daily rotation plus size-based rotation (50MB per file)
+- **Retention**: a maximum of 5 log files per service (oldest files are deleted)
+- **Total size**: up to roughly 250MB per service
 
-File logging provides local backup for diagnostics when the Aspire Dashboard is unavailable.
+File logging provides a local diagnostic backup when the Aspire Dashboard is unavailable.
 
 ### OpenTelemetry (OTLP) Logging
 
-Logs are sent to the Aspire Dashboard for real-time observability:
-
-- **Endpoint**: `http://aspire-dashboard:4317` (configurable via `OTLP_ENDPOINT`)
-- **Protocol**: OpenTelemetry Protocol (OTLP)
-- **Dashboard**: Access via Aspire Dashboard (requires `AspireDashboardAccess` role)
-
-To disable OpenTelemetry logging, set `OTLP_ENDPOINT` to an empty string.
+Logs are sent to the Aspire Dashboard for real-time observability over the OpenTelemetry Protocol (OTLP). In the container topology, the Aspire Dashboard is configured by the AppHost and fronted by Caddy; dashboard access is gated by Caddy forward-auth.
 
 ### Log Levels
 
-Configure log verbosity using these environment variables:
+Configure log verbosity with these environment variables:
 
-- `DEFAULT_LOGLEVEL`: Overall application log level (`Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`)
+- `DEFAULT_LOGLEVEL`: overall application log level (`Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`)
 - `HOSTING_DEFAULT_LOGLEVEL`: ASP.NET hosting infrastructure log level
 
-Example in docker-compose.yml:
+Example in `.env`:
 
-```yaml
-environment:
-  - DEFAULT_LOGLEVEL=Debug
-  - HOSTING_DEFAULT_LOGLEVEL=Information
-  - OTLP_ENDPOINT=http://aspire-dashboard:4317
-  - LOG_DIR_PATH=/app/data/logs
+```bash
+DEFAULT_LOGLEVEL=Debug
+HOSTING_DEFAULT_LOGLEVEL=Information
+LOG_DIR_PATH=/app/data/logs
 ```
 
 ### Accessing Logs
 
-**File Logs** (Docker):
+**File logs** (Docker):
+
 ```bash
 # View logs from the persistent volume
-docker exec -it bridgebeats cat /app/data/logs/bridgebeats-*.log
+docker compose exec bridgebeats cat /app/data/logs/bridgebeats-*.log
 
-# Tail logs in real-time
-docker exec -it bridgebeats tail -f /app/data/logs/bridgebeats-*.log
+# Tail logs in real time
+docker compose exec bridgebeats tail -f /app/data/logs/bridgebeats-*.log
 ```
 
-**OpenTelemetry Logs** (Aspire Dashboard):
-1. Local development: access the Aspire Dashboard at `http://localhost:18888`
-2. Production: access the Aspire Dashboard at `https://dashboard.<your-domain>`
-3. Ensure your user has the `AspireDashboardAccess` role
-4. Navigate to the "Logs" section to view real-time logs with filtering and search
+Logs are also bind-mounted to `./logs` on the host by the compose file, so you can read them directly without entering the container.
+
+**Aspire Dashboard logs**:
+
+1. Local development: open the Aspire Dashboard URL printed by `aspire run`.
+2. Production: open `https://dashboard.<your-domain>`.
+3. Navigate to the Logs section to view real-time logs with filtering and search.
 
 ### Log Rotation Details
 
-Log files are automatically managed:
+Log files are managed automatically:
 
-1. **Daily rotation**: New file created each day (for example, `bridgebeats-20250114.log`)
-2. **Size-based rotation**: When a file reaches 50MB, a new file is created
-3. **Retention**: Only the 5 most recent files are kept
-4. **Automatic cleanup**: Old files are deleted when retention limit is reached
+1. **Daily rotation**: a new file is created each day (for example `bridgebeats-20260114.log`).
+2. **Size-based rotation**: when a file reaches 50MB, a new file is created.
+3. **Retention**: only the 5 most recent files are kept.
+4. **Automatic cleanup**: old files are deleted when the retention limit is reached.
 
-This ensures the container doesn't accumulate excessive log data while maintaining diagnostic history.
+This keeps the container from accumulating excessive log data while preserving recent diagnostic history.

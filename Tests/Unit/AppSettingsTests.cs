@@ -4,12 +4,15 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for AppSettings configuration binding and validation.
+/// Tests configuration binding and default values for <see cref="AppSettings"/>, the strongly typed
+/// view of the <c>BridgeBeats</c> configuration section.
 /// </summary>
 [TestClass]
 public class AppSettingsTests {
     /// <summary>
-    /// Verifies that AppSettings binds correctly from configuration with all properties.
+    /// Verifies that binding an in-memory configuration under the <c>BridgeBeats</c> section populates
+    /// every <see cref="AppSettings"/> property with the configured value, including the numeric
+    /// <c>RateLimitRequestsPerHour</c> and <c>CacheDays</c> and the empty-string ATProto fields.
     /// </summary>
     [TestMethod]
     public void AppSettings_BindsCorrectly_FromConfiguration( ) {
@@ -61,7 +64,8 @@ public class AppSettingsTests {
     }
 
     /// <summary>
-    /// Verifies that AppSettings default values are initialized correctly.
+    /// Verifies that a freshly constructed <see cref="AppSettings"/> defaults its credential string
+    /// properties (Apple team/key/path, Spotify client id/secret) to empty strings rather than null.
     /// </summary>
     [TestMethod]
     public void AppSettings_DefaultValues_AreCorrect( ) {
@@ -77,7 +81,8 @@ public class AppSettingsTests {
     }
 
     /// <summary>
-    /// Verifies that Domain defaults to empty string.
+    /// Verifies that the <see cref="AppSettings.Domain"/> property defaults to an empty string on a
+    /// newly constructed instance.
     /// </summary>
     [TestMethod]
     public void AppSettings_Domain_DefaultsToEmpty( ) {

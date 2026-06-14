@@ -7,14 +7,33 @@ using Serilog;
 namespace BridgeBeats.Worker.AppleMusic;
 
 /// <summary>
-/// Entry point for the Apple Music worker service.
+/// Entry point and composition root for the Apple Music provider worker process.
 /// </summary>
+/// <remarks>
+/// The Apple Music worker is intentionally minimal. It hosts two things and no bespoke
+/// processing logic of its own:
+/// <list type="bullet">
+///   <item>the shared queue-processing background service (registered via
+///   <c>AddQueueProcessor&lt;AppleMusicLookupService&gt;</c>), which consumes the
+///   asynchronous Redis Streams work queue; and</item>
+///   <item>the synchronous WorkerApi lookup endpoints (mapped via
+///   <c>MapProviderLookupEndpoints&lt;AppleMusicLookupService&gt;</c>), which the
+///   Web layer calls directly for interactive lookups.</item>
+/// </list>
+/// All actual Apple Music lookup behavior lives in <c>AppleMusicLookupService</c>
+/// (in BridgeBeats.Core); this host only wires it up. The worker listens on its
+/// configured HTTP port and connects to the shared Redis backbone.
+/// </remarks>
 public static class Program {
 
     /// <summary>
-    /// The main entry point for the Apple Music worker application.
+    /// Builds, configures, and runs the Apple Music worker web application.
     /// </summary>
-    /// <param name="args">Command line arguments.</param>
+    /// <param name="args">Command-line arguments passed through to the host builder.</param>
+    /// <remarks>
+    /// Serilog is flushed in the <c>finally</c> block so buffered log entries are written
+    /// even when the host shuts down or faults.
+    /// </remarks>
     public static void Main( string[] args ) {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -32,9 +51,17 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the services for the Apple Music worker application.
+    /// Registers the worker's services: file logging, Aspire service defaults, the Redis
+    /// client, the Apple Music provider services, JSON options, and the shared queue
+    /// processor for the Apple Music provider.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
+    /// <param name="builder">The web application builder whose service collection is populated.</param>
+    /// <remarks>
+    /// Provider credentials are validated up front via <see cref="ValidateConfiguration"/>;
+    /// a missing credential aborts startup before any service is registered. The
+    /// <c>enabledProviders</c> set is left empty here because secondary fan-out across
+    /// providers is the coordinator's concern, not this single-provider worker's.
+    /// </remarks>
     private static void ConfigureServices( WebApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "AppleMusic" );
@@ -60,11 +87,17 @@ public static class Program {
     }
 
     /// <summary>
-    /// Validates the required configuration for the Apple Music worker.
+    /// Reads and validates the Apple Music credentials and resilience settings from configuration.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
-    /// <returns>A tuple containing the validated credentials and configuration values.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
+    /// <param name="builder">The web application builder whose configuration is read.</param>
+    /// <returns>
+    /// A tuple of the Apple team id, key id, key file path, and the maximum honored
+    /// <c>Retry-After</c> value in seconds (defaulting to 120 when unset).
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when any of <c>BridgeBeats:AppleTeamId</c>, <c>BridgeBeats:AppleKeyId</c>, or
+    /// <c>BridgeBeats:AppleKeyPath</c> is missing or blank.
+    /// </exception>
     private static (string TeamId, string KeyId, string KeyPath, int MaxRetryAfterSeconds) ValidateConfiguration(
         WebApplicationBuilder builder
     ) {
@@ -83,9 +116,15 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the endpoints for the Apple Music worker application.
+    /// Maps the worker's HTTP endpoints: the Aspire default health/metrics endpoints and the
+    /// WorkerApi provider-lookup routes (<c>POST /lookup/{url,isrc,upc,id,metadata,from-result}</c>).
     /// </summary>
-    /// <param name="app">The web application.</param>
+    /// <param name="app">The built web application to map endpoints onto.</param>
+    /// <remarks>
+    /// The mapped lookup endpoints follow the WorkerApi convention of returning HTTP 200 even
+    /// on failure, carrying the outcome in the response envelope; callers inspect the
+    /// success flag and error message rather than the status code.
+    /// </remarks>
     private static void ConfigureEndpoints( WebApplication app ) {
         // Map Aspire health check endpoints
         _ = app.MapDefaultEndpoints( );

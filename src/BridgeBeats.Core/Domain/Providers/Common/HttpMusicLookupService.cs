@@ -8,13 +8,21 @@ using BridgeBeats.Core.Infrastructure.Logging;
 namespace BridgeBeats.Core.Domain.Providers.Common;
 
 /// <summary>
-/// HTTP-based implementation of <see cref="IMusicLookupService"/> that delegates to a worker service
-/// via HTTP calls. Used by the main web application to communicate with provider-specific workers.
+/// Thin <see cref="IMusicLookupService"/> implementation that forwards every lookup to a remote
+/// provider worker over HTTP rather than calling the provider's own API.
 /// </summary>
-/// <param name="provider">The music provider this service handles.</param>
-/// <param name="httpClientFactory">Factory for creating HTTP clients.</param>
-/// <param name="httpClientName">The named HTTP client to use (configured with service discovery).</param>
-/// <param name="logger">Logger for diagnostic information.</param>
+/// <remarks>
+/// This is the proxy half of the two <see cref="IMusicLookupService"/> implementation families. It
+/// posts each request to a named worker (one of the <c>/lookup/*</c> routes) and unwraps the worker's
+/// <see cref="ProviderLookupResponse"/> envelope. Success is signalled by the envelope, not the HTTP
+/// status code: the worker returns HTTP 200 even for handled errors and reports failure through
+/// <see cref="ProviderLookupResponse.Success"/> / <see cref="ProviderLookupResponse.ErrorMessage"/>.
+/// Direct, in-process provider services derive instead from <see cref="MusicLookupServiceBase"/>.
+/// </remarks>
+/// <param name="provider">The provider this proxy represents, surfaced through <see cref="Provider"/>.</param>
+/// <param name="httpClientFactory">Factory used to create the named worker HTTP client.</param>
+/// <param name="httpClientName">Name of the configured worker client to resolve from <paramref name="httpClientFactory"/>.</param>
+/// <param name="logger">Logger for worker communication diagnostics.</param>
 public partial class HttpMusicLookupService(
     SupportedProviders provider,
     IHttpClientFactory httpClientFactory,
@@ -22,42 +30,63 @@ public partial class HttpMusicLookupService(
     ILogger<HttpMusicLookupService> logger
 ) : IMusicLookupService {
 
-    /// <summary>
-    /// The music provider that this HTTP adapter communicates with.
-    /// </summary>
+    /// <summary>Gets the provider this proxy forwards requests for.</summary>
     public SupportedProviders Provider => provider;
 
-    /// <inheritdoc/>
+    /// <summary>Resolves a track or album by its provider URL via the worker's <c>/lookup/url</c> route.</summary>
+    /// <param name="uri">The provider URL to resolve.</param>
+    /// <returns>The resolved result, or <see langword="null"/> if the worker found nothing or reported an error.</returns>
+    /// <exception cref="HttpRequestException">Thrown (after logging) when the worker call fails at the transport level.</exception>
     public async Task<MusicLookupResult?> GetInfoAsync( string uri ) {
         LookupByUrlRequest request = new( uri );
         return await PostAsync( "/lookup/url", request );
     }
 
-    /// <inheritdoc/>
+    /// <summary>Resolves a track by ISRC via the worker's <c>/lookup/isrc</c> route.</summary>
+    /// <param name="isrc">The International Standard Recording Code to resolve.</param>
+    /// <returns>The resolved result, or <see langword="null"/> if the worker found nothing or reported an error.</returns>
+    /// <exception cref="HttpRequestException">Thrown (after logging) when the worker call fails at the transport level.</exception>
     public async Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc ) {
         LookupByIsrcRequest request = new( isrc );
         return await PostAsync( "/lookup/isrc", request );
     }
 
-    /// <inheritdoc/>
+    /// <summary>Resolves an album by UPC via the worker's <c>/lookup/upc</c> route.</summary>
+    /// <param name="upc">The Universal Product Code to resolve.</param>
+    /// <returns>The resolved result, or <see langword="null"/> if the worker found nothing or reported an error.</returns>
+    /// <exception cref="HttpRequestException">Thrown (after logging) when the worker call fails at the transport level.</exception>
     public async Task<MusicLookupResult?> GetInfoByUPCAsync( string upc ) {
         LookupByUpcRequest request = new( upc );
         return await PostAsync( "/lookup/upc", request );
     }
 
-    /// <inheritdoc/>
+    /// <summary>Resolves an entity by its provider id via the worker's <c>/lookup/id</c> route.</summary>
+    /// <param name="providerId">The provider-native entity id.</param>
+    /// <param name="isAlbum"><see langword="true"/> to resolve an album, <see langword="false"/> for a track.</param>
+    /// <returns>The resolved result, or <see langword="null"/> if the worker found nothing or reported an error.</returns>
+    /// <exception cref="HttpRequestException">Thrown (after logging) when the worker call fails at the transport level.</exception>
     public async Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum ) {
         LookupByIdRequest request = new( providerId, isAlbum );
         return await PostAsync( "/lookup/id", request );
     }
 
-    /// <inheritdoc/>
+    /// <summary>Resolves an entity by title and artist via the worker's <c>/lookup/metadata</c> route.</summary>
+    /// <param name="title">The track or album title to match.</param>
+    /// <param name="artist">The artist name to match.</param>
+    /// <returns>The resolved result, or <see langword="null"/> if the worker found nothing or reported an error.</returns>
+    /// <exception cref="HttpRequestException">Thrown (after logging) when the worker call fails at the transport level.</exception>
     public async Task<MusicLookupResult?> GetInfoAsync( string title, string artist ) {
         LookupByMetadataRequest request = new( title, artist );
         return await PostAsync( "/lookup/metadata", request );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Re-resolves an existing result on this provider via the worker's <c>/lookup/from-result</c> route,
+    /// used to back-fill a provider that is missing from a combined result.
+    /// </summary>
+    /// <param name="lookup">The already-resolved result whose artist, title, optional external id, and album flag drive the lookup.</param>
+    /// <returns>The resolved result, or <see langword="null"/> if the worker found nothing or reported an error.</returns>
+    /// <exception cref="HttpRequestException">Thrown (after logging) when the worker call fails at the transport level.</exception>
     public async Task<MusicLookupResult?> GetInfoAsync( MusicLookupResult lookup ) {
         LookupFromResultRequest request = new(
             lookup.Artist,
@@ -68,6 +97,17 @@ public partial class HttpMusicLookupService(
         return await PostAsync( "/lookup/from-result", request );
     }
 
+    /// <summary>
+    /// Posts a typed request to a worker route and unwraps the <see cref="ProviderLookupResponse"/> envelope.
+    /// </summary>
+    /// <typeparam name="TRequest">The worker request record type being serialized.</typeparam>
+    /// <param name="endpoint">The worker route (for example <c>/lookup/url</c>) to post to.</param>
+    /// <param name="request">The request payload to serialize as JSON.</param>
+    /// <returns>
+    /// The <see cref="ProviderLookupResponse.Result"/> on success; <see langword="null"/> when the HTTP
+    /// status is unsuccessful, the body is empty, or the envelope reports an error message.
+    /// </returns>
+    /// <exception cref="HttpRequestException">Re-thrown (after logging) on a transport-level failure.</exception>
     private async Task<MusicLookupResult?> PostAsync<TRequest>( string endpoint, TRequest request ) {
         try {
             using HttpClient client = httpClientFactory.CreateClient( httpClientName );
@@ -103,45 +143,54 @@ public partial class HttpMusicLookupService(
 
     #region LoggerMessage Methods
 
-    /// <summary>
-    /// Logs when a worker returns an HTTP error status.
-    /// </summary>
+    /// <summary>Logs a warning when a worker returns an unsuccessful HTTP status code.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="provider">The provider whose worker was called.</param>
+    /// <param name="statusCode">The HTTP status code returned by the worker.</param>
+    /// <param name="endpoint">The worker route that was called.</param>
     [LoggerMessage(
         EventId = LogEventIds.Providers.Common.WorkerHttpError,
         Level = LogLevel.Warning,
         Message = "Worker {Provider} returned HTTP {StatusCode} for {Endpoint}" )]
     internal static partial void LogWorkerHttpError( ILogger logger, SupportedProviders provider, int statusCode, string endpoint );
 
-    /// <summary>
-    /// Logs when a worker returns a null response.
-    /// </summary>
+    /// <summary>Logs a warning when a worker returns a body that deserializes to a null envelope.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="provider">The provider whose worker was called.</param>
+    /// <param name="endpoint">The worker route that was called.</param>
     [LoggerMessage(
         EventId = LogEventIds.Providers.Common.WorkerNullResponse,
         Level = LogLevel.Warning,
         Message = "Worker {Provider} returned null response for {Endpoint}" )]
     internal static partial void LogWorkerNullResponse( ILogger logger, SupportedProviders provider, string endpoint );
 
-    /// <summary>
-    /// Logs when a worker returns an error message.
-    /// </summary>
+    /// <summary>Logs a warning when a worker envelope reports an error message.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="provider">The provider whose worker was called.</param>
+    /// <param name="endpoint">The worker route that was called.</param>
+    /// <param name="errorMessage">The error message carried in the worker envelope.</param>
     [LoggerMessage(
         EventId = LogEventIds.Providers.Common.WorkerError,
         Level = LogLevel.Warning,
         Message = "Worker {Provider} returned error for {Endpoint}: {ErrorMessage}" )]
     internal static partial void LogWorkerError( ILogger logger, SupportedProviders provider, string endpoint, string errorMessage );
 
-    /// <summary>
-    /// Logs an HTTP request exception when communicating with a worker.
-    /// </summary>
+    /// <summary>Logs a transport-level HTTP failure while communicating with a worker.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="provider">The provider whose worker was called.</param>
+    /// <param name="endpoint">The worker route that was called.</param>
     [LoggerMessage(
         EventId = LogEventIds.Providers.Common.HttpRequestError,
         Level = LogLevel.Error,
         Message = "HTTP error communicating with {Provider} worker at {Endpoint}" )]
     internal static partial void LogHttpRequestError( ILogger logger, Exception ex, SupportedProviders provider, string endpoint );
 
-    /// <summary>
-    /// Logs an unexpected exception when communicating with a worker.
-    /// </summary>
+    /// <summary>Logs an unexpected (non-HTTP) failure while communicating with a worker.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="provider">The provider whose worker was called.</param>
+    /// <param name="endpoint">The worker route that was called.</param>
     [LoggerMessage(
         EventId = LogEventIds.Providers.Common.UnexpectedError,
         Level = LogLevel.Error,

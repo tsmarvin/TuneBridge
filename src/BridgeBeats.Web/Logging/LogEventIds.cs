@@ -5,8 +5,10 @@ using RateLimitingMiddleware = BridgeBeats.Web.Middleware.RateLimitingMiddleware
 namespace BridgeBeats.Web.Logging;
 
 /// <summary>
-/// EventIds for Web layer components (4000-4999).
-/// Extends <see cref="Core.Infrastructure.Logging.LogEventIds"/> with Web-specific EventIds.
+/// Centralized logging event identifiers for Web layer components (4000-4999), grouped by the area that
+/// emits them. Each constant is a stable numeric event id used by the source-generated
+/// <see cref="LoggerMessage"/> definitions across the web application. Extends
+/// <see cref="Core.Infrastructure.Logging.LogEventIds"/> with Web-specific event ids.
 /// </summary>
 /// <remarks>
 /// Range Allocation:
@@ -19,84 +21,84 @@ namespace BridgeBeats.Web.Logging;
 /// </remarks>
 public static class LogEventIds {
     /// <summary>
-    /// EventIds for Controllers (4000-4499).
+    /// Event identifiers emitted by the web controllers (4000-4499), allocated in per-controller numeric blocks.
     /// </summary>
     public static class Controllers {
         // AccountController (4000-4049)
 
-        /// <summary>EventId for AccountController user registration.</summary>
+        /// <summary>A new account was registered.</summary>
         public const int AccountControllerRegistered = 4000;
 
-        /// <summary>EventId for AccountController user login.</summary>
+        /// <summary>A user logged in.</summary>
         public const int AccountControllerLoggedIn = 4001;
 
-        /// <summary>EventId for AccountController API key regeneration.</summary>
+        /// <summary>A user's API key was regenerated.</summary>
         public const int AccountControllerApiKeyRegenerated = 4002;
 
-        /// <summary>EventId for AccountController data download.</summary>
+        /// <summary>A user downloaded their personal data.</summary>
         public const int AccountControllerDataDownloaded = 4003;
 
-        /// <summary>EventId for AccountController delete failure.</summary>
+        /// <summary>An account deletion attempt failed.</summary>
         public const int AccountControllerDeleteFailed = 4004;
 
-        /// <summary>EventId for AccountController account deleted.</summary>
+        /// <summary>An account was deleted.</summary>
         public const int AccountControllerDeleted = 4005;
 
-        /// <summary>EventId for AccountController ATProto OAuth started.</summary>
+        /// <summary>An ATProto OAuth authorization flow was started.</summary>
         public const int AccountControllerAtProtoOAuthStarted = 4006;
 
-        /// <summary>EventId for AccountController ATProto OAuth start failed.</summary>
+        /// <summary>Starting an ATProto OAuth authorization flow failed.</summary>
         public const int AccountControllerAtProtoOAuthStartFailed = 4007;
 
-        /// <summary>EventId for AccountController ATProto OAuth error.</summary>
+        /// <summary>An ATProto OAuth flow returned an error.</summary>
         public const int AccountControllerAtProtoOAuthError = 4008;
 
-        /// <summary>EventId for AccountController ATProto user create failed.</summary>
+        /// <summary>Creating a user from an ATProto identity failed.</summary>
         public const int AccountControllerAtProtoUserCreateFailed = 4009;
 
-        /// <summary>EventId for AccountController ATProto user created.</summary>
+        /// <summary>A user was created from an ATProto identity.</summary>
         public const int AccountControllerAtProtoUserCreated = 4010;
 
-        /// <summary>EventId for AccountController ATProto tokens updated.</summary>
+        /// <summary>A user's ATProto tokens were updated.</summary>
         public const int AccountControllerAtProtoTokensUpdated = 4011;
 
-        /// <summary>EventId for AccountController ATProto logged in.</summary>
+        /// <summary>A user logged in via ATProto.</summary>
         public const int AccountControllerAtProtoLoggedIn = 4012;
 
-        /// <summary>EventId for AccountController ATProto callback failed.</summary>
+        /// <summary>Handling the ATProto OAuth callback failed.</summary>
         public const int AccountControllerAtProtoCallbackFailed = 4013;
 
         // HomeController (4050-4074)
 
-        /// <summary>EventId for HomeController cache invalid operation.</summary>
+        /// <summary>A cache operation raised an invalid-operation error.</summary>
         public const int HomeControllerCacheInvalidOp = 4050;
 
-        /// <summary>EventId for HomeController cache argument error.</summary>
+        /// <summary>A cache operation raised an argument error.</summary>
         public const int HomeControllerCacheArgError = 4051;
 
-        /// <summary>EventId for HomeController cache error.</summary>
+        /// <summary>A cache operation raised an unexpected error.</summary>
         public const int HomeControllerCacheError = 4052;
 
-        /// <summary>EventId for HomeController stream result error.</summary>
+        /// <summary>Streaming a single lookup result failed.</summary>
         public const int HomeControllerStreamResultError = 4053;
 
-        /// <summary>EventId for HomeController stream error.</summary>
+        /// <summary>Streaming lookup results failed.</summary>
         public const int HomeControllerStreamError = 4054;
 
         // DashboardController (4075-4099)
 
         /// <summary>
-        /// EventId for <see cref="DashboardController.LogAuthorizationFailedUserNotFound"/>.
+        /// Authorization for the Aspire dashboard failed because the user could not be found.
         /// </summary>
         public const int DashboardControllerAuthorizationFailedUserNotFound = 4075;
 
         /// <summary>
-        /// EventId for <see cref="DashboardController.LogAuthorizationDeniedMissingRole"/>.
+        /// Authorization for the Aspire dashboard was denied because the user lacks the required role.
         /// </summary>
         public const int DashboardControllerAuthorizationDeniedMissingRole = 4076;
 
         /// <summary>
-        /// EventId for <see cref="DashboardController.LogAuthorizationGranted"/>.
+        /// Authorization for the Aspire dashboard was granted.
         /// </summary>
         public const int DashboardControllerAuthorizationGranted = 4077;
 
@@ -104,98 +106,98 @@ public static class LogEventIds {
 
         // OpenGraphCardController (4150-4174)
 
-        /// <summary>EventId for OpenGraphCardController cache invalid operation.</summary>
+        /// <summary>An Open Graph card cache operation raised an invalid-operation error.</summary>
         public const int OpenGraphCardControllerCacheInvalidOp = 4150;
 
-        /// <summary>EventId for OpenGraphCardController cache argument error.</summary>
+        /// <summary>An Open Graph card cache operation raised an argument error.</summary>
         public const int OpenGraphCardControllerCacheArgError = 4151;
 
-        /// <summary>EventId for OpenGraphCardController cache error.</summary>
+        /// <summary>An Open Graph card cache operation raised an unexpected error.</summary>
         public const int OpenGraphCardControllerCacheError = 4152;
 
         // PlaylistController (4200-4249)
 
-        /// <summary>EventId for PlaylistController create error.</summary>
+        /// <summary>Creating a playlist failed.</summary>
         public const int PlaylistControllerCreateError = 4200;
 
-        /// <summary>EventId for PlaylistController mismatched cards.</summary>
+        /// <summary>A playlist create request supplied mismatched card identifiers and record keys.</summary>
         public const int PlaylistControllerMismatchedCards = 4201;
 
-        /// <summary>EventId for PlaylistController card regenerated.</summary>
+        /// <summary>A playlist card was regenerated.</summary>
         public const int PlaylistControllerCardRegenerated = 4202;
 
-        /// <summary>EventId for PlaylistController card load failed.</summary>
+        /// <summary>Loading a playlist card failed.</summary>
         public const int PlaylistControllerCardLoadFailed = 4203;
 
-        /// <summary>EventId for PlaylistController embed card regenerated.</summary>
+        /// <summary>A playlist embed card was regenerated.</summary>
         public const int PlaylistControllerEmbedCardRegenerated = 4204;
 
-        /// <summary>EventId for PlaylistController embed card load failed.</summary>
+        /// <summary>Loading a playlist embed card failed.</summary>
         public const int PlaylistControllerEmbedCardLoadFailed = 4205;
 
         // PlaylistsController (4275-4299)
 
-        /// <summary>EventId for PlaylistsController load error.</summary>
+        /// <summary>Loading the user's playlists failed.</summary>
         public const int PlaylistsControllerLoadError = 4275;
 
-        /// <summary>EventId for PlaylistsController delete error.</summary>
+        /// <summary>Deleting a playlist failed.</summary>
         public const int PlaylistsControllerDeleteError = 4276;
 
         // StatisticsController (4300-4324)
 
-        /// <summary>EventId for StatisticsController not available.</summary>
+        /// <summary>The statistics service was unavailable.</summary>
         public const int StatisticsControllerNotAvailable = 4300;
 
-        /// <summary>EventId for StatisticsController retrieve error.</summary>
+        /// <summary>Retrieving statistics failed.</summary>
         public const int StatisticsControllerRetrieveError = 4301;
 
-        /// <summary>EventId for StatisticsController refresh error.</summary>
+        /// <summary>Refreshing statistics failed.</summary>
         public const int StatisticsControllerRefreshError = 4302;
 
         // AppleMusicController (4250-4274)
 
-        /// <summary>EventId for AppleMusicController store token failed.</summary>
+        /// <summary>Storing an Apple Music user token failed.</summary>
         public const int AppleMusicControllerStoreTokenFailed = 4250;
 
-        /// <summary>EventId for AppleMusicController token stored.</summary>
+        /// <summary>An Apple Music user token was stored.</summary>
         public const int AppleMusicControllerTokenStored = 4251;
 
-        /// <summary>EventId for AppleMusicController get playlists failed.</summary>
+        /// <summary>Fetching Apple Music playlists failed.</summary>
         public const int AppleMusicControllerGetPlaylistsFailed = 4252;
 
-        /// <summary>EventId for AppleMusicController get playlists error.</summary>
+        /// <summary>Fetching Apple Music playlists raised an error.</summary>
         public const int AppleMusicControllerGetPlaylistsError = 4253;
 
-        /// <summary>EventId for AppleMusicController cache invalid operation.</summary>
+        /// <summary>An Apple Music cache operation raised an invalid-operation error.</summary>
         public const int AppleMusicControllerCacheInvalidOp = 4254;
 
-        /// <summary>EventId for AppleMusicController cache argument error.</summary>
+        /// <summary>An Apple Music cache operation raised an argument error.</summary>
         public const int AppleMusicControllerCacheArgError = 4255;
 
-        /// <summary>EventId for AppleMusicController cache error.</summary>
+        /// <summary>An Apple Music cache operation raised an unexpected error.</summary>
         public const int AppleMusicControllerCacheError = 4256;
 
-        /// <summary>EventId for AppleMusicController get tracks failed.</summary>
+        /// <summary>Fetching Apple Music playlist tracks failed.</summary>
         public const int AppleMusicControllerGetTracksFailed = 4257;
 
-        /// <summary>EventId for AppleMusicController playlist too large.</summary>
+        /// <summary>An Apple Music playlist exceeded the supported size.</summary>
         public const int AppleMusicControllerPlaylistTooLarge = 4258;
 
-        /// <summary>EventId for AppleMusicController process playlist error.</summary>
+        /// <summary>Processing an Apple Music playlist failed.</summary>
         public const int AppleMusicControllerProcessPlaylistError = 4259;
 
-        /// <summary>EventId for AppleMusicController process song error.</summary>
+        /// <summary>Processing an Apple Music song failed.</summary>
         public const int AppleMusicControllerProcessSongError = 4260;
     }
 
     /// <summary>
-    /// EventIds for Middleware (4500-4749).
+    /// Event identifiers emitted by the request-pipeline middleware (4500-4749).
     /// </summary>
     public static class Middleware {
         // RateLimitingMiddleware (4500-4524)
 
         /// <summary>
-        /// EventId for <see cref="RateLimitingMiddleware.LogRateLimitExceeded"/>.
+        /// A user exceeded the hourly request quota in <see cref="RateLimitingMiddleware"/>.
         /// </summary>
         public const int RateLimitingMiddlewareRateLimitExceeded = 4500;
 
@@ -204,7 +206,8 @@ public static class LogEventIds {
         // HealthEndpointAuthorizationMiddleware (4525-4549)
 
         /// <summary>
-        /// EventId for <see cref="HealthEndpointAuthorizationMiddleware.LogBlockedExternalAccess"/>.
+        /// An external caller was blocked from the liveness endpoint by
+        /// <see cref="HealthEndpointAuthorizationMiddleware"/>.
         /// </summary>
         public const int HealthEndpointAuthorizationMiddlewareBlockedExternalAccess = 4525;
 
@@ -214,18 +217,18 @@ public static class LogEventIds {
     }
 
     /// <summary>
-    /// EventIds for Configuration (4750-4899).
+    /// Event identifiers emitted during application startup and configuration (4750-4899).
     /// </summary>
     public static class Configuration {
         // StartupExtensions (4750-4774)
 
-        /// <summary>EventId for StartupExtensions Redis not configured.</summary>
+        /// <summary>Redis was not configured, so caching is unavailable.</summary>
         public const int StartupExtensionsRedisNotConfigured = 4750;
 
-        /// <summary>EventId for StartupExtensions Redis connected.</summary>
+        /// <summary>The Redis cache connection was established.</summary>
         public const int StartupExtensionsRedisConnected = 4751;
 
-        /// <summary>EventId for StartupExtensions Redis failed.</summary>
+        /// <summary>Initializing the Redis cache connection failed.</summary>
         public const int StartupExtensionsRedisFailed = 4752;
     }
 }

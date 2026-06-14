@@ -16,8 +16,11 @@ using Moq;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for the ATProto login fix (Bug 2) and Register duplicate-email check.
-/// Uses <see cref="CustomWebApplicationFactory"/> with a stubbed <see cref="IATProtoOAuthService"/>.
+/// Integration tests for first-party registration and ATProto OAuth login, running the real web app
+/// in-memory via a custom factory that mocks the ATProto OAuth service. Verifies registration validation
+/// (malformed and duplicate email), that an OAuth callback for a new DID creates a user (with a null API
+/// key hash) and signs them in, that an existing DID has its tokens updated without duplicating the user,
+/// and that multiple ATProto users with null email can coexist.
 /// </summary>
 /// <remarks>
 /// [DoNotParallelize]: the factory ctor sets process-wide env vars (BridgeBeats__Workers__UseWorkerServices,
@@ -28,21 +31,30 @@ namespace BridgeBeats.Tests.Integration;
 [DoNotParallelize]
 public class AtProtoLoginIntegrationTests : IDisposable {
 
+    /// <summary>The test web application factory with the ATProto OAuth service mocked.</summary>
     private AtProtoTestWebApplicationFactory? _factory;
+    /// <summary>The HTTP client connected to the test host (auto-redirect disabled).</summary>
     private HttpClient? _client;
 
+    /// <summary>The ATProto handle used for the test identity.</summary>
     private const string TestHandle = "taylormar.vin";
+    /// <summary>The ATProto DID used for the test identity.</summary>
     private const string TestDid = "did:plc:kx2mxhedzbeuqethywrzdexz";
+    /// <summary>The stub access token returned by the mocked OAuth service.</summary>
     private const string TestAccessToken = "test-access-token";
+    /// <summary>The stub refresh token returned by the mocked OAuth service.</summary>
     private const string TestRefreshToken = "test-refresh-token";
+    /// <summary>The stub DPoP key (JWK) returned by the mocked OAuth service.</summary>
     private const string TestDPoPKey = "{\"kty\":\"EC\",\"crv\":\"P-256\"}";
+    /// <summary>The token expiration timestamp used for the mocked OAuth result.</summary>
     private static readonly DateTime s_testTokenExpiration = DateTime.UtcNow.AddHours( 1 );
 
-    /// <summary>
-    /// Gets or sets the test context which provides cooperative cancellation support.
-    /// </summary>
+    /// <summary>The MSTest-injected test context, providing cooperative cancellation support.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>
+    /// Builds the test host (auto-redirect off) and migrates the identity database before each test.
+    /// </summary>
     [TestInitialize]
     public async Task Setup( ) {
         _factory = new AtProtoTestWebApplicationFactory( );
@@ -52,6 +64,9 @@ public class AtProtoLoginIntegrationTests : IDisposable {
         await _factory.InitializeDatabasesAsync( );
     }
 
+    /// <summary>
+    /// Tears down the test host after each test by delegating to <see cref="Dispose()"/>.
+    /// </summary>
     [TestCleanup]
     public void Cleanup( ) => Dispose( );
 

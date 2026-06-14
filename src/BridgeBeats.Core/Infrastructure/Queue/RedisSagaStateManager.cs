@@ -8,51 +8,113 @@ using StackExchange.Redis;
 namespace BridgeBeats.Core.Infrastructure.Queue;
 
 /// <summary>
-/// Redis-based implementation of <see cref="ISagaStateManager"/> that stores saga state
-/// with separate keys for provider states to enable efficient partial updates.
+/// Redis-backed implementation of <see cref="ISagaStateManager"/> that stores lookup saga state
+/// with separate keys for provider states to enable efficient partial updates: a core hash per
+/// saga, a hash per provider, and a pending-saga index.
 /// </summary>
+/// <param name="redis">Redis connection used for all saga operations.</param>
+/// <param name="logger">Logger for saga diagnostics.</param>
+/// <param name="settings">Queue configuration, used for the per-write TTL.</param>
 /// <remarks>
-/// Key patterns: <c>saga:{sagaId}</c> (core state hash) and
-/// <c>saga:{sagaId}:provider:{provider}</c> (per-provider hash). TTL is extended on every update.
+/// A saga's core fields live in hash <c>saga:{sagaId}</c>; each provider's progress lives in
+/// <c>saga:{sagaId}:provider:{provider}</c>; sagas awaiting finalization are tracked in the set
+/// <c>saga:pending</c>. Every write refreshes the saga's TTL to the configured job-expiration
+/// window, so a stalled saga self-expires and can be retried. Saga completeness is not stored: it
+/// is computed from the per-provider hashes at read time, so a saga reads as complete when all of
+/// its initialized providers report complete. Redis here is transport and working state, not the
+/// system of record — final results live in the ATProto PDS, referenced by the URIs stored here.
 /// </remarks>
-/// <param name="redis">The Redis connection multiplexer.</param>
-/// <param name="logger">Logger for diagnostic information.</param>
-/// <param name="settings">Queue configuration settings.</param>
 public sealed partial class RedisSagaStateManager(
     IConnectionMultiplexer redis,
     ILogger<RedisSagaStateManager> logger,
     IOptions<QueueSettings> settings
     ) : ISagaStateManager {
 
+    /// <summary>Redis connection used for all saga operations.</summary>
     private readonly IConnectionMultiplexer _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
+
+    /// <summary>Logger for saga diagnostics.</summary>
     private readonly ILogger<RedisSagaStateManager> _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
+
+    /// <summary>Queue configuration, consulted for the per-write job-expiration TTL.</summary>
     private readonly QueueSettings _settings = settings?.Value ?? throw new ArgumentNullException( nameof( settings ) );
 
+    /// <summary>Key prefix for saga hashes. Literal value: <c>"saga:"</c>.</summary>
     private const string SagaPrefix = "saga:";
+
+    /// <summary>Infix between saga id and provider in a provider key. Literal value: <c>":provider:"</c>.</summary>
     private const string ProviderSuffix = ":provider:";
+
+    /// <summary>Key of the set indexing sagas awaiting finalization. Literal value: <c>"saga:pending"</c>.</summary>
     private const string PendingSagaSetKey = "saga:pending";
 
     // Hash field names for saga state
+
+    /// <summary>Core hash field: the lookup key. Literal: <c>"lookupKey"</c>.</summary>
     private const string FieldLookupKey = "lookupKey";
+
+    /// <summary>Core hash field: the lookup type. Literal: <c>"lookupType"</c>.</summary>
     private const string FieldLookupType = "lookupType";
+
+    /// <summary>Core hash field: the lookup value. Literal: <c>"lookupValue"</c>.</summary>
     private const string FieldLookupValue = "lookupValue";
+
+    /// <summary>Core hash field: saga creation time (ISO-8601). Literal: <c>"createdAt"</c>.</summary>
     private const string FieldCreatedAt = "createdAt";
+
+    /// <summary>Core hash field: URI of the partial result written while awaiting secondaries. Literal: <c>"partialResultUri"</c>.</summary>
     private const string FieldPartialResultUri = "partialResultUri";
+
+    /// <summary>Core hash field: URI of the final result. Literal: <c>"finalResultUri"</c>.</summary>
     private const string FieldFinalResultUri = "finalResultUri";
+
+    /// <summary>Core hash field: whether the current result is partial. Literal: <c>"isPartial"</c>.</summary>
     private const string FieldIsPartial = "isPartial";
+
+    /// <summary>Core hash field: the provider that first resolved the lookup. Literal: <c>"initialProvider"</c>.</summary>
     private const string FieldInitialProvider = "initialProvider";
+
+    /// <summary>Core hash field: serialized per-provider rate-limit info. Literal: <c>"rateLimitInfo"</c>.</summary>
     private const string FieldRateLimitInfo = "rateLimitInfo";
+
+    /// <summary>Core hash field: the priority the lookup originated at. Literal: <c>"originPriority"</c>.</summary>
     private const string FieldOriginPriority = "originPriority";
+
+    /// <summary>Core hash field: single-winner marker that secondary lookups were queued. Literal: <c>"secondariesQueued"</c>.</summary>
     private const string FieldSecondariesQueued = "secondariesQueued";
 
     // Hash field names for provider state
+
+    /// <summary>Provider hash field: whether the provider has finished. Literal: <c>"isComplete"</c>.</summary>
     private const string FieldIsComplete = "isComplete";
+
+    /// <summary>Provider hash field: whether the provider succeeded. Literal: <c>"isSuccess"</c>.</summary>
     private const string FieldIsSuccess = "isSuccess";
+
+    /// <summary>Provider hash field: serialized provider result. Literal: <c>"resultJson"</c>.</summary>
     private const string FieldResultJson = "resultJson";
+
+    /// <summary>Provider hash field: when the provider completed (ISO-8601). Literal: <c>"completedAt"</c>.</summary>
     private const string FieldCompletedAt = "completedAt";
+
+    /// <summary>Provider hash field: an error message if the provider failed. Literal: <c>"errorMessage"</c>.</summary>
     private const string FieldErrorMessage = "errorMessage";
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Returns the existing saga for an id, refreshing its TTL, or creates a new one.
+    /// </summary>
+    /// <param name="sagaId">The deterministic saga id for the lookup.</param>
+    /// <param name="lookupKey">The lookup key the saga tracks.</param>
+    /// <param name="lookupType">The lookup type.</param>
+    /// <param name="lookupValue">The lookup value.</param>
+    /// <param name="originPriority">
+    /// The priority the lookup originated at. On an existing saga this is set only if not already
+    /// present (so the original origin survives a later background re-enqueue); on a new saga it is
+    /// stored, defaulting to background when omitted.
+    /// </param>
+    /// <param name="cancellationToken">Token forwarded to nested reads.</param>
+    /// <returns>The existing or newly created <see cref="LookupSagaState"/>.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/>, <paramref name="lookupKey"/>, or <paramref name="lookupValue"/> is null or whitespace.</exception>
     public async Task<LookupSagaState> GetOrCreateAsync(
         string sagaId,
         string lookupKey,
@@ -127,7 +189,21 @@ public sealed partial class RedisSagaStateManager(
         };
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Reads a saga's full state, including each provider's progress.
+    /// </summary>
+    /// <param name="sagaId">The saga id to read.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>
+    /// The reconstructed <see cref="LookupSagaState"/>, or null if the saga hash is absent or its
+    /// required core fields are missing or invalid.
+    /// </returns>
+    /// <remarks>
+    /// Origin priority defaults to background when the stored value is missing or unparseable. The
+    /// returned state's completeness is derived from the loaded provider states, not read from a
+    /// stored flag.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
     public async Task<LookupSagaState?> GetAsync( string sagaId, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
 
@@ -207,7 +283,16 @@ public sealed partial class RedisSagaStateManager(
         };
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Writes one provider's progress into its provider hash and refreshes both the provider and
+    /// saga TTLs.
+    /// </summary>
+    /// <param name="sagaId">The saga the provider belongs to.</param>
+    /// <param name="state">The provider state to persist.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the provider hash is written.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="state"/> is null.</exception>
     public async Task UpdateProviderStateAsync(
         string sagaId,
         ProviderLookupState state,
@@ -237,7 +322,14 @@ public sealed partial class RedisSagaStateManager(
         LogProviderStateUpdated( _logger, sagaId, state.Provider, state.IsComplete, state.IsSuccess );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Stores the URI of a partial result written while the saga awaits remaining providers.
+    /// </summary>
+    /// <param name="sagaId">The saga to update.</param>
+    /// <param name="uri">The partial-result URI.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the field is written and the TTL refreshed.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> or <paramref name="uri"/> is null or whitespace.</exception>
     public async Task SetPartialResultUriAsync(
         string sagaId,
         string uri,
@@ -256,7 +348,14 @@ public sealed partial class RedisSagaStateManager(
         LogPartialResultUriSet( _logger, sagaId, uri );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Stores the URI of the final result and removes the saga from the pending index.
+    /// </summary>
+    /// <param name="sagaId">The saga to finalize.</param>
+    /// <param name="uri">The final-result URI (a PDS record URI).</param>
+    /// <param name="cancellationToken">Token forwarded to the pending-index removal.</param>
+    /// <returns>A task that completes once the field is written and the saga de-indexed.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> or <paramref name="uri"/> is null or whitespace.</exception>
     public async Task SetFinalResultUriAsync(
         string sagaId,
         string uri,
@@ -278,7 +377,14 @@ public sealed partial class RedisSagaStateManager(
         LogFinalResultUriSet( _logger, sagaId, uri );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Deletes a saga: removes it from the pending index, deletes its core hash, and deletes every
+    /// provider hash.
+    /// </summary>
+    /// <param name="sagaId">The saga to delete.</param>
+    /// <param name="cancellationToken">Token forwarded to the pending-index removal.</param>
+    /// <returns>True if the core saga hash existed and was deleted; otherwise false.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
     public async Task<bool> DeleteAsync( string sagaId, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
 
@@ -304,7 +410,14 @@ public sealed partial class RedisSagaStateManager(
         return sagaDeleted;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Sets the saga's partial-result flag.
+    /// </summary>
+    /// <param name="sagaId">The saga to update.</param>
+    /// <param name="isPartial">Whether the current result is partial.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the field is written and the TTL refreshed.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
     public async Task SetIsPartialAsync( string sagaId, bool isPartial, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
 
@@ -318,7 +431,14 @@ public sealed partial class RedisSagaStateManager(
         LogIsPartialSet( _logger, isPartial, sagaId );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Records which provider first resolved the lookup.
+    /// </summary>
+    /// <param name="sagaId">The saga to update.</param>
+    /// <param name="provider">The initial provider.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the field is written and the TTL refreshed.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
     public async Task SetInitialProviderAsync( string sagaId, SupportedProviders provider, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
 
@@ -332,7 +452,15 @@ public sealed partial class RedisSagaStateManager(
         LogInitialProviderSet( _logger, provider, sagaId );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Stores the saga's per-provider rate-limit information as JSON.
+    /// </summary>
+    /// <param name="sagaId">The saga to update.</param>
+    /// <param name="rateLimitInfo">The rate-limit entries to persist.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the field is written and the TTL refreshed.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="rateLimitInfo"/> is null.</exception>
     public async Task SetRateLimitInfoAsync( string sagaId, List<ProviderRateLimitInfo> rateLimitInfo, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
         ArgumentNullException.ThrowIfNull( rateLimitInfo );
@@ -348,7 +476,15 @@ public sealed partial class RedisSagaStateManager(
         LogRateLimitInfoSet( _logger, sagaId, rateLimitInfo.Count );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Atomically claims the right to queue secondary lookups for a saga, so only one concurrent
+    /// handler fans them out.
+    /// </summary>
+    /// <param name="sagaId">The saga to mark.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>True if this caller set the marker (and should queue secondaries); false if another caller already did.</returns>
+    /// <remarks>Uses a hash set with "when not exists" semantics (HSETNX) so exactly one caller wins.</remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
     public async Task<bool> TryMarkSecondariesQueuedAsync( string sagaId, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
 
@@ -366,7 +502,21 @@ public sealed partial class RedisSagaStateManager(
         return acquired;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Initializes each provider's state hash to a not-complete, not-success baseline without
+    /// clobbering any state already in flight.
+    /// </summary>
+    /// <param name="sagaId">The saga whose providers are being initialized.</param>
+    /// <param name="providers">The providers to initialize.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once all providers are initialized.</returns>
+    /// <remarks>
+    /// Each provider hash is written inside a transaction guarded by a key-not-exists condition, so
+    /// a re-initialization never overwrites a provider that already has progress; for those, only
+    /// the TTL is refreshed.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="providers"/> is null.</exception>
     public async Task InitializeProviderStatesAsync( string sagaId, IEnumerable<SupportedProviders> providers, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
         ArgumentNullException.ThrowIfNull( providers );
@@ -407,6 +557,12 @@ public sealed partial class RedisSagaStateManager(
         }
     }
 
+    /// <summary>
+    /// Loads the per-provider states for a saga by reading each provider's hash.
+    /// </summary>
+    /// <param name="db">The Redis database to read from.</param>
+    /// <param name="sagaId">The saga whose provider states are loaded.</param>
+    /// <returns>A map of provider to its loaded state; providers with no hash are omitted.</returns>
     private static async Task<Dictionary<SupportedProviders, ProviderLookupState>> LoadProviderStatesAsync(
         IDatabase db,
         string sagaId
@@ -450,7 +606,19 @@ public sealed partial class RedisSagaStateManager(
         return states;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Sweeps the pending index for sagas that have completed but were never finalized, pruning
+    /// stale index entries as it goes.
+    /// </summary>
+    /// <param name="minimumAge">Only sagas older than this are returned, to avoid racing in-flight work.</param>
+    /// <param name="limit">Maximum number of sagas to return.</param>
+    /// <param name="cancellationToken">Token forwarded to nested reads.</param>
+    /// <returns>Completed-but-unfinalized sagas, up to <paramref name="limit"/>.</returns>
+    /// <remarks>
+    /// This is the coordinator's safety net for completion events dropped by Redis Pub/Sub (which is
+    /// at-most-once). Index entries whose saga hash no longer exists, and entries that are already
+    /// finalized, are removed from the index during the sweep (self-healing).
+    /// </remarks>
     public async Task<IReadOnlyList<LookupSagaState>> GetCompletedButUnfinalizedAsync(
         TimeSpan minimumAge,
         int limit = 100,
@@ -504,7 +672,13 @@ public sealed partial class RedisSagaStateManager(
         return result;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Adds a saga to the pending-finalization index.
+    /// </summary>
+    /// <param name="sagaId">The saga to index.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the saga is added to the index.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
     public async Task AddToPendingIndexAsync( string sagaId, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
 
@@ -514,7 +688,13 @@ public sealed partial class RedisSagaStateManager(
         LogAddedToPendingIndex( _logger, sagaId );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Removes a saga from the pending-finalization index.
+    /// </summary>
+    /// <param name="sagaId">The saga to de-index.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the saga is removed from the index.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
     public async Task RemoveFromPendingIndexAsync( string sagaId, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
 
@@ -524,109 +704,181 @@ public sealed partial class RedisSagaStateManager(
         LogRemovedFromPendingIndex( _logger, sagaId );
     }
 
+    /// <summary>Builds the core saga hash key: <c>saga:{sagaId}</c>.</summary>
+    /// <param name="sagaId">The saga id.</param>
+    /// <returns>The core saga key.</returns>
     private static string GetSagaKey( string sagaId ) => $"{SagaPrefix}{sagaId}";
 
+    /// <summary>Builds a provider hash key: <c>saga:{sagaId}:provider:{provider}</c>.</summary>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="provider">The provider.</param>
+    /// <returns>The provider key.</returns>
     private static string GetProviderKey( string sagaId, SupportedProviders provider ) =>
         $"{SagaPrefix}{sagaId}{ProviderSuffix}{provider}";
 
     #region LoggerMessage Methods
 
+    /// <summary>Logs that an existing saga was resumed rather than created.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The resumed saga id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerResumed,
         Level = LogLevel.Debug,
         Message = "Resumed existing saga {SagaId}" )]
     internal static partial void LogSagaResumed( ILogger logger, string sagaId );
 
+    /// <summary>Logs that a new saga was created.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The new saga id.</param>
+    /// <param name="lookupType">The lookup type.</param>
+    /// <param name="lookupValue">The lookup value.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerCreated,
         Level = LogLevel.Information,
         Message = "Created new saga {SagaId} for lookup {LookupType}:{LookupValue}" )]
     internal static partial void LogSagaCreated( ILogger logger, string sagaId, LookupRequestType lookupType, string lookupValue );
 
+    /// <summary>Logs that a saga hash was missing required core fields and could not be read.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The affected saga id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerIncompleteCoreState,
         Level = LogLevel.Warning,
         Message = "Saga {SagaId} has incomplete core state" )]
     internal static partial void LogIncompleteCoreState( ILogger logger, string sagaId );
 
+    /// <summary>Logs that a saga stored an unparseable lookup type.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The affected saga id.</param>
+    /// <param name="type">The invalid lookup-type string.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerInvalidLookupType,
         Level = LogLevel.Warning,
         Message = "Saga {SagaId} has invalid lookup type: {Type}" )]
     internal static partial void LogInvalidLookupType( ILogger logger, string sagaId, string type );
 
+    /// <summary>Logs that a provider's state was updated.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="provider">The provider updated.</param>
+    /// <param name="complete">Whether the provider is now complete.</param>
+    /// <param name="success">Whether the provider succeeded.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerProviderStateUpdated,
         Level = LogLevel.Debug,
         Message = "Updated provider state for saga {SagaId}, provider {Provider}: complete={Complete}, success={Success}" )]
     internal static partial void LogProviderStateUpdated( ILogger logger, string sagaId, SupportedProviders provider, bool complete, bool success );
 
+    /// <summary>Logs that the partial-result URI was set.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="uri">The partial-result URI.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerPartialResultUriSet,
         Level = LogLevel.Information,
         Message = "Set partial result URI for saga {SagaId}: {Uri}" )]
     internal static partial void LogPartialResultUriSet( ILogger logger, string sagaId, string uri );
 
+    /// <summary>Logs that the final-result URI was set.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="uri">The final-result URI.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerFinalResultUriSet,
         Level = LogLevel.Information,
         Message = "Set final result URI for saga {SagaId}: {Uri}" )]
     internal static partial void LogFinalResultUriSet( ILogger logger, string sagaId, string uri );
 
+    /// <summary>Logs that a saga was deleted.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The deleted saga id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerDeleted,
         Level = LogLevel.Information,
         Message = "Deleted saga {SagaId}" )]
     internal static partial void LogSagaDeleted( ILogger logger, string sagaId );
 
+    /// <summary>Logs that the partial flag was set.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="isPartial">The new partial flag value.</param>
+    /// <param name="sagaId">The saga id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerIsPartialSet,
         Level = LogLevel.Debug,
         Message = "Set isPartial={IsPartial} for saga {SagaId}" )]
     internal static partial void LogIsPartialSet( ILogger logger, bool isPartial, string sagaId );
 
+    /// <summary>Logs that the initial provider was set.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="provider">The initial provider.</param>
+    /// <param name="sagaId">The saga id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerInitialProviderSet,
         Level = LogLevel.Debug,
         Message = "Set initialProvider={Provider} for saga {SagaId}" )]
     internal static partial void LogInitialProviderSet( ILogger logger, SupportedProviders provider, string sagaId );
 
+    /// <summary>Logs that rate-limit info was stored.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="count">The number of rate-limited providers recorded.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerRateLimitInfoSet,
         Level = LogLevel.Debug,
         Message = "Set rateLimitInfo for saga {SagaId} with {Count} rate-limited providers" )]
     internal static partial void LogRateLimitInfoSet( ILogger logger, string sagaId, int count );
 
+    /// <summary>Logs that provider states were initialized for a saga.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="count">The number of providers initialized.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerProviderStatesInitialized,
         Level = LogLevel.Debug,
         Message = "Initialized provider states for saga {SagaId} with {Count} providers" )]
     internal static partial void LogProviderStatesInitialized( ILogger logger, string sagaId, int count );
 
+    /// <summary>Logs how many completed-but-unfinalized sagas the polling sweep found.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="count">The number of sagas found.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerUnfinalizedSagasFound,
         Level = LogLevel.Information,
         Message = "Found {Count} completed but unfinalized sagas during polling" )]
     internal static partial void LogUnfinalizedSagasFound( ILogger logger, int count );
 
+    /// <summary>Logs that a saga was added to the pending index.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The indexed saga id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerAddedToPendingIndex,
         Level = LogLevel.Debug,
         Message = "Added saga {SagaId} to pending index" )]
     internal static partial void LogAddedToPendingIndex( ILogger logger, string sagaId );
 
+    /// <summary>Logs that a saga was removed from the pending index.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The de-indexed saga id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerRemovedFromPendingIndex,
         Level = LogLevel.Debug,
         Message = "Removed saga {SagaId} from pending index" )]
     internal static partial void LogRemovedFromPendingIndex( ILogger logger, string sagaId );
 
+    /// <summary>Logs that the origin priority was set on first write.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="priority">The origin priority.</param>
+    /// <param name="sagaId">The saga id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerOriginPrioritySet,
         Level = LogLevel.Debug,
         Message = "Set originPriority={Priority} for saga {SagaId}" )]
     internal static partial void LogOriginPrioritySet( ILogger logger, QueuePriority priority, string sagaId );
 
+    /// <summary>Logs the outcome of the atomic secondaries-queued claim.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="acquired">Whether this caller won the claim.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerSecondariesQueuedMarker,
         Level = LogLevel.Debug,

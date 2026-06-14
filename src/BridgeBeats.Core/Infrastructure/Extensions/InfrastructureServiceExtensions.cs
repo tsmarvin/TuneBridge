@@ -4,21 +4,44 @@ using Microsoft.EntityFrameworkCore;
 namespace BridgeBeats.Core.Infrastructure.Extensions {
 
     /// <summary>
-    /// Aggregate extension methods for registering all Infrastructure services.
+    /// Composition-root registration helper that wires the full Infrastructure layer
+    /// (identity, ATProto storage, caches, and the queue) into the service collection.
     /// </summary>
     public static class InfrastructureServiceExtensions {
 
         /// <summary>
-        /// Adds all BridgeBeats Infrastructure services including databases, identity, caching, and storage.
-        /// Uses Redis for media link caching (connection must be registered via Aspire).
+        /// Registers the complete BridgeBeats Infrastructure layer: the SQLite-backed application
+        /// database context factory, ASP.NET Core Identity, optional ATProto session management and
+        /// storage with its media-link cache, the genre cache, and the queue infrastructure.
         /// </summary>
-        /// <param name="services">The service collection to configure.</param>
-        /// <param name="identityConnectionString">Connection string for the identity database.</param>
-        /// <param name="cacheDays">Number of days to cache media link results.</param>
-        /// <param name="atProtoIdentifier">Optional ATProto identifier for storage.</param>
-        /// <param name="atProtoPassword">Optional ATProto password for storage.</param>
-        /// <param name="atProtoUserDID">Optional ATProto user DID for storage.</param>
-        /// <returns>The configured service collection.</returns>
+        /// <param name="services">The service collection to add the registrations to.</param>
+        /// <param name="identityConnectionString">
+        /// The SQLite connection string for the application identity/database context. Migrations are
+        /// resolved from the <c>BridgeBeats.Core</c> assembly.
+        /// </param>
+        /// <param name="cacheDays">
+        /// The number of days a cached media-link entry remains valid before it is treated as stale.
+        /// </param>
+        /// <param name="atProtoIdentifier">
+        /// The ATProto service-account identifier (handle) used to authenticate session management.
+        /// When null, empty, or whitespace, ATProto storage and its media-link cache are not registered.
+        /// </param>
+        /// <param name="atProtoPassword">
+        /// The ATProto service-account password (app password) used to authenticate session management.
+        /// When null, empty, or whitespace, ATProto storage and its media-link cache are not registered.
+        /// </param>
+        /// <param name="atProtoUserDID">
+        /// The ATProto user DID whose PDS records the media-link cache indexes. Required (non-null) only
+        /// when ATProto storage is configured.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, to allow call chaining.</returns>
+        /// <remarks>
+        /// ATProto storage, its session manager, and the Redis media-link cache are registered only when
+        /// <paramref name="atProtoIdentifier"/>, <paramref name="atProtoPassword"/>, and
+        /// <paramref name="atProtoUserDID"/> are all supplied. The genre cache and queue infrastructure
+        /// are always registered. Redis-backed caching relies on an <c>IConnectionMultiplexer</c>
+        /// registered via Aspire.
+        /// </remarks>
         public static IServiceCollection AddBridgeBeatsInfrastructure(
             this IServiceCollection services,
             string identityConnectionString,

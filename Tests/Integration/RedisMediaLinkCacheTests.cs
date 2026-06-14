@@ -11,32 +11,39 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for <see cref="RedisMediaLinkCache"/> using the shared Redis container.
-/// Requires Docker to be running on the host machine.
+/// Integration tests for <see cref="RedisMediaLinkCache"/> against a real Redis instance (the shared
+/// Testcontainers Redis) with the AT Protocol storage service mocked. Verifies that caching a result
+/// writes the ISRC, UPC, URL, card-id, and provider-id index keys; that lookups by each of those keys
+/// return the cached record URI; that refreshing cleans up stale URL keys; and that freshness is
+/// computed from record age and partial status. Requires Docker to be running on the host machine.
 /// </summary>
 [TestClass]
 [TestCategory( "Integration" )]
 [TestCategory( "Docker" )]
 public class RedisMediaLinkCacheTests {
 
+    /// <summary>The shared Redis connection used by the cache under test.</summary>
     private static IConnectionMultiplexer? s_redis;
 
+    /// <summary>Mock AT Protocol storage service backing the cache's record persistence.</summary>
     private Mock<IATProtoStorageService> _mockAtProto = null!;
+    /// <summary>Mock logger captured for the cache under test.</summary>
     private Mock<ILogger<RedisMediaLinkCache>> _mockLogger = null!;
+    /// <summary>The cache under test, recreated for each test.</summary>
     private RedisMediaLinkCache _cache = null!;
 
+    /// <summary>The cache freshness window, in days, configured for the cache under test.</summary>
     private const int CacheDays = 7;
+    /// <summary>The user DID used to build the AT Protocol record URIs in the tests.</summary>
     private const string UserDID = "did:plc:testuser123";
 
-    /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes the shared Redis connection for all tests in this class.
+    /// Requires the shared Redis container and opens a connection to it for the test class.
     /// </summary>
-    /// <param name="_">The test context provided by MSTest (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
@@ -44,7 +51,7 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Cleans up the Redis connection after all tests in this class have completed.
+    /// Closes and disposes the Redis connection after the class completes.
     /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
@@ -55,7 +62,8 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Clears cache-related keys and creates a fresh cache instance before each test.
+    /// Clears leftover <c>lookup:*</c> keys and constructs a fresh cache with mocked storage before each
+    /// test.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
@@ -79,7 +87,8 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.CacheResultAsync"/> stores lookup keys in Redis.
+    /// Verifies caching a track result writes the ISRC index key in Redis pointing at the stored record
+    /// URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -110,7 +119,8 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByISRCAsync"/> returns the cached result.
+    /// Verifies a cached track can be retrieved by ISRC, returning the record URI and a fresh (non-stale)
+    /// marker.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -140,7 +150,7 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByUPCAsync"/> returns the cached result.
+    /// Verifies a cached album can be retrieved by UPC, returning the record URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -169,7 +179,7 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultAsync"/> returns the cached result by URL.
+    /// Verifies a cached result can be retrieved by one of its input URLs, returning the record URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -201,7 +211,8 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByCardIdAsync"/> returns the cached result by card ID.
+    /// Verifies a cached result can be retrieved by the card id derived from its record key, returning
+    /// the record URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -234,7 +245,8 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByProviderIdAsync"/> returns the cached result by provider ID.
+    /// Verifies a cached result can be retrieved by provider, provider-specific id, and album flag,
+    /// returning the record URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -263,7 +275,8 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.CacheResultAsync"/> cleans up old URL keys when refreshing a cached result.
+    /// Verifies re-caching a result with changed input links removes the stale URL index key and writes
+    /// the new one.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -311,7 +324,7 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.TryGetCachedResultByISRCAsync"/> returns null when the ISRC is not cached.
+    /// Verifies a lookup by ISRC for an uncached value returns null.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -325,7 +338,7 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that the cache marks results as stale when they are older than the configured cache duration.
+    /// Verifies a cached record older than the cache window is reported as stale on retrieval.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -356,8 +369,7 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that the cache marks partial results as stale regardless of age, so callers
-    /// re-enter the lookup path and wait for the complete result.
+    /// Verifies a cached record flagged partial is reported as stale on retrieval even when recent.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -388,8 +400,8 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisMediaLinkCache.AddInputLinksAsync"/> skips writing when the record
-    /// already exists with the same RecordUri, avoiding unnecessary Redis writes during cache bootstrap.
+    /// Verifies adding input links for a record already cached under the same URI refreshes the index
+    /// key's TTL rather than reducing it (no redundant rewrite).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -431,14 +443,22 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Creates a test MediaLinkResult with the specified external ID.
+    /// Builds a test result for the given external id and album flag, timestamped now.
     /// </summary>
+    /// <param name="externalId">The provider external id (used as ISRC/UPC).</param>
+    /// <param name="isAlbum">Whether the result represents an album.</param>
+    /// <returns>A populated test <see cref="MediaLinkResult"/>.</returns>
     private static MediaLinkResult CreateTestResult( string externalId, bool isAlbum )
         => CreateTestResultWithDate( externalId, isAlbum, DateTime.UtcNow );
 
     /// <summary>
-    /// Creates a test MediaLinkResult with the specified external ID and LookedUpAt date.
+    /// Builds a test result with a single Spotify entry for the given external id, album flag, and
+    /// lookup timestamp.
     /// </summary>
+    /// <param name="externalId">The provider external id (used as ISRC/UPC).</param>
+    /// <param name="isAlbum">Whether the result represents an album.</param>
+    /// <param name="lookedUpAt">The lookup timestamp to stamp on the result.</param>
+    /// <returns>A populated test <see cref="MediaLinkResult"/>.</returns>
     private static MediaLinkResult CreateTestResultWithDate( string externalId, bool isAlbum, DateTime lookedUpAt ) {
         MediaLinkResult result = new( ) {
             LookedUpAt = lookedUpAt

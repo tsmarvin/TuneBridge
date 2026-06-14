@@ -1,19 +1,21 @@
 namespace BridgeBeats.Web.Middleware;
 
 /// <summary>
-/// Middleware to restrict access to Swagger UI to authenticated users only.
+/// Gates the Swagger UI behind authentication, redirecting unauthenticated callers to the login page.
 /// </summary>
 /// <remarks>
-/// Initializes a new instance of the <see cref="SwaggerAuthorizationMiddleware"/> class.
+/// Requests under <c>/swagger</c> require an authenticated user, with the single exception of the
+/// OpenAPI document at <c>/swagger/v1/swagger.json</c>, which remains publicly reachable. All other
+/// paths pass through untouched.
 /// </remarks>
-/// <param name="next">The next middleware in the pipeline.</param>
+/// <param name="next">The next delegate in the request pipeline.</param>
 public class SwaggerAuthorizationMiddleware( RequestDelegate next ) {
-
     /// <summary>
-    /// Invokes the middleware to check Swagger authorization.
+    /// Redirects unauthenticated callers of the Swagger UI to the login page; otherwise forwards the
+    /// request to the next middleware.
     /// </summary>
-    /// <param name="context">The HTTP context for the current request.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <param name="context">The current HTTP context.</param>
+    /// <returns>A task that completes when the request has been forwarded or redirected.</returns>
     public async Task InvokeAsync( HttpContext context ) {
         // Allow access to swagger.json even without authentication (needed for UI to work)
         // but require authentication for the UI itself

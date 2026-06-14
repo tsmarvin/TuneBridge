@@ -23,97 +23,103 @@ namespace BridgeBeats.Web.Configuration {
     /// </summary>
     internal class AppSettings {
         /// <summary>
-        /// The Apple Developer Team ID for Apple Music API authentication.
+        /// The Apple Developer team identifier used to sign Apple Music API requests.
         /// </summary>
         public string AppleTeamId { get; set; } = string.Empty;
 
         /// <summary>
-        /// The private key ID for Apple Music API authentication.
+        /// The Apple Music key identifier paired with the signing key.
         /// </summary>
         public string AppleKeyId { get; set; } = string.Empty;
 
         /// <summary>
-        /// The file path to the Apple Music private key (.p8).
+        /// Filesystem path to the Apple Music private signing key (<c>.p8</c>) file.
         /// </summary>
         public string AppleKeyPath { get; set; } = string.Empty;
 
         /// <summary>
-        /// The Spotify API client ID.
+        /// The Spotify application client identifier.
         /// </summary>
         public string SpotifyClientId { get; set; } = string.Empty;
 
         /// <summary>
-        /// The Spotify API client secret.
+        /// The Spotify application client secret.
         /// </summary>
         public string SpotifyClientSecret { get; set; } = string.Empty;
 
         /// <summary>
-        /// The Tidal API client ID.
+        /// The Tidal application client identifier.
         /// </summary>
         public string TidalClientId { get; set; } = string.Empty;
 
         /// <summary>
-        /// The Tidal API client secret.
+        /// The Tidal application client secret.
         /// </summary>
         public string TidalClientSecret { get; set; } = string.Empty;
 
         /// <summary>
-        /// The database connection string for the identity database (SQLite).
+        /// The connection string for the Identity database. Defaults to a local SQLite file.
         /// </summary>
         public string IdentityConnectionString { get; set; } = "Data Source=bridgebeats.db";
 
         /// <summary>
-        /// Salt value for hashing API keys.
+        /// The salt used to hash API keys. Required at startup; an empty value causes configuration to fail.
         /// </summary>
         public string ApiKeySalt { get; set; } = string.Empty;
 
         /// <summary>
-        /// Shared secret key for internal service-to-service authentication.
-        /// Used by worker services (e.g., Discord worker) to authenticate with the Web API
-        /// without requiring a user API key.
+        /// The shared key that internal services present to authenticate to the web API. When empty, the
+        /// internal-service scheme rejects all callers. Used by worker services (for example, the Discord
+        /// worker) to authenticate without a user API key.
         /// </summary>
         public string InternalServiceKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// Maximum number of requests per hour per user for rate limiting.
+        /// The maximum number of rate-limited lookup requests permitted per user per hour. Defaults to 20.
         /// </summary>
         public int RateLimitRequestsPerHour { get; set; } = 20;
 
         /// <summary>
-        /// The ATProto account identifier (handle or DID).
+        /// The ATProto identifier (handle) for the BridgeBeats service account.
         /// </summary>
         public string ATProtoIdentifier { get; set; } = string.Empty;
 
         /// <summary>
-        /// The ATProto account password or app password.
+        /// The password for the BridgeBeats ATProto service account.
         /// </summary>
         public string ATProtoPassword { get; set; } = string.Empty;
 
         /// <summary>
-        /// The ATProto account did (Decentralized Identifier).
+        /// The DID of the ATProto user whose records are read and written. Validated at startup when ATProto is enabled.
         /// </summary>
         public string ATProtoUserDID { get; set; } = string.Empty;
 
         /// <summary>
-        /// The ATProto PDS URI for public record access. Default is https://pds.bridgebeats.link.
+        /// The base URI of the ATProto personal data server. Defaults to the BridgeBeats PDS.
         /// </summary>
         public string? ATProtoPdsUri { get; set; } = "https://pds.bridgebeats.link";
 
         /// <summary>
-        /// The number of days to cache MediaLinkResult lookups. Default is 7 days.
+        /// The number of days a cached media-link result is considered fresh before it is treated as stale. Defaults to 7.
         /// </summary>
         public int CacheDays { get; set; } = 7;
 
         /// <summary>
-        /// The base URL for the application (e.g., https://bridgebeats.link). Used for generating OpenGraph card URLs.
+        /// The public domain the application is served from, used for cookie scoping, ATProto client
+        /// metadata, and generating Open Graph card URLs.
         /// </summary>
         public string Domain { get; set; } = string.Empty;
 
         /// <summary>
-        /// Normalizes a configured domain to an absolute https URL with no trailing slash.
+        /// Normalizes a domain value into a scheme-qualified URL by trimming a trailing slash and
+        /// prefixing <c>https://</c> when the value does not already start with <c>https://</c>.
+        /// Only the literal prefix <c>https://</c> is recognized; a value that starts with
+        /// <c>http://</c> is not treated as scheme-present and will be double-prefixed
+        /// (becoming <c>https://http://…</c>). In practice <see cref="Domain"/> holds a bare
+        /// hostname, so the double-prefix case does not arise at runtime today.
         /// </summary>
-        /// <param name="domain">The configured domain value.</param>
-        /// <returns>The normalized domain URL, or null when the domain is not configured.</returns>
+        /// <param name="domain">The raw domain value to normalize.</param>
+        /// <returns>The normalized <c>https://</c> URL, or <c>null</c> when the input is null or whitespace.</returns>
         public static string? NormalizeDomain( string? domain ) {
             if (string.IsNullOrWhiteSpace( domain )) {
                 return null;
@@ -126,100 +132,97 @@ namespace BridgeBeats.Web.Configuration {
         }
 
         /// <summary>
-        /// The file path to the ATProto OAuth signing key in JWK format.
-        /// Required for confidential client authentication (private_key_jwt).
-        /// When empty, the ATProto OAuth service operates as a public client (localhost only).
+        /// Filesystem path to the JWK file holding the ATProto OAuth client-assertion signing key. When the
+        /// file is absent, empty, or <c>{}</c>, client-assertion signing is not configured and the ATProto
+        /// OAuth service operates as a public client.
         /// </summary>
         public string ATProtoOAuthSigningKeyPath { get; set; } = string.Empty;
 
         /// <summary>
-        /// The log directory path for the service. Each project writes to logs/{ProjectName}-.log.
+        /// Directory where application log files are written. Defaults to <c>./logs</c>.
         /// </summary>
         public string LogDirPath { get; set; } = "./logs";
 
         /// <summary>
-        /// The directory path for persisting Data Protection keys.
-        /// Keys must survive container restarts to decrypt Identity personal data fields.
-        /// In Docker, this should be a mounted volume (e.g., /app/keys).
+        /// Directory where ASP.NET Data Protection keys are persisted. Defaults to <c>./keys</c>.
+        /// Keys must survive container restarts to decrypt Identity personal data fields, so in Docker
+        /// this should be a mounted volume (for example, <c>/app/keys</c>).
         /// </summary>
         public string DataProtectionKeyPath { get; set; } = "./keys";
 
         /// <summary>
-        /// The number of hours to cache OpenGraph cards in memory before expiration. Default is 1 hour.
+        /// The number of hours a generated Open Graph card is cached before expiring. Defaults to 1.
         /// </summary>
         public int CardCacheExpirationHours { get; set; } = 1;
 
         /// <summary>
-        /// The number of operations between cleanup cycles for expired OpenGraph cards. Default is 500.
+        /// The interval, expressed as a number of cached entries, between card-cache cleanup passes. Defaults to 500.
         /// </summary>
         public int CardCacheCleanupInterval { get; set; } = 500;
 
         /// <summary>
-        /// HTTP resilience configuration settings for music provider API requests.
+        /// HTTP resilience settings (retry and timeout limits) applied to outbound provider calls.
         /// </summary>
         public ResilienceSettings Resilience { get; set; } = new( );
 
         /// <summary>
-        /// Worker service configuration settings.
-        /// When UseWorkerServices is true, the web app communicates with provider workers via HTTP
-        /// instead of making direct API calls.
+        /// Worker enablement flags that select between in-process provider services and remote worker
+        /// HTTP clients, and toggle individual providers.
         /// </summary>
         public WorkerSettings Workers { get; set; } = new( );
 
     }
 
     /// <summary>
-    /// Configuration settings for worker services.
-    /// Controls whether the web app uses HTTP-based worker services for music provider lookups.
+    /// Flags that control how music providers are wired: whether the web host calls remote provider
+    /// workers over HTTP rather than running provider lookups in-process, and which providers are enabled.
     /// </summary>
     public class WorkerSettings {
         /// <summary>
-        /// Whether to use worker services for music provider lookups.
-        /// When true, the web app communicates with provider workers via HTTP.
-        /// When false, the web app makes direct API calls to music providers.
+        /// When <c>true</c>, the web host calls remote provider workers over HTTP using the per-provider
+        /// enablement flags below; when <c>false</c>, provider lookups run in-process from the configured credentials.
         /// </summary>
         public bool UseWorkerServices { get; set; }
 
         /// <summary>
-        /// Whether the Spotify worker is enabled. Only used when UseWorkerServices is true.
+        /// Whether the Spotify provider worker is enabled when <see cref="UseWorkerServices"/> is set.
         /// </summary>
         public bool SpotifyWorkerEnabled { get; set; }
 
         /// <summary>
-        /// Whether the Apple Music worker is enabled. Only used when UseWorkerServices is true.
+        /// Whether the Apple Music provider worker is enabled when <see cref="UseWorkerServices"/> is set.
         /// </summary>
         public bool AppleMusicWorkerEnabled { get; set; }
 
         /// <summary>
-        /// Whether the Tidal worker is enabled. Only used when UseWorkerServices is true.
+        /// Whether the Tidal provider worker is enabled when <see cref="UseWorkerServices"/> is set.
         /// </summary>
         public bool TidalWorkerEnabled { get; set; }
     }
 
     /// <summary>
-    /// Configuration settings for HTTP resilience policies applied to music provider API requests.
-    /// These settings control retry behavior, timeouts, and rate limit handling.
+    /// HTTP resilience limits applied to outbound provider calls: the cap honored on a server-supplied
+    /// retry-after, the retry count, and the overall and per-attempt timeouts.
     /// </summary>
     public class ResilienceSettings {
         /// <summary>
-        /// Maximum Retry-After header value (in seconds) to honor before failing fast.
-        /// When a music provider returns HTTP 429 with a Retry-After value exceeding this threshold,
-        /// the request will fail immediately instead of waiting. Default is 120 seconds (2 minutes).
+        /// The maximum number of seconds a server-supplied <c>Retry-After</c> value will be honored before
+        /// the request is abandoned. Defaults to 120.
         /// </summary>
         public int MaxRetryAfterSeconds { get; set; } = 120;
 
         /// <summary>
-        /// Maximum number of retry attempts for transient failures. Default is 5.
+        /// The maximum number of retry attempts for a failed request. Defaults to 5.
         /// </summary>
         public int MaxRetryAttempts { get; set; } = 5;
 
         /// <summary>
-        /// Total timeout for all retry attempts combined, in minutes. Default is 10 minutes.
+        /// The total time budget, in minutes, across all attempts for a single logical request. Defaults to 10.
         /// </summary>
         public int TotalTimeoutMinutes { get; set; } = 10;
 
         /// <summary>
-        /// Timeout for each individual request attempt, in seconds. Default is 10 seconds.
+        /// The timeout, in seconds, applied to each individual attempt. Defaults to 10.
         /// </summary>
         public int AttemptTimeoutSeconds { get; set; } = 10;
     }

@@ -7,14 +7,24 @@ using BridgeBeats.Tests.Unit.Helpers;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Tests for <see cref="MstWalker.EnumerateRecords"/>.
+/// Tests <see cref="MstWalker"/>, which walks the Merkle Search Tree of an ATProto repo export to enumerate
+/// records in key order. Covers empty/single/multi-record enumeration, key ordering, prefix-compression
+/// reconstruction, multi-node in-order traversal, the reported commit version, and the parser's integrity and
+/// anti-DoS defenses: missing value blocks, invalid/negative prefix lengths, the shared-node ("doubling") DAG
+/// guard, null commit-data links, the max-depth cap, the record-count-versus-block-count cap, and cooperative
+/// cancellation.
 /// </summary>
 [TestClass]
 public class MstWalkerTests {
-
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>MSTest-injected test context, used to source the cancellation token.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>
+    /// Builds a minimal single-provider <see cref="MediaLinkResultRecord"/> for use as an MST value block.
+    /// </summary>
+    /// <param name="artist">The provider-result artist.</param>
+    /// <param name="title">The provider-result title.</param>
+    /// <returns>A populated record.</returns>
     private static MediaLinkResultRecord MakeRecord( string artist = "Test", string title = "Track" ) =>
         new(
             results: [
@@ -29,9 +39,17 @@ public class MstWalkerTests {
             lookedUpAt: new DateTimeOffset( 2024, 1, 1, 0, 0, 0, TimeSpan.Zero )
         );
 
+    /// <summary>
+    /// Walks the whole CAR and materializes the (key, value-CID-hex) pairs the walker yields.
+    /// </summary>
+    /// <param name="car">The parsed CAR file to walk.</param>
+    /// <returns>The enumerated key/value-CID pairs.</returns>
     private List<(string Key, string ValueCidHex)> EnumerateAll( CarFile car ) =>
         [.. MstWalker.EnumerateRecords( car, TestContext.CancellationToken ).Records];
 
+    /// <summary>
+    /// Verifies an empty repo (no MST entries) yields no records.
+    /// </summary>
     [TestMethod]
     public void EnumerateRecords_EmptyRepo_YieldsNothing( ) {
         byte[] carBytes = TestCarBuilder.BuildRepoCarWithRecords(
@@ -46,6 +64,9 @@ public class MstWalkerTests {
         Assert.IsEmpty( records );
     }
 
+    /// <summary>
+    /// Verifies a single-record repo yields one key, the full <c>{collection}/{rkey}</c>.
+    /// </summary>
     [TestMethod]
     public void EnumerateRecords_SingleRecord_YieldsOneKey( ) {
         byte[] carBytes = TestCarBuilder.BuildRepoCarWithRecords(
@@ -61,6 +82,9 @@ public class MstWalkerTests {
         Assert.AreEqual( "link.bridgebeats.lookup/rkey1", records[0].Key );
     }
 
+    /// <summary>
+    /// Verifies records out of input order are yielded in ascending key order (the MST is key-sorted).
+    /// </summary>
     [TestMethod]
     public void EnumerateRecords_MultipleRecords_YieldsInKeyOrder( ) {
         (string Rkey, MediaLinkResultRecord Record)[] entries = [
@@ -83,6 +107,10 @@ public class MstWalkerTests {
         Assert.AreEqual( "link.bridgebeats.lookup/zzz", records[2].Key );
     }
 
+    /// <summary>
+    /// Verifies keys sharing a long common prefix are reconstructed correctly from the MST prefix-compression
+    /// (<c>p</c> shared length + <c>k</c> suffix).
+    /// </summary>
     [TestMethod]
     public void EnumerateRecords_PrefixCompression_CorrectlyReconstructs( ) {
         (string Rkey, MediaLinkResultRecord Record)[] entries = [
@@ -103,6 +131,10 @@ public class MstWalkerTests {
         Assert.AreEqual( "link.bridgebeats.lookup/spotify:track:abc123xyz789", records[1].Key );
     }
 
+    /// <summary>
+    /// Verifies a hand-built three-node tree (root with a left subtree and an entry's right subtree) is traversed
+    /// in order, yielding left, root entry, then right.
+    /// </summary>
     [TestMethod]
     public void EnumerateRecords_MultiNodeTree_InOrderTraversal( ) {
         // Build a three-node MST:
@@ -162,6 +194,10 @@ public class MstWalkerTests {
         Assert.AreEqual( "link.bridgebeats.lookup/zzz", records[2].Key );
     }
 
+    /// <summary>
+    /// Verifies that an MST entry pointing at a value CID with no corresponding block (a dangling reference) causes
+    /// collection enumeration to throw a <see cref="CarParseException"/>.
+    /// </summary>
     [TestMethod]
     public void EnumerateRecords_MissingValueBlock_ThrowsCarParseException( ) {
         // Build a CAR where an MST entry's value CID is not included in the CAR blocks.
@@ -186,6 +222,7 @@ public class MstWalkerTests {
         Dictionary<byte[], byte[]> blocks = new( ByteArrayKeyComparer.Instance ) {
             [commitCid] = commitBytes,
             [mstCid] = mstNodeBytes
+
             // danglingCid block intentionally absent
         };
 
@@ -196,6 +233,10 @@ public class MstWalkerTests {
         } );
     }
 
+    /// <summary>
+    /// Verifies that a prefix length longer than the previous key (here 100, overflowing a short key) is rejected
+    /// with a <see cref="CarParseException"/>.
+    /// </summary>
     [TestMethod]
     public void EnumerateRecords_InvalidPrefixLen_ThrowsCarParseException( ) {
         byte[] recordBytes = TestCarBuilder.BuildRecordBlock( MakeRecord( ) );
@@ -227,12 +268,9 @@ public class MstWalkerTests {
         } );
     }
 
-    // ─── QA Major: commit version != 3 warn-and-proceed contract ─────────────
-
     /// <summary>
-    /// Verifies that a commit with version=4 still yields records (warn-and-proceed contract).
-    /// Failure-first evidence: before the version field was added to CarEnumerationResult and the
-    /// warn-and-proceed branch added to ATProtoStorageService, this test had no surface to assert.
+    /// Verifies the walker surfaces the actual commit version (here 4) alongside the enumerated records rather than
+    /// assuming version 3.
     /// </summary>
     [TestMethod]
     public void EnumerateRecords_CommitVersion4_YieldsRecordsAndReportsVersion4( ) {
@@ -253,14 +291,9 @@ public class MstWalkerTests {
         Assert.AreEqual( "link.bridgebeats.lookup/rkey1", list[0].Key );
     }
 
-    // ─── SEC-001 regression: doubling DAG ────────────────────────────────────
-
     /// <summary>
-    /// SEC-001 regression: a CAR where one MST node is referenced twice (once via 'l' and once via
-    /// an entry's 't') must throw CarParseException, not loop indefinitely or OOM.
-    /// The test uses [Timeout] to ensure termination within 5 seconds even if the guard fails.
-    /// Failure-first evidence: without the visited-set check in WalkNode, this test would loop until
-    /// the depth cap fires (depth 64) rather than immediately detecting the re-visit.
+    /// Verifies the cycle/visited-set defense: a CAR whose MST reaches the same node by two paths is rejected with a
+    /// <see cref="CarParseException"/> rather than walked twice (the 5-second timeout guards against runaway walks).
     /// </summary>
     [TestMethod]
     [Timeout( 5000 )]
@@ -273,14 +306,8 @@ public class MstWalkerTests {
         } );
     }
 
-    // ─── SEC-003 regression: negative p ──────────────────────────────────────
-
     /// <summary>
-    /// SEC-003 regression: a non-first MST entry with p=-1 must produce CarParseException,
-    /// NOT ArgumentOutOfRangeException (which would escape the CarParseException/OCE-only catch
-    /// in ATProtoStorageService and propagate as an unhandled exception).
-    /// Failure-first evidence: without the `prefixLen &lt; 0` guard in ReadEntries, this test fails
-    /// because ThrowsExactly&lt;CarParseException&gt; does not match ArgumentOutOfRangeException.
+    /// Verifies a negative prefix length is rejected with a <see cref="CarParseException"/>.
     /// </summary>
     [TestMethod]
     public void EnumerateRecords_NegativePrefixLen_ThrowsCarParseException( ) {
@@ -292,14 +319,8 @@ public class MstWalkerTests {
         } );
     }
 
-    // ─── Hardening: null/absent "data" link rejected ─────────────────────────
-
     /// <summary>
-    /// Verifies that a commit block whose "data" field is explicitly CBOR null is rejected with
-    /// CarParseException, regardless of the commit version.
-    /// Failure-first evidence: before Fix 3, the condition was `mstRootHex is null &amp;&amp; commitVersion == 0`;
-    /// with a version=3 commit, a null data link was accepted and EnumerateRecords returned an empty
-    /// sequence instead of throwing — so this test would have failed on ThrowsExactly.
+    /// Verifies a commit whose <c>data</c> link is null (no MST root) is rejected with a <see cref="CarParseException"/>.
     /// </summary>
     [TestMethod]
     public void EnumerateRecords_CommitWithNullDataLink_ThrowsCarParseException( ) {
@@ -317,22 +338,9 @@ public class MstWalkerTests {
         } );
     }
 
-    // ─── Resource-exhaustion guards ──────────────────────────────────────────
-
     /// <summary>
-    /// Verifies that a left-child chain of 66 MST nodes throws CarParseException due to the
-    /// MaxWalkDepth guard at the start of WalkNode (depth &gt; MaxWalkDepth),
-    /// before the duplicate-Add cycle check or the block-not-found throw.
-    ///
-    /// Construction: nodes[0]..nodes[65] form a pure left-child chain (no entries).
-    /// nodes[65] is a leaf (l=null, e=[]). Commit → nodes[0].
-    /// Walk: nodes[0]@depth=0 → nodes[1]@depth=1 → ... → nodes[64]@depth=64 →
-    ///        nodes[65]@depth=65 → 65 &gt; 64 → CarParseException.
-    ///
-    /// Failure-first evidence: without the MaxWalkDepth guard, the walk enters
-    /// nodes[65] at depth=65 without throwing, parses it as a leaf (l=null, e=[]), yields nothing,
-    /// and unwinds back to nodes[0]. The enumeration returns an empty list — no exception is thrown —
-    /// so ThrowsExactly&lt;CarParseException&gt; fails, confirming the guard is load-bearing.
+    /// Verifies a left-subtree chain longer than the walker's max depth (66 nodes, above the depth-64 cap) is
+    /// rejected with a <see cref="CarParseException"/> rather than recursing without bound.
     /// </summary>
     [TestMethod]
     [Timeout( 5000 )]
@@ -370,23 +378,8 @@ public class MstWalkerTests {
     }
 
     /// <summary>
-    /// Verifies that a single MST node whose entry count exceeds car.Blocks.Count throws
-    /// CarParseException due to the recordCount cap in the entry loop
-    /// (recordCount[0] &gt; maxNodes).
-    ///
-    /// Construction: 1 commit block + 1 MST node = 2 blocks total; maxNodes = 2.
-    /// The MST node contains 3 entries (all with p=0, distinct keys, shared placeholder value CID).
-    /// Walk sequence: entry[0] → recordCount=1 ≤ 2, yield; entry[1] → recordCount=2 ≤ 2, yield;
-    ///                entry[2] → recordCount=3 &gt; 2 → CarParseException.
-    /// MstWalker does not resolve value-block CIDs during WalkNode (they are yielded as hex
-    /// strings), so the placeholder CID not being in car.Blocks is irrelevant.
-    ///
-    /// Guard ordering: the MaxWalkDepth guard and the duplicate-Add cycle check do not fire
-    /// first because there is only one root node at depth=0 visited exactly once.
-    ///
-    /// Failure-first evidence: without the recordCount cap in the entry loop, all 3
-    /// entries yield normally, the enumeration returns a 3-element list, and
-    /// ThrowsExactly&lt;CarParseException&gt; fails because no exception is thrown.
+    /// Verifies the record-count cap: an MST claiming more entries than the CAR has blocks (here three entries sharing
+    /// one absent value block) is rejected with a <see cref="CarParseException"/>, bounding an amplification attack.
     /// </summary>
     [TestMethod]
     public void EnumerateRecords_RecordCountExceedsBlockCount_ThrowsCarParseException( ) {
@@ -409,6 +402,7 @@ public class MstWalkerTests {
         Dictionary<byte[], byte[]> blocks = new( ByteArrayKeyComparer.Instance ) {
             [commitCid] = commitBytes,
             [mstCid] = mstNodeBytes
+
             // placeholderValueCid block intentionally absent — value blocks are not resolved by WalkNode
         };
 
@@ -420,11 +414,8 @@ public class MstWalkerTests {
         } );
     }
 
-    // ─── CancellationToken propagation ───────────────────────────────────────
-
     /// <summary>
-    /// Verifies that passing an already-cancelled token to EnumerateRecords propagates
-    /// OperationCanceledException, NOT CarParseException.
+    /// Verifies the walk honors a pre-cancelled token by throwing an <see cref="OperationCanceledException"/>.
     /// </summary>
     [TestMethod]
     public void EnumerateRecords_CancelledToken_ThrowsOperationCanceledException( ) {
@@ -443,9 +434,21 @@ public class MstWalkerTests {
         } );
     }
 
+    /// <summary>
+    /// Structural equality comparer for <c>byte[]</c> CID keys, so the block dictionaries are keyed by content rather
+    /// than array reference.
+    /// </summary>
     private sealed class ByteArrayKeyComparer : System.Collections.Generic.IEqualityComparer<byte[]> {
+        /// <summary>Shared singleton instance.</summary>
         internal static readonly ByteArrayKeyComparer Instance = new( );
+        /// <summary>Returns true when both arrays are non-null and have identical contents.</summary>
+        /// <param name="x">The first array.</param>
+        /// <param name="y">The second array.</param>
+        /// <returns><see langword="true"/> if the arrays are element-wise equal; otherwise <see langword="false"/>.</returns>
         public bool Equals( byte[]? x, byte[]? y ) => x is not null && y is not null && x.AsSpan( ).SequenceEqual( y );
+        /// <summary>Computes a content-based hash code over the array's bytes.</summary>
+        /// <param name="obj">The array to hash.</param>
+        /// <returns>A hash code derived from the array contents.</returns>
         public int GetHashCode( byte[] obj ) {
             System.HashCode hc = new( );
             hc.AddBytes( obj );

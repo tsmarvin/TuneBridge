@@ -5,13 +5,15 @@ using BridgeBeats.Core.Domain.Services.Cards;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="OpenGraphCardService"/> validating card URL generation and configuration.
+/// Tests <see cref="OpenGraphCardService"/>, the in-memory store of cross-provider results addressable by a
+/// generated card id for social-preview (OpenGraph) pages. Covers the <c>Domain</c> and feature-flag
+/// <c>IsEnabled</c> (gated on a non-empty domain), the card URL returned by <c>StoreResult</c>, and the
+/// constructor's range guards on the expiration-hours and cleanup-interval arguments.
 /// </summary>
 [TestClass]
 public class OpenGraphCardServiceTests {
-
     /// <summary>
-    /// Verifies that the Domain property returns the configured base URL.
+    /// Verifies <see cref="OpenGraphCardService.Domain"/> returns the configured base domain.
     /// </summary>
     [TestMethod]
     public void Domain_WhenSet_ReturnsDomain( ) {
@@ -27,7 +29,7 @@ public class OpenGraphCardServiceTests {
     }
 
     /// <summary>
-    /// Verifies that IsEnabled returns true when base URL is configured.
+    /// Verifies <see cref="OpenGraphCardService.IsEnabled"/> is true when a domain is configured.
     /// </summary>
     [TestMethod]
     public void IsEnabled_WhenDomainIsNotEmpty_ReturnsTrue( ) {
@@ -43,7 +45,7 @@ public class OpenGraphCardServiceTests {
     }
 
     /// <summary>
-    /// Verifies that IsEnabled returns false when base URL is empty.
+    /// Verifies <see cref="OpenGraphCardService.IsEnabled"/> is false when the domain is empty (the feature is off).
     /// </summary>
     [TestMethod]
     public void IsEnabled_WhenDomainIsEmpty_ReturnsFalse( ) {
@@ -59,7 +61,8 @@ public class OpenGraphCardServiceTests {
     }
 
     /// <summary>
-    /// Verifies that StoreResult returns a URL containing the configured base URL.
+    /// Verifies <see cref="OpenGraphCardService.StoreResult"/> stores a result and returns a card URL of the form
+    /// <c>https://{domain}/card/{id}</c>.
     /// </summary>
     [TestMethod]
     public void StoreResult_WhenCalled_ReturnsUrlWithDomain( ) {
@@ -88,7 +91,8 @@ public class OpenGraphCardServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentOutOfRangeException"/> when expiration hours is zero.
+    /// Verifies a zero expiration-hours argument is rejected with an <see cref="ArgumentOutOfRangeException"/> naming
+    /// <c>expirationHours</c>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithZeroExpirationHours_ThrowsArgumentOutOfRangeException( ) {
@@ -103,7 +107,8 @@ public class OpenGraphCardServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentOutOfRangeException"/> when expiration hours is negative.
+    /// Verifies a negative expiration-hours argument is rejected with an <see cref="ArgumentOutOfRangeException"/>
+    /// naming <c>expirationHours</c>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNegativeExpirationHours_ThrowsArgumentOutOfRangeException( ) {
@@ -118,7 +123,8 @@ public class OpenGraphCardServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentOutOfRangeException"/> when cleanup interval is zero.
+    /// Verifies a zero cleanup-interval argument is rejected with an <see cref="ArgumentOutOfRangeException"/> naming
+    /// <c>cleanupInterval</c>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithZeroCleanupInterval_ThrowsArgumentOutOfRangeException( ) {
@@ -133,7 +139,8 @@ public class OpenGraphCardServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentOutOfRangeException"/> when cleanup interval is negative.
+    /// Verifies a negative cleanup-interval argument is rejected with an <see cref="ArgumentOutOfRangeException"/>
+    /// naming <c>cleanupInterval</c>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNegativeCleanupInterval_ThrowsArgumentOutOfRangeException( ) {

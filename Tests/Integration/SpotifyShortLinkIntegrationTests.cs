@@ -4,11 +4,18 @@ using BridgeBeats.Providers.Spotify;
 
 namespace BridgeBeats.Tests.Integration;
 
+/// <summary>
+/// Integration test that resolves real <c>spotify.link</c> short links through the production
+/// short-link resolver, exercising the live HTTP redirect chain via the SSRF-protected client. Verifies
+/// the resolver follows the 3xx redirect to an absolute http(s) target without pinning the resolved
+/// host, which varies between <c>spotify.app.link</c> and <c>open.spotify.com</c>.
+/// </summary>
 [TestClass]
 [DoNotParallelize] // Prevent parallel execution; SpotifyLinkParser has a static test hook (SetHandlerFactoryForTests) used by unit tests.
 [TestCategory( "Integration" )]
 public class SpotifyShortLinkIntegrationTests {
 
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
@@ -26,6 +33,7 @@ public class SpotifyShortLinkIntegrationTests {
     /// Network policy (director): a network blip is a hard failure, restart CI. No
     /// Assert.Inconclusive / skip-on-network — a real SSRF regression must surface as red.
     /// </summary>
+    /// <param name="shortLink">The <c>spotify.link</c> short link to resolve.</param>
     [TestMethod]
     [DataRow( "spotify.link/dimbgwPvzXb" )]   // -> spotify.app.link (Branch.io)
     [DataRow( "spotify.link/6OGFZqOizXb" )]   // -> spotify.app.link (Branch.io)

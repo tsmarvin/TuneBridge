@@ -6,25 +6,35 @@ using Microsoft.EntityFrameworkCore;
 namespace BridgeBeats.Core.Infrastructure.Extensions {
 
     /// <summary>
-    /// Extension methods for registering ASP.NET Core Identity services.
+    /// Dependency-injection registration helpers for ASP.NET Core Identity and Data Protection
+    /// as configured for BridgeBeats.
     /// </summary>
     public static class IdentityServiceExtensions {
 
         /// <summary>
-        /// Adds ASP.NET Core Identity services with secure password requirements, Data Protection
-        /// with persistent key storage, and personal data encryption for <c>[ProtectedPersonalData]</c> fields.
+        /// Registers ASP.NET Core Data Protection and Identity Core for BridgeBeats, wiring the
+        /// application user store, roles, sign-in manager, token providers, and personal-data
+        /// protection.
         /// </summary>
-        /// <param name="services">The service collection to configure.</param>
+        /// <param name="services">The service collection to add the registrations to.</param>
         /// <param name="dataProtectionKeyPath">
-        /// Directory path for persisting Data Protection keys. Defaults to <c>"./keys"</c>.
-        /// In Docker, this should be a mounted volume (e.g., <c>/app/keys</c>).
+        /// Filesystem directory where Data Protection persists its key ring. Defaults to
+        /// <c>./keys</c>. In Docker, this should be a mounted volume (for example <c>/app/keys</c>) so
+        /// keys survive container restarts and existing data stays decryptable.
         /// </param>
-        /// <returns>The configured service collection.</returns>
+        /// <returns>The same <paramref name="services"/> instance, to allow call chaining.</returns>
         /// <remarks>
-        /// Data Protection keys are persisted to the file system at <paramref name="dataProtectionKeyPath"/>.
-        /// The <c>AddPersonalDataProtection</c> call registers <see cref="DataProtectionLookupProtector"/>
-        /// and <see cref="DataProtectionKeyRing"/>, enabling automatic encryption/decryption for all
-        /// Identity fields marked with <c>[ProtectedPersonalData]</c>.
+        /// Configures Data Protection with the application name <c>BridgeBeats</c> and persists keys
+        /// to the filesystem at <paramref name="dataProtectionKeyPath"/>. Identity Core is configured
+        /// with a password policy requiring digits, lower- and upper-case letters, a non-alphanumeric
+        /// character, and a minimum length of 14, and with unique-email enforcement disabled at the
+        /// Identity validator level. It adds roles, the Entity Framework user store backed by the
+        /// application database context, the sign-in manager, default token providers, and personal-data
+        /// protection: the <see cref="DataProtectionLookupProtector"/> and
+        /// <see cref="DataProtectionKeyRing"/> are registered but are currently inert —
+        /// <c>ProtectPersonalData</c> is never set in the Identity options, so fields marked with
+        /// <c>[ProtectedPersonalData]</c> are stored plaintext at rest. A scoped application
+        /// database context is also registered, created from the registered context factory.
         /// </remarks>
         public static IServiceCollection AddBridgeBeatsIdentity(
             this IServiceCollection services,

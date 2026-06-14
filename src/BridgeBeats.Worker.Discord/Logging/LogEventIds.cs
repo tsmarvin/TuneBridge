@@ -1,25 +1,28 @@
 namespace BridgeBeats.Worker.Discord.Logging;
 
 /// <summary>
-/// EventIds for Discord worker (6000-6249).
-/// Extends <see cref="Core.Infrastructure.Logging.LogEventIds"/> with Discord worker-specific EventIds.
+/// Stable numeric log event ids for the Discord worker, in the 6000-6249 range, grouped by source
+/// component. The range continues from the shared
+/// <see cref="Core.Infrastructure.Logging.LogEventIds"/> defined for the rest of the system. Each
+/// constant backs a <c>[LoggerMessage]</c> declaration; the values are part of the worker's logging
+/// contract, so log consumers can filter and alert on them. Do not reassign existing values.
 /// </summary>
 public static class LogEventIds {
     #region BridgeBeatsApiClient (6000-6049)
 
-    /// <summary>Failed to call music lookup API.</summary>
+    /// <summary>A call to the Web music-lookup API failed at the HTTP transport level.</summary>
     public const int LookupApiError = 6000;
 
-    /// <summary>Failed to deserialize lookup response.</summary>
+    /// <summary>The body returned by the music-lookup API could not be deserialized.</summary>
     public const int LookupDeserializeError = 6001;
 
-    /// <summary>Failed to store card via API.</summary>
+    /// <summary>A call to the Web card-store API failed at the HTTP transport level.</summary>
     public const int StoreCardApiError = 6002;
 
-    /// <summary>Failed to deserialize store card response.</summary>
+    /// <summary>The body returned by the card-store API could not be deserialized.</summary>
     public const int StoreCardDeserializeError = 6003;
 
-    /// <summary>Music lookup API call timed out or was cancelled.</summary>
+    /// <summary>The music-lookup API call timed out or was cancelled before a response arrived.</summary>
     public const int LookupApiTimeout = 6004;
 
     #endregion

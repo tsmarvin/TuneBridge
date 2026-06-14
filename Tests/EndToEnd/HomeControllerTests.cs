@@ -4,19 +4,26 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests.EndToEnd;
 
 /// <summary>
-/// End-to-end tests for the HomeController web interface endpoints.
+/// End-to-end tests for the home controller, exercising the real web application in-memory through
+/// <see cref="CustomWebApplicationFactory"/> against the shared Redis container and an isolated SQLite
+/// identity database. Covers page rendering (home, privacy, error, 404) and the lookup form actions,
+/// including antiforgery-protected POSTs and live provider lookups by ISRC, UPC, and title.
 /// </summary>
 [TestClass]
 [TestCategory( "EndToEnd" )] // Mark as end-to-end tests - these are fast and don't hit external APIs
 public class HomeControllerTests {
+    /// <summary>The shared web application factory hosting the app for this test class.</summary>
     private static CustomWebApplicationFactory? s_factory;
+    /// <summary>The HTTP client connected to the test host.</summary>
     private static HttpClient? s_client;
+    /// <summary>The antiforgery token reused across the class's form-POST tests.</summary>
     private static string? s_antiforgeryToken;
 
     /// <summary>
-    /// Initializes the test factory and HTTP client for all tests in this class.
+    /// Builds the test host with worker services disabled and external integrations blanked, creates a
+    /// client, migrates the identity database, and fetches an antiforgery token for the form tests.
     /// </summary>
-    /// <param name="context">The test context provided by MSTest.</param>
+    /// <param name="context">The MSTest class context, used for its cancellation token.</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext context ) {
         // Load configuration from appsettings.json and user secrets
@@ -54,7 +61,7 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Disposes the test factory after all tests in this class have completed.
+    /// Disposes the test host (and its SQLite identity database) after the class completes.
     /// </summary>
     [ClassCleanup]
     public static void ClassCleanup( ) {
@@ -62,7 +69,7 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the Index page returns a successful HTTP status code.
+    /// Verifies the home index returns 200 OK with an HTML content type.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -76,7 +83,7 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the Index page contains the expected BridgeBeats content.
+    /// Verifies the home index response body contains the "BridgeBeats" branding text.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -90,7 +97,7 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the Privacy page returns a successful HTTP status code.
+    /// Verifies the privacy page returns 200 OK.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -103,7 +110,7 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that the Error page returns a successful HTTP status code.
+    /// Verifies the error page returns 200 OK.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -116,7 +123,7 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that non-existent routes return a 404 Not Found status code.
+    /// Verifies an unmapped route returns 404 Not Found.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -129,7 +136,8 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that LookupResults returns a message view when URI is empty.
+    /// Posts an empty URI to the lookup action and verifies the response is 200 OK with a "URI is
+    /// required" validation message.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -150,7 +158,8 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that LookupResultsByIsrc returns a message view when ISRC is empty.
+    /// Posts an empty ISRC to the ISRC lookup action and verifies the response is 200 OK with an "ISRC
+    /// is required" validation message.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -171,7 +180,8 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that LookupResultsByUpc returns a message view when UPC is empty.
+    /// Posts an empty UPC to the UPC lookup action and verifies the response is 200 OK with a "UPC is
+    /// required" validation message.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -192,7 +202,8 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that LookupResultsByTitle returns a message view when title and artist are empty.
+    /// Posts an empty title and artist to the title lookup action and verifies the response is 200 OK
+    /// with a "Title and artist are required" validation message.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -214,7 +225,8 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that LookupResultsByIsrc returns an HTML view when a valid ISRC is provided.
+    /// Posts a valid ISRC and verifies the response is 200 OK HTML containing either an embed card or a
+    /// "No results found" message (tolerating provider availability).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -239,7 +251,8 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that LookupResultsByUpc returns an HTML view when a valid UPC is provided.
+    /// Posts a valid UPC and verifies the response is 200 OK HTML containing either an embed card or a
+    /// "No results found" message (tolerating provider availability).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -264,7 +277,8 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies that LookupResultsByTitle returns an HTML view when valid title and artist are provided.
+    /// Posts a valid title and artist and verifies the response is 200 OK HTML containing either an
+    /// embed card or a "No results found" message (tolerating provider availability).
     /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
@@ -290,7 +304,7 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
+    /// The MSTest-injected test context, used here to obtain the per-test cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; }
 }

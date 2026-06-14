@@ -1,180 +1,170 @@
-# MediaLinkResult Caching with Redis and ATProto PDS Storage
+# Caching and storage
 
-This document describes the caching and storage system for MediaLinkResult DTOs in BridgeBeats.
+This guide explains how BridgeBeats caches and stores lookup results, and how the separate genre
+cache behaves. It is grounded in the current implementations
+(`src/BridgeBeats.Core/Infrastructure/Cache/RedisMediaLinkCache.cs`,
+`RedisGenreCache.cs`, and `src/BridgeBeats.Core/Infrastructure/Queue/RedisRequestDeduplicator.cs`).
 
-## Overview
+## Two caches, different rules
 
-BridgeBeats implements a two-tier caching system for MediaLinkResult lookups:
+BridgeBeats runs two distinct Redis-backed caches with different lifetime rules. Keep them straight:
 
-1. **Redis**: Distributed cache for fast lookups with support for horizontal scaling
-2. **ATProto PDS**: Persistent storage of MediaLinkResults as ATProto posts
+- **Media-link cache** (`RedisMediaLinkCache`): indexes lookup results. Redis holds pointer keys to
+  the durable record; the result body lives on the ATProto PDS. These keys expire on a TTL.
+- **Genre cache** (`RedisGenreCache`): caches track and artist genres plus an artist-refresh queue.
+  These keys have **no TTL** — they persist until overwritten.
 
-## Architecture
+## Media-link cache
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                       Lookup Request Flow                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  User Request                                                   │
-│       │                                                         │
-│       ▼                                                         │
-│  ┌──────────────────────────────────────┐                       │
-│  │   Request Deduplicator (Redis)      │                       │
-│  │   SETNX lock on request key         │                       │
-│  └─────────────┬────────────────────────┘                       │
-│                │                                                │
-│       ┌────────┴────────┐                                       │
-│       ▼                 ▼                                       │
-│   Duplicate        New Request                                  │
-│   (wait)            │                                           │
-│       │             ▼                                           │
-│       │        ┌────────────────────────────┐                   │
-│       │        │   Redis Cache Lookup       │                   │
-│       │        │   (Check for RecordUri)    │                   │
-│       │        └────────┬───────────────────┘                   │
-│       │                 │                                       │
-│       │        ┌────────┴────────┐                              │
-│       │        ▼                 ▼                              │
-│       │    Cache Hit         Cache Miss                         │
-│       │        │                 │                              │
-│       │        ▼                 ▼                              │
-│       │   ┌─────────────┐   ┌────────────┐                     │
-│       │   │ Fetch from  │   │  Parallel  │                     │
-│       │   │   PDS       │   │  Provider  │                     │
-│       │   │             │   │  Lookups   │                     │
-│       │   └──────┬──────┘   └─────┬──────┘                     │
-│       │          │                 │                            │
-│       │          ▼                 ▼                            │
-│       │   ┌──────────────────────────┐                          │
-│       │   │   Check Staleness        │                          │
-│       │   │   (LookedUpAt vs Now)    │                          │
-│       │   └──────┬───────────────────┘                          │
-│       │          │                                              │
-│       │     ┌────┴─────┐                                        │
-│       │     ▼          ▼                                        │
-│       │  Fresh      Stale                                       │
-│       │     │          │                                        │
-│       │     │          ▼                                        │
-│       │     │    ┌──────────────┐                               │
-│       │     │    │  Queue for   │                               │
-│       │     │    │  Background  │                               │
-│       │     │    │  Refresh     │                               │
-│       │     │    └──────────────┘                               │
-│       │     │                                                   │
-│       └─────┴──────────▼                                        │
-│              Return Result                                      │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Architecture
 
-## Configuration
+The media-link cache is a two-tier system:
 
-Add the following settings to your `appsettings.json` or environment variables:
+1. **Redis** holds derived lookup pointers (key → PDS record URI) and per-entry bookkeeping. It can
+   be rebuilt from the PDS at any time.
+2. **ATProto PDS** holds the durable `MediaLinkResult` body and is the source of truth.
 
-```json
-{
-  "BridgeBeats": {
-    "ATProtoIdentifier": "your-handle.bsky.social",
-    "ATProtoPassword": "your-app-password",
-    "CacheDays": 7,
-    "RedisConnectionString": "localhost:6379"
-  }
-}
-```
+On a hit, Redis resolves a lookup key to a record URI, and the body is fetched from the PDS.
 
-### Configuration Parameters
+### Configuration
 
-- **ATProtoIdentifier**: Your ATProto handle or DID
-- **ATProtoPassword**: Your ATProto password or app password (recommended: use app password)
-- **CacheDays**: Number of days to keep cache entries valid (default: 7)
-- **RedisConnectionString**: Redis connection string (provided by Aspire in development)
+The relevant settings live under the `BridgeBeats` configuration section:
 
-> **Security Note**: Use a ATProto app password instead of your main account password. Generate an app password at: Settings → App Passwords in ATProto.
+| Setting | Default | Effect |
+|---|---|---|
+| `ATProtoIdentifier` | — | The ATProto handle or DID that posts records. |
+| `ATProtoPassword` | — | The ATProto password or app password. Use an app password. |
+| `CacheDays` | `7` | Pointer lifetime and freshness window, in days. |
+| `RedisConnectionString` | — | Redis connection (supplied by Aspire in development). |
 
-## Redis Key Patterns
+Defaults are from `src/BridgeBeats.Web/Configuration/AppSettings.cs`. Use an ATProto app password
+rather than your main account password.
 
-The cache uses the following Redis key patterns for efficient lookups:
+### Redis key patterns
 
-| Key Pattern | Description | Example |
-|-------------|-------------|---------|
-| `lookup:isrc:{isrc}` | Track lookup by ISRC code | `lookup:isrc:USRC12345678` |
-| `lookup:upc:{upc}` | Album lookup by UPC code | `lookup:upc:123456789012` |
-| `lookup:url:{urlHash}` | Lookup by URL hash (SHA256) | `lookup:url:abc123...` |
-| `lookup:card:{cardId}` | Lookup by card ID | `lookup:card:xyz789` |
-| `lookup:provider:{provider}:{id}` | Lookup by provider ID | `lookup:provider:spotify:track123` |
-| `lookup:metadata:{metadataHash}` | Lookup by title+artist hash | `lookup:metadata:def456...` |
-| `meta:{rkey}` | Metadata for a record | `meta:track_abc123` |
-| `keys:{rkey}` | Set of lookup keys for cleanup | `keys:track_abc123` |
+`RedisMediaLinkCache` writes these pointer and bookkeeping keys (the literal prefixes are constants
+in the class):
 
-All keys have a TTL equal to `CacheDays` and automatically expire when stale.
+| Key pattern | Holds | Example |
+|---|---|---|
+| `lookup:isrc:{ISRC}` | Record URI, keyed by upper-cased ISRC | `lookup:isrc:USRC17607839` |
+| `lookup:upc:{UPC}` | Record URI, keyed by upper-cased UPC | `lookup:upc:00602537518357` |
+| `lookup:url:{urlHash}` | Record URI, keyed by hashed input URL | `lookup:url:abc123...` |
+| `lookup:card:{cardId}` | Record URI, keyed by card id | `lookup:card:xyz789` |
+| `lookup:provider:{provider}:{id}` | Record URI, keyed by provider and provider id | `lookup:provider:Spotify:track123` |
+| `lookup:metadata:{metadataHash}` | Record URI, keyed by hashed title/artist | `lookup:metadata:def456...` |
+| `meta:{rkey}` | Per-entry bookkeeping (JSON: rkey, cardId, recordUri, createdAt, lastLookedUpAt) | `meta:track:USRC17607839` |
+| `keys:{rkey}` | Set of all keys written for an entry, for refresh and cleanup | `keys:track:USRC17607839` |
 
-## Caching Behavior
+Every key written for an entry shares a TTL of `CacheDays` and is recorded in the entry's
+`keys:{rkey}` set so the whole set can be refreshed or removed together.
 
-### Lookup Flow
+### Lookup flow
 
-1. **Deduplication Check**: Redis SETNX used to prevent duplicate in-flight requests
-2. **Cache Check**: Multiple lookup strategies tried in order of specificity:
-   - By ISRC/UPC (for tracks/albums)
-   - By provider ID (Spotify/Apple Music/Tidal)
-   - By metadata hash (title + artist)
-   - By URL hash (input link)
-3. **PDS Fetch**: If RecordUri found in Redis, fetch actual data from ATProto PDS
-4. **Staleness Check**: Check if record's `lookedUpAt` timestamp exceeds `CacheDays`
-5. **Cache Hit**: If fresh, return immediately (with stale-while-revalidate queuing if stale)
-6. **Cache Miss**: Perform fresh lookup via providers
+`RedisMediaLinkCache` exposes one method per lookup strategy
+(`TryGetCachedResultByISRCAsync`, `...ByUPCAsync`, `...ByMetadataAsync`,
+`...ByProviderIdAsync`, `...ByCardIdAsync`, and `TryGetCachedResultAsync` for the input URL). Each:
 
-### Storage Flow
+1. Hashes or normalizes the input into the matching pointer key.
+2. Reads the pointer from Redis. On a hit, fetches the body from the PDS.
+3. Returns the result, its record URI, and an `isStale` flag.
 
-1. **Lookup Execution**: Parallel lookup across configured music providers
-2. **ATProto Storage**: Store MediaLinkResult as ATProto PDS record with deterministic rkey
-3. **Redis Indexing**: Create lookup indices in Redis (no data duplication)
-4. **Link Association**: Associate all input links with the RecordUri in Redis
+The ISRC and UPC lookups add a fallback: on a Redis pointer miss they derive the expected record URI
+from the external id and query the PDS directly, re-indexing in Redis when the record is found. A
+record present on the PDS but missing from Redis can still be served.
 
-### Stale-While-Revalidate
+### Staleness
 
-When a stale record is found (older than `CacheDays`):
-1. The stale result is returned immediately to the user
-2. A background refresh job is enqueued to update the record
-3. The refresh writes a new PDS record and updates all Redis indices
-4. Future requests get the refreshed data
+`CheckRecordFreshness` marks a record stale when either condition holds:
 
-This ensures users always get fast responses while keeping data fresh.
+- The record's `lookedUpAt` is older than `CacheDays`, or
+- The record is partial (`isPartial` is `true`).
 
-### Request Deduplication
+Partial results are always treated as stale-eligible so callers re-enter the lookup path and wait for
+the complete result rather than serving a partial result as final.
 
-To prevent thundering herd problems with concurrent identical requests:
-1. Redis SETNX creates a lock with TTL (default: job timeout duration)
-2. First request acquires lock and processes the lookup
-3. Concurrent identical requests wait for the result via Redis Pub/Sub
-4. When complete, the result is published to all waiting requests
-5. All waiting requests receive the same cached result
+### Storage flow
 
-This dramatically reduces provider API calls during traffic spikes.
+`CacheResultAsync` stores and indexes a result:
 
-## ATProto Storage Format
+1. Writes the body to the ATProto PDS first, with a deterministic rkey (the durable step).
+2. Removes any stale lookup keys recorded under `keys:{rkey}`.
+3. Calls `AddInputLinksAsync` to write the full pointer set: a `meta:{rkey}` record, a `lookup:card:`
+   pointer, `lookup:url:` pointers for every input and provider URL, ISRC or UPC pointers from each
+   provider's external id, title/artist metadata pointers, and provider-id pointers.
 
-MediaLinkResults are stored as custom AT Protocol records using the `link.bridgebeats.lookup` lexicon.
+When an entry for the same record already exists with the same record URI, `AddInputLinksAsync`
+refreshes the TTLs on the existing keys and skips the rewrite.
 
-### Lexicon Definition
+### Record key generation
 
-The custom lexicon is defined in `wwwroot/.well-known/atproto-lexicon/link.bridgebeats.lookup` and served at `https://<your-domain>/.well-known/atproto-lexicon/link.bridgebeats.lookup`.
+Record keys (rkeys) are deterministic, so the same logical content always maps to the same PDS
+record and writes are idempotent (`src/BridgeBeats.Core/Infrastructure/Storage/RecordKeyGenerator.cs`):
 
-See [ATPROTO_LEXICON.md](ATPROTO_LEXICON.md) for the complete lexicon definition.
+- **With an external id**: `album:{sanitizedUPC}` or `track:{sanitizedISRC}`. The id is sanitized to
+  letters, digits, and hyphen and used directly — it is not hashed.
+- **Without an external id**: `metadata:{hash}`, where the hash is the first 16 characters of the
+  lowercase base32 encoding of `SHA-256(title|artist|kind)`.
 
-### Record Key Generation
+The card id is the lowercase base32 encoding of `SHA-256(rkey)`, truncated to 32 characters, which
+keeps it URL-safe and case-insensitive.
 
-Records use deterministic `rkey` generation for idempotent storage:
+### URL hashing and privacy
 
-- **Tracks with ISRC**: `track_{base32(sha256(isrc))}`
-- **Albums with UPC**: `album_{base32(sha256(upc))}`
-- **Metadata-based**: `meta_{base32(sha256(title|artist))}`
+Input URLs are not stored on the PDS. They are normalized
+(`LinkNormalizer.Normalize`, which strips scheme, host casing, `www.`, fragments, and
+non-significant query parameters) and then hashed with `SHA-256`, encoded as lowercase base32
+(`HashUtility.HashUrl`). Only that hash appears in Redis, under `lookup:url:{urlHash}`.
 
-This ensures identical music content always maps to the same PDS record, even if looked up via different URLs or providers.
+This keeps tracking-laden query parameters out of both Redis and the public ATProto network: the
+cache can recognize a URL it has seen before without retaining the URL itself.
 
-### Record Structure
+### Stale-while-revalidate
 
-Example record structure stored on PDS:
+When a stale record is found, the cache returns it immediately and the caller can enqueue a
+background refresh. A refresh writes a new PDS record and rebuilds the Redis pointers for the rkey,
+so later requests get the refreshed data. This serves fast responses while keeping data current.
+
+## Request deduplication
+
+`RedisRequestDeduplicator` collapses concurrent identical lookups into a single in-flight request and
+lets the others wait for its result. It uses SETNX for the lock and Redis Pub/Sub for completion
+notification.
+
+The request key is canonical: `GenerateRequestKey(type, value)` produces `{type-lower}:{value-upper}`
+so duplicate lookups collapse to the same key.
+
+The flow:
+
+1. **Acquire** (`TryAcquireAsync`): the first caller sets `inflight:{requestKey}` with `NX` and a TTL,
+   storing this process instance's id as the holder. It gets `Acquired = true`. A caller that finds
+   the lock held gets `AlreadyInFlight = true` and a deduplication metric is recorded.
+2. **Wait** (`WaitForCompletionAsync` / `WaitForFinalCompletionAsync`): a waiter subscribes to
+   `complete:{requestKey}`, then re-checks durable state to close the race where the result was
+   published before the subscription became active. Empty completion messages are ignored.
+3. **Release** (`ReleaseAsync`): the owner deletes the lock only if it still owns it, then publishes
+   the result URI on `complete:{requestKey}` so all waiters wake. Completion is published even when
+   the release is denied, so waiters are never stranded.
+
+This is what turns the asynchronous saga pipeline into a synchronous response for interactive
+callers.
+
+## ATProto storage format
+
+Results are stored as custom AT Protocol records under the `link.bridgebeats.lookup` lexicon.
+
+### Lexicon
+
+The lexicon is defined in `src/BridgeBeats.Web/wwwroot/.well-known/atproto-lexicon/link.bridgebeats.lookup`
+and served at `https://<your-domain>/.well-known/atproto-lexicon/link.bridgebeats.lookup`. See
+[ATPROTO_LEXICON.md](ATPROTO_LEXICON.md) for setup.
+
+### Record structure
+
+The record `results` field is an **array** of provider results (not a map), each carrying a
+`provider` string (`appleMusic`, `spotify`, or `tidal`), and the record carries a `lookedUpAt`
+timestamp. This is the persisted shape and differs from the API response shape, which keys results
+by provider — see [API.md](API.md).
 
 ```json
 {
@@ -194,104 +184,75 @@ Example record structure stored on PDS:
 }
 ```
 
-**Important Privacy Note**: Input links (the URLs users provide) are intentionally NOT stored in ATProto PDS records. They are tracked only in Redis as URL hashes for lookup purposes. This protects user privacy by not exposing potentially tracking-laden URLs on the public ATProto network.
+The lexicon requires `results` and `lookedUpAt`, allows 1–10 provider results, and requires
+`provider`, `artist`, `title`, `url`, and `marketRegion` on each provider result.
 
-## Performance Considerations
+## Genre cache
 
-- **Redis Lookup**: ~1-5ms (O(1) key lookup)
-- **PDS Fetch**: ~100-500ms (ATProto PDS API call)
-- **Fresh Lookup**: ~500-2000ms (Music provider API calls + PDS storage)
-- **Record Update**: ~100-500ms (PDS API call to update existing record)
-- **Memory Usage**: ~500 bytes per cached record (Redis index keys only, no data)
+`RedisGenreCache` is a separate cache for track and artist genres, plus a per-provider artist-refresh
+queue. Its keys have **no TTL**: the class stores data until it is explicitly overwritten.
 
-### Horizontal Scaling
+### Key patterns
 
-Redis-based caching enables horizontal scaling:
-- Multiple application instances share the same Redis cache
-- Request deduplication prevents duplicate API calls across instances
-- No cache coordination needed (Redis handles it)
-- Stale-while-revalidate minimizes provider API load
+| Key pattern | Type | Holds |
+|---|---|---|
+| `genre:{provider}:{id}` | hash | A track's genres (a `genres` JSON array and an ISO-8601 `cachedAt`) |
+| `artist-genre:{provider}:{id}` | hash | An artist's genres (same shape) |
+| `track-artists:{provider}:{trackId}` | list | A track's artist ids |
+| `artist-refresh-queue:{provider}` | sorted set | Artists awaiting a genre refresh, scored by enqueue time |
 
-### Key Cleanup
+### Behavior
 
-Redis keys automatically expire via TTL:
-- All lookup keys have TTL = `CacheDays`
-- Stale keys are automatically removed by Redis
-- Explicit cleanup on record refresh removes old keys before adding new ones
-- `keys:{rkey}` set tracks all keys for a record for efficient cleanup
+- **Track genres** (`GetGenresAsync`): on a miss for a Spotify track, genres are resolved on demand
+  by merging the genres of the track's artists (via the `track-artists` mapping) and back-filling the
+  track entry. For other providers a miss returns null.
+- **Artist refresh queue**: `EnqueueArtistsForRefreshAsync` adds artist ids to the sorted set only if
+  not already present, so a queued artist keeps its original position. `DequeueArtistsForRefreshAsync`
+  pops the oldest entries first (lowest score). The queue drains FIFO.
 
-## API Interfaces
+Because these entries have no TTL, they accumulate until overwritten. Track and artist genre writes
+replace the prior hash; track-artist mappings are replaced atomically within a transaction.
 
-### IATProtoStorageService
+## Performance and scaling
 
-```csharp
-public interface IATProtoStorageService {
-    Task<string> StoreMediaLinkResultAsync(MediaLinkResult result);
-    Task<MediaLinkResult?> GetMediaLinkResultAsync(string recordUri);
-}
-```
+- A Redis pointer read is O(1). The result body fetch is a PDS API call, so a cache hit is one Redis
+  read plus one PDS fetch.
+- Redis stores only derived pointers and bookkeeping, not result bodies, so its footprint per entry
+  is small.
+- Multiple application instances share one Redis cache. Request deduplication prevents duplicate
+  provider calls across instances, and stale-while-revalidate minimizes provider load.
 
-### IMediaLinkCacheRepository
-
-```csharp
-public interface IMediaLinkCacheRepository {
-    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultAsync(string inputLink);
-    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByISRCAsync(string isrc);
-    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByUPCAsync(string upc);
-    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByProviderIdAsync(string providerId, SupportedProviders provider, bool isAlbum);
-    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByMetadataAsync(string title, string artist);
-    Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByCardIdAsync(string cardId);
-    Task<string> CacheResultAsync(MediaLinkResult result);
-    Task AddInputLinksAsync(string recordUri, MediaLinkResult result);
-}
-```
-
-### CachingMediaLinkService
-
-A decorator for `IMediaLinkService` that transparently adds caching:
-- Checks cache before performing lookups
-- Stores results after successful lookups
-- Implements stale-while-revalidate pattern
-- Handles request deduplication automatically
+Verification needed: the order-of-magnitude latency figures and ATProto PDS rate limits that appeared
+in earlier revisions of this guide were not confirmed against the current code or an authoritative
+ATProto specification. Measure against a running system, and cite the ATProto PDS limits from the
+provider's documentation, before stating specific numbers.
 
 ## Maintenance
 
-### Record Refresh
+### Refresh
 
-Records older than `CacheDays` are automatically queued for background refresh:
-- Stale data is served immediately
-- Background job performs fresh provider lookups
-- PDS record is created/updated with new data
-- All Redis indices are updated atomically
+A stale media-link record is served immediately and refreshed in the background. The refresh writes a
+new PDS record and rebuilds the rkey's Redis pointers (old keys removed via the `keys:{rkey}` set
+before new ones are written).
 
-### Manual Cache Invalidation
+### Manual invalidation
 
-To invalidate specific cache entries:
+Media-link cache keys expire on their `CacheDays` TTL. To remove an entry early, read its
+`keys:{rkey}` set and delete the listed keys along with the `keys:{rkey}` and `meta:{rkey}` keys:
 
 ```bash
-# Connect to Redis
 redis-cli
-
-# Delete all lookup keys for a specific record
-SMEMBERS keys:track_abc123
-# (copy the keys returned)
-DEL lookup:isrc:USRC12345678 lookup:url:xyz789 ...
-DEL keys:track_abc123
-DEL meta:track_abc123
+SMEMBERS keys:track:USRC17607839
+# delete the keys returned, then:
+DEL keys:track:USRC17607839 meta:track:USRC17607839
 ```
 
-## Limitations
+Genre-cache entries have no TTL; remove them explicitly by key when needed.
 
-- Redis keys expire after `CacheDays` (stale records are refreshed on access)
-- ATProto PDS is the source of truth; Redis is an index layer only
-- Provider URLs may change (cache uses stable ISRC/UPC when available)
-- Rate limits apply to ATProto API (authenticated: 3000/hour, 30000/day)
-- Maximum record size depends on PDS configuration
+## Security
 
-## Security Considerations
-
-- Use ATProto app passwords (not main password)
-- Store credentials securely (environment variables or secret management)
-- Redis should be secured (password, firewall, TLS in production)
-- URL hashes in Redis prevent exposure of tracking parameters
-- No PII is stored in the cache by default
+- Use ATProto app passwords, not the main account password.
+- Store credentials in environment variables or a secret manager.
+- Secure Redis in production (password, network restrictions, TLS).
+- Only URL hashes are stored, so tracking parameters in input URLs are not exposed.
+</content>

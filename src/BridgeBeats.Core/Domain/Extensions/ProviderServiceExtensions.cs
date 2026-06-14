@@ -9,24 +9,36 @@ using idunno.Security;
 namespace BridgeBeats.Core.Domain.Extensions {
 
     /// <summary>
-    /// Unified extension methods for registering all music provider services.
+    /// Dependency-injection wiring for the music providers. Two registration families live here: the
+    /// <c>Add*Services</c> methods register the <b>direct</b> provider services that call the real
+    /// Spotify, Apple Music, and Tidal HTTP APIs (with their named HTTP clients, credentials, auth
+    /// handlers, and delegating handlers); the <c>Add*WorkerHttpClient</c> methods register the
+    /// <b>proxy</b> services that forward lookups to remote provider workers over HTTP.
     /// </summary>
     public static class ProviderServiceExtensions {
 
         /// <summary>
-        /// Registers all configured music provider services (Apple Music, Spotify, Tidal).
+        /// Registers all <b>direct</b> provider lookup services whose credentials are supplied,
+        /// delegating to <see cref="AddAppleMusicServices"/>, <see cref="AddSpotifyServices"/>, and
+        /// <see cref="AddTidalServices"/>. A provider is enabled only when its required settings are
+        /// present.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="appleTeamId">The Apple Developer Team ID.</param>
-        /// <param name="appleKeyId">The Apple Music API Key ID.</param>
-        /// <param name="appleKeyPath">The path to the Apple .p8 private key file.</param>
-        /// <param name="spotifyClientId">The Spotify API Client ID.</param>
-        /// <param name="spotifyClientSecret">The Spotify API Client Secret.</param>
-        /// <param name="tidalClientId">The Tidal API Client ID.</param>
-        /// <param name="tidalClientSecret">The Tidal API Client Secret.</param>
-        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
-        /// <returns>A set of enabled providers based on the credentials provided.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when no providers are configured.</exception>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="appleTeamId">Apple developer team id, or <see langword="null"/> to skip Apple Music.</param>
+        /// <param name="appleKeyId">Apple MusicKit key id.</param>
+        /// <param name="appleKeyPath">Path to the Apple <c>.p8</c> private key file.</param>
+        /// <param name="spotifyClientId">Spotify client id, or <see langword="null"/> to skip Spotify.</param>
+        /// <param name="spotifyClientSecret">Spotify client secret.</param>
+        /// <param name="tidalClientId">Tidal client id, or <see langword="null"/> to skip Tidal.</param>
+        /// <param name="tidalClientSecret">Tidal client secret.</param>
+        /// <param name="maxRetryAfterSeconds">
+        /// Threshold for the <c>RetryAfterLimitHandler</c>: a <c>Retry-After</c> beyond this many
+        /// seconds fails fast instead of waiting. Defaults to 120.
+        /// </param>
+        /// <returns>The set of providers that were enabled.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when no provider could be enabled because every provider's settings were missing.
+        /// </exception>
         public static HashSet<SupportedProviders> AddMusicProviders(
             this IServiceCollection services,
             string? appleTeamId,
@@ -52,10 +64,14 @@ namespace BridgeBeats.Core.Domain.Extensions {
         }
 
         /// <summary>
-        /// Creates a factory function for <see cref="RetryAfterLimitHandler"/> with the specified threshold.
+        /// Builds a factory that creates a <c>RetryAfterLimitHandler</c> bound to the given threshold,
+        /// resolving a typed logger from the service provider at creation time. Used when wiring a
+        /// provider's named HTTP clients.
         /// </summary>
-        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
-        /// <returns>A factory function that creates <see cref="RetryAfterLimitHandler"/> instances.</returns>
+        /// <param name="maxRetryAfterSeconds">
+        /// The <c>Retry-After</c> threshold, in seconds, above which the handler fails fast.
+        /// </param>
+        /// <returns>A factory that produces the configured handler from an <see cref="IServiceProvider"/>.</returns>
         internal static Func<IServiceProvider, RetryAfterLimitHandler> CreateRetryAfterLimitHandlerFactory( int maxRetryAfterSeconds )
             => sp => new RetryAfterLimitHandler(
                 maxRetryAfterSeconds,
@@ -64,17 +80,20 @@ namespace BridgeBeats.Core.Domain.Extensions {
 
         #region Service Provider Registration
 
-
         /// <summary>
-        /// Registers Apple Music services if valid credentials are provided.
+        /// Registers the direct Apple Music lookup service and its JWT auth handler when the required
+        /// Apple credentials are present. Adds <see cref="SupportedProviders.AppleMusic"/> to
+        /// <paramref name="enabledProviders"/> on success.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="teamId">The Apple Developer Team ID.</param>
-        /// <param name="keyId">The Apple Music API Key ID.</param>
-        /// <param name="keyPath">The path to the .p8 private key file.</param>
-        /// <param name="enabledProviders">The set of enabled providers to update.</param>
-        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
-        /// <returns>True if Apple Music services were registered; otherwise false.</returns>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="teamId">Apple developer team id.</param>
+        /// <param name="keyId">Apple MusicKit key id.</param>
+        /// <param name="keyPath">Path to the Apple <c>.p8</c> private key file.</param>
+        /// <param name="enabledProviders">The running set of enabled providers, mutated on success.</param>
+        /// <param name="maxRetryAfterSeconds">The <c>Retry-After</c> fail-fast threshold in seconds. Defaults to 120.</param>
+        /// <returns><see langword="true"/> when Apple Music was registered; <see langword="false"/> when its settings were missing.</returns>
+        /// <exception cref="FileNotFoundException">Thrown when <paramref name="keyPath"/> does not exist.</exception>
+        /// <exception cref="InvalidDataException">Thrown when the <c>.p8</c> file is empty.</exception>
         public static bool AddAppleMusicServices(
             this IServiceCollection services,
             string? teamId,
@@ -94,16 +113,23 @@ namespace BridgeBeats.Core.Domain.Extensions {
         }
 
         /// <summary>
-        /// Registers the AppleJwtHandler and musickit-api HTTP client for MusicKit JS authentication.
-        /// This is needed for the AppleMusicController to generate developer tokens, regardless of
-        /// whether worker services are used for backend lookups.
+        /// Loads the Apple <c>.p8</c> signing key, registers the <c>musickit-api</c> named HTTP client
+        /// (SSRF-hardened primary handler, <c>RetryAfterLimitHandler</c>, and
+        /// <c>ProviderMetricsHandler</c>), and registers a singleton <c>AppleJwtHandler</c> that signs
+        /// developer JWTs.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="teamId">The Apple Developer Team ID.</param>
-        /// <param name="keyId">The Apple Music API Key ID.</param>
-        /// <param name="keyPath">The path to the .p8 private key file.</param>
-        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
-        /// <returns>True if the JWT handler was registered; otherwise false.</returns>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="teamId">Apple developer team id.</param>
+        /// <param name="keyId">Apple MusicKit key id.</param>
+        /// <param name="keyPath">Path to the Apple <c>.p8</c> private key file.</param>
+        /// <param name="maxRetryAfterSeconds">The <c>Retry-After</c> fail-fast threshold in seconds. Defaults to 120.</param>
+        /// <returns>
+        /// <see langword="true"/> when the handler and client were registered; <see langword="false"/>
+        /// when <paramref name="teamId"/>, <paramref name="keyId"/>, or <paramref name="keyPath"/> was
+        /// blank.
+        /// </returns>
+        /// <exception cref="FileNotFoundException">Thrown when the file at <paramref name="keyPath"/> does not exist.</exception>
+        /// <exception cref="InvalidDataException">Thrown when the <c>.p8</c> file exists but has no contents.</exception>
         public static bool AddAppleMusicJwtHandler(
             this IServiceCollection services,
             string? teamId,
@@ -148,14 +174,20 @@ namespace BridgeBeats.Core.Domain.Extensions {
         }
 
         /// <summary>
-        /// Registers Spotify services if valid credentials are provided.
+        /// Registers the direct Spotify lookup service. Wires the <c>spotify-auth</c> and
+        /// <c>spotify-api</c> named HTTP clients (SSRF-hardened primary handler,
+        /// <c>RetryAfterLimitHandler</c>, and <c>ProviderMetricsHandler</c>), the
+        /// <c>SpotifyCredentials</c> singleton, and the <c>SpotifyTokenHandler</c>. Also registers
+        /// <c>ISpotifyBulkLookupService</c> resolving through <c>SpotifyLookupService</c> so the bulk
+        /// processor can depend on the interface rather than the concrete class, and adds
+        /// <see cref="SupportedProviders.Spotify"/> to <paramref name="enabledProviders"/>.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="clientId">The Spotify API Client ID.</param>
-        /// <param name="clientSecret">The Spotify API Client Secret.</param>
-        /// <param name="enabledProviders">The set of enabled providers to update.</param>
-        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
-        /// <returns>True if Spotify services were registered; otherwise false.</returns>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="clientId">Spotify client id.</param>
+        /// <param name="clientSecret">Spotify client secret.</param>
+        /// <param name="enabledProviders">The running set of enabled providers, mutated on success.</param>
+        /// <param name="maxRetryAfterSeconds">The <c>Retry-After</c> fail-fast threshold in seconds. Defaults to 120.</param>
+        /// <returns><see langword="true"/> when Spotify was registered; <see langword="false"/> when the client id or secret was blank.</returns>
         public static bool AddSpotifyServices(
             this IServiceCollection services,
             string? clientId,
@@ -197,16 +229,19 @@ namespace BridgeBeats.Core.Domain.Extensions {
             return true;
         }
 
-
         /// <summary>
-        /// Registers Tidal services if valid credentials are provided.
+        /// Registers the direct Tidal lookup service. Wires the <c>tidal-auth</c> and <c>tidal-api</c>
+        /// named HTTP clients (SSRF-hardened primary handler, <c>RetryAfterLimitHandler</c>, and
+        /// <c>ProviderMetricsHandler</c>), the <c>TidalCredentials</c> singleton, and the
+        /// <c>TidalTokenHandler</c>. Adds <see cref="SupportedProviders.Tidal"/> to
+        /// <paramref name="enabledProviders"/> on success.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="clientId">The Tidal API Client ID.</param>
-        /// <param name="clientSecret">The Tidal API Client Secret.</param>
-        /// <param name="enabledProviders">The set of enabled providers to update.</param>
-        /// <param name="maxRetryAfterSeconds">Maximum Retry-After value in seconds before failing fast.</param>
-        /// <returns>True if Tidal services were registered; otherwise false.</returns>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="clientId">Tidal client id.</param>
+        /// <param name="clientSecret">Tidal client secret.</param>
+        /// <param name="enabledProviders">The running set of enabled providers, mutated on success.</param>
+        /// <param name="maxRetryAfterSeconds">The <c>Retry-After</c> fail-fast threshold in seconds. Defaults to 120.</param>
+        /// <returns><see langword="true"/> when Tidal was registered; <see langword="false"/> when the client id or secret was blank.</returns>
         public static bool AddTidalServices(
             this IServiceCollection services,
             string? clientId,
@@ -249,31 +284,26 @@ namespace BridgeBeats.Core.Domain.Extensions {
 
         #region HTTP Client Registration (for main web app calling workers)
 
-        /// <summary>
-        /// HTTP client name for the Spotify worker service.
-        /// </summary>
+        /// <summary>Named HTTP client used by the web app to reach the Spotify worker service.</summary>
         public const string SpotifyWorkerHttpClientName = "spotify-worker";
 
-        /// <summary>
-        /// HTTP client name for the Apple Music worker service.
-        /// </summary>
+        /// <summary>Named HTTP client used by the web app to reach the Apple Music worker service.</summary>
         public const string AppleMusicWorkerHttpClientName = "applemusic-worker";
 
-        /// <summary>
-        /// HTTP client name for the Tidal worker service.
-        /// </summary>
+        /// <summary>Named HTTP client used by the web app to reach the Tidal worker service.</summary>
         public const string TidalWorkerHttpClientName = "tidal-worker";
 
         /// <summary>
-        /// Registers HTTP-based music provider clients that communicate with worker services.
-        /// Used by the main web application instead of direct provider implementations.
+        /// Registers the <b>proxy</b> lookup services for each enabled worker. Each proxy forwards
+        /// lookups over HTTP to a remote provider worker through its <c>{provider}-worker</c> named
+        /// client, rather than calling the real provider API directly.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="spotifyWorkerEnabled">Whether to register the Spotify worker client.</param>
-        /// <param name="appleMusicWorkerEnabled">Whether to register the Apple Music worker client.</param>
-        /// <param name="tidalWorkerEnabled">Whether to register the Tidal worker client.</param>
-        /// <returns>A set of enabled providers based on which workers are enabled.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when no workers are enabled.</exception>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="spotifyWorkerEnabled">Whether to register the Spotify worker proxy.</param>
+        /// <param name="appleMusicWorkerEnabled">Whether to register the Apple Music worker proxy.</param>
+        /// <param name="tidalWorkerEnabled">Whether to register the Tidal worker proxy.</param>
+        /// <returns>The set of providers whose worker proxies were enabled.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when no worker was enabled.</exception>
         public static HashSet<SupportedProviders> AddMusicProviderHttpClients(
             this IServiceCollection services,
             bool spotifyWorkerEnabled,
@@ -302,11 +332,13 @@ namespace BridgeBeats.Core.Domain.Extensions {
         }
 
         /// <summary>
-        /// Registers an HTTP client for communicating with the Spotify worker service.
+        /// Registers the <c>spotify-worker</c> named HTTP client and the
+        /// <c>SpotifyHttpLookupService</c> proxy that forwards lookups to the Spotify worker. Adds
+        /// <see cref="SupportedProviders.Spotify"/> to <paramref name="enabledProviders"/>.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="enabledProviders">The set of enabled providers to update.</param>
-        /// <returns>True if the client was registered.</returns>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="enabledProviders">The running set of enabled providers, mutated on success.</param>
+        /// <returns>Always <see langword="true"/>.</returns>
         public static bool AddSpotifyWorkerHttpClient(
             this IServiceCollection services,
             HashSet<SupportedProviders> enabledProviders
@@ -329,11 +361,13 @@ namespace BridgeBeats.Core.Domain.Extensions {
         }
 
         /// <summary>
-        /// Registers an HTTP client for communicating with the Apple Music worker service.
+        /// Registers the <c>applemusic-worker</c> named HTTP client and the
+        /// <c>AppleMusicHttpLookupService</c> proxy that forwards lookups to the Apple Music worker.
+        /// Adds <see cref="SupportedProviders.AppleMusic"/> to <paramref name="enabledProviders"/>.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="enabledProviders">The set of enabled providers to update.</param>
-        /// <returns>True if the client was registered.</returns>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="enabledProviders">The running set of enabled providers, mutated on success.</param>
+        /// <returns>Always <see langword="true"/>.</returns>
         public static bool AddAppleMusicWorkerHttpClient(
             this IServiceCollection services,
             HashSet<SupportedProviders> enabledProviders
@@ -356,11 +390,13 @@ namespace BridgeBeats.Core.Domain.Extensions {
         }
 
         /// <summary>
-        /// Registers an HTTP client for communicating with the Tidal worker service.
+        /// Registers the <c>tidal-worker</c> named HTTP client and the <c>TidalHttpLookupService</c>
+        /// proxy that forwards lookups to the Tidal worker. Adds
+        /// <see cref="SupportedProviders.Tidal"/> to <paramref name="enabledProviders"/>.
         /// </summary>
-        /// <param name="services">The service collection to add services to.</param>
-        /// <param name="enabledProviders">The set of enabled providers to update.</param>
-        /// <returns>True if the client was registered.</returns>
+        /// <param name="services">The service collection to add registrations to.</param>
+        /// <param name="enabledProviders">The running set of enabled providers, mutated on success.</param>
+        /// <returns>Always <see langword="true"/>.</returns>
         public static bool AddTidalWorkerHttpClient(
             this IServiceCollection services,
             HashSet<SupportedProviders> enabledProviders
@@ -383,8 +419,6 @@ namespace BridgeBeats.Core.Domain.Extensions {
         }
 
         #endregion HTTP Client Registration
-
-
 
     }
 }

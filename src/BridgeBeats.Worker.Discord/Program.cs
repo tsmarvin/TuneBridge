@@ -8,14 +8,16 @@ using Serilog;
 namespace BridgeBeats.Worker.Discord;
 
 /// <summary>
-/// Entry point for the Discord worker service.
+/// Entry point and composition root for the Discord worker. Builds a background host (the worker
+/// exposes no HTTP endpoint), wires the sharded Discord gateway and the BridgeBeats Web API client,
+/// and runs until shutdown.
 /// </summary>
 public static class Program {
 
     /// <summary>
-    /// The main entry point for the Discord worker application.
+    /// Builds and runs the Discord worker host, flushing Serilog on exit.
     /// </summary>
-    /// <param name="args">Command line arguments.</param>
+    /// <param name="args">Command-line arguments passed to the host builder.</param>
     public static void Main( string[] args ) {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder( args );
 
@@ -31,9 +33,13 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the services for the Discord worker application.
+    /// Registers the worker's services: file logging, Aspire service defaults, the
+    /// <see cref="DiscordNodeConfig"/> singleton, the <see cref="BridgeBeatsApiClient"/> typed HTTP
+    /// client (base address <c>http://bridgebeats</c>, 130-second timeout, internal service-key
+    /// header, trace propagation disabled), and the sharded Discord gateway plus its message
+    /// handlers.
     /// </summary>
-    /// <param name="builder">The host application builder.</param>
+    /// <param name="builder">The host application builder being configured.</param>
     private static void ConfigureServices( HostApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "Discord" );
@@ -85,11 +91,14 @@ public static class Program {
     }
 
     /// <summary>
-    /// Validates the required configuration for the Discord worker.
+    /// Reads and validates the worker's required configuration: the Discord token
+    /// (<c>BridgeBeats:DiscordToken</c>, mandatory), the gateway node number
+    /// (<c>BridgeBeats:NodeNumber</c>, defaulting to 0), and the card-link domain
+    /// (<c>BridgeBeats:Domain</c>, optional).
     /// </summary>
-    /// <param name="builder">The host application builder.</param>
-    /// <returns>A tuple containing the validated Discord configuration.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
+    /// <param name="builder">The host application builder whose configuration is read.</param>
+    /// <returns>The validated Discord token, node number, and domain.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the Discord token is missing or blank.</exception>
     private static (string DiscordToken, int NodeNumber, string Domain) ValidateConfiguration(
         HostApplicationBuilder builder
     ) {

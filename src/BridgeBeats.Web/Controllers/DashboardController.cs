@@ -8,13 +8,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// Controller for Aspire Dashboard authorization checks.
+/// Web API controller that gates access to the Aspire dashboard. Rooted at <c>api/dashboard</c>, it checks
+/// that the authenticated user holds the required role before access is granted.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="DashboardController"/> class.
-/// </remarks>
-/// <param name="userManager">The user manager.</param>
-/// <param name="logger">The logger.</param>
+/// <param name="userManager">Identity user manager used to resolve the current user and check role membership.</param>
+/// <param name="logger">Logger for dashboard authorization decisions.</param>
 [ApiController]
 [Route( "api/[controller]" )]
 public partial class DashboardController(
@@ -23,10 +21,15 @@ public partial class DashboardController(
 ) : ControllerBase {
 
     /// <summary>
-    /// Checks if the current user has access to the Aspire Dashboard.
-    /// This endpoint is used by Caddy's forward_auth directive.
+    /// Authorizes the current user for Aspire dashboard access by verifying the
+    /// <see cref="BridgeBeats.Contracts.Constants.Roles.AspireDashboardAccess"/> role. This endpoint is used by
+    /// Caddy's forward_auth directive.
     /// </summary>
-    /// <returns>200 OK if authorized, 401/403 if not authorized.</returns>
+    /// <returns>
+    /// HTTP GET <c>api/dashboard/authorize</c>. <c>200 OK</c> with <c>authorized = true</c> when the user holds
+    /// the required role; <c>401 Unauthorized</c> when no user is resolved; <c>403 Forbidden</c> when the role
+    /// is missing. Requires an authenticated session via <c>[Authorize]</c>.
+    /// </returns>
     [HttpGet( "authorize" )]
     [Authorize]
     public async Task<IActionResult> Authorize( ) {
@@ -49,8 +52,9 @@ public partial class DashboardController(
     }
 
     /// <summary>
-    /// Logs that dashboard authorization failed because the user was not found.
+    /// Logs that dashboard authorization failed because no user could be resolved.
     /// </summary>
+    /// <param name="logger">The logger instance.</param>
     [LoggerMessage(
         EventId = LogEventIds.Controllers.DashboardControllerAuthorizationFailedUserNotFound,
         Level = LogLevel.Warning,
@@ -58,8 +62,11 @@ public partial class DashboardController(
     private static partial void LogAuthorizationFailedUserNotFound( ILogger logger );
 
     /// <summary>
-    /// Logs that dashboard authorization was denied due to a missing role.
+    /// Logs that dashboard authorization was denied because the user lacks the required role.
     /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="userId">The id of the user that was denied access.</param>
+    /// <param name="role">The role that was required but missing.</param>
     [LoggerMessage(
         EventId = LogEventIds.Controllers.DashboardControllerAuthorizationDeniedMissingRole,
         Level = LogLevel.Warning,
@@ -69,6 +76,8 @@ public partial class DashboardController(
     /// <summary>
     /// Logs that dashboard authorization was granted.
     /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="userId">The id of the authorized user.</param>
     [LoggerMessage(
         EventId = LogEventIds.Controllers.DashboardControllerAuthorizationGranted,
         Level = LogLevel.Information,

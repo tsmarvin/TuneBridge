@@ -1,37 +1,63 @@
 # Local Development with Aspire
 
-BridgeBeats uses [.NET Aspire](https://learn.microsoft.com/dotnet/aspire/) for local development orchestration, providing a rich dashboard with distributed tracing, structured logging, and resource monitoring.
+BridgeBeats uses [.NET Aspire](https://learn.microsoft.com/dotnet/aspire/) for local development orchestration, providing a dashboard with distributed tracing, structured logging, and resource monitoring.
 
 ## Prerequisites
 
 - .NET 10.0 SDK or later
-- Docker Desktop (for containerized dependencies)
+- Docker Desktop (for running Redis locally)
 - API credentials configured (see [Configuration](CONFIGURATION.md))
+- A running Redis instance reachable from your machine (see [Provide Redis](#provide-redis) below)
+
+## Provide Redis
+
+The AppHost adds Redis as a **connection-string resource only** (`AddConnectionString("redis")`). Aspire does not start Redis for you, in development or in production. You must run Redis yourself and tell the AppHost where to find it through the `redis` connection string. If the connection string is missing, the AppHost writes an error to stderr and the components that depend on Redis will fail.
+
+Start a local Redis with Docker:
+
+```bash
+docker run -d --name bridgebeats-redis -p 6379:6379 redis:8-alpine
+```
+
+Then point the AppHost at it with user secrets (recommended) or an environment variable:
+
+```bash
+# User secrets (scoped to the AppHost project)
+dotnet user-secrets set "ConnectionStrings:redis" "localhost:6379" \
+  --project src/BridgeBeats.AppHost/BridgeBeats.AppHost.csproj
+
+# Or an environment variable for the current shell
+export ConnectionStrings__redis="localhost:6379"
+```
+
+> Verify: the connection-string key the AppHost reads is `ConnectionStrings:redis` (env-var form `ConnectionStrings__redis`), confirmed in `src/BridgeBeats.AppHost/Program.cs`. The exact local Redis host/port is your choice; `localhost:6379` matches the Docker command above.
 
 ## Quick Start
 
-From the repository root:
+From the repository root, with Redis running and its connection string set:
 
 ```bash
 aspire run
 ```
 
-The terminal will display a **Dashboard URL with authentication token**:
+The terminal displays a **Dashboard URL with an authentication token**:
 
 ```
 Dashboard:  https://localhost:17239/login?t=abc123tokenhere
 ```
 
-Open this URL to access the Aspire Dashboard.
+Open this URL to access the Aspire Dashboard. The token is part of the URL; copy the whole line.
+
+If you prefer to run the host directly without the Aspire CLI, use `dotnet run` from the AppHost project. You still get the orchestrated processes, but `aspire run` is the recommended path for the dashboard experience.
 
 ## Aspire Dashboard Features
 
 The dashboard provides:
 
-- **Resources View**: Monitor all application components and their health status
-- **Structured Logs**: View application logs with filtering and search
-- **Distributed Traces**: Trace requests across services
-- **Metrics**: View application performance metrics
+- **Resources view**: monitor each application component and its health status
+- **Structured logs**: view application logs with filtering and search
+- **Distributed traces**: trace requests across services
+- **Metrics**: view application performance metrics
 
 ## Project Structure
 
@@ -39,31 +65,38 @@ The Aspire integration consists of:
 
 | Project | Purpose |
 |---------|---------|
-| `BridgeBeats.AppHost` | Orchestration entry point - defines resources and dependencies |
+| `BridgeBeats.AppHost` | Orchestration entry point - declares every component and its dependencies |
 | `BridgeBeats.ServiceDefaults` | Shared service configuration (OpenTelemetry, resilience, health checks) |
+
+The AppHost provisions the web application plus the provider workers (Spotify, Apple Music, Tidal), the Discord worker, the saga coordinator, the JetStream watcher, and the cache bootstrap worker. A provider worker is added only when its credentials are configured. All components share the single Redis resource.
 
 ## Environment Variables
 
-The AppHost passes all provider credentials to the application via environment variables. These can be set in:
+The AppHost threads configuration and secrets through as Aspire parameters using the `BridgeBeats__Section__Key` (double-underscore) convention. Provide them through any of:
 
 1. **User Secrets** (recommended for development):
+
    ```bash
-   dotnet user-secrets set "BridgeBeats:SpotifyClientId" "your-client-id" --project src/BridgeBeats.Web/BridgeBeats.Web.csproj
+   dotnet user-secrets set "Parameters:SpotifyClientId" "your-client-id" \
+     --project src/BridgeBeats.AppHost/BridgeBeats.AppHost.csproj
    ```
 
-2. **Environment Variables**: Set in your shell or IDE launch configuration
+   The AppHost reads provider credentials from the `Parameters:` configuration section (env-var form `Parameters__SpotifyClientId`).
 
-3. **appsettings.json**: For non-sensitive configuration only
+2. **Environment variables**: set in your shell or IDE launch configuration.
+
+3. **appsettings.json**: for non-sensitive configuration only.
 
 ## Aspire vs Production Docker Compose
 
-| Aspect | Aspire (`aspire run`) | Docker Compose (`docker-compose up`) |
+| Aspect | Aspire (`aspire run`) | Docker Compose (`docker compose up`) |
 |--------|----------------------|--------------------------------------|
-| **Purpose** | Local development & debugging | Production deployment |
-| **Dashboard** | Built-in with full telemetry | Optional external dashboard |
-| **Hot Reload** | Supported | Requires rebuild |
-| **Reverse Proxy** | Not included | Caddy with SSL/TLS |
-| **Secrets** | Environment/User Secrets | Docker secrets |
+| **Purpose** | Local development and debugging | Production deployment |
+| **Dashboard** | Built-in with full telemetry | Aspire Dashboard fronted by Caddy |
+| **Hot reload** | Supported (project resources) | Requires rebuild |
+| **Reverse proxy** | Not included | Caddy with SSL/TLS |
+| **Redis** | You run it; set the connection string | Run by the compose file |
+| **Secrets** | Environment / user secrets | Docker secrets |
 
 ### When to Use Each
 
@@ -75,14 +108,16 @@ The AppHost passes all provider credentials to the application via environment v
 - **Use `docker compose up`** for:
   - Production deployments
   - CI/CD pipeline testing
-  - Replicating production environment locally
+  - Replicating the production environment locally
 
-When using Docker Compose, navigate to the `containers/` directory first:
+When using Docker Compose, change to the `containers/` directory first:
 
 ```bash
 cd containers
 docker compose up -d
 ```
+
+In the compose topology, Redis runs as its own service, so the manual Redis step above does not apply.
 
 ## Generating Deployment Artifacts
 
@@ -92,40 +127,37 @@ Aspire can generate Docker Compose files for deployment prototyping:
 aspire publish
 ```
 
-This outputs files to `aspire-output/`:
-- `docker-compose.yaml` - Generated compose file
-- `.env` - Environment configuration
+> Verify: the output location for `aspire publish` is set by the Aspire CLI, not by the AppHost code. Check the command output for the generated path before relying on it.
 
-> **Note**: The generated compose files are for development/prototyping. The production `docker-compose.yml` in the `containers/` directory is optimized for production use with Caddy reverse proxy, health checks, and proper secret management.
+> **Note**: Generated compose files are for development and prototyping. The production `docker-compose.yml` in `containers/` is the supported deployment, with Caddy, health checks, persistent volumes, and Docker-secret management.
 
 ## Troubleshooting
 
-### Port Conflicts
+### Redis connection errors on startup
 
-If you see port binding errors, ensure no other instances are running:
+If components log Redis connection failures, confirm Redis is running and the `redis` connection string is set (see [Provide Redis](#provide-redis)). The AppHost does not start Redis for you.
 
-```bash
-# Stop any running Aspire instances
-# The CLI will prompt if an instance is already running
-```
+### Port conflicts
 
-### Missing Dependencies
+If you see port-binding errors, ensure no other instance is already running. The Aspire CLI prompts when an instance is detected.
 
-Ensure all prerequisites are installed:
+### Missing dependencies
+
+Confirm the prerequisites are installed:
 
 ```bash
 dotnet --version  # Should be 10.0+
 docker --version  # Docker must be running
 ```
 
-### Dashboard Not Loading
+### Dashboard not loading
 
-1. Ensure you're using the full URL with the authentication token (`?t=...`)
-2. Check that the terminal shows the application started successfully
-3. Try stopping and restarting with `aspire run`
+1. Use the full URL including the authentication token (`?t=...`).
+2. Confirm the terminal shows the application started successfully.
+3. Stop and restart with `aspire run`.
 
 ## Related Documentation
 
-- [Configuration](CONFIGURATION.md) - Setting up API credentials
-- [Deployment](DEPLOYMENT.md) - Production deployment guide
-- [Quick Start](QUICKSTART.md) - 5-minute deployment guide
+- [Configuration](CONFIGURATION.md) - API credentials and environment variables
+- [Deployment](DEPLOYMENT.md) - production deployment guide
+- [Quick Start](QUICKSTART.md) - Docker Compose onboarding

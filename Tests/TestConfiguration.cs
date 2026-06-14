@@ -3,14 +3,16 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests;
 
 /// <summary>
-/// Provides configuration loading utilities for tests.
-/// Loads configuration from appsettings.json and user secrets.
+/// Loads configuration for tests that need real provider credentials, layering the web app's
+/// <c>appsettings.json</c>, user secrets, and environment variables. Also exposes helpers that report
+/// which provider credentials are present and builds the Aspire parameter arguments for app-host tests.
 /// </summary>
 public static class TestConfiguration {
+    /// <summary>Guards lazy, thread-safe construction of the configuration root.</summary>
     private static readonly Lock s_lock = new( );
 
     /// <summary>
-    /// Gets the shared test configuration loaded from appsettings.json and user secrets.
+    /// The lazily built configuration root, shared across the test run.
     /// </summary>
     public static IConfiguration Configuration {
         get {
@@ -23,6 +25,10 @@ public static class TestConfiguration {
         }
     }
 
+    /// <summary>
+    /// Builds the configuration root from the web app's <c>appsettings.json</c>, the web app's user
+    /// secrets, and environment variables.
+    /// </summary>
     private static IConfiguration LoadConfiguration( ) {
         return new ConfigurationBuilder( )
             .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
@@ -32,38 +38,46 @@ public static class TestConfiguration {
     }
 
     /// <summary>
-    /// Gets a configuration value, returning null if not found or empty.
+    /// Reads a configuration value by key, returning <c>null</c> when the value is missing or blank.
     /// </summary>
+    /// <param name="key">The configuration key to read.</param>
+    /// <returns>The value, or <c>null</c> if absent or whitespace.</returns>
     public static string? GetValue( string key ) {
         string? value = Configuration[key];
         return string.IsNullOrWhiteSpace( value ) ? null : value;
     }
 
     /// <summary>
-    /// Checks if a provider has valid credentials configured.
+    /// Reports whether both the Spotify client id and secret are configured.
     /// </summary>
+    /// <returns><c>true</c> when Spotify credentials are present.</returns>
     public static bool HasSpotifyCredentials( ) =>
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:SpotifyClientId" ) ) &&
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:SpotifyClientSecret" ) );
 
     /// <summary>
-    /// Checks if Apple Music has valid credentials configured.
+    /// Reports whether the Apple Music team id, key id, and key path are all configured.
     /// </summary>
+    /// <returns><c>true</c> when Apple Music credentials are present.</returns>
     public static bool HasAppleMusicCredentials( ) =>
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:AppleTeamId" ) ) &&
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:AppleKeyId" ) ) &&
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:AppleKeyPath" ) );
 
     /// <summary>
-    /// Checks if Tidal has valid credentials configured.
+    /// Reports whether both the Tidal client id and secret are configured.
     /// </summary>
+    /// <returns><c>true</c> when Tidal credentials are present.</returns>
     public static bool HasTidalCredentials( ) =>
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:TidalClientId" ) ) &&
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:TidalClientSecret" ) );
 
     /// <summary>
-    /// Builds the Aspire parameter arguments array for passing config to DistributedApplicationTestingBuilder.
+    /// Builds the command-line parameter arguments passed to the Aspire app host for distributed
+    /// tests. Provider credentials are included only when present; the API key salt defaults to a test
+    /// value, and the Discord and ATProto parameters are passed empty to disable those integrations.
     /// </summary>
+    /// <returns>The array of <c>Parameters:*</c> argument strings for the app host.</returns>
     public static string[] BuildAspireParameterArgs( ) {
         List<string> args = [ ];
 

@@ -7,28 +7,31 @@ using Microsoft.AspNetCore.Routing;
 namespace BridgeBeats.Core.Domain.Extensions;
 
 /// <summary>
-/// Extension methods for mapping provider lookup endpoints in worker applications.
+/// Maps the worker-side HTTP server for the per-provider lookup contract. These endpoints are the
+/// server counterpart to the <c>HttpMusicLookupService</c> proxy used by the web app: the proxy
+/// posts to <c>/lookup/*</c>, a worker handles the request with a direct
+/// <see cref="BridgeBeats.Contracts.Interfaces.IMusicLookupService"/>, and the result is returned in
+/// a <see cref="BridgeBeats.Contracts.Records.WorkerApi.ProviderLookupResponse"/> envelope.
 /// </summary>
 public static class WorkerEndpointExtensions {
 
     /// <summary>
-    /// Maps the standard set of provider lookup endpoints for a given lookup service type.
+    /// Maps the six <c>/lookup/*</c> minimal-API routes (<c>url</c>, <c>isrc</c>, <c>upc</c>,
+    /// <c>id</c>, <c>metadata</c>, <c>from-result</c>) onto a direct
+    /// <typeparamref name="TService"/> resolved per request from the request services. Each route
+    /// binds its request record, calls the matching lookup method, and wraps the outcome in a
+    /// <see cref="BridgeBeats.Contracts.Records.WorkerApi.ProviderLookupResponse"/>.
     /// </summary>
     /// <typeparam name="TService">
-    /// The type of the lookup service that implements <see cref="IMusicLookupService"/>.
+    /// The concrete direct lookup service that handles the requests; resolved from request services
+    /// on each call.
     /// </typeparam>
-    /// <param name="app">The <see cref="IEndpointRouteBuilder"/> to add routes to.</param>
-    /// <returns>The <see cref="IEndpointRouteBuilder"/> for chaining.</returns>
+    /// <param name="app">The endpoint route builder to map the routes onto.</param>
+    /// <returns>The same <paramref name="app"/>, to allow call chaining.</returns>
     /// <remarks>
-    /// Maps the following endpoints:
-    /// <list type="bullet">
-    /// <item><description>POST /lookup/url - Lookup by provider URL</description></item>
-    /// <item><description>POST /lookup/isrc - Lookup by ISRC</description></item>
-    /// <item><description>POST /lookup/upc - Lookup by UPC</description></item>
-    /// <item><description>POST /lookup/id - Lookup by provider-specific ID</description></item>
-    /// <item><description>POST /lookup/metadata - Lookup by title and artist</description></item>
-    /// <item><description>POST /lookup/from-result - Cross-platform matching from existing result</description></item>
-    /// </list>
+    /// Every route returns HTTP 200 regardless of outcome — successes carry the result and failures
+    /// carry an error envelope (see <see cref="ExecuteLookupAsync"/>). Callers must read the
+    /// envelope's success flag, not the HTTP status code, to tell success from failure.
     /// </remarks>
     public static IEndpointRouteBuilder MapProviderLookupEndpoints<TService>(
         this IEndpointRouteBuilder app
@@ -74,10 +77,14 @@ public static class WorkerEndpointExtensions {
     }
 
     /// <summary>
-    /// Executes a lookup operation with standardized error handling.
+    /// Runs a single lookup and wraps its outcome in a
+    /// <see cref="BridgeBeats.Contracts.Records.WorkerApi.ProviderLookupResponse"/> returned as HTTP
+    /// 200. A successful call yields an <c>Ok</c> envelope; any thrown exception is caught and
+    /// returned as an <c>Error</c> envelope (still HTTP 200), so the success flag in the envelope is
+    /// the authoritative outcome signal.
     /// </summary>
-    /// <param name="lookupFunc">The async function that performs the lookup.</param>
-    /// <returns>An <see cref="IResult"/> containing the lookup response.</returns>
+    /// <param name="lookupFunc">The lookup to invoke.</param>
+    /// <returns>An HTTP 200 result carrying the success or error envelope.</returns>
     private static async Task<IResult> ExecuteLookupAsync( Func<Task<MusicLookupResult?>> lookupFunc ) {
         try {
             MusicLookupResult? result = await lookupFunc( );

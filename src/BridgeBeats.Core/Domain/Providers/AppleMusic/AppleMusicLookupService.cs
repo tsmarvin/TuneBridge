@@ -11,11 +11,18 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
 
     /// <summary>
     /// An <see cref="IMusicLookupService"/> implementation for <see cref="SupportedProviders.AppleMusic"/>
+    /// that resolves tracks and albums against the Apple Music API.
     /// </summary>
+    /// <remarks>
+    /// This is the direct, in-worker provider client: it calls the real Apple Music API over HTTP using a
+    /// developer JWT minted by <see cref="AppleJwtHandler"/>. The distributed-path proxy that forwards to a
+    /// remote worker is <see cref="AppleMusicHttpLookupService"/>. Each lookup parses the Apple Music JSON
+    /// response into a <see cref="BridgeBeats.Contracts.DTOs.MusicLookupResult"/>.
+    /// </remarks>
     /// <param name="jwtHandler">The <see cref="AppleJwtHandler"/> used to authenticate the API calls performed by the service.</param>
     /// <param name="factory">The pre-configured HttpClientFactory used to perform the API calls for the service.</param>
     /// <param name="logger">The logger used to record errors.</param>
-    /// <param name="serializerOptions">The Json Serializer Options used to record the body of the API results on error when using trace logging.</param>
+    /// <param name="serializerOptions">The JSON serializer options used to deserialize Apple Music responses and to serialize the body of the API results on error when using trace logging.</param>
     public partial class AppleMusicLookupService(
         AppleJwtHandler jwtHandler,
         IHttpClientFactory factory,
@@ -24,7 +31,8 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
 
         /// <summary>
-        /// The default market region/storefront used for Apple Music API requests.
+        /// The default market region/storefront (country) used for Apple Music API requests when a lookup
+        /// does not carry one.
         /// </summary>
         public const string DefaultStorefront = "us";
 
@@ -121,12 +129,25 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
 
         #region IMusicLookupService Private Methods
 
+        /// <summary>
+        /// Creates an HTTP client for the Apple Music API with the signed developer JWT applied as the
+        /// authorization header.
+        /// </summary>
+        /// <returns>An authenticated <see cref="HttpClient"/> for Apple Music API requests.</returns>
         private protected override Task<HttpClient> CreateAuthenticatedClientAsync( ) {
             HttpClient client = factory.CreateClient("musickit-api");
             client.DefaultRequestHeaders.Authorization = jwtHandler.NewAuthenticationHeader( );
             return Task.FromResult( client );
         }
 
+        /// <summary>
+        /// Deserializes an Apple Music artist-search response into a list of artist identifiers and names.
+        /// </summary>
+        /// <param name="body">The raw JSON response body, or <see langword="null"/>.</param>
+        /// <returns>
+        /// The matched artists as <c>(id, artistName)</c> tuples, or <see langword="null"/> if the body is
+        /// <see langword="null"/>, empty, or cannot be parsed.
+        /// </returns>
         private List<(string id, string artistName)>? ParseAppleMusicArtistList( string? body ) {
             if (body == null) { return null; }
 
@@ -149,6 +170,16 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
             }
         }
 
+        /// <summary>
+        /// Scans a paged list of artist albums or songs and returns the first entry whose sanitized title
+        /// matches the requested title.
+        /// </summary>
+        /// <param name="lookupKey">The lookup type, used for diagnostic logging.</param>
+        /// <param name="body">The raw JSON response body, or <see langword="null"/>.</param>
+        /// <param name="title">The sanitized title to match against.</param>
+        /// <param name="storefront">The storefront (country) to record on the result.</param>
+        /// <param name="isAlbum"><see langword="true"/> to match albums; <see langword="false"/> to match songs.</param>
+        /// <returns>The matching result, or <see langword="null"/> if no entry matches or the body cannot be parsed.</returns>
         private MusicLookupResult? ParseArtistElementLists(
             LookupRequestType lookupKey,
             string? body,
@@ -188,6 +219,16 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
             return null;
         }
 
+        /// <summary>
+        /// Parses a single-entity Apple Music response, taking the first data element as the album or song.
+        /// </summary>
+        /// <param name="body">The raw JSON response body, or <see langword="null"/>.</param>
+        /// <param name="lookupKey">The lookup type, used for diagnostic logging.</param>
+        /// <param name="storeFront">The storefront (country) to record on the result.</param>
+        /// <param name="isAlbum">
+        /// <see langword="true"/> to parse the entity as an album; otherwise it is parsed as a song.
+        /// </param>
+        /// <returns>The parsed result, or <see langword="null"/> if the response is empty or cannot be parsed.</returns>
         private MusicLookupResult? ParseAppleMusicResponse(
             string? body,
             LookupRequestType lookupKey,
@@ -216,6 +257,14 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
             return null;
         }
 
+        /// <summary>
+        /// Maps an Apple Music song into a <see cref="BridgeBeats.Contracts.DTOs.MusicLookupResult"/>,
+        /// expanding the artwork URL template with concrete width and height.
+        /// </summary>
+        /// <param name="song">The Apple Music song to map.</param>
+        /// <param name="lookupKey">The lookup type, used for diagnostic logging.</param>
+        /// <param name="storeFront">The storefront (country) to record on the result.</param>
+        /// <returns>The mapped result, or <see langword="null"/> if the song has no attributes or mapping fails.</returns>
         private MusicLookupResult? ParseAppleMusicSongResponse(
             AppleMusicSong song,
             LookupRequestType lookupKey,
@@ -247,6 +296,14 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
             }
         }
 
+        /// <summary>
+        /// Maps an Apple Music album into a <see cref="BridgeBeats.Contracts.DTOs.MusicLookupResult"/>,
+        /// expanding the artwork URL template with concrete width and height.
+        /// </summary>
+        /// <param name="album">The Apple Music album to map.</param>
+        /// <param name="lookupKey">The lookup type, used for diagnostic logging.</param>
+        /// <param name="storeFront">The storefront (country) to record on the result.</param>
+        /// <returns>The mapped result, or <see langword="null"/> if the album has no attributes or mapping fails.</returns>
         private MusicLookupResult? ParseAppleMusicAlbumResponse(
             AppleMusicAlbum album,
             LookupRequestType lookupKey,
@@ -282,36 +339,38 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
 
         #region LoggerMessage Methods
 
-        /// <summary>
-        /// Logs an error parsing the artist list response.
-        /// </summary>
+        /// <summary>Logs an error raised while parsing the Apple Music artist-list response.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception that occurred.</param>
         [LoggerMessage(
             EventId = LogEventIds.Providers.AppleMusic.ParseArtistListError,
             Level = LogLevel.Error,
             Message = "An error occurred while parsing the artist list json response from apple." )]
         internal static partial void LogParseArtistListError( ILogger logger, Exception ex );
 
-        /// <summary>
-        /// Logs an error parsing the JSON response.
-        /// </summary>
+        /// <summary>Logs an error raised while parsing an Apple Music response of the given lookup type.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="ex">The exception that occurred.</param>
+        /// <param name="lookupKey">The lookup type whose response failed to parse.</param>
         [LoggerMessage(
             EventId = LogEventIds.Providers.AppleMusic.ParseResponseError,
             Level = LogLevel.Error,
             Message = "An error occurred while parsing the {LookupKey} json response from apple." )]
         internal static partial void LogParseResponseError( ILogger logger, Exception ex, LookupRequestType lookupKey );
 
-        /// <summary>
-        /// Logs the response body for trace level debugging.
-        /// </summary>
+        /// <summary>Writes a raw Apple Music response body to the trace log.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="responseBody">The response body to log.</param>
         [LoggerMessage(
             EventId = LogEventIds.Providers.AppleMusic.ResponseBodyTrace,
             Level = LogLevel.Trace,
             Message = "{ResponseBody}" )]
         internal static partial void LogResponseBody( ILogger logger, string? responseBody );
 
-        /// <summary>
-        /// Logs the serialized response body for trace level debugging.
-        /// </summary>
+        /// <summary>Serializes and trace-logs a response body when trace logging is enabled.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="body">The response body to serialize and log.</param>
+        /// <param name="options">JSON options used for serialization.</param>
         private static void LogResponseBodySerialized( ILogger logger, string? body, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
                 string serializedBody = JsonSerializer.Serialize( body, options );
@@ -319,9 +378,10 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
             }
         }
 
-        /// <summary>
-        /// Logs the serialized song for trace level debugging.
-        /// </summary>
+        /// <summary>Serializes and trace-logs an Apple Music song when trace logging is enabled.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="song">The song to serialize and log.</param>
+        /// <param name="options">JSON options used for serialization.</param>
         private static void LogSongSerialized( ILogger logger, AppleMusicSong song, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
                 string serializedSong = JsonSerializer.Serialize( song, options );
@@ -329,9 +389,10 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
             }
         }
 
-        /// <summary>
-        /// Logs the serialized album for trace level debugging.
-        /// </summary>
+        /// <summary>Serializes and trace-logs an Apple Music album when trace logging is enabled.</summary>
+        /// <param name="logger">The logger to write to.</param>
+        /// <param name="album">The album to serialize and log.</param>
+        /// <param name="options">JSON options used for serialization.</param>
         private static void LogAlbumSerialized( ILogger logger, AppleMusicAlbum album, JsonSerializerOptions options ) {
             if (logger.IsEnabled( LogLevel.Trace )) {
                 string serializedAlbum = JsonSerializer.Serialize( album, options );

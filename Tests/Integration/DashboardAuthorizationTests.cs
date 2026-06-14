@@ -15,22 +15,29 @@ using Microsoft.Extensions.Options;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for Aspire Dashboard authorization.
+/// Integration tests for the Aspire dashboard authorization endpoint (<c>/api/dashboard/authorize</c>),
+/// running the real web app in-memory via a custom factory that installs a stub authentication scheme.
+/// Verifies the endpoint returns 401 for unauthenticated callers, 403 for authenticated users lacking
+/// the dashboard-access role, and 200 for users holding it, and that database initialization seeds the
+/// role.
 /// </summary>
 [TestClass]
 public class DashboardAuthorizationTests : IDisposable {
+    /// <summary>The test web application factory with the stub authentication scheme installed.</summary>
     private DashboardTestWebApplicationFactory? _factory;
+    /// <summary>The HTTP client connected to the test host.</summary>
     private HttpClient? _client;
+    /// <summary>The email of the test user created for each test.</summary>
     private const string TestUserEmail = "dashboardtest@example.com";
+    /// <summary>The password used when creating the test user.</summary>
     private const string TestUserPassword = "TestPassword123!";
 
-    /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes the test factory and HTTP client before each test.
+    /// Builds the test host with worker services disabled and external integrations blanked, creates a
+    /// client, and migrates the identity database before each test.
     /// </summary>
     [TestInitialize]
     public async Task Setup( ) {
@@ -65,7 +72,7 @@ public class DashboardAuthorizationTests : IDisposable {
     }
 
     /// <summary>
-    /// Disposes of resources after each test.
+    /// Tears down the test host after each test by delegating to <see cref="Dispose()"/>.
     /// </summary>
     [TestCleanup]
     public void Cleanup( ) {
@@ -73,7 +80,7 @@ public class DashboardAuthorizationTests : IDisposable {
     }
 
     /// <summary>
-    /// Disposes of the HTTP client and factory, cleaning up the in-memory database.
+    /// Disposes the client and factory, deleting the identity database created for the test.
     /// </summary>
     public void Dispose( ) {
         _client?.Dispose( );
@@ -97,7 +104,7 @@ public class DashboardAuthorizationTests : IDisposable {
     }
 
     /// <summary>
-    /// Tests that unauthenticated requests to dashboard authorization endpoint return 401.
+    /// Verifies an unauthenticated request to the authorize endpoint returns 401 Unauthorized.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -113,7 +120,7 @@ public class DashboardAuthorizationTests : IDisposable {
     }
 
     /// <summary>
-    /// Tests that authenticated users without the AspireDashboardAccess role return 403.
+    /// Verifies an authenticated user lacking the dashboard-access role receives 403 Forbidden.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -130,7 +137,7 @@ public class DashboardAuthorizationTests : IDisposable {
     }
 
     /// <summary>
-    /// Tests that authenticated users with the AspireDashboardAccess role return 200.
+    /// Verifies an authenticated user holding the dashboard-access role receives 200 OK.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -147,7 +154,7 @@ public class DashboardAuthorizationTests : IDisposable {
     }
 
     /// <summary>
-    /// Tests that the AspireDashboardAccess role is created on application startup.
+    /// Verifies that database initialization seeds the Aspire dashboard-access role.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -164,8 +171,10 @@ public class DashboardAuthorizationTests : IDisposable {
     }
 
     /// <summary>
-    /// Helper method to create a test user with or without the AspireDashboardAccess role.
+    /// Creates the test user (seeding the dashboard-access role first), optionally assigns the role, and
+    /// registers the user's identity with the stub authentication handler.
     /// </summary>
+    /// <param name="hasRole">Whether to grant the user the dashboard-access role.</param>
     private async Task CreateTestUserAsync( bool hasRole ) {
         using IServiceScope scope = _factory!.Services.CreateScope( );
         UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>( );
@@ -198,27 +207,38 @@ public class DashboardAuthorizationTests : IDisposable {
     }
 
     /// <summary>
-    /// Custom factory that adds test authentication scheme.
+    /// A <see cref="CustomWebApplicationFactory"/> variant that installs a stub <c>TestScheme</c>
+    /// authentication handler so tests can present a configured identity (with or without the
+    /// dashboard-access role) without going through a real login flow.
     /// </summary>
+    /// <param name="configOverrides">Configuration overrides forwarded to the base factory.</param>
     private sealed class DashboardTestWebApplicationFactory(
         Dictionary<string, string?>? configOverrides
     ) : CustomWebApplicationFactory( configOverrides ) {
+        /// <summary>The identity id presented by the stub authentication handler.</summary>
         private string? _testUserId;
+        /// <summary>The email presented by the stub authentication handler.</summary>
         private string? _testUserEmail;
+        /// <summary>Whether the stub identity carries the dashboard-access role.</summary>
         private bool _testUserHasRole;
 
         /// <summary>
-        /// Sets the test user information for authentication simulation.
+        /// Configures the identity the stub authentication handler will present on the next request.
         /// </summary>
-        /// <param name="userId">The user ID to use for authentication.</param>
-        /// <param name="email">The email address of the test user.</param>
-        /// <param name="hasRole">Whether the test user has the AspireDashboardAccess role.</param>
+        /// <param name="userId">The user id to put on the principal.</param>
+        /// <param name="email">The email to put on the principal.</param>
+        /// <param name="hasRole">Whether to add the dashboard-access role claim.</param>
         public void SetTestUser( string userId, string email, bool hasRole ) {
             _testUserId = userId;
             _testUserEmail = email;
             _testUserHasRole = hasRole;
         }
 
+        /// <summary>
+        /// Extends the base host configuration by registering the <c>TestScheme</c> authentication
+        /// handler and exposing this factory to it for identity lookup.
+        /// </summary>
+        /// <param name="builder">The web host builder supplied by the test host.</param>
         protected override void ConfigureWebHost( IWebHostBuilder builder ) {
             base.ConfigureWebHost( builder );
 
@@ -236,14 +256,24 @@ public class DashboardAuthorizationTests : IDisposable {
         }
 
         /// <summary>
-        /// Test authentication handler for integration tests.
+        /// Stub authentication handler for the <c>TestScheme</c>. Returns no result when no
+        /// Authorization header is present, fails when no test user is configured, and otherwise
+        /// authenticates a principal built from the factory's configured identity and role.
         /// </summary>
+        /// <param name="options">The authentication scheme options monitor.</param>
+        /// <param name="logger">The logger factory.</param>
+        /// <param name="encoder">The URL encoder.</param>
+        /// <param name="factory">The owning factory holding the configured test identity.</param>
         private sealed class TestAuthHandler(
             IOptionsMonitor<AuthenticationSchemeOptions> options,
             ILoggerFactory logger,
             UrlEncoder encoder,
             DashboardTestWebApplicationFactory factory
         ) : AuthenticationHandler<AuthenticationSchemeOptions>( options, logger, encoder ) {
+            /// <summary>
+            /// Builds and returns the authentication result for the current request based on the
+            /// factory's configured test identity.
+            /// </summary>
             protected override Task<AuthenticateResult> HandleAuthenticateAsync( ) {
                 // Only authenticate if Authorization header is present
                 if (!Request.Headers.ContainsKey( "Authorization" )) {

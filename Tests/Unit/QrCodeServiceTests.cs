@@ -4,23 +4,25 @@ using BridgeBeats.Core.Domain.Services;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="QrCodeService"/>.
+/// Unit tests for <see cref="QrCodeService"/> (the <see cref="IQrCodeService"/> implementation).
+/// Verify that <c>GenerateQrCodeDataUri</c> renders a URL to a base64 PNG <c>data:</c> URI,
+/// that distinct URLs and larger <c>pixelsPerModule</c> values produce distinct/larger images,
+/// that the output carries a valid PNG signature, and that null/empty/whitespace input is rejected.
 /// </summary>
 [TestClass]
 public class QrCodeServiceTests {
 
+    /// <summary>The service under test, created fresh before each test.</summary>
     private IQrCodeService _service = null!;
 
-    /// <summary>
-    /// Initializes the test fixture.
-    /// </summary>
+    /// <summary>Creates a fresh <see cref="QrCodeService"/> before each test.</summary>
     [TestInitialize]
     public void TestInitialize( ) {
         _service = new QrCodeService( );
     }
 
     /// <summary>
-    /// Verifies that GenerateQrCodeDataUri returns a valid data URI for a valid URL.
+    /// A valid URL produces a substantial base64 PNG <c>data:image/png;base64,</c> URI.
     /// </summary>
     [TestMethod]
     public void GenerateQrCodeDataUri_WithValidUrl_ReturnsDataUri( ) {
@@ -35,9 +37,7 @@ public class QrCodeServiceTests {
         Assert.IsGreaterThan( 100, result.Length, "Base64 PNG should be substantial" );
     }
 
-    /// <summary>
-    /// Verifies that different URLs produce different QR codes.
-    /// </summary>
+    /// <summary>Two different URLs encode to two different QR-code data URIs.</summary>
     [TestMethod]
     public void GenerateQrCodeDataUri_WithDifferentUrls_ReturnsDifferentQrCodes( ) {
         // Arrange
@@ -53,7 +53,8 @@ public class QrCodeServiceTests {
     }
 
     /// <summary>
-    /// Verifies that larger pixelsPerModule produces larger images.
+    /// A larger <c>pixelsPerModule</c> renders a larger image, so the base64 payload for the same
+    /// URL grows with the module size.
     /// </summary>
     [TestMethod]
     public void GenerateQrCodeDataUri_WithCustomPixelsPerModule_ReturnsLargerImage( ) {
@@ -69,27 +70,21 @@ public class QrCodeServiceTests {
         Assert.IsGreaterThan( smallResult.Length, largeResult.Length, "Larger pixelsPerModule should produce larger image" );
     }
 
-    /// <summary>
-    /// Verifies that null URL throws ArgumentNullException.
-    /// </summary>
+    /// <summary>A <c>null</c> URL throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void GenerateQrCodeDataUri_WithNullUrl_ThrowsArgumentNullException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) => _service.GenerateQrCodeDataUri( null! ) );
     }
 
-    /// <summary>
-    /// Verifies that empty URL throws ArgumentException.
-    /// </summary>
+    /// <summary>An empty URL throws <see cref="ArgumentException"/>.</summary>
     [TestMethod]
     public void GenerateQrCodeDataUri_WithEmptyUrl_ThrowsArgumentException( ) {
         // Act & Assert
         _ = Assert.ThrowsExactly<ArgumentException>( ( ) => _service.GenerateQrCodeDataUri( string.Empty ) );
     }
 
-    /// <summary>
-    /// Verifies that whitespace URL throws ArgumentException.
-    /// </summary>
+    /// <summary>A whitespace-only URL throws <see cref="ArgumentException"/>.</summary>
     [TestMethod]
     public void GenerateQrCodeDataUri_WithWhitespaceUrl_ThrowsArgumentException( ) {
         // Act & Assert
@@ -97,7 +92,8 @@ public class QrCodeServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the returned data URI contains valid PNG data.
+    /// The data URI's base64 payload decodes to bytes whose first four match the PNG signature
+    /// (137, 'P', 'N', 'G'), confirming a real PNG is emitted.
     /// </summary>
     [TestMethod]
     public void GenerateQrCodeDataUri_ReturnsValidBase64PngData( ) {

@@ -15,24 +15,51 @@ using Moq.Protected;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="ATProtoStorageService.ListAllRecordsAsync"/> using
-/// a mocked HTTP layer (no real network calls).
+/// Tests <see cref="ATProtoStorageService.ListAllRecordsAsync"/>, which downloads a user's entire PDS
+/// repository as a CAR over the named sync HTTP client and streams the records in the lookup
+/// collection as <c>(AT-URI, MediaLinkResult)</c> tuples.
 /// </summary>
+/// <remarks>
+/// The HTTP layer is mocked to return CAR bytes built with the test helper <c>TestCarBuilder</c>. The
+/// tests verify that enumeration filters to the <c>link.bridgebeats.lookup</c> collection and builds
+/// each AT-URI as <c>at://{did}/{collection}/{rkey}</c>; handles an empty repository; propagates an
+/// HTTP error as <see cref="HttpRequestException"/> and malformed CAR bytes as
+/// <see cref="CarParseException"/>; skips an individual record that fails to deserialize while still
+/// yielding the good ones; rejects an invalid DID with <see cref="ArgumentException"/> before making
+/// any HTTP call; honors a cancelled token; and skips records whose rkey contains invalid characters
+/// (such as a control character).
+/// </remarks>
 [TestClass]
 public class ATProtoStorageServiceListRecordsTests {
 
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>MSTest-injected context, used to flow the test's cancellation token into the service.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>Mock session manager dependency of the service.</summary>
     private Mock<IATProtoSessionManager> _sessionManagerMock = null!;
+
+    /// <summary>Mock logger injected into the service.</summary>
     private Mock<ILogger<ATProtoStorageService>> _loggerMock = null!;
+
+    /// <summary>Mock HTTP message handler backing the sync client so CAR responses can be canned.</summary>
     private Mock<HttpMessageHandler> _httpHandlerMock = null!;
+
+    /// <summary>Mock HTTP client factory that hands out the mocked sync client.</summary>
     private Mock<IHttpClientFactory> _httpClientFactoryMock = null!;
+
+    /// <summary>HTTP client wrapping the mocked handler, supplied to the service.</summary>
     private HttpClient _httpClient = null!;
 
+    /// <summary>Test DID whose repository is enumerated.</summary>
     private const string TestDid = "did:plc:testuser12345";
+
+    /// <summary>Test PDS URI the CAR is downloaded from.</summary>
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
 
+    /// <summary>
+    /// Constructs the mocks and HTTP client before each test, wiring the client factory to return the
+    /// mocked sync client under the service's well-known client name.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _sessionManagerMock = new Mock<IATProtoSessionManager>( );
@@ -48,6 +75,7 @@ public class ATProtoStorageServiceListRecordsTests {
             .Returns( _httpClient );
     }
 
+    /// <summary>Disposes the HTTP client created for the test.</summary>
     [TestCleanup]
     public void Cleanup( ) {
         _httpClient?.Dispose( );
@@ -55,6 +83,11 @@ public class ATProtoStorageServiceListRecordsTests {
 
     // ─── Happy-path tests ─────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Verifies that a repository holding three lookup records and one playlist record yields exactly
+    /// the three lookup records, each with an AT-URI under
+    /// <c>at://{did}/link.bridgebeats.lookup/</c>, and that the repo is fetched with a single HTTP call.
+    /// </summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_ThreeLookupAndOnePlaylistRecord_ReturnsThreeTuplesWithCorrectAtUris( ) {
         // Arrange: 3 lookup + 1 playlist record in the CAR.
@@ -129,6 +162,13 @@ public class ATProtoStorageServiceListRecordsTests {
         );
     }
 
+    /// <summary>
+    /// Computes the length of the shared leading prefix of two keys, used to build MST
+    /// prefix-compressed entries in the fixtures.
+    /// </summary>
+    /// <param name="a">The first key.</param>
+    /// <param name="b">The second key.</param>
+    /// <returns>The number of leading characters the two keys share.</returns>
     private static int CommonPrefix( string a, string b ) {
         int len = Math.Min( a.Length, b.Length );
         int i = 0;
@@ -136,6 +176,7 @@ public class ATProtoStorageServiceListRecordsTests {
         return i;
     }
 
+    /// <summary>Verifies that an empty repository yields no records (still fetched with one HTTP call).</summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_EmptyRepo_YieldsNoResults( ) {
         // Arrange
@@ -163,6 +204,10 @@ public class ATProtoStorageServiceListRecordsTests {
 
     // ─── Error propagation tests ──────────────────────────────────────────────
 
+    /// <summary>
+    /// Verifies that an HTTP 500 response from the repo fetch surfaces as
+    /// <see cref="HttpRequestException"/> when the stream is enumerated.
+    /// </summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_Http500Response_ThrowsHttpRequestException( ) {
         // Arrange
@@ -178,6 +223,10 @@ public class ATProtoStorageServiceListRecordsTests {
         } );
     }
 
+    /// <summary>
+    /// Verifies that a response body of garbage bytes (not a valid CAR) surfaces as
+    /// <see cref="CarParseException"/> when the stream is enumerated.
+    /// </summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_MalformedCarBytes_ThrowsCarParseException( ) {
         // Arrange: return garbage bytes that won't parse as a valid CAR
@@ -192,6 +241,11 @@ public class ATProtoStorageServiceListRecordsTests {
         } );
     }
 
+    /// <summary>
+    /// Verifies that a record block that cannot be deserialized into a result is skipped while the
+    /// well-formed record in the same repository is still yielded, so one bad record does not abort the
+    /// enumeration.
+    /// </summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_OneBadRecordAmongGood_SkipsBadAndYieldsRest( ) {
         // Arrange: build a CAR with one good record and one block that is valid DAG-CBOR
@@ -241,10 +295,12 @@ public class ATProtoStorageServiceListRecordsTests {
     }
 
     /// <summary>
-    /// Builds a DAG-CBOR block that is structurally valid CBOR but fails
-    /// <see cref="BridgeBeats.Contracts.Records.MediaLinkResultRecord"/> deserialization
-    /// because <c>lookedUpAt</c> is an integer rather than an ISO 8601 string.
+    /// Builds a CBOR record block whose shape does not match a valid persisted lookup record (here
+    /// <c>lookedUpAt</c> is an integer rather than a timestamp), used to exercise the skip-bad-record
+    /// path. The block is structurally valid CBOR but fails
+    /// <see cref="BridgeBeats.Contracts.Records.MediaLinkResultRecord"/> deserialization.
     /// </summary>
+    /// <returns>The encoded malformed record bytes.</returns>
     private static byte[] BuildMalformedRecordBlock( ) {
         System.Formats.Cbor.CborWriter writer = new( System.Formats.Cbor.CborConformanceMode.Lax );
         writer.WriteStartMap( null );
@@ -259,9 +315,23 @@ public class ATProtoStorageServiceListRecordsTests {
         return writer.Encode( );
     }
 
+    /// <summary>
+    /// Equality comparer that treats byte arrays as keys by their contents, so a CID's raw bytes can key
+    /// the in-memory block dictionary used to assemble a CAR fixture.
+    /// </summary>
     private sealed class ByteArrayKeyComparerLocal : System.Collections.Generic.IEqualityComparer<byte[]> {
+        /// <summary>Shared singleton instance.</summary>
         internal static readonly ByteArrayKeyComparerLocal Instance = new( );
+
+        /// <summary>Compares two byte arrays for content equality.</summary>
+        /// <param name="x">The first array.</param>
+        /// <param name="y">The second array.</param>
+        /// <returns><see langword="true"/> when both are non-null and have identical contents.</returns>
         public bool Equals( byte[]? x, byte[]? y ) => x is not null && y is not null && x.AsSpan( ).SequenceEqual( y );
+
+        /// <summary>Computes a content-based hash code for a byte array.</summary>
+        /// <param name="obj">The array to hash.</param>
+        /// <returns>A hash code derived from the array contents.</returns>
         public int GetHashCode( byte[] obj ) {
             System.HashCode hc = new( );
             hc.AddBytes( obj );
@@ -269,6 +339,10 @@ public class ATProtoStorageServiceListRecordsTests {
         }
     }
 
+    /// <summary>
+    /// Verifies that a malformed DID is rejected with <see cref="ArgumentException"/> before any HTTP
+    /// request is made, confirming input validation happens up front.
+    /// </summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_InvalidDid_ThrowsArgumentException( ) {
         // Arrange: invalid DID format
@@ -292,10 +366,9 @@ public class ATProtoStorageServiceListRecordsTests {
     // ─── CancellationToken propagation ───────────────────────────────────────
 
     /// <summary>
-    /// Verifies that cancelling the token passed to ListAllRecordsAsync propagates
-    /// OperationCanceledException and NOT a CarParseException wrapping the cancellation.
-    /// Failure-first evidence: if the cancellation were swallowed by the CarParseException catch
-    /// in FetchAllViaCarAsync, this test would fail (no exception thrown, or wrong exception type).
+    /// Verifies that enumerating with an already-cancelled token propagates
+    /// <see cref="OperationCanceledException"/> (and not a <see cref="CarParseException"/> wrapping the
+    /// cancellation), confirming cancellation is honored rather than swallowed by the parse catch.
     /// </summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_CancelledToken_PropagatesOperationCanceledException( ) {
@@ -321,12 +394,10 @@ public class ATProtoStorageServiceListRecordsTests {
     // ─── SEC-005 regression: rkey validation ─────────────────────────────────
 
     /// <summary>
-    /// SEC-005 regression: an rkey containing control characters or path separators must be
-    /// skipped (with a warning) rather than passed to BuildLookupRecordUri or logged verbatim.
-    /// The good record in the same CAR must still be returned.
-    /// Failure-first evidence: without IsValidRkey in FetchAllViaCarAsync, the invalid rkey
-    /// would reach ATProtoUriHelper.BuildLookupRecordUri (potentially constructing a malformed URI)
-    /// and be logged verbatim (log injection risk). The test would return 2 results instead of 1.
+    /// Verifies that a record whose rkey contains an invalid character (a control character) is skipped
+    /// while a record with a valid rkey is still yielded, confirming rkey validation filters bad keys
+    /// without failing the whole enumeration. Without rkey validation, the invalid rkey would reach the
+    /// AT-URI builder (constructing a malformed URI) and be logged verbatim (a log-injection risk).
     /// </summary>
     [TestMethod]
     public async Task ListAllRecordsAsync_RkeyWithControlChars_SkipsInvalidRkeyAndYieldsGoodRecord( ) {
@@ -383,6 +454,8 @@ public class ATProtoStorageServiceListRecordsTests {
 
     // ─── Helper methods ───────────────────────────────────────────────────────
 
+    /// <summary>Builds the service under test from the configured mocks.</summary>
+    /// <returns>A new <see cref="ATProtoStorageService"/> instance.</returns>
     private ATProtoStorageService CreateService( ) =>
         new(
             _sessionManagerMock.Object,
@@ -390,6 +463,11 @@ public class ATProtoStorageServiceListRecordsTests {
             _httpClientFactoryMock.Object
         );
 
+    /// <summary>
+    /// Configures the HTTP handler to return a 200 response whose body is the supplied CAR bytes with
+    /// the IPLD CAR content type.
+    /// </summary>
+    /// <param name="carBytes">The CAR payload to return.</param>
     private void SetupHttpSuccess( byte[] carBytes ) {
         _ = _httpHandlerMock
             .Protected( )
@@ -405,6 +483,8 @@ public class ATProtoStorageServiceListRecordsTests {
             } );
     }
 
+    /// <summary>Configures the HTTP handler to return a response with the supplied error status code.</summary>
+    /// <param name="statusCode">The HTTP status code to return.</param>
     private void SetupHttpError( HttpStatusCode statusCode ) {
         _ = _httpHandlerMock
             .Protected( )
@@ -416,6 +496,12 @@ public class ATProtoStorageServiceListRecordsTests {
             .ReturnsAsync( new HttpResponseMessage( statusCode ) );
     }
 
+    /// <summary>
+    /// Builds a well-formed persisted lookup record with a single Spotify provider result, used as
+    /// block content in the CAR fixtures.
+    /// </summary>
+    /// <param name="title">The track title to embed in the record.</param>
+    /// <returns>A populated <see cref="BridgeBeats.Contracts.Records.MediaLinkResultRecord"/>.</returns>
     private static BridgeBeats.Contracts.Records.MediaLinkResultRecord MakeRecord( string title ) =>
         new(
             results: [

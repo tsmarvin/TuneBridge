@@ -4,18 +4,32 @@ using BridgeBeats.Core.Domain.Providers.AppleMusic;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for AppleJwtHandler to verify JWT token generation.
-/// Tests the creation and formatting of authentication tokens for Apple MusicKit API.
+/// Tests <see cref="AppleJwtHandler"/>, which signs the Apple Music developer token (an ES256 JWT
+/// built from a P-256 <c>.p8</c> private key) used to authenticate provider requests.
 /// </summary>
+/// <remarks>
+/// Each test constructs the handler from a freshly generated PEM-encoded P-256 key produced in
+/// <see cref="Initialize"/>, then exercises construction validation and the authentication-header
+/// output. No network call is involved; the token is signed locally.
+/// </remarks>
 [TestClass]
 public class AppleJwtHandlerTests {
+    /// <summary>Filesystem path of the temporary <c>.p8</c> key file written for the test.</summary>
     private string _testKeyPath = null!;
+
+    /// <summary>PEM-encoded contents of the generated P-256 private key passed to the handler.</summary>
     private string _testKeyContents = null!;
+
+    /// <summary>Placeholder Apple developer team id used as the token issuer.</summary>
     private const string TestTeamId = "TEST123456";
+
+    /// <summary>Placeholder Apple key id used in the token header.</summary>
     private const string TestKeyId = "KEY1234567";
 
     /// <summary>
-    /// Initializes test resources including generating a valid ES256 key for testing.
+    /// Generates a fresh P-256 ECDSA key, serializes its PKCS#8 private key into PEM form (the
+    /// <c>.p8</c> shape Apple issues), records the contents for direct use, and writes a copy to a
+    /// temporary file so each test runs against a valid signing key.
     /// </summary>
     [TestInitialize]
     public void Initialize( ) {
@@ -43,7 +57,8 @@ public class AppleJwtHandlerTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor creates a valid instance with valid parameters.
+    /// Verifies that constructing an <see cref="AppleJwtHandler"/> with a valid team id, key id, and
+    /// PEM-encoded P-256 key succeeds and produces a non-null instance.
     /// </summary>
     [TestMethod]
     public void Constructor_WithValidParameters_ShouldCreateInstance( ) {
@@ -53,7 +68,8 @@ public class AppleJwtHandlerTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws an exception for invalid key content.
+    /// Verifies that constructing the handler with PEM contents whose body is not a valid key throws
+    /// <see cref="ArgumentException"/>, so a malformed signing key fails fast at construction.
     /// </summary>
     [TestMethod]
     public void Constructor_WithInvalidKey_ShouldThrowException( ) {
@@ -66,7 +82,8 @@ public class AppleJwtHandlerTests {
     }
 
     /// <summary>
-    /// Verifies that GetAuthHeader returns a valid Bearer token.
+    /// Verifies that <see cref="AppleJwtHandler.NewAuthenticationHeader"/> returns a <c>Bearer</c>
+    /// authentication header carrying a non-empty token parameter.
     /// </summary>
     [TestMethod]
     public void GetAuthHeader_ShouldReturnBearerToken( ) {
@@ -84,7 +101,8 @@ public class AppleJwtHandlerTests {
     }
 
     /// <summary>
-    /// Verifies that GetAuthHeader returns a token with valid JWT structure (3 parts).
+    /// Verifies that the token produced by <see cref="AppleJwtHandler.NewAuthenticationHeader"/> has the
+    /// three dot-separated, non-empty segments (header, payload, signature) of a well-formed JWS.
     /// </summary>
     [TestMethod]
     public void GetAuthHeader_ShouldReturnValidJwtStructure( ) {
@@ -107,7 +125,8 @@ public class AppleJwtHandlerTests {
     }
 
     /// <summary>
-    /// Verifies that GetAuthHeader returns different tokens on successive calls due to timestamps.
+    /// Verifies that two header requests separated by a one-second delay yield different tokens,
+    /// confirming each call mints a fresh JWT with current time-based claims rather than caching one.
     /// </summary>
     [TestMethod]
     public void GetAuthHeader_CalledMultipleTimes_ShouldReturnDifferentTokens( ) {
@@ -123,9 +142,7 @@ public class AppleJwtHandlerTests {
         Assert.AreNotEqual( token1, token2 );
     }
 
-    /// <summary>
-    /// Cleans up test resources by deleting the temporary key file.
-    /// </summary>
+    /// <summary>Deletes the temporary <c>.p8</c> key file written in <see cref="Initialize"/>, if present.</summary>
     [TestCleanup]
     public void Cleanup( ) {
         if (File.Exists( _testKeyPath )) {

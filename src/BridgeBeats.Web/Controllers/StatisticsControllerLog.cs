@@ -1,11 +1,12 @@
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// LoggerMessage methods for <see cref="StatisticsController"/>.
+/// Source-generated <see cref="Microsoft.Extensions.Logging.LoggerMessageAttribute"/> logging methods
+/// for <see cref="StatisticsController"/>.
 /// </summary>
 public partial class StatisticsController {
     /// <summary>
-    /// Logs that statistics service is not available.
+    /// Logs that the statistics service is not configured.
     /// </summary>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.StatisticsControllerNotAvailable,
@@ -14,8 +15,9 @@ public partial class StatisticsController {
     private partial void LogNotAvailable( );
 
     /// <summary>
-    /// Logs error retrieving statistics.
+    /// Logs an error while retrieving statistics.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.StatisticsControllerRetrieveError,
         Level = LogLevel.Error,
@@ -23,8 +25,9 @@ public partial class StatisticsController {
     private partial void LogRetrieveError( Exception ex );
 
     /// <summary>
-    /// Logs error refreshing statistics.
+    /// Logs an error while triggering a statistics refresh.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.StatisticsControllerRefreshError,
         Level = LogLevel.Error,

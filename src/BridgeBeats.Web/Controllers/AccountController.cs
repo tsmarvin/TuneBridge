@@ -12,16 +12,14 @@ using Microsoft.EntityFrameworkCore;
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// Controller for user authentication and account management.
-/// Provides both API endpoints and web UI for user registration, login, and API key generation.
+/// Handles account flows for the web application: registration, login, logout, API-key issuance and
+/// regeneration, authentication status, personal-data export, account deletion, and ATProto (Bluesky)
+/// OAuth sign-in. Action routes are rooted under the <c>account/</c> prefix.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="AccountController"/> class.
-/// </remarks>
-/// <param name="userManager">User manager for ASP.NET Identity.</param>
-/// <param name="signInManager">Sign-in manager for authentication.</param>
-/// <param name="logger">Logger for diagnostic information.</param>
-/// <param name="hasher">API key hasher for secure key generation and validation.</param>
+/// <param name="userManager">ASP.NET Core Identity user manager used to find, create, update, and delete users.</param>
+/// <param name="signInManager">ASP.NET Core Identity sign-in manager used to establish and clear authentication sessions.</param>
+/// <param name="logger">Logger for account lifecycle and OAuth events.</param>
+/// <param name="hasher">Generates API keys and produces the stored hash so the raw key is never persisted.</param>
 public partial class AccountController(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
@@ -29,11 +27,13 @@ public partial class AccountController(
     ApiKeyHasher hasher
 ) : Controller {
 
+    /// <summary>Shared JSON serializer options that emit indented output, used for the personal-data export file.</summary>
     private static readonly JsonSerializerOptions s_indentedJsonOptions = new( ) { WriteIndented = true };
 
     /// <summary>
-    /// Displays the registration page.
+    /// Renders the registration page.
     /// </summary>
+    /// <returns>The <c>Register</c> view (HTTP GET <c>account/register</c>).</returns>
     [HttpGet]
     [Route( "account/register" )]
     public IActionResult RegisterPage( ) {
@@ -41,8 +41,9 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Displays the login page.
+    /// Renders the login page.
     /// </summary>
+    /// <returns>The <c>Login</c> view (HTTP GET <c>account/login</c>).</returns>
     [HttpGet]
     [Route( "account/login" )]
     public IActionResult LoginPage( ) {
@@ -50,8 +51,9 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Displays the user settings page (requires authentication).
+    /// Renders the authenticated user's account page.
     /// </summary>
+    /// <returns>The <c>User</c> view (HTTP GET <c>account/user</c>); requires an authenticated session via <c>[Authorize]</c>.</returns>
     [Authorize]
     [HttpGet]
     [Route( "account/user" )]
@@ -60,12 +62,15 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Registers a new user account and automatically signs them in.
+    /// Registers a new account from the supplied credentials, signs the user in, and returns a freshly
+    /// issued API key. Fails if the email is already registered.
     /// </summary>
-    /// <param name="request">Registration details including email and password.</param>
-    /// <returns>User details with API key on success.</returns>
-    /// <response code="200">User successfully registered.</response>
-    /// <response code="400">Registration failed (validation errors or duplicate user).</response>
+    /// <param name="request">The registration payload (email and password) bound from the JSON request body.</param>
+    /// <returns>
+    /// HTTP POST <c>account/register</c>. <c>200 OK</c> with the new user id, the one-time API key, and a
+    /// message on success; <c>400 Bad Request</c> with model-state errors when validation fails or the email
+    /// is already in use. Requires a valid anti-forgery token.
+    /// </returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route( "account/register" )]
@@ -123,12 +128,16 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Authenticates a user and signs them in with a cookie for web UI.
+    /// Authenticates a user with email and password. On success the user is signed in; if the account
+    /// has no stored API-key hash yet, a new API key is generated and persisted, otherwise the response
+    /// indicates an existing key is in use without exposing it.
     /// </summary>
-    /// <param name="request">Login credentials.</param>
-    /// <returns>User details with API key on success.</returns>
-    /// <response code="200">Login successful.</response>
-    /// <response code="401">Invalid credentials.</response>
+    /// <param name="request">The login payload (email and password) bound from the JSON request body.</param>
+    /// <returns>
+    /// HTTP POST <c>account/login</c>. <c>200 OK</c> with the user id and either a newly generated API key
+    /// or a placeholder indicating an existing key; <c>401 Unauthorized</c> for an unknown email or wrong
+    /// password; <c>400 Bad Request</c> when the model is invalid. Requires a valid anti-forgery token.
+    /// </returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route( "account/login" )]
@@ -178,8 +187,9 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Logs out the currently authenticated user.
+    /// Signs the current user out, clearing the authentication session.
     /// </summary>
+    /// <returns>HTTP POST <c>account/logout</c>. <c>200 OK</c> with a confirmation message. Requires a valid anti-forgery token.</returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route( "account/logout" )]
@@ -189,11 +199,11 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Gets an antiforgery token for JavaScript requests.
-    /// This endpoint allows browser-based JavaScript to obtain a CSRF token
-    /// that must be included in the X-XSRF-TOKEN header for POST requests.
+    /// Issues an anti-forgery request token and stores its companion cookie, allowing browser clients to
+    /// supply the token on subsequent state-changing requests in the <c>X-XSRF-TOKEN</c> header.
     /// </summary>
-    /// <returns>Antiforgery token for use in headers.</returns>
+    /// <param name="antiforgery">The anti-forgery service, resolved from the request services, used to generate and store the token pair.</param>
+    /// <returns>HTTP GET <c>account/antiforgery-token</c>. <c>200 OK</c> with the request token in JSON.</returns>
     [HttpGet]
     [Route( "account/antiforgery-token" )]
     public IActionResult GetAntiforgeryToken( [FromServices] Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery ) {
@@ -202,8 +212,12 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Checks if the current user is authenticated (for web UI).
+    /// Reports whether the caller is currently authenticated and, if so, the associated user id and email.
     /// </summary>
+    /// <returns>
+    /// HTTP GET <c>account/status</c>. <c>200 OK</c> with <c>isAuthenticated = true</c> plus the user id and
+    /// email when signed in, or <c>isAuthenticated = false</c> otherwise.
+    /// </returns>
     [HttpGet]
     [Route( "account/status" )]
     public async Task<IActionResult> GetAuthStatus( ) {
@@ -219,11 +233,14 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Regenerates the API key for the authenticated user.
+    /// Generates a new API key for the authenticated user, replacing the stored hash. The previous key
+    /// stops working once the update succeeds.
     /// </summary>
-    /// <returns>New API key.</returns>
-    /// <response code="200">API key regenerated successfully.</response>
-    /// <response code="401">User not authenticated.</response>
+    /// <returns>
+    /// HTTP POST <c>account/regenerate-api-key</c>. <c>200 OK</c> with the new one-time API key on success;
+    /// <c>400 Bad Request</c> if the update fails; <c>401 Unauthorized</c> if no user is resolved. Requires
+    /// <c>[Authorize]</c> and a valid anti-forgery token.
+    /// </returns>
     [Authorize]
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -250,12 +267,16 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Downloads all personal data associated with the authenticated user.
-    /// Returns a JSON file containing account information, playlists, and metadata.
+    /// Exports the authenticated user's personal data as a downloadable JSON file, including profile,
+    /// rate-limiting counters, third-party token expiry, and the user's playlists (when the playlist
+    /// service is available).
     /// </summary>
-    /// <returns>JSON file with personal data.</returns>
-    /// <response code="200">Personal data downloaded successfully.</response>
-    /// <response code="401">User not authenticated.</response>
+    /// <param name="playlistService">Optional playlist service, resolved from request services, used to include the user's playlists in the export; when null, no playlists are included.</param>
+    /// <returns>
+    /// HTTP POST <c>account/download-data</c>. A JSON file attachment named
+    /// <c>bridgebeats-personal-data-{date}.json</c> on success; <c>401 Unauthorized</c> if no user is
+    /// resolved. Requires <c>[Authorize]</c> and a valid anti-forgery token.
+    /// </returns>
     [Authorize]
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -311,13 +332,14 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Deletes the authenticated user's account and all associated data.
-    /// This action is permanent and cannot be undone.
+    /// Permanently deletes the authenticated user's account. The user is signed out first, then the
+    /// account and its associated identity data are removed.
     /// </summary>
-    /// <returns>Confirmation of account deletion.</returns>
-    /// <response code="200">Account deleted successfully.</response>
-    /// <response code="401">User not authenticated.</response>
-    /// <response code="400">Failed to delete account.</response>
+    /// <returns>
+    /// HTTP POST <c>account/delete</c>. <c>200 OK</c> with a confirmation message on success;
+    /// <c>400 Bad Request</c> if deletion fails; <c>401 Unauthorized</c> if no user is resolved. Requires
+    /// <c>[Authorize]</c> and a valid anti-forgery token.
+    /// </returns>
     [Authorize]
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -349,12 +371,17 @@ public partial class AccountController(
     #region ATProto OAuth
 
     /// <summary>
-    /// Starts the ATProto OAuth login flow.
-    /// Redirects the user to their authorization server for authentication.
+    /// Begins ATProto (Bluesky) OAuth sign-in for the supplied handle by starting an authorization request
+    /// and returning the authorization URL the client should redirect the user to, along with an opaque
+    /// state value to correlate the callback.
     /// </summary>
-    /// <param name="request">The login request containing the ATProto handle.</param>
-    /// <param name="atProtoOAuth">The ATProto OAuth service.</param>
-    /// <returns>Redirect to authorization server or error.</returns>
+    /// <param name="request">The login payload containing the Bluesky handle, bound from the JSON request body.</param>
+    /// <param name="atProtoOAuth">The ATProto OAuth service, resolved from request services; when null, the feature is not configured.</param>
+    /// <returns>
+    /// HTTP POST <c>account/login-atproto</c>. <c>200 OK</c> with the authorization URL and state on success;
+    /// <c>400 Bad Request</c> when OAuth is not configured, the handle is missing, or authorization could not
+    /// be started. Requires a valid anti-forgery token.
+    /// </returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route( "account/login-atproto" )]
@@ -391,15 +418,21 @@ public partial class AccountController(
     }
 
     /// <summary>
-    /// Handles the OAuth callback from the ATProto authorization server.
+    /// Handles the ATProto OAuth redirect callback. Completes the authorization exchange, then either
+    /// creates a new user for the returned DID or updates the existing user's stored tokens, and signs the
+    /// user in. On any error the user is redirected back to the login page with an error message.
     /// </summary>
-    /// <param name="code">The authorization code.</param>
-    /// <param name="state">The state parameter for verification.</param>
-    /// <param name="iss">The issuer (authorization server) URL.</param>
-    /// <param name="error">Error code if authorization failed.</param>
-    /// <param name="error_description">Error description if authorization failed.</param>
-    /// <param name="atProtoOAuth">The ATProto OAuth service.</param>
-    /// <returns>Redirect to home page on success, or error page on failure.</returns>
+    /// <param name="code">The authorization code returned by the provider, from the query string.</param>
+    /// <param name="state">The opaque state value issued at authorization start, used to correlate the callback, from the query string.</param>
+    /// <param name="iss">The issuer identifier returned by the provider, from the query string.</param>
+    /// <param name="error">An OAuth error code, present when authorization failed, from the query string.</param>
+    /// <param name="error_description">A human-readable description of the OAuth error, from the query string.</param>
+    /// <param name="atProtoOAuth">The ATProto OAuth service, resolved from request services; when null, the feature is not configured.</param>
+    /// <returns>
+    /// HTTP GET <c>account/atproto-callback</c>. A redirect to <c>/</c> on successful sign-in, or a redirect
+    /// back to the login page with an <c>error</c> value when the callback is invalid, OAuth is not
+    /// configured, account creation fails, or the exchange throws.
+    /// </returns>
     [HttpGet]
     [Route( "account/atproto-callback" )]
     public async Task<IActionResult> AtProtoCallback(
@@ -495,10 +528,11 @@ public partial class AccountController(
     #endregion
 
     /// <summary>
-    /// Generates a new API key and returns both the plaintext and its hash.
-    /// All three generation sites (Register, Login, RegenerateApiKey) must use this helper
-    /// so that any future change to key length or encoding is made in exactly one place.
+    /// Generates a new API key and its stored hash. All three generation sites (Register, Login,
+    /// RegenerateApiKey) use this helper so that any future change to key length or encoding is made in
+    /// exactly one place.
     /// </summary>
+    /// <returns>A tuple of the raw API key (shown once to the caller) and the hash to persist.</returns>
     private (string ApiKey, string ApiKeyHash) IssueApiKey( ) {
         string apiKey = ApiKeyHasher.GenerateApiKey( );
         return (apiKey, hasher.HashApiKey( apiKey ));

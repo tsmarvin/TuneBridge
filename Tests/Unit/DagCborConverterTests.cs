@@ -10,16 +10,17 @@ using BridgeBeats.Tests.Unit.Helpers;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Tests for <see cref="DagCborConverter.ToJsonNode"/> including the $type contingency check.
+/// Tests <see cref="DagCborConverter"/>, which converts DAG-CBOR blocks to <see cref="JsonNode"/> using the
+/// atproto/IPLD dag-json sentinel conventions. Covers record round-trips, the <c>$bytes</c> and <c>$link</c>
+/// sentinels, nested structures, null handling, rejection of unsupported CBOR tags, and the 32-level maximum
+/// nesting-depth guard.
 /// </summary>
 [TestClass]
 public class DagCborConverterTests {
 
-    // ─── Contingency test — write first, per brief ────────────────────────────
-
     /// <summary>
-    /// Validates that a DAG-CBOR record block for MediaLinkResultRecord deserializes
-    /// correctly through ToJsonNode → JsonSerializer, resolving the $type contingency.
+    /// Verifies a CBOR-encoded record block converts to JSON that deserializes back into an equivalent
+    /// <see cref="MediaLinkResultRecord"/>, preserving every provider-result field and the lookup timestamp.
     /// </summary>
     [TestMethod]
     public void ToJsonNode_RecordBlock_DeserializesToMediaLinkResultRecord( ) {
@@ -69,6 +70,9 @@ public class DagCborConverterTests {
             deserialized.LookedUpAt );
     }
 
+    /// <summary>
+    /// Verifies an ISO-8601 timestamp stored as a CBOR text string round-trips to the identical JSON string value.
+    /// </summary>
     [TestMethod]
     public void ToJsonNode_IsoDateString_RoundTripsAsString( ) {
         // Arrange
@@ -87,6 +91,9 @@ public class DagCborConverterTests {
         Assert.AreEqual( "2024-03-15T12:00:00.0000000+00:00", node["ts"]?.GetValue<string>( ) );
     }
 
+    /// <summary>
+    /// Verifies a CBOR tag-42 CID link converts to a <c>{"$link": "&lt;base32 cid&gt;"}</c> sentinel object.
+    /// </summary>
     [TestMethod]
     public void ToJsonNode_Tag42Link_ReturnsDollarLinkObject( ) {
         // Arrange: a map with a tag-42 CID link
@@ -112,6 +119,10 @@ public class DagCborConverterTests {
         Assert.IsNotNull( dataNode["$link"] );
     }
 
+    /// <summary>
+    /// Verifies a CBOR byte string converts to a <c>{"$bytes": "&lt;base64&gt;"}</c> sentinel object carrying the
+    /// base64 encoding of the bytes.
+    /// </summary>
     [TestMethod]
     public void ToJsonNode_ByteString_ReturnsDollarBytesObject( ) {
         // Arrange
@@ -128,6 +139,10 @@ public class DagCborConverterTests {
         Assert.AreEqual( Convert.ToBase64String( new byte[] { 0xDE, 0xAD, 0xBE, 0xEF } ), node["$bytes"]?.GetValue<string>( ) );
     }
 
+    /// <summary>
+    /// Verifies a nested map-of-array containing a string, an unsigned integer, and a boolean converts to the
+    /// matching JSON array, preserving element types and order.
+    /// </summary>
     [TestMethod]
     public void ToJsonNode_NestedStructures_RoundTrips( ) {
         // Arrange: nested array inside map
@@ -155,6 +170,10 @@ public class DagCborConverterTests {
         Assert.IsTrue( arr[2]?.GetValue<bool>( ) );
     }
 
+    /// <summary>
+    /// Verifies that any CBOR tag other than the supported tag 42 (a CID link) is rejected with a
+    /// <see cref="CarParseException"/>.
+    /// </summary>
     [TestMethod]
     public void ToJsonNode_UnsupportedTag_ThrowsCarParseException( ) {
         // Arrange
@@ -167,6 +186,9 @@ public class DagCborConverterTests {
         _ = Assert.ThrowsExactly<CarParseException>( ( ) => DagCborConverter.ToJsonNode( bytes ) );
     }
 
+    /// <summary>
+    /// Verifies a CBOR null converts to a null <see cref="JsonNode"/>.
+    /// </summary>
     [TestMethod]
     public void ToJsonNode_NullValue_ReturnsNull( ) {
         // Arrange
@@ -184,11 +206,9 @@ public class DagCborConverterTests {
     // ─── SEC-002 regression: depth guard converts deep nesting to CarParseException ──
 
     /// <summary>
-    /// SEC-002 regression: a block with 33 levels of nested arrays (1 byte each) exceeds
-    /// the MaxDepth=32 guard and must throw CarParseException, NOT crash the test host
-    /// with an uncatchable StackOverflow.
-    /// Failure-first evidence: without the depth check in ReadValue/ReadMap/ReadArray,
-    /// this test would StackOverflow (crashing the test host) rather than catching CarParseException.
+    /// Verifies that CBOR nested beyond the converter's 32-level maximum depth (here 33 levels) is rejected with a
+    /// <see cref="CarParseException"/>, enforcing the anti-DoS depth cap. Without the depth check this would
+    /// StackOverflow and crash the test host rather than surfacing a catchable exception.
     /// </summary>
     [TestMethod]
     public void ToJsonNode_DeeplyNestedCbor_ThrowsCarParseException( ) {
@@ -199,7 +219,8 @@ public class DagCborConverterTests {
     }
 
     /// <summary>
-    /// Verifies that nesting at exactly MaxDepth (32) does not throw.
+    /// Verifies that CBOR nested at exactly the 32-level maximum depth is accepted (the boundary case at the cap
+    /// does not throw).
     /// </summary>
     [TestMethod]
     public void ToJsonNode_NestingAtMaxDepth_DoesNotThrow( ) {

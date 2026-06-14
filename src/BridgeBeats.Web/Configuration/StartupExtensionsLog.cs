@@ -3,12 +3,13 @@ using BridgeBeats.Web.Logging;
 namespace BridgeBeats.Web.Configuration;
 
 /// <summary>
-/// LoggerMessage methods for <see cref="StartupExtensions"/>.
+/// Source-generated <see cref="LoggerMessage"/> definitions for Redis-related startup events.
 /// </summary>
 internal static partial class StartupExtensionsLog {
     /// <summary>
-    /// Logs Redis not configured warning.
+    /// Logs a warning that Redis is not configured and caching will be unavailable.
     /// </summary>
+    /// <param name="logger">The logger instance.</param>
     [LoggerMessage(
         EventId = LogEventIds.Configuration.StartupExtensionsRedisNotConfigured,
         Level = LogLevel.Warning,
@@ -16,8 +17,9 @@ internal static partial class StartupExtensionsLog {
     internal static partial void LogRedisNotConfigured( ILogger logger );
 
     /// <summary>
-    /// Logs Redis cache connection established.
+    /// Logs that the Redis cache connection was established successfully.
     /// </summary>
+    /// <param name="logger">The logger instance.</param>
     [LoggerMessage(
         EventId = LogEventIds.Configuration.StartupExtensionsRedisConnected,
         Level = LogLevel.Information,
@@ -25,8 +27,10 @@ internal static partial class StartupExtensionsLog {
     internal static partial void LogRedisConnected( ILogger logger );
 
     /// <summary>
-    /// Logs Redis cache initialization failure.
+    /// Logs an error when initializing the Redis cache connection fails.
     /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="ex">The exception that caused the failure.</param>
     [LoggerMessage(
         EventId = LogEventIds.Configuration.StartupExtensionsRedisFailed,
         Level = LogLevel.Error,

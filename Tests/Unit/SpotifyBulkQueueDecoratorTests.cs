@@ -10,32 +10,49 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="SpotifyBulkQueueDecorator"/> to verify the enqueue
-/// routing seam: SongIdLookup/AlbumIdLookup are written directly to the
-/// type-specific bulk streams, while all other lookup types delegate to the
-/// inner queue.
+/// Unit tests for <see cref="SpotifyBulkQueueDecorator"/>, which intercepts enqueue calls and routes
+/// Spotify song-id and album-id lookups into dedicated bulk Redis streams while delegating
+/// everything else to the wrapped inner queue. Covers constructor null-guards, the routing matrix
+/// (song-id to the track stream, album-id to the album stream, URI and ISRC to the inner queue, and
+/// interactive-priority typed lookups back to the inner queue regardless of type), the stream
+/// payload shape (a serialized <c>payload</c> field plus an <c>enqueuedAt</c> field), and the rule
+/// that non-enqueue operations always delegate to the inner queue.
 /// </summary>
 [TestClass]
 public class SpotifyBulkQueueDecoratorTests {
 
+    /// <summary>Mock inner queue the decorator wraps and delegates to.</summary>
     private Mock<IRequestQueue<QueuedLookupRequest>> _innerQueueMock = null!;
+    /// <summary>Mock Redis multiplexer supplying the database for bulk-stream writes.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mock Redis database the decorator writes bulk-stream entries to.</summary>
     private Mock<IDatabase> _databaseMock = null!;
+    /// <summary>Mock logger for the decorator.</summary>
     private Mock<ILogger<SpotifyBulkQueueDecorator>> _loggerMock = null!;
+    /// <summary>The decorator under test.</summary>
     private SpotifyBulkQueueDecorator _decorator = null!;
 
+    /// <summary>Redis stream key for bulk Spotify track-id lookups.</summary>
     private const string BulkTrackIdStream = "queue:spotify:bulk:track-id";
+    /// <summary>Redis stream key for bulk Spotify album-id lookups.</summary>
     private const string BulkAlbumIdStream = "queue:spotify:bulk:album-id";
 
+    /// <summary>
+    /// Serialization options (camel-case, non-indented) used to deserialize the captured
+    /// <c>payload</c> field and assert its contents match the enqueued request.
+    /// </summary>
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
 
-    /// <summary>Gets or sets the test context for the current test.</summary>
+    /// <summary>MSTest-injected context; its cancellation token is passed to enqueue calls.</summary>
     public TestContext TestContext { get; set; } = null!;
 
-    /// <summary>Initializes mocks before each test.</summary>
+    /// <summary>
+    /// Creates fresh mocks before each test, wires the Redis database, defaults stream-add to a
+    /// fixed id, and constructs the decorator.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _innerQueueMock = new Mock<IRequestQueue<QueuedLookupRequest>>( );
@@ -65,7 +82,8 @@ public class SpotifyBulkQueueDecoratorTests {
     #region Constructor Tests
 
     /// <summary>
-    /// Verifies that the constructor throws when inner queue is null.
+    /// Verifies that a null inner queue throws <see cref="ArgumentNullException"/> with parameter
+    /// name <c>inner</c>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullInnerQueue_ShouldThrowArgumentNullException( ) {
@@ -77,7 +95,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws when redis is null.
+    /// Verifies that a null Redis multiplexer throws <see cref="ArgumentNullException"/> with
+    /// parameter name <c>redis</c>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullRedis_ShouldThrowArgumentNullException( ) {
@@ -89,7 +108,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws when logger is null.
+    /// Verifies that a null logger throws <see cref="ArgumentNullException"/> with parameter name
+    /// <c>logger</c>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
@@ -105,9 +125,8 @@ public class SpotifyBulkQueueDecoratorTests {
     #region Enqueue Routing Tests
 
     /// <summary>
-    /// Verifies that SongIdLookup at Bulk priority is written to the track-id bulk stream.
-    /// Interception is gated on type AND non-interactive priority; Bulk satisfies the gate.
-    /// Failure-first: SongIdLookup at Bulk must be intercepted and written to the track-id bulk stream.
+    /// Verifies that a bulk-priority song-id lookup is written to the track-id stream and not
+    /// delegated to the inner queue.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenSongIdLookup_ShouldWriteToTrackIdStream( ) {
@@ -139,9 +158,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that AlbumIdLookup at Bulk priority is written to the album-id bulk stream.
-    /// Interception is gated on type AND non-interactive priority; Bulk satisfies the gate.
-    /// Failure-first: AlbumIdLookup at Bulk must be intercepted and written to the album-id bulk stream.
+    /// Verifies that a bulk-priority album-id lookup is written to the album-id stream and not
+    /// delegated to the inner queue.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenAlbumIdLookup_ShouldWriteToAlbumIdStream( ) {
@@ -173,8 +191,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that UriLookup is forwarded to the inner queue, not written to any stream.
-    /// Failure-first: UriLookup must not be intercepted; the passthrough path must be preserved.
+    /// Verifies that a URI lookup is delegated to the inner queue and never written to a bulk
+    /// stream, since it is not a typed Spotify id lookup.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenUriLookup_ShouldDelegateToInnerQueue( ) {
@@ -210,8 +228,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that IsrcLookup is forwarded to the inner queue.
-    /// Ensures non-ID lookup types are not accidentally intercepted.
+    /// Verifies that an ISRC lookup is delegated to the inner queue rather than routed to a bulk
+    /// stream.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenIsrcLookup_ShouldDelegateToInnerQueue( ) {
@@ -233,10 +251,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that SongIdLookup at Interactive priority delegates to the inner queue and
-    /// does NOT write to any bulk stream.
-    /// Failure-first: before the priority gate, Interactive SongIdLookup was routed to the bulk
-    /// stream; now it must pass through so it lands on the interactive stream.
+    /// Verifies that a song-id lookup at interactive priority bypasses the bulk stream and delegates
+    /// to the inner queue, so interactive callers are not subject to the bulk stream's linger.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenSongIdLookupAndInteractivePriority_ShouldDelegateToInnerQueue( ) {
@@ -272,10 +288,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that AlbumIdLookup at Interactive priority delegates to the inner queue and
-    /// does NOT write to any bulk stream.
-    /// Failure-first: before the priority gate, Interactive AlbumIdLookup was routed to the bulk
-    /// stream; now it must pass through so it lands on the interactive stream.
+    /// Verifies that an album-id lookup at interactive priority likewise bypasses the bulk stream
+    /// and delegates to the inner queue.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenAlbumIdLookupAndInteractivePriority_ShouldDelegateToInnerQueue( ) {
@@ -311,10 +325,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that SongIdLookup at Background priority is written to the track-id bulk stream
-    /// and NOT forwarded to the inner queue.
-    /// Guards against over-correction: background SongIdLookup must still batch, not fall through.
-    /// Failure-first: if the priority gate was inverted, Background would incorrectly pass through.
+    /// Verifies that a song-id lookup at background priority is routed to the track-id stream:
+    /// only interactive priority bypasses the bulk stream, so background still batches.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenSongIdLookupAndBackgroundPriority_ShouldWriteToTrackIdStream( ) {
@@ -346,10 +358,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that AlbumIdLookup at Background priority is written to the album-id bulk stream
-    /// and NOT forwarded to the inner queue.
-    /// Guards against over-correction: background AlbumIdLookup must still batch, not fall through.
-    /// Failure-first: if the priority gate was inverted, Background would incorrectly pass through.
+    /// Verifies that an album-id lookup at background priority is routed to the album-id stream,
+    /// mirroring the song-id background-priority routing.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenAlbumIdLookupAndBackgroundPriority_ShouldWriteToAlbumIdStream( ) {
@@ -381,8 +391,9 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that the payload field in the XADD call is valid JSON containing the request.
-    /// Failure-first: the serialized request written to the stream must match the original request.
+    /// Verifies the bulk-stream entry shape for a song-id lookup: the written fields include a
+    /// <c>payload</c> field whose JSON deserializes back to the request (lookup type, value, saga
+    /// id) and an <c>enqueuedAt</c> field carrying the enqueue timestamp.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenSongIdLookup_ShouldSerializePayloadField( ) {
@@ -424,8 +435,8 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that non-enqueue operations (Dequeue, Acknowledge, GetDepth) are always delegated.
-    /// These operations have no stream-specific override in the decorator.
+    /// Verifies that non-enqueue operations (dequeue, acknowledge, get-depth) always delegate to the
+    /// inner queue: the decorator only specializes enqueue routing, not consumption.
     /// </summary>
     [TestMethod]
     public async Task NonEnqueueOperations_ShouldAlwaysDelegateToInnerQueue( ) {
@@ -455,6 +466,13 @@ public class SpotifyBulkQueueDecoratorTests {
 
     #region Helpers
 
+    /// <summary>
+    /// Builds a Spotify <c>QueuedLookupRequest</c> of the given type and value, with a fresh request
+    /// and saga id and <c>IsAlbum</c> inferred from the lookup type.
+    /// </summary>
+    /// <param name="lookupType">The lookup type that drives routing under test.</param>
+    /// <param name="lookupValue">The id or URL being looked up.</param>
+    /// <returns>A bulk-priority request ready to enqueue through the decorator.</returns>
     private static QueuedLookupRequest CreateRequest( LookupRequestType lookupType, string lookupValue ) =>
         new( ) {
             RequestId = Guid.NewGuid( ).ToString( "N" ),

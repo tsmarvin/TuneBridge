@@ -3,37 +3,26 @@ using System.Text;
 namespace BridgeBeats.Core.Domain.Providers.Tidal {
 
     /// <summary>
-    /// Encapsulates Tidal API credentials (Client ID and Client Secret) and automatically encodes them
-    /// in the Base64 format required for OAuth 2.0 Basic authentication. This class is immutable and
-    /// thread-safe, designed to be registered as a singleton in dependency injection.
+    /// Holds the Tidal OAuth2 client credentials precomputed as a base64
+    /// HTTP Basic Authentication string.
     /// </summary>
-    /// <param name="clientId">
-    /// The Client ID from your Tidal Developer app. This is a public identifier safe to log
-    /// and expose in non-production environments.
-    /// </param>
-    /// <param name="clientSecret">
-    /// The Client Secret from your Tidal Developer app. This is a sensitive credential that
-    /// must be kept confidential. Should be stored in environment variables or secure configuration,
-    /// never committed to source control.
-    /// </param>
     /// <remarks>
-    /// Credentials are obtained by creating an app in the Tidal Developer Portal:
-    /// https://developer.tidal.com/
-    /// The encoded credentials are used in the Authorization header when requesting OAuth tokens.
+    /// The supplied client id and secret are joined as <c>clientId:clientSecret</c>,
+    /// UTF-8 encoded, and base64-encoded at construction. The result is the value
+    /// <see cref="TidalTokenHandler"/> sends in the <c>Basic</c> authorization header
+    /// when requesting an application access token. The plain client id and secret are
+    /// not retained.
     /// </remarks>
+    /// <param name="clientId">The Tidal application client id.</param>
+    /// <param name="clientSecret">The Tidal application client secret.</param>
     public sealed class TidalCredentials(
         string clientId,
         string clientSecret
     ) {
         /// <summary>
-        /// The Base64-encoded representation of "clientId:clientSecret", ready for use in HTTP Basic
-        /// authentication headers. This is the format required by the Tidal token endpoint per
-        /// OAuth 2.0 client credentials specification (RFC 6749, Section 2.3.1).
+        /// Gets the base64-encoded <c>clientId:clientSecret</c> string used as the
+        /// value of the HTTP Basic Authentication header on the Tidal token request.
         /// </summary>
-        /// <example>
-        /// For clientId "abc123" and clientSecret "xyz789", this would contain the Base64 encoding
-        /// of "abc123:xyz789", which can be used as: Authorization: Basic {Credentials}
-        /// </example>
         public string Credentials { get; }
             = Convert.ToBase64String( Encoding.UTF8.GetBytes( $"{clientId}:{clientSecret}" ) );
     }

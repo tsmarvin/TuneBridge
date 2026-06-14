@@ -3,7 +3,10 @@ using BridgeBeats.Core.Infrastructure.Utilities;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="LogSanitizerExtensions"/>.
+/// Tests the <c>SanitizeForLogging</c> extension method, the log-injection defense that strips characters which
+/// could forge or break log lines. Covers null/empty/whitespace handling, removal of C0 and C1 control characters
+/// (including DEL and the Unicode line/paragraph separators U+2028/U+2029), and passthrough of legitimate content
+/// (ASCII, non-ASCII letters, emoji, and ordinary spaces).
 /// </summary>
 [TestClass]
 public class LogSanitizerExtensionsTests {
@@ -11,7 +14,7 @@ public class LogSanitizerExtensionsTests {
     #region Null and whitespace input tests
 
     /// <summary>
-    /// Verifies that SanitizeForLogging returns an empty string for null input.
+    /// Verifies a null input sanitizes to an empty string.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_ReturnsEmpty_ForNullInput( ) {
@@ -26,7 +29,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging returns an empty string for empty-string input.
+    /// Verifies an empty string sanitizes to an empty string.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_ReturnsEmpty_ForEmptyString( ) {
@@ -41,7 +44,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging returns an empty string for whitespace-only input.
+    /// Verifies a whitespace-only input (spaces and a tab) sanitizes to an empty string.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_ReturnsEmpty_ForWhitespaceOnlyInput( ) {
@@ -60,7 +63,8 @@ public class LogSanitizerExtensionsTests {
     #region C0 control character tests
 
     /// <summary>
-    /// Verifies that SanitizeForLogging removes C0 control characters (U+0000-U+001F).
+    /// Verifies C0 control characters (NUL, CR, LF) are removed, the carriage-return/line-feed removal being what
+    /// blocks forged log lines.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_RemovesC0ControlCharacters( ) {
@@ -75,7 +79,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging removes DEL (U+007F).
+    /// Verifies the DEL character (U+007F) is removed.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_RemovesDelCharacter( ) {
@@ -94,7 +98,7 @@ public class LogSanitizerExtensionsTests {
     #region C1 control character tests
 
     /// <summary>
-    /// Verifies that SanitizeForLogging removes C1 control character CSI (U+009B).
+    /// Verifies the C1 control character CSI (U+009B) is removed.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_RemovesC1ControlCharacter_Csi( ) {
@@ -109,7 +113,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging removes NEL (U+0085, C1 Next Line).
+    /// Verifies the C1 control character NEL (next line, U+0085) is removed.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_RemovesC1ControlCharacter_Nel( ) {
@@ -124,7 +128,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging removes the full C1 range (U+0080-U+009F).
+    /// Verifies every character in the full C1 range (U+0080 through U+009F) is removed.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_RemovesEntireC1Range( ) {
@@ -144,7 +148,7 @@ public class LogSanitizerExtensionsTests {
     #region Unicode line/paragraph separator tests
 
     /// <summary>
-    /// Verifies that SanitizeForLogging removes U+2028 (LINE SEPARATOR).
+    /// Verifies the Unicode line separator (U+2028) is removed.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_RemovesLineSeparator_U2028( ) {
@@ -159,7 +163,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging removes U+2029 (PARAGRAPH SEPARATOR).
+    /// Verifies the Unicode paragraph separator (U+2029) is removed.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_RemovesParagraphSeparator_U2029( ) {
@@ -174,7 +178,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging removes both U+2028 and U+2029 when they appear together.
+    /// Verifies both Unicode separators are removed when interleaved with text, leaving the text joined.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_RemovesBothUnicodeSeparators( ) {
@@ -193,7 +197,7 @@ public class LogSanitizerExtensionsTests {
     #region Legitimate Unicode passthrough tests
 
     /// <summary>
-    /// Verifies that SanitizeForLogging preserves plain ASCII text without modification.
+    /// Verifies plain ASCII text including digits and punctuation passes through unchanged.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_PreservesPlainAsciiText( ) {
@@ -208,7 +212,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging preserves non-ASCII letters (e.g., accented, CJK).
+    /// Verifies non-ASCII letters (accented Latin, CJK, Arabic) pass through unchanged.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_PreservesNonAsciiLetters( ) {
@@ -223,7 +227,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging preserves emoji, which are well above the blocked ranges.
+    /// Verifies a supplementary-plane emoji (surrogate pair) passes through unchanged.
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_PreservesEmoji( ) {
@@ -238,7 +242,7 @@ public class LogSanitizerExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that SanitizeForLogging preserves regular space (U+0020).
+    /// Verifies an ordinary space is preserved (only control and separator characters are stripped, not normal spaces).
     /// </summary>
     [TestMethod]
     public void SanitizeForLogging_PreservesRegularSpace( ) {

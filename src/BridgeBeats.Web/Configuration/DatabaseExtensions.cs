@@ -6,15 +6,15 @@ using Microsoft.EntityFrameworkCore;
 namespace BridgeBeats.Web.Configuration;
 
 /// <summary>
-/// Extension methods for database initialization.
+/// Startup helpers that apply database migrations, reset stale rate-limit state, and seed required roles.
 /// </summary>
 public static class DatabaseExtensions {
     /// <summary>
-    /// Ensures the database is created and applies any pending migrations.
-    /// Seeds required roles if they don't exist.
+    /// Applies any pending Identity database migrations, clears rate-limit counters whose window has
+    /// elapsed, and seeds the application's required roles.
     /// </summary>
-    /// <param name="app">The web application.</param>
-    /// <returns>The web application for method chaining.</returns>
+    /// <param name="app">The web application whose service provider supplies the database context and role manager.</param>
+    /// <returns>The same <paramref name="app"/> instance, to allow call chaining.</returns>
     public static async Task<WebApplication> InitializeDatabaseAsync( this WebApplication app ) {
         using IServiceScope scope = app.Services.CreateScope( );
         ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>( );
@@ -41,9 +41,10 @@ public static class DatabaseExtensions {
     }
 
     /// <summary>
-    /// Seeds required application roles.
+    /// Creates the roles the application depends on if they do not already exist.
     /// </summary>
-    /// <param name="roleManager">The role manager.</param>
+    /// <param name="roleManager">The Identity role manager used to check for and create roles.</param>
+    /// <returns>A task that completes when the required roles are present.</returns>
     private static async Task SeedRolesAsync( RoleManager<IdentityRole> roleManager ) {
         // Create AspireDashboardAccess role if it doesn't exist
         if (!await roleManager.RoleExistsAsync( Roles.AspireDashboardAccess )) {

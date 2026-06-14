@@ -3,68 +3,44 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Spotify.Models {
 
     /// <summary>
-    /// Response from GET /search endpoint.
-    /// Contains paginated results for each requested type.
+    /// Deserialization target mirroring the Spotify Web API <c>search</c> response (GET /search). Each
+    /// requested item type is returned as its own paged facet; a facet is null when that type was not
+    /// requested or had no results. The authoritative meaning of each field is the Spotify Web API object
+    /// model; <c>[JsonPropertyName]</c> attributes map each property to its wire field.
     /// </summary>
     /// <remarks>
-    /// Endpoint: GET /search?q={query}&amp;type={types}
-    /// Documentation: https://developer.spotify.com/documentation/web-api/reference/search
-    ///
-    /// Search query modifiers:
-    /// - track:{name}    Filter by track name
-    /// - artist:{name}   Filter by artist name
-    /// - album:{name}    Filter by album name
-    /// - year:{yyyy}     Filter by release year
-    /// - isrc:{code}     Filter by ISRC (tracks only)
-    /// - upc:{code}      Filter by UPC (albums only)
-    /// - genre:{genre}   Filter by genre
-    ///
-    /// Example queries:
-    /// - "isrc:USRC12345678" → Returns track with that ISRC
-    /// - "upc:012345678901" → Returns album with that UPC
-    /// - "track:Alive artist:Daft Punk" → Returns tracks matching both
+    /// The query supports field filters such as <c>track:</c>, <c>artist:</c>, <c>album:</c>,
+    /// <c>year:</c>, <c>genre:</c>, <c>isrc:</c> (tracks only), and <c>upc:</c> (albums only). For
+    /// example, <c>isrc:USRC12345678</c> returns the track with that ISRC and
+    /// <c>track:Alive artist:Daft Punk</c> returns tracks matching both filters.
     /// </remarks>
     public sealed class SpotifySearchResponse {
 
-        /// <summary>
-        /// Search results for tracks. Only present if "track" was in the type parameter.
-        /// </summary>
+        /// <summary>Paged track results as full track objects; present only when <c>track</c> was in the type parameter. Maps to <c>tracks</c>.</summary>
         [JsonPropertyName( "tracks" )]
         public SpotifyPaging<SpotifyTrack>? Tracks { get; set; }
 
-        /// <summary>
-        /// Search results for albums. Only present if "album" was in the type parameter.
-        /// </summary>
+        /// <summary>Paged album results as full album objects; present only when <c>album</c> was in the type parameter. Maps to <c>albums</c>.</summary>
         [JsonPropertyName( "albums" )]
         public SpotifyPaging<SpotifyAlbum>? Albums { get; set; }
 
-        /// <summary>
-        /// Search results for artists. Only present if "artist" was in the type parameter.
-        /// </summary>
+        /// <summary>Paged artist results as full artist objects; present only when <c>artist</c> was in the type parameter. Maps to <c>artists</c>.</summary>
         [JsonPropertyName( "artists" )]
         public SpotifyPaging<SpotifyArtist>? Artists { get; set; }
 
-        /// <summary>
-        /// Search results for playlists. Only present if "playlist" was in the type parameter.
-        /// </summary>
+        /// <summary>Paged playlist results as simplified playlist objects; present only when <c>playlist</c> was in the type parameter. Maps to <c>playlists</c>.</summary>
         [JsonPropertyName( "playlists" )]
         public SpotifyPaging<SpotifyPlaylistSimplified>? Playlists { get; set; }
 
-        /// <summary>
-        /// Search results for shows. Only present if "show" was in the type parameter.
-        /// </summary>
+        /// <summary>Paged show results as simplified show objects; present only when <c>show</c> was in the type parameter. Maps to <c>shows</c>.</summary>
         [JsonPropertyName( "shows" )]
         public SpotifyPaging<SpotifyShowSimplified>? Shows { get; set; }
 
-        /// <summary>
-        /// Search results for episodes. Only present if "episode" was in the type parameter.
-        /// </summary>
+        /// <summary>Paged episode results as simplified episode objects; present only when <c>episode</c> was in the type parameter. Maps to <c>episodes</c>.</summary>
         [JsonPropertyName( "episodes" )]
         public SpotifyPaging<SpotifyEpisodeSimplified>? Episodes { get; set; }
 
-        /// <summary>
-        /// Search results for audiobooks. Only present if "audiobook" was in the type parameter.
-        /// </summary>
+        /// <summary>Paged audiobook results as simplified audiobook objects; present only when <c>audiobook</c> was in the type parameter. Maps to <c>audiobooks</c>.</summary>
         [JsonPropertyName( "audiobooks" )]
         public SpotifyPaging<SpotifyAudiobookSimplified>? Audiobooks { get; set; }
     }

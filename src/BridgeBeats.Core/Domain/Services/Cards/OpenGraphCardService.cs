@@ -6,26 +6,50 @@ using BridgeBeats.Core.Infrastructure.Storage;
 namespace BridgeBeats.Core.Domain.Services.Cards {
 
     /// <summary>
-    /// In-memory implementation of the OpenGraph card service for storing MediaLinkResult objects.
+    /// In-memory store of resolved <see cref="MediaLinkResult"/>s addressable by a generated card
+    /// id, used to back share/social-preview (OpenGraph) pages. Stored cards expire after a
+    /// configured lifetime; expired entries are swept lazily during store operations rather than on
+    /// a timer.
     /// </summary>
+    /// <param name="domain">
+    /// The public domain used to build card URLs. When null/empty the service is disabled
+    /// (see <see cref="IsEnabled"/>).
+    /// </param>
+    /// <param name="expirationHours">How long, in hours, a stored card remains retrievable. Must be greater than zero.</param>
+    /// <param name="cleanupInterval">
+    /// How many store operations elapse between lazy expiry sweeps. Must be greater than zero.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="expirationHours"/> or <paramref name="cleanupInterval"/> is not greater than zero.
+    /// </exception>
     public class OpenGraphCardService( string domain, int expirationHours, int cleanupInterval ) : IOpenGraphCardService {
 
-        /// <inheritdoc/>
+        /// <summary>Gets a value indicating whether card generation is enabled, that is, whether a public domain is configured.</summary>
         public bool IsEnabled => string.IsNullOrWhiteSpace( domain ) == false;
 
-        /// <inheritdoc/>
+        /// <summary>Gets the public domain used to build card URLs.</summary>
         public string Domain => domain;
 
+        /// <summary>Thread-safe backing store mapping card id to the stored result and its expiry timestamp.</summary>
         private readonly ConcurrentDictionary<string, (MediaLinkResult Result, DateTime Expiry)> _store = new();
+        /// <summary>The lifetime applied to each stored card, derived from the configured expiration hours.</summary>
         private readonly TimeSpan _expirationTime = expirationHours > 0
             ? TimeSpan.FromHours( expirationHours )
             : throw new ArgumentOutOfRangeException( nameof( expirationHours ), expirationHours, "Expiration hours must be greater than zero." );
+        /// <summary>Running count of store operations, used to decide when to run a lazy expiry sweep.</summary>
         private int _operationCounter;
+        /// <summary>The number of store operations between lazy expiry sweeps.</summary>
         private readonly int _cleanupInterval = cleanupInterval > 0
             ? cleanupInterval
             : throw new ArgumentOutOfRangeException( nameof( cleanupInterval ), cleanupInterval, "Cleanup interval must be greater than zero." );
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Stores a resolved result under a deterministically generated card id and returns the
+        /// public card URL. If a non-expired entry already exists for the id its original expiry is
+        /// preserved; otherwise the entry's expiry is reset. Triggers a lazy expiry sweep.
+        /// </summary>
+        /// <param name="result">The resolved multi-provider result to store.</param>
+        /// <returns>The public <c>https://{domain}/card/{id}</c> URL for the stored card.</returns>
         public string StoreResult( MediaLinkResult result ) {
             CleanExpiredEntries( );
 
@@ -46,7 +70,12 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             return $"https://{domain.TrimEnd( '/' )}/card/{id}";
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Retrieves the stored result for a card id, or <see langword="null"/> if no entry exists
+        /// or the entry has expired. Expired entries are removed on access.
+        /// </summary>
+        /// <param name="id">The card id returned when the result was stored.</param>
+        /// <returns>The stored result, or <see langword="null"/> when absent or expired.</returns>
         public MediaLinkResult? GetResult( string id ) {
             if (_store.TryGetValue( id, out (MediaLinkResult Result, DateTime Expiry) entry )) {
                 if (entry.Expiry > DateTime.UtcNow) {
@@ -58,6 +87,11 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             return null;
         }
 
+        /// <summary>
+        /// Lazily sweeps expired entries from the store. Increments the operation counter and, only
+        /// on every <see cref="_cleanupInterval"/>-th call, removes all entries whose expiry has
+        /// passed. This amortizes cleanup across store operations instead of using a timer.
+        /// </summary>
         private void CleanExpiredEntries( ) {
             // Clean every Nth operation for predictable memory management
             if (Interlocked.Increment( ref _operationCounter ) % _cleanupInterval == 0) {

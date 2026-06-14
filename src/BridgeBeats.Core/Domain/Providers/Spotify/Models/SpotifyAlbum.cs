@@ -3,135 +3,92 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Spotify.Models {
 
     /// <summary>
-    /// A full album object with complete details including external IDs (UPC).
-    /// Returned by GET /albums/{id} and GET /albums?ids=.
+    /// Deserialization target mirroring the Spotify Web API full <c>album</c> object. Carries the
+    /// fields returned when an album is fetched directly (GET /albums/{id}, GET /albums?ids=), including
+    /// the full track listing, copyrights, and external ids (UPC) that the simplified variant omits. The
+    /// authoritative meaning of each field is the Spotify Web API object model; <c>[JsonPropertyName]</c>
+    /// attributes map each property to its wire field. See <see cref="SpotifyAlbumSimplified"/> for the
+    /// simplified variant.
     /// </summary>
-    /// <remarks>
-    /// Endpoint: GET /albums/{id}, GET /albums?ids={ids}, GET /search?type=album
-    /// Documentation: https://developer.spotify.com/documentation/web-api/reference/get-an-album
-    /// </remarks>
     public sealed class SpotifyAlbum {
 
-        /// <summary>
-        /// The type of album: "album", "single", or "compilation".
-        /// </summary>
+        /// <summary>Album type reported by Spotify, for example <c>album</c>, <c>single</c>, or <c>compilation</c>. Maps to <c>album_type</c>.</summary>
         [JsonPropertyName( "album_type" )]
         public string AlbumType { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The number of tracks in the album.
-        /// </summary>
+        /// <summary>Number of tracks in the album. Maps to <c>total_tracks</c>.</summary>
         [JsonPropertyName( "total_tracks" )]
         public int TotalTracks { get; set; }
 
-        /// <summary>
-        /// The markets in which the album is available (ISO 3166-1 alpha-2 country codes).
-        /// NOTE: Only present when market is not supplied in the request.
-        /// </summary>
+        /// <summary>ISO 3166-1 alpha-2 market codes the album is available in; present only when no market is supplied in the request. Maps to <c>available_markets</c>.</summary>
         [JsonPropertyName( "available_markets" )]
         public List<string>? AvailableMarkets { get; set; }
 
-        /// <summary>
-        /// Known external URLs for this album.
-        /// </summary>
+        /// <summary>Known external URLs for the album, primarily the Spotify web link. Maps to <c>external_urls</c>.</summary>
         [JsonPropertyName( "external_urls" )]
         public SpotifyExternalUrls? ExternalUrls { get; set; }
 
-        /// <summary>
-        /// A link to the Web API endpoint providing full details of the album.
-        /// </summary>
+        /// <summary>Spotify Web API endpoint URL providing full details for the album. Maps to <c>href</c>.</summary>
         [JsonPropertyName( "href" )]
         public string Href { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The Spotify ID for the album.
-        /// </summary>
+        /// <summary>Spotify id for the album. Maps to <c>id</c>.</summary>
         [JsonPropertyName( "id" )]
         public string Id { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The cover art for the album in various sizes, widest first.
-        /// </summary>
+        /// <summary>Cover art images in various sizes, widest first. Maps to <c>images</c>.</summary>
         [JsonPropertyName( "images" )]
         public List<SpotifyImage> Images { get; set; } = [];
 
-        /// <summary>
-        /// The name of the album. If album contains censored words, the title may be truncated.
-        /// </summary>
+        /// <summary>Album name. Maps to <c>name</c>.</summary>
         [JsonPropertyName( "name" )]
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The date the album was first released.
-        /// Depending on precision, format may be "YYYY", "YYYY-MM", or "YYYY-MM-DD".
-        /// </summary>
+        /// <summary>Release date, expressed with the precision indicated by <see cref="ReleaseDatePrecision"/> as <c>YYYY</c>, <c>YYYY-MM</c>, or <c>YYYY-MM-DD</c>. Maps to <c>release_date</c>.</summary>
         [JsonPropertyName( "release_date" )]
         public string ReleaseDate { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The precision with which release_date value is known: "year", "month", or "day".
-        /// </summary>
+        /// <summary>Precision of <see cref="ReleaseDate"/>: <c>year</c>, <c>month</c>, or <c>day</c>. Maps to <c>release_date_precision</c>.</summary>
         [JsonPropertyName( "release_date_precision" )]
         public string ReleaseDatePrecision { get; set; } = string.Empty;
 
-        /// <summary>
-        /// Included if a content restriction is applied.
-        /// </summary>
+        /// <summary>Content restrictions that apply to the album, when present. Maps to <c>restrictions</c>.</summary>
         [JsonPropertyName( "restrictions" )]
         public SpotifyRestrictions? Restrictions { get; set; }
 
-        /// <summary>
-        /// The object type. Always "album".
-        /// </summary>
+        /// <summary>Object type, always <c>album</c> for this object. Maps to <c>type</c>.</summary>
         [JsonPropertyName( "type" )]
         public string Type { get; set; } = "album";
 
-        /// <summary>
-        /// The Spotify URI for the album.
-        /// </summary>
+        /// <summary>Spotify URI for the album. Maps to <c>uri</c>.</summary>
         [JsonPropertyName( "uri" )]
         public string Uri { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The artists of the album.
-        /// </summary>
+        /// <summary>Artists credited on the album, as simplified artist objects. Maps to <c>artists</c>.</summary>
         [JsonPropertyName( "artists" )]
         public List<SpotifyArtistSimplified> Artists { get; set; } = [];
 
-        /// <summary>
-        /// The tracks of the album as a paging object of simplified track objects.
-        /// </summary>
+        /// <summary>Paged listing of the album's tracks as simplified track objects; null when not returned. Maps to <c>tracks</c>.</summary>
         [JsonPropertyName( "tracks" )]
         public SpotifyPaging<SpotifyTrackSimplified>? Tracks { get; set; }
 
-        /// <summary>
-        /// The copyright statements of the album.
-        /// </summary>
+        /// <summary>Copyright statements for the album. Maps to <c>copyrights</c>.</summary>
         [JsonPropertyName( "copyrights" )]
         public List<SpotifyCopyright> Copyrights { get; set; } = [];
 
-        /// <summary>
-        /// Known external IDs for the album. (e.g. UPC).
-        /// </summary>
+        /// <summary>External identifiers for the album, such as the UPC. Maps to <c>external_ids</c>.</summary>
         [JsonPropertyName( "external_ids" )]
         public SpotifyExternalIds? ExternalIds { get; set; }
 
-        /// <summary>
-        /// A list of the genres the album is associated with.
-        /// If not yet classified, the array is empty.
-        /// </summary>
+        /// <summary>Genres associated with the album; empty when not yet classified. Maps to <c>genres</c>.</summary>
         [JsonPropertyName( "genres" )]
         public List<string> Genres { get; set; } = [];
 
-        /// <summary>
-        /// The label associated with the album.
-        /// </summary>
+        /// <summary>Record label for the album. Maps to <c>label</c>.</summary>
         [JsonPropertyName( "label" )]
         public string Label { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The popularity of the album. Value between 0 and 100, with 100 being the most popular.
-        /// </summary>
+        /// <summary>Spotify popularity score for the album, between 0 and 100 with 100 being most popular. Maps to <c>popularity</c>.</summary>
         [JsonPropertyName( "popularity" )]
         public int Popularity { get; set; }
     }

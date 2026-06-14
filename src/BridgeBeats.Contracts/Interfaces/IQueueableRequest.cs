@@ -1,29 +1,33 @@
 namespace BridgeBeats.Contracts.Interfaces;
 
 /// <summary>
-/// Marker interface for requests that can be queued for background processing.
+/// Base contract for anything that can be enqueued on a provider request queue, exposing the
+/// fields the queue needs to identify, correlate, age, and retry a request.
 /// </summary>
 /// <remarks>
-/// Implementations must be serializable to JSON for Redis stream storage.
+/// Implemented by <c>QueuedLookupRequest</c> and consumed by <see cref="IRequestQueue{T}"/>,
+/// which constrains its element type to this interface. Implementations must be serializable to
+/// JSON for storage in Redis streams.
 /// </remarks>
 public interface IQueueableRequest {
+
     /// <summary>
-    /// Gets the unique identifier for this request.
+    /// The unique identifier of this request.
     /// </summary>
     string RequestId { get; }
 
     /// <summary>
-    /// Gets the saga/job identifier this request belongs to.
+    /// The id of the lookup saga (or job) this request is a leg of.
     /// </summary>
     string SagaId { get; }
 
     /// <summary>
-    /// Gets the timestamp when this request was originally created.
+    /// When the request was originally created.
     /// </summary>
     DateTimeOffset CreatedAt { get; }
 
     /// <summary>
-    /// Gets the number of times this request has been attempted.
+    /// How many times this request has been attempted, used for retry and dead-letter decisions.
     /// </summary>
     int AttemptCount { get; }
 }

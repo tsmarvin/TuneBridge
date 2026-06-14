@@ -7,14 +7,26 @@ using BridgeBeats.Tests.Unit.Helpers;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Tests for <see cref="CarRepoReader.EnumerateCollection"/>.
+/// Tests <see cref="CarRepoReader.EnumerateCollection"/>, which parses an ATProto repository CAR,
+/// walks its Merkle Search Tree, and yields the records belonging to a requested collection.
 /// </summary>
+/// <remarks>
+/// CAR fixtures are assembled with the test helper <c>TestCarBuilder</c> (commit block, MST node with
+/// prefix-compressed entries, and per-record blocks). The tests verify that enumeration filters to the
+/// requested collection's key prefix, handles an empty repository, and returns the correct record keys.
+/// </remarks>
 [TestClass]
 public class CarRepoReaderTests {
 
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>MSTest-injected context, used to flow the test's cancellation token into the reader.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>
+    /// Builds a minimal persisted lookup record with a single Spotify provider result, used as block
+    /// content in the CAR fixtures.
+    /// </summary>
+    /// <param name="title">The track title to embed in the record.</param>
+    /// <returns>A populated <see cref="MediaLinkResultRecord"/>.</returns>
     private static MediaLinkResultRecord MakeRecord( string title ) =>
         new(
             results: [
@@ -29,6 +41,11 @@ public class CarRepoReaderTests {
             lookedUpAt: new DateTimeOffset( 2024, 6, 1, 0, 0, 0, TimeSpan.Zero )
         );
 
+    /// <summary>
+    /// Verifies that enumerating a repository containing both lookup and playlist records returns only
+    /// the records under the requested <c>link.bridgebeats.lookup</c> collection, excluding the playlist
+    /// entry. The fixture sorts entries by key and applies MST prefix compression to mimic a real tree.
+    /// </summary>
     [TestMethod]
     public void EnumerateCollection_MixedCollections_FiltersToRequestedCollection( ) {
         // Build a repo with both lookup records and playlist records
@@ -87,6 +104,9 @@ public class CarRepoReaderTests {
         Assert.IsTrue( lookupResults.All( r => !r.Rkey.Contains( "pl1" ) ) );
     }
 
+    /// <summary>
+    /// Verifies that enumerating a repository with no records in the collection yields nothing.
+    /// </summary>
     [TestMethod]
     public void EnumerateCollection_EmptyRepo_YieldsNothing( ) {
         byte[] carBytes = TestCarBuilder.BuildRepoCarWithRecords(
@@ -102,6 +122,10 @@ public class CarRepoReaderTests {
         Assert.IsEmpty( results );
     }
 
+    /// <summary>
+    /// Verifies that enumerating a repository of lookup records yields each record's rkey, confirming
+    /// the collection prefix is stripped to recover the bare record key.
+    /// </summary>
     [TestMethod]
     public void EnumerateCollection_LookupRecords_YieldsCorrectRkeys( ) {
         byte[] carBytes = TestCarBuilder.BuildRepoCarWithRecords(
@@ -123,6 +147,13 @@ public class CarRepoReaderTests {
         Assert.AreEqual( "rkey_beta", rkeys[1] );
     }
 
+    /// <summary>
+    /// Computes the length of the shared leading prefix of two strings, used to build the MST
+    /// prefix-compressed entries in the mixed-collection fixture.
+    /// </summary>
+    /// <param name="a">The first string.</param>
+    /// <param name="b">The second string.</param>
+    /// <returns>The number of leading characters the two strings share.</returns>
     private static int CommonPrefixLength( string a, string b ) {
         int len = Math.Min( a.Length, b.Length );
         int i = 0;
@@ -130,9 +161,23 @@ public class CarRepoReaderTests {
         return i;
     }
 
+    /// <summary>
+    /// Equality comparer that treats byte arrays as keys by their contents, so a CID's raw bytes can key
+    /// the in-memory block dictionary used to assemble a CAR fixture.
+    /// </summary>
     private sealed class ByteArrayKeyComparer : System.Collections.Generic.IEqualityComparer<byte[]> {
+        /// <summary>Shared singleton instance.</summary>
         internal static readonly ByteArrayKeyComparer Instance = new( );
+
+        /// <summary>Compares two byte arrays for content equality.</summary>
+        /// <param name="x">The first array.</param>
+        /// <param name="y">The second array.</param>
+        /// <returns><see langword="true"/> when both are non-null and have identical contents.</returns>
         public bool Equals( byte[]? x, byte[]? y ) => x is not null && y is not null && x.AsSpan( ).SequenceEqual( y );
+
+        /// <summary>Computes a content-based hash code for a byte array.</summary>
+        /// <param name="obj">The array to hash.</param>
+        /// <returns>A hash code derived from the array contents.</returns>
         public int GetHashCode( byte[] obj ) {
             System.HashCode hc = new( );
             hc.AddBytes( obj );

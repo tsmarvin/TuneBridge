@@ -3,12 +3,13 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Contracts.Records;
 
 /// <summary>
-/// A wrapper for messages retrieved from the queue.
+/// A generic transport envelope wrapping a dequeued payload together with the broker's
+/// message identifier and the time it was enqueued.
 /// </summary>
-/// <typeparam name="T">The type of the payload.</typeparam>
-/// <param name="MessageId">The unique identifier assigned by the queue system.</param>
-/// <param name="Payload">The original request payload.</param>
-/// <param name="EnqueuedAt">When the message was added to the queue.</param>
+/// <typeparam name="T">The type of the wrapped payload.</typeparam>
+/// <param name="MessageId">The broker-assigned identifier for this message, used to acknowledge or requeue it.</param>
+/// <param name="Payload">The wrapped payload.</param>
+/// <param name="EnqueuedAt">The absolute instant the message was placed on the queue.</param>
 public sealed record QueuedMessage<T>(
 
     [property: JsonPropertyName( "messageId" )]

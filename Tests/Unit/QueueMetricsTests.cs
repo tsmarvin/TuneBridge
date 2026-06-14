@@ -5,17 +5,18 @@ using BridgeBeats.Core.Infrastructure.Queue;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="QueueMetrics"/> and <see cref="QueueMetricTags"/>.
-/// Validates metric definitions, tag constants, and instrumentation correctness.
+/// Unit tests for <see cref="QueueMetrics"/>, the static <c>BridgeBeats.Queue</c> meter and its
+/// counters, histograms, and record helpers. Verify the meter name/version, each instrument's
+/// name and unit, that instruments accept tagged measurements, and that the <c>Record*</c> helpers
+/// emit the right value and lower-cased provider/priority/endpoint tags. Measurements are observed
+/// with an in-process <see cref="System.Diagnostics.Metrics.MeterListener"/>.
 /// </summary>
 [TestClass]
 public class QueueMetricsTests {
 
     #region Meter Tests
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.Meter"/> has the expected name "BridgeBeats.Queue".
-    /// </summary>
+    /// <summary>The meter is named <c>BridgeBeats.Queue</c>.</summary>
     [TestMethod]
     public void Meter_HasCorrectName( ) {
         // Arrange
@@ -25,9 +26,7 @@ public class QueueMetricsTests {
         Assert.AreEqual( ExpectedName, QueueMetrics.Meter.Name );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.Meter"/> has the expected version "1.0.0".
-    /// </summary>
+    /// <summary>The meter reports version <c>1.0.0</c>.</summary>
     [TestMethod]
     public void Meter_HasCorrectVersion( ) {
         // Assert
@@ -38,108 +37,84 @@ public class QueueMetricsTests {
 
     #region Counter Tests
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.EnqueuedTotal"/> counter is properly initialized.
-    /// </summary>
+    /// <summary>The enqueued-total counter is registered (non-null).</summary>
     [TestMethod]
     public void EnqueuedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.EnqueuedTotal );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.EnqueuedTotal"/> counter has the expected metric name.
-    /// </summary>
+    /// <summary>The enqueued-total counter is named <c>bridgebeats.queue.enqueued.total</c>.</summary>
     [TestMethod]
     public void EnqueuedTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.enqueued.total", QueueMetrics.EnqueuedTotal.Name );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.DequeuedTotal"/> counter is properly initialized.
-    /// </summary>
+    /// <summary>The dequeued-total counter is registered (non-null).</summary>
     [TestMethod]
     public void DequeuedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.DequeuedTotal );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.DequeuedTotal"/> counter has the expected metric name.
-    /// </summary>
+    /// <summary>The dequeued-total counter is named <c>bridgebeats.queue.dequeued.total</c>.</summary>
     [TestMethod]
     public void DequeuedTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.dequeued.total", QueueMetrics.DequeuedTotal.Name );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.AcknowledgedTotal"/> counter is properly initialized.
-    /// </summary>
+    /// <summary>The acknowledged-total counter is registered (non-null).</summary>
     [TestMethod]
     public void AcknowledgedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.AcknowledgedTotal );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.AcknowledgedTotal"/> counter has the expected metric name.
-    /// </summary>
+    /// <summary>The acknowledged-total counter is named <c>bridgebeats.queue.acknowledged.total</c>.</summary>
     [TestMethod]
     public void AcknowledgedTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.acknowledged.total", QueueMetrics.AcknowledgedTotal.Name );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.RequeuedTotal"/> counter is properly initialized.
-    /// </summary>
+    /// <summary>The requeued-total counter is registered (non-null).</summary>
     [TestMethod]
     public void RequeuedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.RequeuedTotal );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.RequeuedTotal"/> counter has the expected metric name.
-    /// </summary>
+    /// <summary>The requeued-total counter is named <c>bridgebeats.queue.requeued.total</c>.</summary>
     [TestMethod]
     public void RequeuedTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.requeued.total", QueueMetrics.RequeuedTotal.Name );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.RateLimitEventsTotal"/> counter is properly initialized.
-    /// </summary>
+    /// <summary>The rate-limit-events counter is registered (non-null).</summary>
     [TestMethod]
     public void RateLimitEventsTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.RateLimitEventsTotal );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.RateLimitEventsTotal"/> counter has the expected metric name.
-    /// </summary>
+    /// <summary>The rate-limit-events counter is named <c>bridgebeats.ratelimit.events.total</c>.</summary>
     [TestMethod]
     public void RateLimitEventsTotal_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.ratelimit.events.total", QueueMetrics.RateLimitEventsTotal.Name );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.DeduplicatedTotal"/> counter is properly initialized.
-    /// </summary>
+    /// <summary>The deduplicated-total counter is registered (non-null).</summary>
     [TestMethod]
     public void DeduplicatedTotal_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.DeduplicatedTotal );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.DeduplicatedTotal"/> counter has the expected metric name.
-    /// </summary>
+    /// <summary>The deduplicated-total counter is named <c>bridgebeats.dedup.prevented.total</c>.</summary>
     [TestMethod]
     public void DeduplicatedTotal_HasCorrectName( ) {
         // Assert
@@ -150,54 +125,42 @@ public class QueueMetricsTests {
 
     #region Histogram Tests
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.ProcessingDuration"/> histogram is properly initialized.
-    /// </summary>
+    /// <summary>The processing-duration histogram is registered (non-null).</summary>
     [TestMethod]
     public void ProcessingDuration_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.ProcessingDuration );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.ProcessingDuration"/> histogram has the expected metric name.
-    /// </summary>
+    /// <summary>The processing-duration histogram is named <c>bridgebeats.queue.processing.duration</c>.</summary>
     [TestMethod]
     public void ProcessingDuration_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.queue.processing.duration", QueueMetrics.ProcessingDuration.Name );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.ProcessingDuration"/> histogram uses seconds as the unit.
-    /// </summary>
+    /// <summary>The processing-duration histogram is measured in seconds (<c>s</c>).</summary>
     [TestMethod]
     public void ProcessingDuration_HasCorrectUnit( ) {
         // Assert
         Assert.AreEqual( "s", QueueMetrics.ProcessingDuration.Unit );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.RateLimitDuration"/> histogram is properly initialized.
-    /// </summary>
+    /// <summary>The rate-limit-duration histogram is registered (non-null).</summary>
     [TestMethod]
     public void RateLimitDuration_IsNotNull( ) {
         // Assert
         Assert.IsNotNull( QueueMetrics.RateLimitDuration );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.RateLimitDuration"/> histogram has the expected metric name.
-    /// </summary>
+    /// <summary>The rate-limit-duration histogram is named <c>bridgebeats.ratelimit.duration</c>.</summary>
     [TestMethod]
     public void RateLimitDuration_HasCorrectName( ) {
         // Assert
         Assert.AreEqual( "bridgebeats.ratelimit.duration", QueueMetrics.RateLimitDuration.Name );
     }
 
-    /// <summary>
-    /// Verifies that the <see cref="QueueMetrics.RateLimitDuration"/> histogram uses seconds as the unit.
-    /// </summary>
+    /// <summary>The rate-limit-duration histogram is measured in seconds (<c>s</c>).</summary>
     [TestMethod]
     public void RateLimitDuration_HasCorrectUnit( ) {
         // Assert
@@ -208,9 +171,7 @@ public class QueueMetricsTests {
 
     #region Counter Recording Tests
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.EnqueuedTotal"/> can record values with provider and priority tags without throwing.
-    /// </summary>
+    /// <summary>The enqueued-total counter accepts an <c>Add</c> with provider and priority tags.</summary>
     [TestMethod]
     public void EnqueuedTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
@@ -223,9 +184,7 @@ public class QueueMetricsTests {
         Assert.IsNotNull( QueueMetrics.EnqueuedTotal );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.DequeuedTotal"/> can record values with provider and priority tags without throwing.
-    /// </summary>
+    /// <summary>The dequeued-total counter accepts an <c>Add</c> with provider and priority tags.</summary>
     [TestMethod]
     public void DequeuedTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
@@ -238,9 +197,7 @@ public class QueueMetricsTests {
         Assert.IsNotNull( QueueMetrics.DequeuedTotal );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RateLimitEventsTotal"/> can record values with provider and endpoint tags without throwing.
-    /// </summary>
+    /// <summary>The rate-limit-events counter accepts an <c>Add</c> with provider and endpoint tags.</summary>
     [TestMethod]
     public void RateLimitEventsTotal_CanRecordWithTags( ) {
         // Arrange & Act - Should not throw
@@ -253,9 +210,7 @@ public class QueueMetricsTests {
         Assert.IsNotNull( QueueMetrics.RateLimitEventsTotal );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.DeduplicatedTotal"/> can record values without tags.
-    /// </summary>
+    /// <summary>The deduplicated-total counter accepts an untagged <c>Add</c>.</summary>
     [TestMethod]
     public void DeduplicatedTotal_CanRecordWithoutTags( ) {
         // Arrange & Act - Should not throw
@@ -270,7 +225,8 @@ public class QueueMetricsTests {
     #region Histogram Recording Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.ProcessingDuration"/> can record values with provider, lookup type, and status tags without throwing.
+    /// The processing-duration histogram accepts a <c>Record</c> with provider, lookup-type, and
+    /// status tags.
     /// </summary>
     [TestMethod]
     public void ProcessingDuration_CanRecordWithTags( ) {
@@ -286,7 +242,7 @@ public class QueueMetricsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RateLimitDuration"/> can record values with provider and endpoint tags without throwing.
+    /// The rate-limit-duration histogram accepts a <c>Record</c> with provider and endpoint tags.
     /// </summary>
     [TestMethod]
     public void RateLimitDuration_CanRecordWithTags( ) {
@@ -305,7 +261,8 @@ public class QueueMetricsTests {
     #region MeterListener Verification Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.EnqueuedTotal"/> correctly records values and tags using a MeterListener.
+    /// A <see cref="System.Diagnostics.Metrics.MeterListener"/> observes the enqueued-total counter
+    /// receiving the recorded value (5) along with its <c>spotify</c>/<c>interactive</c> tags.
     /// </summary>
     [TestMethod]
     public void EnqueuedTotal_RecordsCorrectValueWithListener( ) {
@@ -347,7 +304,8 @@ public class QueueMetricsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.ProcessingDuration"/> correctly records duration values and status tags using a MeterListener.
+    /// A <see cref="System.Diagnostics.Metrics.MeterListener"/> observes the processing-duration
+    /// histogram receiving the recorded value (2.5) along with its <c>status</c> tag.
     /// </summary>
     [TestMethod]
     public void ProcessingDuration_RecordsCorrectValueWithListener( ) {
@@ -389,49 +347,37 @@ public class QueueMetricsTests {
 
     #region Counter Unit Tests
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.EnqueuedTotal"/> uses the correct unit "{requests}".
-    /// </summary>
+    /// <summary>The enqueued-total counter uses the <c>{requests}</c> unit.</summary>
     [TestMethod]
     public void EnqueuedTotal_HasCorrectUnit( ) {
         Assert.AreEqual( "{requests}", QueueMetrics.EnqueuedTotal.Unit );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.DequeuedTotal"/> uses the correct unit "{requests}".
-    /// </summary>
+    /// <summary>The dequeued-total counter uses the <c>{requests}</c> unit.</summary>
     [TestMethod]
     public void DequeuedTotal_HasCorrectUnit( ) {
         Assert.AreEqual( "{requests}", QueueMetrics.DequeuedTotal.Unit );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.AcknowledgedTotal"/> uses the correct unit "{requests}".
-    /// </summary>
+    /// <summary>The acknowledged-total counter uses the <c>{requests}</c> unit.</summary>
     [TestMethod]
     public void AcknowledgedTotal_HasCorrectUnit( ) {
         Assert.AreEqual( "{requests}", QueueMetrics.AcknowledgedTotal.Unit );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RequeuedTotal"/> uses the correct unit "{requests}".
-    /// </summary>
+    /// <summary>The requeued-total counter uses the <c>{requests}</c> unit.</summary>
     [TestMethod]
     public void RequeuedTotal_HasCorrectUnit( ) {
         Assert.AreEqual( "{requests}", QueueMetrics.RequeuedTotal.Unit );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RateLimitEventsTotal"/> uses the correct unit "{events}".
-    /// </summary>
+    /// <summary>The rate-limit-events counter uses the <c>{events}</c> unit.</summary>
     [TestMethod]
     public void RateLimitEventsTotal_HasCorrectUnit( ) {
         Assert.AreEqual( "{events}", QueueMetrics.RateLimitEventsTotal.Unit );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.DeduplicatedTotal"/> uses the correct unit "{requests}".
-    /// </summary>
+    /// <summary>The deduplicated-total counter uses the <c>{requests}</c> unit.</summary>
     [TestMethod]
     public void DeduplicatedTotal_HasCorrectUnit( ) {
         Assert.AreEqual( "{requests}", QueueMetrics.DeduplicatedTotal.Unit );
@@ -442,7 +388,8 @@ public class QueueMetricsTests {
     #region Helper Method Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RecordEnqueue"/> records with lowercase provider and priority tag values.
+    /// <c>RecordEnqueue</c> adds 1 to the enqueued-total counter, tagging with the lower-cased
+    /// provider (<c>spotify</c>) and priority (<c>interactive</c>).
     /// </summary>
     [TestMethod]
     public void RecordEnqueue_RecordsWithLowercaseProviderAndPriority( ) {
@@ -481,7 +428,8 @@ public class QueueMetricsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RecordDequeue"/> records with lowercase provider and priority tag values.
+    /// <c>RecordDequeue</c> adds 1 to the dequeued-total counter, tagging with the lower-cased
+    /// provider (<c>applemusic</c>) and priority (<c>background</c>).
     /// </summary>
     [TestMethod]
     public void RecordDequeue_RecordsWithLowercaseProviderAndPriority( ) {
@@ -520,7 +468,8 @@ public class QueueMetricsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RecordAcknowledge"/> records with lowercase provider tag value.
+    /// <c>RecordAcknowledge</c> adds 1 to the acknowledged-total counter, tagging with the
+    /// lower-cased provider (<c>tidal</c>).
     /// </summary>
     [TestMethod]
     public void RecordAcknowledge_RecordsWithLowercaseProvider( ) {
@@ -555,7 +504,8 @@ public class QueueMetricsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RecordRequeue"/> records with lowercase provider tag value.
+    /// <c>RecordRequeue</c> adds 1 to the requeued-total counter, tagging with the lower-cased
+    /// provider (<c>spotify</c>).
     /// </summary>
     [TestMethod]
     public void RecordRequeue_RecordsWithLowercaseProvider( ) {
@@ -590,7 +540,9 @@ public class QueueMetricsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RecordRateLimitEvent"/> records both the counter and histogram metrics with correct tag values.
+    /// <c>RecordRateLimitEvent</c> increments the rate-limit-events counter (by 1) and records the
+    /// rate-limit-duration histogram (120.5s), both tagged with the lower-cased provider and the
+    /// endpoint.
     /// </summary>
     [TestMethod]
     public void RecordRateLimitEvent_RecordsCounterAndHistogram( ) {
@@ -649,9 +601,7 @@ public class QueueMetricsTests {
         Assert.AreEqual( "/v1/catalog/us/songs", histogramEndpoint );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RecordDeduplicated"/> records the counter correctly.
-    /// </summary>
+    /// <summary><c>RecordDeduplicated</c> adds 1 to the deduplicated-total counter.</summary>
     [TestMethod]
     public void RecordDeduplicated_RecordsCounter( ) {
         // Arrange
@@ -678,7 +628,8 @@ public class QueueMetricsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RecordProcessingDuration"/> records with correct provider, lookup type, and status tag values.
+    /// <c>RecordProcessingDuration</c> records the histogram value (3.75s) tagged with the
+    /// lower-cased provider, the lookup type, and the status.
     /// </summary>
     [TestMethod]
     public void RecordProcessingDuration_RecordsWithCorrectTags( ) {
@@ -726,8 +677,10 @@ public class QueueMetricsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RecordInteractiveDeferral"/> records the counter with
-    /// the expected value (1), a lowercased provider tag, and the verbatim endpoint tag.
+    /// <c>RecordInteractiveDeferral</c> adds 1 to the interactive-deferred counter
+    /// (<c>bridgebeats.ratelimit.interactive_deferred.total</c>), tagging with the lower-cased
+    /// provider (<c>spotify</c>) and the endpoint (<c>tracks</c>). This counter tracks
+    /// interactive-origin requests pushed to the background lane after a rate limit.
     /// </summary>
     [TestMethod]
     public void RecordInteractiveDeferral_RecordsWithLowercaseProviderAndEndpoint( ) {

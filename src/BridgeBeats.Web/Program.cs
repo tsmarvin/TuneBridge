@@ -3,14 +3,15 @@ using Serilog;
 
 namespace BridgeBeats.Web {
     /// <summary>
-    /// Main entry point for the BridgeBeats web application.
+    /// The entry point and composition root for the BridgeBeats web host.
     /// </summary>
     public class Program {
         /// <summary>
-        /// Application entry point. Initializes the ASP.NET Core host, configures services,
-        /// and starts the web server.
+        /// Builds and runs the web application: configures services, builds the request pipeline, runs the
+        /// host, and flushes the logger on shutdown.
         /// </summary>
-        /// <param name="args">Command-line arguments for configuration overrides.</param>
+        /// <param name="args">The command-line arguments passed to the host.</param>
+        /// <returns>A task that completes when the host has stopped.</returns>
         public static async Task Main( string[] args ) {
             WebApplicationBuilder builder = WebApplication.CreateBuilder( new WebApplicationOptions {
                 Args = args,

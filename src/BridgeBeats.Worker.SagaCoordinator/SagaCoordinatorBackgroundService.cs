@@ -10,27 +10,50 @@ using StackExchange.Redis;
 namespace BridgeBeats.Worker.SagaCoordinator;
 
 /// <summary>
-/// Background service that coordinates saga completion by:
-/// <list type="bullet">
-///   <item>Subscribing to Redis Pub/Sub for provider completion events</item>
-///   <item>Polling for completed sagas on an interval</item>
-///   <item>Assembling final results from completed sagas</item>
-///   <item>Writing final results to ATProto and cache</item>
-///   <item>Releasing deduplication locks to notify waiters</item>
-/// </list>
+/// Orchestrates and finalizes lookup sagas. This service performs no provider lookups itself; it
+/// watches for sagas whose per-provider results are complete, combines those results with
+/// <see cref="SagaResultCombiner"/>, writes the outcome to the ATProto PDS, caches it, and releases
+/// any synchronous waiters through <see cref="Contracts.Interfaces.IRequestDeduplicator"/>.
 /// </summary>
 /// <remarks>
-/// Initializes a new instance of the <see cref="SagaCoordinatorBackgroundService"/> class.
+/// <para>
+/// Finalization is triggered three ways, deliberately overlapping because Redis Pub/Sub is
+/// at-most-once and a dropped message must never strand a saga:
+/// </para>
+/// <list type="number">
+/// <item><description>
+/// The literal <c>saga:completed</c> channel, published by a provider worker when its write makes a
+/// saga complete. Each event is handled on a fire-and-forget <see cref="System.Threading.Tasks.Task"/>.
+/// </description></item>
+/// <item><description>
+/// The <c>complete:*</c> pattern channel, a per-lookup wakeup whose suffix yields the lookup key and,
+/// via <see cref="Contracts.Interfaces.ISagaStateManager.GenerateSagaId(string)"/>, the saga id.
+/// </description></item>
+/// <item><description>
+/// A 30-second polling sweep that asks the saga state manager for completed-but-unfinalized sagas
+/// (older than a 15-second minimum age). This is the safety net for completion events that were
+/// never delivered; together with the per-write saga TTL it makes the pipeline self-healing rather
+/// than dependent on every Pub/Sub message arriving.
+/// </description></item>
+/// </list>
+/// <para>
+/// When the first provider returns an external id (an ISRC for tracks or a UPC for albums), the
+/// coordinator fans out secondary lookups to the other enabled providers so the final card spans
+/// every provider. It first consults the ISRC/UPC cache and materializes any cached provider
+/// results straight into the saga; only the still-missing providers are queued. While secondaries
+/// are outstanding it writes an interim partial result so waiters receive something. ISRC/UPC-origin
+/// lookups skip this fan-out because they are already keyed by the canonical id.
+/// </para>
 /// </remarks>
-/// <param name="redis">Redis connection for Pub/Sub subscriptions.</param>
-/// <param name="sagaManager">Saga state manager for querying completed sagas.</param>
-/// <param name="atProtoStorage">ATProto storage for writing final results.</param>
-/// <param name="cacheRepository">Cache repository for updating the cache.</param>
-/// <param name="deduplicator">Request deduplicator for releasing locks.</param>
-/// <param name="resultCombiner">Result combiner for assembling final results.</param>
-/// <param name="queueResolver">Queue resolver for queuing secondary provider lookups.</param>
-/// <param name="enabledProviders">Set of enabled providers for secondary lookups.</param>
-/// <param name="logger">Logger for diagnostic information.</param>
+/// <param name="redis">The shared Redis connection used for Pub/Sub subscriptions.</param>
+/// <param name="sagaManager">Reads and mutates saga state and per-provider results.</param>
+/// <param name="atProtoStorage">Persists combined results to the ATProto PDS (the source of truth).</param>
+/// <param name="cacheRepository">Caches final/partial results and resolves cached ISRC/UPC results.</param>
+/// <param name="deduplicator">Releases the in-flight lock and notifies synchronous waiters on completion.</param>
+/// <param name="resultCombiner">Combines per-provider saga state into a single media-link result.</param>
+/// <param name="queueResolver">Resolves the per-provider queue used to enqueue secondary lookups.</param>
+/// <param name="enabledProviders">The providers eligible for secondary fan-out.</param>
+/// <param name="logger">The logger for this service.</param>
 public sealed partial class SagaCoordinatorBackgroundService(
     IConnectionMultiplexer redis,
     ISagaStateManager sagaManager,
@@ -67,15 +90,25 @@ public sealed partial class SagaCoordinatorBackgroundService(
     private static readonly TimeSpan s_minimumSagaAge = TimeSpan.FromSeconds( 15 );
     private const int PollingBatchLimit = 100;
 
-    // Must match the serialization the provider workers use for ProviderLookupState.ResultJson
-    // (QueueProcessorBackgroundService) so SagaResultCombiner can deserialize materialized
-    // cached results identically.
+    /// <summary>
+    /// Serializer options used when writing a cached provider result into per-provider saga state.
+    /// Camel-cased and unindented so the stored JSON matches the rest of the saga payload. Must match
+    /// the serialization the provider workers use for ProviderLookupState.ResultJson
+    /// (QueueProcessorBackgroundService) so SagaResultCombiner can deserialize materialized cached
+    /// results identically.
+    /// </summary>
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Subscribes to the saga-completion and per-lookup channels, then runs the 30-second polling
+    /// sweep until cancellation. The two subscriptions and the sweep are independent finalization
+    /// triggers; the sweep is the backstop for completion events that Redis Pub/Sub dropped.
+    /// </summary>
+    /// <param name="stoppingToken">Signals when the host is shutting down.</param>
+    /// <returns>A task that completes when the service stops and has unsubscribed.</returns>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
         LogStarting(
             _logger,
@@ -165,6 +198,14 @@ public sealed partial class SagaCoordinatorBackgroundService(
         LogStopping( _logger );
     }
 
+    /// <summary>
+    /// Handles a saga-level completion event. Loads the saga, returns early if it is missing, not yet
+    /// complete, or already finalized, otherwise combines the provider results and either defers for
+    /// secondary lookups (writing a partial result) or writes the final result.
+    /// </summary>
+    /// <param name="sagaId">The id of the saga reported as complete.</param>
+    /// <param name="ct">A token that cancels the operation.</param>
+    /// <returns>A task that completes when the saga has been processed.</returns>
     private async Task ProcessSagaCompletionAsync( string sagaId, CancellationToken ct ) {
         try {
             LogProcessingSagaCompletion( _logger, sagaId );
@@ -213,6 +254,15 @@ public sealed partial class SagaCoordinatorBackgroundService(
         }
     }
 
+    /// <summary>
+    /// Handles a per-lookup completion event for a single saga. If the saga is now complete it follows
+    /// the same combine/secondary-fan-out/finalize path as a saga-level event; if it is still only
+    /// partial and no partial result has been written yet, it writes one so waiters get an interim
+    /// answer.
+    /// </summary>
+    /// <param name="sagaId">The saga id derived from the <c>complete:</c> channel suffix.</param>
+    /// <param name="ct">A token that cancels the operation.</param>
+    /// <returns>A task that completes when the lookup completion has been processed.</returns>
     private async Task ProcessLookupCompletionAsync( string sagaId, CancellationToken ct ) {
         try {
             LogProcessingLookupCompletion( _logger, sagaId );
@@ -264,6 +314,16 @@ public sealed partial class SagaCoordinatorBackgroundService(
         }
     }
 
+    /// <summary>
+    /// The polling-sweep backstop. Queries the saga state manager for sagas that are complete but have
+    /// no final-result URI and are at least the minimum age old, then finalizes each (writing a partial
+    /// result first if one is owed). A failure on a single saga is logged and skipped so the rest of the
+    /// batch still runs; the saga is retried on the next cycle. This covers completion events that Redis
+    /// Pub/Sub never delivered.
+    /// </summary>
+    /// <param name="ct">A token that cancels the sweep.</param>
+    /// <returns>A task that completes when the sweep has processed the batch.</returns>
+    /// <exception cref="OperationCanceledException">Propagated when <paramref name="ct"/> is cancelled.</exception>
     private async Task PollForCompletedSagasAsync( CancellationToken ct ) {
         // Check for cancellation
         ct.ThrowIfCancellationRequested( );
@@ -326,6 +386,16 @@ public sealed partial class SagaCoordinatorBackgroundService(
         }
     }
 
+    /// <summary>
+    /// Finalizes a saga. Combines the provider results; if none succeeded, releases the dedup lock with
+    /// no URI and deletes the saga. Otherwise writes the combined result to the ATProto PDS, records the
+    /// returned record URI on the saga, clears its partial flag, caches the result, and releases the
+    /// dedup lock with the final record URI so waiters receive it. On a write failure the dedup lock is
+    /// still released (with no URI) so callers are never left blocked.
+    /// </summary>
+    /// <param name="saga">The saga to finalize.</param>
+    /// <param name="ct">A token that cancels the operation.</param>
+    /// <returns>A task that completes when finalization (or its failure cleanup) is done.</returns>
     private async Task WriteFinalResultAsync( LookupSagaState saga, CancellationToken ct ) {
         LogAssemblingFinalResult( _logger, saga.SagaId, saga.ProviderStates.Count );
 
@@ -372,6 +442,16 @@ public sealed partial class SagaCoordinatorBackgroundService(
         }
     }
 
+    /// <summary>
+    /// Writes an interim partial result for a saga whose providers have not all completed (for example
+    /// while secondary lookups are still in flight). Combines whatever provider results exist so far,
+    /// marks the result partial, records which providers were rate-limited, persists it to the PDS,
+    /// caches it, records the partial-result URI on the saga, and notifies waiters so they receive a
+    /// best-effort answer rather than blocking. Does nothing if no provider result is available yet.
+    /// </summary>
+    /// <param name="saga">The saga to write a partial result for.</param>
+    /// <param name="ct">A token that cancels the operation.</param>
+    /// <returns>A task that completes when the partial result has been written (or skipped).</returns>
     private async Task WritePartialResultAsync( LookupSagaState saga, CancellationToken ct ) {
         if (_logger.IsEnabled( LogLevel.Debug )) {
             int completedCount = saga.ProviderStates.Count( kv => kv.Value.IsComplete );
@@ -419,32 +499,35 @@ public sealed partial class SagaCoordinatorBackgroundService(
     }
 
     /// <summary>
-    /// Publishes a saga completion event to Redis Pub/Sub.
+    /// Publishes a saga id to the literal <c>saga:completed</c> Pub/Sub channel so the coordinator
+    /// will finalize it. Exposed as a static helper so other components can signal completion without
+    /// holding a reference to a running coordinator instance.
     /// </summary>
-    /// <remarks>
-    /// Call this method from provider workers when a saga becomes complete.
-    /// </remarks>
-    /// <param name="redis">Redis connection multiplexer.</param>
-    /// <param name="sagaId">The ID of the completed saga.</param>
-    /// <returns>A task representing the asynchronous publish operation.</returns>
+    /// <param name="redis">The Redis connection to publish through.</param>
+    /// <param name="sagaId">The id of the saga to announce as complete.</param>
+    /// <returns>A task that completes once the message has been published.</returns>
     public static async Task PublishSagaCompletedAsync( IConnectionMultiplexer redis, string sagaId ) {
         ISubscriber subscriber = redis.GetSubscriber( );
         _ = await subscriber.PublishAsync( RedisChannel.Literal( SagaCompletedChannel ), sagaId );
     }
 
     /// <summary>
-    /// Checks the cache for related data using ISRC/UPC and queues secondary lookups for missing providers.
+    /// Decides whether to fan out secondary provider lookups and, if so, queues them. When the first
+    /// provider returned an external id (ISRC for tracks, UPC for albums), the coordinator wants the
+    /// other enabled providers too. It checks the ISRC/UPC cache first and materializes any cached
+    /// provider results straight into the saga to avoid re-querying; only the providers that are still
+    /// missing are queued as secondary <see cref="QueuedLookupRequest"/>s. A single-winner marker
+    /// (<see cref="Contracts.Interfaces.ISagaStateManager.TryMarkSecondariesQueuedAsync(string, CancellationToken)"/>)
+    /// guards against duplicate fan-out by concurrent handlers. ISRC/UPC-origin sagas are skipped
+    /// because they are already keyed by the canonical id.
     /// </summary>
-    /// <remarks>
-    /// After an initial lookup completes successfully, this method:
-    /// <list type="bullet">
-    ///   <item>Extracts the ISRC (tracks) or UPC (albums) from the result</item>
-    ///   <item>Checks the cache for existing data from other providers</item>
-    ///   <item>For providers not in cache, adds them to the original saga and queues lookup requests</item>
-    /// </list>
-    /// Secondary lookups are added to the original saga, not separate sagas.
-    /// </remarks>
-    /// <returns>True if secondary lookups are pending (caller should write a partial and wait), false if ready to finalize.</returns>
+    /// <param name="result">The combined result whose first provider supplies the external id.</param>
+    /// <param name="originalSaga">The saga being processed; its provider states may be extended in place.</param>
+    /// <param name="ct">A token that cancels the operation.</param>
+    /// <returns>
+    /// <see langword="true"/> if finalization should be deferred (secondaries were queued, or another
+    /// handler already queued them); <see langword="false"/> if the saga can be finalized now.
+    /// </returns>
     private async Task<bool> CheckCacheAndQueueSecondaryLookupsAsync(
         MediaLinkResult result,
         LookupSagaState originalSaga,
@@ -618,364 +701,502 @@ public sealed partial class SagaCoordinatorBackgroundService(
 
     #region LoggerMessage Methods
 
-    /// <summary>Logs that the saga coordinator is starting.</summary>
+    /// <summary>Logs that the coordinator is starting, with its polling interval and minimum saga age.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="pollingInterval">The polling-sweep interval in seconds.</param>
+    /// <param name="minSagaAge">The minimum saga age, in seconds, considered by the sweep.</param>
     [LoggerMessage(
         EventId = LogEventIds.Starting,
         Level = LogLevel.Information,
         Message = "Saga coordinator starting with polling interval {PollingInterval}s and minimum saga age {MinSagaAge}s" )]
     private static partial void LogStarting( ILogger logger, double pollingInterval, double minSagaAge );
 
-    /// <summary>Logs that a saga completion event was received.</summary>
+    /// <summary>Logs receipt of a saga-level completion event.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="channel">The channel the event arrived on.</param>
+    /// <param name="message">The message payload (the saga id).</param>
     [LoggerMessage(
         EventId = LogEventIds.ReceivedSagaCompletionEvent,
         Level = LogLevel.Information,
         Message = "Received saga completion event on channel {Channel}: {Message}" )]
     private static partial void LogReceivedSagaCompletionEvent( ILogger logger, string channel, string message );
 
-    /// <summary>Logs an error during saga completion processing.</summary>
+    /// <summary>Logs an error raised while handling a saga-level completion event.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="message">The message being processed when the error occurred.</param>
     [LoggerMessage(
         EventId = LogEventIds.SagaCompletionError,
         Level = LogLevel.Error,
         Message = "Error processing saga completion for message {Message}" )]
     private static partial void LogSagaCompletionError( ILogger logger, Exception ex, string message );
 
-    /// <summary>Logs that the service subscribed to a channel.</summary>
+    /// <summary>Logs that the coordinator subscribed to the saga-completion channel.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="channel">The channel that was subscribed to.</param>
     [LoggerMessage(
         EventId = LogEventIds.SubscribedToChannel,
         Level = LogLevel.Information,
         Message = "Subscribed to Redis channel {Channel} for saga completion events" )]
     private static partial void LogSubscribedToChannel( ILogger logger, string channel );
 
-    /// <summary>Logs that a lookup completion event was received.</summary>
+    /// <summary>Logs receipt of a per-lookup completion event.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="channel">The <c>complete:*</c> channel the event arrived on.</param>
     [LoggerMessage(
         EventId = LogEventIds.ReceivedLookupCompletionEvent,
         Level = LogLevel.Debug,
         Message = "Received lookup completion event on channel {Channel}" )]
     private static partial void LogReceivedLookupCompletionEvent( ILogger logger, string channel );
 
-    /// <summary>Logs that a channel is being ignored.</summary>
+    /// <summary>Logs that a channel was ignored because it did not match the expected prefix.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="channel">The channel that was ignored.</param>
     [LoggerMessage(
         EventId = LogEventIds.IgnoringChannel,
         Level = LogLevel.Debug,
         Message = "Ignoring channel {Channel} - does not match expected pattern" )]
     private static partial void LogIgnoringChannel( ILogger logger, string channel );
 
-    /// <summary>Logs an error during lookup completion processing.</summary>
+    /// <summary>Logs an error raised while handling a per-lookup completion event.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="lookupKey">The lookup key being processed when the error occurred.</param>
     [LoggerMessage(
         EventId = LogEventIds.LookupCompletionError,
         Level = LogLevel.Error,
         Message = "Error processing lookup completion for {LookupKey}" )]
     private static partial void LogLookupCompletionError( ILogger logger, Exception ex, string lookupKey );
 
-    /// <summary>Logs that the service subscribed to a pattern.</summary>
+    /// <summary>Logs that the coordinator subscribed to the per-lookup channel pattern.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="pattern">The channel pattern that was subscribed to.</param>
     [LoggerMessage(
         EventId = LogEventIds.SubscribedToPattern,
         Level = LogLevel.Information,
         Message = "Subscribed to Redis channel pattern {Pattern} for lookup completion events" )]
     private static partial void LogSubscribedToPattern( ILogger logger, string pattern );
 
-    /// <summary>Logs that the saga coordinator is fully initialized.</summary>
+    /// <summary>Logs that all subscriptions are established and the polling loop is starting.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.FullyInitialized,
         Level = LogLevel.Information,
         Message = "Saga coordinator fully initialized, entering polling loop" )]
     private static partial void LogFullyInitialized( ILogger logger );
 
-    /// <summary>Logs that a polling cycle is starting.</summary>
+    /// <summary>Logs the start of a polling cycle.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="cycleCount">The 1-based cycle number.</param>
     [LoggerMessage(
         EventId = LogEventIds.StartingPollingCycle,
         Level = LogLevel.Debug,
         Message = "Starting polling cycle #{CycleCount}" )]
     private static partial void LogStartingPollingCycle( ILogger logger, int cycleCount );
 
-    /// <summary>Logs an error during polling.</summary>
+    /// <summary>Logs an error raised during a polling cycle.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="cycleCount">The cycle number during which the error occurred.</param>
     [LoggerMessage(
         EventId = LogEventIds.PollingError,
         Level = LogLevel.Error,
         Message = "Error during saga completion polling in cycle #{CycleCount}" )]
     private static partial void LogPollingError( ILogger logger, Exception ex, int cycleCount );
 
-    /// <summary>Logs that a polling cycle completed.</summary>
+    /// <summary>Logs the completion of a polling cycle and the interval before the next one.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="cycleCount">The cycle number that finished.</param>
+    /// <param name="interval">The sleep interval, in seconds, before the next cycle.</param>
     [LoggerMessage(
         EventId = LogEventIds.CompletedPollingCycle,
         Level = LogLevel.Debug,
         Message = "Completed polling cycle #{CycleCount}, sleeping for {Interval}s" )]
     private static partial void LogCompletedPollingCycle( ILogger logger, int cycleCount, double interval );
 
-    /// <summary>Logs that the saga coordinator is stopping.</summary>
+    /// <summary>Logs that the coordinator is stopping.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.Stopping,
         Level = LogLevel.Information,
         Message = "Saga coordinator stopping" )]
     private static partial void LogStopping( ILogger logger );
 
-    /// <summary>Logs that saga completion is being processed.</summary>
+    /// <summary>Logs that a saga-completion event is being processed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga being processed.</param>
     [LoggerMessage(
         EventId = LogEventIds.ProcessingSagaCompletion,
         Level = LogLevel.Information,
         Message = "Processing saga completion event for {SagaId}" )]
     private static partial void LogProcessingSagaCompletion( ILogger logger, string sagaId );
 
-    /// <summary>Logs that a saga was not found.</summary>
+    /// <summary>Logs that a saga referenced by a completion event was not found.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id that could not be found.</param>
     [LoggerMessage(
         EventId = LogEventIds.SagaNotFound,
         Level = LogLevel.Warning,
         Message = "Saga {SagaId} not found for completion processing" )]
     private static partial void LogSagaNotFound( ILogger logger, string sagaId );
 
-    /// <summary>Logs saga state information.</summary>
+    /// <summary>Logs a diagnostic snapshot of a saga's state.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga being described.</param>
+    /// <param name="isComplete">Whether all initialized providers report complete.</param>
+    /// <param name="finalResultUri">The final-result URI, or a placeholder when none.</param>
+    /// <param name="providerCount">The number of provider states on the saga.</param>
     [LoggerMessage(
         EventId = LogEventIds.SagaState,
         Level = LogLevel.Information,
         Message = "Saga {SagaId} state: IsComplete={IsComplete}, FinalResultUri={FinalResultUri}, ProviderCount={ProviderCount}" )]
     private static partial void LogSagaState( ILogger logger, string sagaId, bool isComplete, string finalResultUri, int providerCount );
 
-    /// <summary>Logs that a saga is not yet complete.</summary>
+    /// <summary>Logs that a saga is not yet complete and finalization was skipped.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga that is not yet complete.</param>
     [LoggerMessage(
         EventId = LogEventIds.SagaNotComplete,
         Level = LogLevel.Information,
         Message = "Saga {SagaId} is not yet complete, skipping finalization" )]
     private static partial void LogSagaNotComplete( ILogger logger, string sagaId );
 
-    /// <summary>Logs that a saga is already finalized.</summary>
+    /// <summary>Logs that a saga already has a final result and was skipped.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The already-finalized saga.</param>
+    /// <param name="uri">The existing final-result URI.</param>
     [LoggerMessage(
         EventId = LogEventIds.SagaAlreadyFinalized,
         Level = LogLevel.Information,
         Message = "Saga {SagaId} already has final result at {Uri}, skipping" )]
     private static partial void LogSagaAlreadyFinalized( ILogger logger, string sagaId, string uri );
 
-    /// <summary>Logs that saga processing failed.</summary>
+    /// <summary>Logs that processing a saga completion failed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="sagaId">The saga that failed to process.</param>
     [LoggerMessage(
         EventId = LogEventIds.FailedToProcessSaga,
         Level = LogLevel.Error,
         Message = "Failed to process saga completion for {SagaId}" )]
     private static partial void LogFailedToProcessSaga( ILogger logger, Exception ex, string sagaId );
 
-    /// <summary>Logs that lookup completion is being processed.</summary>
+    /// <summary>Logs that a per-lookup completion is being processed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga derived from the lookup-completion channel.</param>
     [LoggerMessage(
         EventId = LogEventIds.ProcessingLookupCompletion,
         Level = LogLevel.Information,
         Message = "Processing lookup completion for saga {SagaId}" )]
     private static partial void LogProcessingLookupCompletion( ILogger logger, string sagaId );
 
-    /// <summary>Logs that a saga was not found for lookup completion.</summary>
+    /// <summary>Logs that the saga derived from a lookup-completion channel was not found.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id that could not be found.</param>
     [LoggerMessage(
         EventId = LogEventIds.SagaNotFoundForLookup,
         Level = LogLevel.Debug,
         Message = "Saga {SagaId} not found for lookup completion" )]
     private static partial void LogSagaNotFoundForLookup( ILogger logger, string sagaId );
 
-    /// <summary>Logs saga state for lookup completion.</summary>
+    /// <summary>Logs a diagnostic snapshot of a saga's state during lookup-completion handling.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga being described.</param>
+    /// <param name="isComplete">Whether all initialized providers report complete.</param>
+    /// <param name="isPartial">Whether the saga is currently in a partial state.</param>
+    /// <param name="partialResultUri">The partial-result URI, or a placeholder when none.</param>
     [LoggerMessage(
         EventId = LogEventIds.SagaStateForLookup,
         Level = LogLevel.Debug,
         Message = "Saga {SagaId} state for lookup completion: IsComplete={IsComplete}, IsPartial={IsPartial}, PartialResultUri={PartialResultUri}" )]
     private static partial void LogSagaStateForLookup( ILogger logger, string sagaId, bool isComplete, bool isPartial, string partialResultUri );
 
-    /// <summary>Logs that lookup completion failed.</summary>
+    /// <summary>Logs that processing a lookup completion failed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="sagaId">The saga that failed to process.</param>
     [LoggerMessage(
         EventId = LogEventIds.FailedLookupCompletion,
         Level = LogLevel.Error,
         Message = "Failed to process lookup completion for saga {SagaId}" )]
     private static partial void LogFailedLookupCompletion( ILogger logger, Exception ex, string sagaId );
 
-    /// <summary>Logs that the service is polling for sagas.</summary>
+    /// <summary>Logs that the polling sweep is querying for completed-but-unfinalized sagas.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="minAge">The minimum saga age, in seconds, considered by the query.</param>
+    /// <param name="limit">The maximum number of sagas returned per query.</param>
     [LoggerMessage(
         EventId = LogEventIds.PollingForSagas,
         Level = LogLevel.Debug,
         Message = "Polling for completed but unfinalized sagas (minimum age: {MinAge}s, batch limit: {Limit})" )]
     private static partial void LogPollingForSagas( ILogger logger, double minAge, int limit );
 
-    /// <summary>Logs that no unfinalized sagas were found.</summary>
+    /// <summary>Logs that the polling sweep found no unfinalized sagas this cycle.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.NoUnfinalizedSagas,
         Level = LogLevel.Debug,
         Message = "No unfinalized sagas found during polling" )]
     private static partial void LogNoUnfinalizedSagas( ILogger logger );
 
-    /// <summary>Logs that unfinalized sagas were found.</summary>
+    /// <summary>Logs the number of unfinalized sagas the polling sweep found.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="count">The number of sagas to process.</param>
     [LoggerMessage(
         EventId = LogEventIds.FoundUnfinalizedSagas,
         Level = LogLevel.Information,
         Message = "Polling found {Count} completed but unfinalized sagas to process" )]
     private static partial void LogFoundUnfinalizedSagas( ILogger logger, int count );
 
-    /// <summary>Logs that a partial result is being written during polling.</summary>
+    /// <summary>Logs that a partial result is being written for a saga found during the sweep.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga being written.</param>
     [LoggerMessage(
         EventId = LogEventIds.WritingPartialDuringPolling,
         Level = LogLevel.Debug,
         Message = "Writing partial result for saga {SagaId} discovered during polling" )]
     private static partial void LogWritingPartialDuringPolling( ILogger logger, string sagaId );
 
-    /// <summary>Logs that a saga is being finalized during polling.</summary>
+    /// <summary>Logs that a saga found during the sweep is being finalized.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga being finalized.</param>
     [LoggerMessage(
         EventId = LogEventIds.FinalizingDuringPolling,
         Level = LogLevel.Debug,
         Message = "Finalizing saga {SagaId} discovered during polling" )]
     private static partial void LogFinalizingDuringPolling( ILogger logger, string sagaId );
 
-    /// <summary>Logs that saga processing failed during polling.</summary>
+    /// <summary>Logs that processing a saga during the sweep failed; it is retried next cycle.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="sagaId">The saga that failed to process.</param>
     [LoggerMessage(
         EventId = LogEventIds.FailedDuringPolling,
         Level = LogLevel.Error,
         Message = "Failed to process saga {SagaId} during polling, will retry next cycle" )]
     private static partial void LogFailedDuringPolling( ILogger logger, Exception ex, string sagaId );
 
-    /// <summary>Logs an error querying for unfinalized sagas.</summary>
+    /// <summary>Logs an error raised while querying for unfinalized sagas during the sweep.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
     [LoggerMessage(
         EventId = LogEventIds.QueryError,
         Level = LogLevel.Error,
         Message = "Error querying for unfinalized sagas during polling" )]
     private static partial void LogQueryError( ILogger logger, Exception ex );
 
-    /// <summary>Logs that final result is being assembled.</summary>
+    /// <summary>Logs that the final result is being assembled from per-provider state.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga being finalized.</param>
+    /// <param name="providerCount">The number of provider results being combined.</param>
     [LoggerMessage(
         EventId = LogEventIds.AssemblingFinalResult,
         Level = LogLevel.Information,
         Message = "Assembling final result for saga {SagaId} with {ProviderCount} provider results" )]
     private static partial void LogAssemblingFinalResult( ILogger logger, string sagaId, int providerCount );
 
-    /// <summary>Logs that saga completed with no successful results.</summary>
+    /// <summary>Logs that a saga completed with no successful results and is being cleaned up.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga being cleaned up.</param>
     [LoggerMessage(
         EventId = LogEventIds.NoSuccessfulResults,
         Level = LogLevel.Warning,
         Message = "Saga {SagaId} completed with no successful results, cleaning up" )]
     private static partial void LogNoSuccessfulResults( ILogger logger, string sagaId );
 
-    /// <summary>Logs that final result was written to ATProto.</summary>
+    /// <summary>Logs that the final result was written to the ATProto PDS.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga whose final result was written.</param>
+    /// <param name="recordUri">The ATProto record URI of the written result.</param>
     [LoggerMessage(
         EventId = LogEventIds.WroteFinalToAtProto,
         Level = LogLevel.Debug,
         Message = "Wrote final result for saga {SagaId} to ATProto: {RecordUri}" )]
     private static partial void LogWroteFinalToAtProto( ILogger logger, string sagaId, string recordUri );
 
-    /// <summary>Logs that final result was cached.</summary>
+    /// <summary>Logs that the final result was written into the media-link cache.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga whose final result was cached.</param>
     [LoggerMessage(
         EventId = LogEventIds.CachedFinalResult,
         Level = LogLevel.Debug,
         Message = "Cached final result for saga {SagaId}" )]
     private static partial void LogCachedFinalResult( ILogger logger, string sagaId );
 
-    /// <summary>Logs that saga was successfully finalized.</summary>
+    /// <summary>Logs that a saga was successfully finalized.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The finalized saga.</param>
+    /// <param name="providerCount">The number of provider results in the final result.</param>
     [LoggerMessage(
         EventId = LogEventIds.SuccessfullyFinalized,
         Level = LogLevel.Information,
         Message = "Successfully finalized saga {SagaId} with {ProviderCount} provider results" )]
     private static partial void LogSuccessfullyFinalized( ILogger logger, string sagaId, int providerCount );
 
-    /// <summary>Logs that writing final result failed.</summary>
+    /// <summary>Logs that writing a saga's final result failed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="sagaId">The saga whose final write failed.</param>
     [LoggerMessage(
         EventId = LogEventIds.FailedToWriteFinal,
         Level = LogLevel.Error,
         Message = "Failed to write final result for saga {SagaId}" )]
     private static partial void LogFailedToWriteFinal( ILogger logger, Exception ex, string sagaId );
 
-    /// <summary>Logs that partial result is being assembled.</summary>
+    /// <summary>Logs that an interim partial result is being assembled.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga being written.</param>
+    /// <param name="completedCount">The number of providers that have completed.</param>
+    /// <param name="totalCount">The total number of providers on the saga.</param>
     [LoggerMessage(
         EventId = LogEventIds.AssemblingPartialResult,
         Level = LogLevel.Information,
         Message = "Assembling partial result for saga {SagaId} with {CompletedCount}/{TotalCount} provider results" )]
     private static partial void LogAssemblingPartialResult( ILogger logger, string sagaId, int completedCount, int totalCount );
 
-    /// <summary>Logs that saga has no successful partial results.</summary>
+    /// <summary>Logs that no provider results are available yet, so no partial result was written.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga that has no successful results yet.</param>
     [LoggerMessage(
         EventId = LogEventIds.NoSuccessfulPartialResults,
         Level = LogLevel.Debug,
         Message = "Saga {SagaId} has no successful provider results yet, waiting" )]
     private static partial void LogNoSuccessfulPartialResults( ILogger logger, string sagaId );
 
-    /// <summary>Logs that partial result was written to ATProto.</summary>
+    /// <summary>Logs that a partial result was written to the ATProto PDS.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga whose partial result was written.</param>
+    /// <param name="recordUri">The ATProto record URI of the written partial result.</param>
     [LoggerMessage(
         EventId = LogEventIds.WrotePartialToAtProto,
         Level = LogLevel.Debug,
         Message = "Wrote partial result for saga {SagaId} to ATProto: {RecordUri}" )]
     private static partial void LogWrotePartialToAtProto( ILogger logger, string sagaId, string recordUri );
 
-    /// <summary>Logs that partial result was successfully written.</summary>
+    /// <summary>Logs that a partial result was successfully written.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga whose partial result was written.</param>
+    /// <param name="providerCount">The number of provider results in the partial result.</param>
     [LoggerMessage(
         EventId = LogEventIds.SuccessfullyWrotePartial,
         Level = LogLevel.Information,
         Message = "Successfully wrote partial result for saga {SagaId} with {ProviderCount} provider results" )]
     private static partial void LogSuccessfullyWrotePartial( ILogger logger, string sagaId, int providerCount );
 
-    /// <summary>Logs that writing partial result failed.</summary>
+    /// <summary>Logs that writing a saga's partial result failed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="sagaId">The saga whose partial write failed.</param>
     [LoggerMessage(
         EventId = LogEventIds.FailedToWritePartial,
         Level = LogLevel.Error,
         Message = "Failed to write partial result for saga {SagaId}" )]
     private static partial void LogFailedToWritePartial( ILogger logger, Exception ex, string sagaId );
 
-    /// <summary>Logs that no external ID is in the result.</summary>
+    /// <summary>Logs that the result had no external id, so secondary fan-out was skipped.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga with no external id.</param>
     [LoggerMessage(
         EventId = LogEventIds.NoExternalId,
         Level = LogLevel.Information,
         Message = "No external ID in result for saga {SagaId}, skipping secondary lookups" )]
     private static partial void LogNoExternalId( ILogger logger, string sagaId );
 
-    /// <summary>Logs that no other enabled providers exist.</summary>
+    /// <summary>Logs that no other enabled providers remained, so secondary fan-out was skipped.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga with no other providers to query.</param>
     [LoggerMessage(
         EventId = LogEventIds.NoOtherProviders,
         Level = LogLevel.Information,
         Message = "No other enabled providers for saga {SagaId}, skipping secondary lookups" )]
     private static partial void LogNoOtherProviders( ILogger logger, string sagaId );
 
-    /// <summary>Logs a cache hit for an external ID.</summary>
+    /// <summary>Logs a cache hit for an external id and which providers it covered.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="externalId">The ISRC or UPC that was matched in the cache.</param>
+    /// <param name="providers">The providers whose data the cache supplied.</param>
     [LoggerMessage(
         EventId = LogEventIds.CacheHitForExternalId,
         Level = LogLevel.Debug,
         Message = "Cache hit for {ExternalId}, found data for providers: {Providers}" )]
     private static partial void LogCacheHitForExternalId( ILogger logger, string externalId, string providers );
 
-    /// <summary>Logs that all providers already have data in cache.</summary>
+    /// <summary>Logs that all other providers were already cached, so no secondary lookups were needed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga whose providers were fully cached.</param>
+    /// <param name="externalId">The ISRC or UPC that resolved the cache hit.</param>
     [LoggerMessage(
         EventId = LogEventIds.AllProvidersInCache,
         Level = LogLevel.Information,
         Message = "All providers already in cache for saga {SagaId} with external ID {ExternalId}, no secondary lookups needed" )]
     private static partial void LogAllProvidersInCache( ILogger logger, string sagaId, string externalId );
 
-    /// <summary>Logs that providers were added to an existing saga.</summary>
+    /// <summary>Logs that additional providers were added to an existing saga for secondary lookups.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga that was extended.</param>
+    /// <param name="providers">The providers added to the saga.</param>
     [LoggerMessage(
         EventId = LogEventIds.AddedProvidersToSaga,
         Level = LogLevel.Information,
         Message = "Added providers [{Providers}] to existing saga {SagaId} for secondary lookups" )]
     private static partial void LogAddedProvidersToSaga( ILogger logger, string sagaId, string providers );
 
-    /// <summary>Logs that a secondary lookup was queued.</summary>
+    /// <summary>Logs that a secondary lookup was enqueued to a provider.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="lookupType">The lookup type (ISRC or UPC) of the secondary request.</param>
+    /// <param name="provider">The provider the secondary lookup was queued for.</param>
+    /// <param name="externalId">The external id the secondary lookup will resolve.</param>
+    /// <param name="sagaId">The saga the secondary lookup belongs to.</param>
     [LoggerMessage(
         EventId = LogEventIds.QueuedSecondaryLookup,
         Level = LogLevel.Information,
         Message = "Queued secondary {LookupType} lookup for {Provider} with external ID {ExternalId} (saga {SagaId})" )]
     private static partial void LogQueuedSecondaryLookup( ILogger logger, string lookupType, string provider, string externalId, string sagaId );
 
-    /// <summary>Logs that queuing a secondary lookup failed.</summary>
+    /// <summary>Logs that enqueuing a secondary lookup to a provider failed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    /// <param name="provider">The provider the secondary lookup was destined for.</param>
+    /// <param name="externalId">The external id the secondary lookup would have resolved.</param>
     [LoggerMessage(
         EventId = LogEventIds.FailedToQueueSecondary,
         Level = LogLevel.Error,
         Message = "Failed to queue secondary lookup for {Provider} with external ID {ExternalId}" )]
     private static partial void LogFailedToQueueSecondary( ILogger logger, Exception ex, string provider, string externalId );
 
-    /// <summary>Logs that the saga coordinator is waiting for secondary lookups to complete.</summary>
+    /// <summary>Logs that finalization is deferred while secondary lookups complete.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga whose finalization is deferred.</param>
     [LoggerMessage(
         EventId = LogEventIds.WaitingForSecondaryLookups,
         Level = LogLevel.Information,
         Message = "Waiting for secondary lookups to complete for saga {SagaId}, deferring finalization" )]
     private static partial void LogWaitingForSecondaryLookups( ILogger logger, string sagaId );
 
-    /// <summary>Logs that a cached provider result was materialized into the saga.</summary>
+    /// <summary>Logs that a cached provider result was materialized into the saga, avoiding a re-query.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="provider">The provider whose cached result was materialized.</param>
+    /// <param name="sagaId">The saga the result was written into.</param>
+    /// <param name="externalId">The external id the cached result was keyed by.</param>
     [LoggerMessage(
         EventId = LogEventIds.MaterializedCachedProvider,
         Level = LogLevel.Information,
         Message = "Materialized cached {Provider} result into saga {SagaId} for external ID {ExternalId}" )]
     private static partial void LogMaterializedCachedProvider( ILogger logger, string provider, string sagaId, string externalId );
 
-    /// <summary>Logs that another handler already queued the secondary lookups for the saga.</summary>
+    /// <summary>Logs that another handler already queued the secondary lookups; finalization defers to it.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga whose secondaries were already queued.</param>
     [LoggerMessage(
         EventId = LogEventIds.SecondariesAlreadyQueued,
         Level = LogLevel.Debug,
         Message = "Secondary lookups already queued for saga {SagaId} by a concurrent handler, deferring finalization" )]
     private static partial void LogSecondariesAlreadyQueued( ILogger logger, string sagaId );
 
-    /// <summary>Logs that no secondary lookups could be enqueued despite pending provider states.</summary>
+    /// <summary>Logs that no secondary lookups could be enqueued; finalization is deferred so waiters get a partial result and the saga is retried after it expires.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga for which no secondaries could be enqueued.</param>
+    /// <param name="externalId">The external id the secondaries would have resolved.</param>
     [LoggerMessage(
         EventId = LogEventIds.NoSecondariesEnqueued,
         Level = LogLevel.Warning,

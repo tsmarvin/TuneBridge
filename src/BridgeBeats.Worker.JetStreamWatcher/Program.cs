@@ -6,14 +6,16 @@ using Serilog;
 namespace BridgeBeats.Worker.JetStreamWatcher;
 
 /// <summary>
-/// Entry point for the JetStreamWatcher worker service.
+/// Entry point and composition root for the JetStream watcher. Builds a background host (the worker
+/// exposes no HTTP endpoint), wires the Redis client and provider queues, registers the
+/// <see cref="JetStreamWatcherService"/> hosted service, and runs until shutdown.
 /// </summary>
 public static class Program {
 
     /// <summary>
-    /// The main entry point for the JetStreamWatcher worker application.
+    /// Builds and runs the JetStream watcher host, flushing Serilog on exit.
     /// </summary>
-    /// <param name="args">Command line arguments.</param>
+    /// <param name="args">Command-line arguments passed to the host builder.</param>
     public static void Main( string[] args ) {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder( args );
 
@@ -29,9 +31,11 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the services for the JetStreamWatcher worker application.
+    /// Registers the worker's services: file logging, Aspire service defaults, the Redis client, the
+    /// queue infrastructure and all provider queues (so discovered links can be enqueued to any
+    /// provider), and the <see cref="JetStreamWatcherService"/> hosted service.
     /// </summary>
-    /// <param name="builder">The host application builder.</param>
+    /// <param name="builder">The host application builder being configured.</param>
     private static void ConfigureServices( HostApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "JetStreamWatcher" );

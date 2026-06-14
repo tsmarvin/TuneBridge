@@ -17,15 +17,18 @@ using idunno.Bluesky;
 namespace BridgeBeats.Core.Infrastructure.Storage;
 
 /// <summary>
-/// Implementation of <see cref="IATProtoStorageService"/> that stores MediaLinkResult records on ATProto PDS
-/// as custom lexicon records using the AT Protocol.
+/// Stores, retrieves, and lists BridgeBeats media-link records on an atproto Personal Data Server
+/// (PDS), the system of record for these results. Records are stored as custom
+/// <c>link.bridgebeats.lookup</c> lexicon records via the idunno.Bluesky library.
 /// </summary>
 /// <remarks>
-/// This service uses the idunno.Bluesky library to interact with ATProto-compatible PDS instances.
-/// MediaLinkResults are stored as custom link.bridgebeats.lookup lexicon records.
-/// Authentication is managed centrally by <see cref="IATProtoSessionManager"/> to reduce PDS API calls.
-/// Record enumeration uses a single CAR v1 download (com.atproto.sync.getRepo) instead of
-/// paginated listRecords calls, reducing N/100 round-trips to a single HTTP request.
+/// Single-record writes go through the service account's authenticated agent (supplied by the
+/// session manager, which manages authentication centrally to reduce PDS API calls) and reads parse
+/// an AT-URI and fetch the record. Listing the whole collection is done by downloading the entire
+/// repository as a single CAR v1 file (<c>com.atproto.sync.getRepo</c>) and walking it locally,
+/// which replaces paginated <c>listRecords</c> calls and reduces N/100 round-trips to a single HTTP
+/// request. Records are converted between the public <see cref="MediaLinkResult"/> shape and the
+/// on-PDS <c>MediaLinkResultRecord</c> shape on the way in and out.
 /// </remarks>
 /// <param name="sessionManager">The centralized session manager for authentication.</param>
 /// <param name="logger">Logger for diagnostic information.</param>
@@ -37,23 +40,35 @@ public partial class ATProtoStorageService(
 ) : IATProtoStorageService {
 
     /// <summary>
-    /// Named HTTP client used for com.atproto.sync.getRepo (large CAR file downloads).
+    /// Name of the configured <see cref="System.Net.Http.IHttpClientFactory"/> client used to stream
+    /// repository CAR downloads (com.atproto.sync.getRepo) from the PDS sync endpoint.
     /// </summary>
     internal const string ATProtoSyncHttpClientName = "atproto-sync";
 
     /// <summary>
-    /// The NSID (Namespaced Identifier) for the BridgeBeats MediaLinkResult lexicon.
+    /// The collection NSID (<c>link.bridgebeats.lookup</c>) under which media-link records are stored.
     /// </summary>
     private static readonly Nsid s_mediaLinkResultCollection = new( "link.bridgebeats.lookup" );
 
     /// <summary>
-    /// Static cached dictionary mapping provider strings to SupportedProviders enum values.
-    /// Initialized once at startup for O(1) lookups.
+    /// Lazily built, case-insensitive map from provider name variants (enum name, description, and the
+    /// description without spaces) to the <see cref="SupportedProviders"/> value, used when reading
+    /// records back. Initialized once for O(1) lookups.
     /// </summary>
     private static readonly Lazy<Dictionary<string, SupportedProviders>> s_providerStringToEnum = new( CreateProviderMappings );
 
-
-    /// <inheritdoc/>
+    /// <summary>
+    /// Stores a media-link result on the PDS, upserting under a deterministic record key.
+    /// </summary>
+    /// <param name="result">The result to store.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The AT-URI of the written record.</returns>
+    /// <remarks>
+    /// The record key is derived deterministically from <paramref name="result"/>, so this both
+    /// creates and updates: a <c>PutRecord</c> is attempted first and a <c>CreateRecord</c> is used as
+    /// a fallback. Server-side validation is disabled because the collection uses a custom lexicon.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Thrown when the PDS rejects the create fallback.</exception>
     public async Task<string> StoreMediaLinkResultAsync( MediaLinkResult result, CancellationToken cancellationToken = default ) {
         BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( cancellationToken );
 
@@ -108,7 +123,14 @@ public partial class ATProtoStorageService(
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Retrieves and converts a single media-link record from the PDS by its AT-URI.
+    /// </summary>
+    /// <param name="recordUri">The AT-URI of the record to fetch.</param>
+    /// <returns>
+    /// The converted <see cref="MediaLinkResult"/>, or <see langword="null"/> when the record is not
+    /// found, the fetch fails, the record has no valid providers, or an exception occurs.
+    /// </returns>
     public async Task<MediaLinkResult?> GetMediaLinkResultAsync( string recordUri ) {
         BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( );
 
@@ -138,10 +160,12 @@ public partial class ATProtoStorageService(
     }
 
     /// <summary>
-    /// Converts a MediaLinkResult DTO to a MediaLinkResultRecord for storage.
-    /// Note: Input links are NOT included in the PDS record for user privacy.
-    /// They are tracked only in SQLite.
+    /// Converts the public <see cref="MediaLinkResult"/> into the on-PDS record shape, mapping each
+    /// provider entry and stamping the lookup time.
     /// </summary>
+    /// <param name="result">The result to convert.</param>
+    /// <returns>The record ready to write to the PDS.</returns>
+    /// <remarks>Input links are not included in the PDS record for user privacy; they are tracked only in SQLite.</remarks>
     private static MediaLinkResultRecord ConvertToRecord( MediaLinkResult result ) {
         List<ProviderResultRecord> providerResults = [];
 
@@ -173,10 +197,12 @@ public partial class ATProtoStorageService(
     }
 
     /// <summary>
-    /// Converts a MediaLinkResultRecord from storage back to a MediaLinkResult DTO.
-    /// Note: Input links are not stored in PDS records, only provider results.
+    /// Converts an on-PDS record back into the public <see cref="MediaLinkResult"/>, mapping each
+    /// provider name to its <see cref="SupportedProviders"/> value and skipping unrecognized providers.
     /// </summary>
-    /// <returns>A MediaLinkResult with parsed providers, or null if no valid providers were found.</returns>
+    /// <param name="record">The record read from the PDS.</param>
+    /// <returns>The converted result, or <see langword="null"/> when no provider entries could be mapped.</returns>
+    /// <remarks>Input links are not stored in PDS records, only provider results.</remarks>
     private static MediaLinkResult? ConvertFromRecord( MediaLinkResultRecord record ) {
         MediaLinkResult result = new( ) {
             LookedUpAt = record.LookedUpAt.UtcDateTime,
@@ -210,10 +236,11 @@ public partial class ATProtoStorageService(
     }
 
     /// <summary>
-    /// Creates a static dictionary mapping all possible provider string representations to their enum values.
-    /// Includes enum names, Description attribute values, and description values without spaces.
+    /// Builds the case-insensitive provider-name lookup map for <see cref="s_providerStringToEnum"/>,
+    /// registering each <see cref="SupportedProviders"/> value under its enum name, its description
+    /// attribute, and the description with spaces removed.
     /// </summary>
-    /// <returns>A dictionary with case-insensitive string keys mapped to SupportedProviders enum values.</returns>
+    /// <returns>The populated, case-insensitive name-to-enum map.</returns>
     private static Dictionary<string, SupportedProviders> CreateProviderMappings( ) {
         Dictionary<string, SupportedProviders> dict = new( StringComparer.OrdinalIgnoreCase );
 
@@ -236,8 +263,12 @@ public partial class ATProtoStorageService(
     }
 
     /// <summary>
-    /// Gets the Description attribute value for an enum value, or the enum's string representation.
+    /// Returns the <see cref="DescriptionAttribute"/> text for an enum value, or the value's name when
+    /// no description attribute is present.
     /// </summary>
+    /// <typeparam name="T">The enum type.</typeparam>
+    /// <param name="enumValue">The enum value whose description is sought.</param>
+    /// <returns>The description text, the value name as a fallback, or an empty string when the value has no name.</returns>
     private static string GetEnumDescription<T>( T enumValue ) where T : struct, Enum {
         string? value = enumValue.ToString( );
         if (value != null) {
@@ -254,12 +285,12 @@ public partial class ATProtoStorageService(
     }
 
     /// <summary>
-    /// Tries to parse a provider string into a <see cref="SupportedProviders"/> enum value.
-    /// Uses a cached dictionary for O(1) lookup performance.
+    /// Attempts to map a provider name string to a <see cref="SupportedProviders"/> value using the
+    /// cached case-insensitive lookup map (O(1) lookup).
     /// </summary>
-    /// <param name="providerString">The provider string to parse.</param>
-    /// <param name="provider">The parsed provider enum value if successful.</param>
-    /// <returns>True if the provider was successfully parsed, false otherwise.</returns>
+    /// <param name="providerString">The provider name to resolve.</param>
+    /// <param name="provider">On success, the resolved provider; otherwise the default value.</param>
+    /// <returns><see langword="true"/> when the name resolved to a known provider; otherwise <see langword="false"/>.</returns>
     private static bool TryParseProvider( string providerString, out SupportedProviders provider ) {
         provider = default;
 
@@ -267,7 +298,15 @@ public partial class ATProtoStorageService(
             && s_providerStringToEnum.Value.TryGetValue( providerString, out provider );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Lists every media-link record in a repository as <c>(AT-URI, result)</c> pairs by downloading
+    /// and walking the repository CAR.
+    /// </summary>
+    /// <param name="pdsUri">The base URI of the PDS hosting the repository.</param>
+    /// <param name="userDid">The repository owner's DID; validated before use.</param>
+    /// <param name="cancellationToken">A token observed throughout the download, walk, and enumeration.</param>
+    /// <returns>An async sequence of <c>(AT-URI, result)</c> pairs for the lookup collection.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="userDid"/> is non-empty but malformed.</exception>
     public async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ListAllRecordsAsync(
         Uri pdsUri,
         string userDid,
@@ -287,14 +326,28 @@ public partial class ATProtoStorageService(
         }
     }
 
+    /// <summary>Maximum accepted CAR download size (512&#160;MB), enforced via the Content-Length header and during streaming.</summary>
     private const long MaxCarBytes = 512L * 1024 * 1024;
+
+    /// <summary>Buffer size, in bytes, used when streaming the CAR download.</summary>
     private const int ChunkSize = 81920; // 80 KB read buffer
 
     /// <summary>
-    /// Downloads the repo as a CAR v1 file and enumerates all link.bridgebeats.lookup records.
-    /// Per-record parse failures are skipped with a warning.
-    /// Download or structural parse failures throw (HTTP or CarParseException).
+    /// Downloads the entire repository as a CAR v1 file, walks the lookup collection, and converts each
+    /// valid record into a <c>(AT-URI, result)</c> pair.
     /// </summary>
+    /// <param name="pdsUri">The base URI of the PDS hosting the repository.</param>
+    /// <param name="userDid">The repository owner's DID.</param>
+    /// <param name="cancellationToken">A token observed during download and enumeration.</param>
+    /// <returns>The list of <c>(AT-URI, result)</c> pairs for valid records in the collection.</returns>
+    /// <remarks>
+    /// The CAR is streamed with a 512&#160;MB cap checked both against the Content-Length header and as
+    /// bytes arrive. Per-record parse failures (invalid rkey, deserialize-to-null, or no valid
+    /// providers) are skipped with a warning and counted rather than aborting the listing; download or
+    /// structural parse failures throw (HTTP or <see cref="CarParseException"/>). Values written to
+    /// logs are sanitized and truncated to defend against log injection.
+    /// </remarks>
+    /// <exception cref="CarParseException">Thrown when the download exceeds the size cap or the CAR fails to parse.</exception>
     private async Task<List<(string AtUri, MediaLinkResult Result)>> FetchAllViaCarAsync(
         Uri pdsUri,
         string userDid,
@@ -374,7 +427,7 @@ public partial class ATProtoStorageService(
             foreach ((string rkey, System.Text.Json.Nodes.JsonNode recordNode) in enumResult.Records) {
                 cancellationToken.ThrowIfCancellationRequested( );
 
-                // SEC-005: validate rkey before building AT-URI or logging it verbatim.
+                // Validate rkey before building AT-URI or logging it verbatim.
                 // MST keys come from an operator-controlled PDS; an attacker could inject
                 // control characters or path separators. Skip invalid rkeys with a warning.
                 if (!IsValidRkey( rkey )) {
@@ -428,16 +481,15 @@ public partial class ATProtoStorageService(
 
     #region Rkey validation
 
-    /// <summary>
-    /// Maximum record-key length per the atproto record-key specification.
-    /// </summary>
+    /// <summary>Maximum permitted record-key length (512 characters), per the atproto rkey rules.</summary>
     private const int MaxRkeyLength = 512;
 
     /// <summary>
-    /// Validates an atproto record key against the allowed grammar.
-    /// Valid characters: A-Za-z0-9 . _ ~ : -
-    /// Length must be between 1 and 512 characters.
+    /// Validates a record key against the atproto rkey rules: length 1 to 512 and characters limited
+    /// to ASCII letters, digits, and <c>. _ ~ : -</c>.
     /// </summary>
+    /// <param name="rkey">The record key to validate.</param>
+    /// <returns><see langword="true"/> when the key is within length and uses only allowed characters; otherwise <see langword="false"/>.</returns>
     private static bool IsValidRkey( string rkey ) {
         if (rkey.Length == 0 || rkey.Length > MaxRkeyLength) {
             return false;
@@ -454,10 +506,13 @@ public partial class ATProtoStorageService(
     }
 
     /// <summary>
-    /// Returns the first <paramref name="maxLen"/> characters of <paramref name="value"/>,
-    /// appending "..." if truncated, and replaces ASCII control characters (\r, \n, \t and
-    /// other C0 codes) with spaces to prevent CWE-117 log-forging on plain-text sinks.
+    /// Prepares a value for logging by truncating it to a maximum length and replacing ASCII control
+    /// characters (CR, LF, TAB, and other C0 codes) with spaces, defending against log injection from
+    /// untrusted record keys.
     /// </summary>
+    /// <param name="value">The value to sanitize.</param>
+    /// <param name="maxLen">The maximum number of characters to keep before appending an ellipsis.</param>
+    /// <returns>The sanitized, length-bounded string, with <c>...</c> appended when truncated.</returns>
     private static string TruncateForLog( string value, int maxLen ) {
         ReadOnlySpan<char> source = value.Length <= maxLen
             ? value.AsSpan( )
@@ -483,60 +538,95 @@ public partial class ATProtoStorageService(
 
     #region LoggerMessage Methods
 
+    /// <summary>Logs that an existing record was updated (via the PutRecord path).</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="uri">The AT-URI of the updated record.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceUpdatedRecord,
         Level = LogLevel.Information,
         Message = "Successfully updated existing MediaLinkResult on ATProto PDS: {uri}" )]
     internal static partial void LogUpdatedRecord( ILogger logger, string uri );
 
+    /// <summary>Logs that a new record was created (via the CreateRecord fallback path).</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="uri">The AT-URI of the created record.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceCreatedRecord,
         Level = LogLevel.Information,
         Message = "Successfully created MediaLinkResult on ATProto PDS: {uri}" )]
     internal static partial void LogCreatedRecord( ILogger logger, string uri );
 
+    /// <summary>Logs a failure while storing a record on the PDS.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that caused the failure.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceStoreError,
         Level = LogLevel.Error,
         Message = "Failed to store MediaLinkResult on ATProto PDS" )]
     internal static partial void LogStoreError( ILogger logger, Exception ex );
 
+    /// <summary>Logs that a single-record fetch from the PDS failed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="error">The sanitized error detail.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceGetRecordFailed,
         Level = LogLevel.Warning,
         Message = "Failed to get record from ATProto PDS: {error}" )]
     internal static partial void LogGetRecordFailed( ILogger logger, string error );
 
+    /// <summary>Logs an unexpected exception while retrieving a record by AT-URI.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that caused the failure.</param>
+    /// <param name="uri">The AT-URI that was being retrieved.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceRetrieveError,
         Level = LogLevel.Error,
         Message = "Failed to retrieve MediaLinkResult from ATProto PDS: {uri}" )]
     internal static partial void LogRetrieveError( ILogger logger, Exception ex, string uri );
 
+    /// <summary>Logs completion of a repository CAR download and parse, with size and timing.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="bytes">The number of CAR bytes downloaded.</param>
+    /// <param name="blocks">The number of blocks decoded from the CAR.</param>
+    /// <param name="elapsedMs">The elapsed time in milliseconds.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceCarDownloaded,
         Level = LogLevel.Information,
         Message = "CAR download complete: {Bytes} bytes, {Blocks} blocks, {ElapsedMs} ms" )]
     internal static partial void LogCarDownloaded( ILogger logger, long bytes, int blocks, long elapsedMs );
 
+    /// <summary>Logs completion of CAR record enumeration, with counts of returned and skipped records.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="recordCount">The number of records returned.</param>
+    /// <param name="skippedCount">The number of records skipped (invalid rkey, null, or unconvertible).</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceCarEnumerated,
         Level = LogLevel.Information,
         Message = "CAR enumeration complete: {RecordCount} records returned, {SkippedCount} skipped" )]
     internal static partial void LogCarEnumerated( ILogger logger, int recordCount, int skippedCount );
 
+    /// <summary>Logs that the CAR commit version was not the expected value of 3; processing continues regardless.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="commitVersion">The commit version read from the CAR.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceCarCommitVersionUnexpected,
         Level = LogLevel.Warning,
         Message = "CAR commit version {CommitVersion} is not 3; proceeding anyway" )]
     internal static partial void LogCarCommitVersionUnexpected( ILogger logger, int commitVersion );
 
+    /// <summary>Logs that the repository CAR download or parse failed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that caused the failure, if any.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceCarDownloadFailed,
         Level = LogLevel.Error,
         Message = "CAR download or parse failed" )]
     internal static partial void LogCarDownloadFailed( ILogger logger, Exception? ex );
 
+    /// <summary>Logs that a record was skipped during CAR enumeration, with the (sanitized) rkey and reason.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="rkey">The sanitized, truncated record key.</param>
+    /// <param name="reason">Why the record was skipped (for example invalid rkey or no valid providers).</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Storage.ATProtoStorageServiceCarRecordSkipped,
         Level = LogLevel.Warning,

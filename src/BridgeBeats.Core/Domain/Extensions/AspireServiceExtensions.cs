@@ -15,9 +15,14 @@ using Serilog;
 namespace BridgeBeats.Core.Domain.Extensions;
 
 /// <summary>
-/// Provides shared Aspire service defaults for BridgeBeats.
+/// .NET Aspire service-defaults wiring shared by the web app and the worker hosts. Configures service
+/// discovery, health checks, the standard HTTP resilience pipeline (exponential backoff with jitter,
+/// circuit breaker, and total/attempt timeouts), OpenTelemetry traces/metrics/logs, and Serilog file
+/// logging. The <see cref="WebApplicationBuilder"/> and <see cref="IHostApplicationBuilder"/> overloads
+/// are near-duplicates serving the two host shapes.
 /// </summary>
 public static class AspireServiceExtensions {
+    /// <summary>The health-check endpoint path mapped by <see cref="MapDefaultEndpoints"/>.</summary>
     private const string HealthPath = "/health";
 
     /// <summary>
@@ -27,10 +32,15 @@ public static class AspireServiceExtensions {
     internal const int DefaultAttemptTimeoutSeconds = 120;
 
     /// <summary>
-    /// Adds service discovery, HTTP resilience defaults, health checks, and OpenTelemetry exporters.
+    /// Adds the Aspire service defaults to a web-application host: service discovery, health checks,
+    /// the standard HTTP resilience pipeline, and OpenTelemetry. The resilience pipeline uses
+    /// exponential backoff with jitter, honors server <c>Retry-After</c> headers, and is explicitly
+    /// configured <b>not</b> to retry <see cref="BridgeBeats.Contracts.Exceptions.RetryAfterExceededException"/>
+    /// (the provider fail-fast signal). Retry/timeout values are read from <c>BridgeBeats:Resilience:*</c>
+    /// configuration, falling back to built-in defaults.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
-    /// <returns>The configured builder.</returns>
+    /// <param name="builder">The web-application host builder to configure.</param>
+    /// <returns>The same <paramref name="builder"/>, to allow call chaining.</returns>
     public static WebApplicationBuilder AddServiceDefaults( this WebApplicationBuilder builder ) {
         _ = builder.Services.AddServiceDiscovery( );
         _ = builder.Services.AddHealthChecks( );
@@ -100,10 +110,12 @@ public static class AspireServiceExtensions {
     }
 
     /// <summary>
-    /// Maps default liveness endpoints for Aspire.
+    /// Maps the default <c>/health</c> health-check endpoint. The predicate is set to exclude all
+    /// registered checks, so the endpoint reports liveness only (it returns healthy without running
+    /// individual readiness checks).
     /// </summary>
-    /// <param name="app">The web application.</param>
-    /// <returns>The configured application.</returns>
+    /// <param name="app">The web application to map the endpoint onto.</param>
+    /// <returns>The same <paramref name="app"/>, to allow call chaining.</returns>
     public static WebApplication MapDefaultEndpoints( this WebApplication app ) {
         _ = app.MapHealthChecks( HealthPath, new HealthCheckOptions {
             Predicate = _ => false
@@ -113,11 +125,15 @@ public static class AspireServiceExtensions {
     }
 
     /// <summary>
-    /// Adds service discovery, HTTP resilience defaults, and OpenTelemetry exporters for non-web hosts.
-    /// This overload is for background workers that don't need ASP.NET Core instrumentation.
+    /// Adds the Aspire service defaults to a generic host (worker services): service discovery, the
+    /// standard HTTP resilience pipeline, and OpenTelemetry. This is the worker counterpart to the
+    /// <see cref="AddServiceDefaults(WebApplicationBuilder)"/> overload and shares the same resilience
+    /// configuration, including not retrying
+    /// <see cref="BridgeBeats.Contracts.Exceptions.RetryAfterExceededException"/>. Health checks are
+    /// not registered here because generic hosts do not expose the HTTP health endpoint.
     /// </summary>
-    /// <param name="builder">The host application builder.</param>
-    /// <returns>The configured builder.</returns>
+    /// <param name="builder">The generic host builder to configure.</param>
+    /// <returns>The same <paramref name="builder"/>, to allow call chaining.</returns>
     public static IHostApplicationBuilder AddServiceDefaults( this IHostApplicationBuilder builder ) {
         _ = builder.Services.AddServiceDiscovery( );
 
@@ -185,6 +201,15 @@ public static class AspireServiceExtensions {
         return builder;
     }
 
+    /// <summary>
+    /// Configures OpenTelemetry for a web-application host. Wires logging, tracing, and metrics
+    /// exporters to an OTLP endpoint (when one is configured), enabling ASP.NET Core, HTTP-client, and
+    /// runtime instrumentation and registering the <c>BridgeBeats.Queue</c>,
+    /// <c>BridgeBeats.Providers</c>, and <c>BridgeBeats.Spotify.Batch</c> meters. Tracing and metrics
+    /// are each gated on the <c>OpenTelemetry:EnableTracing</c> and <c>OpenTelemetry:EnableMetrics</c>
+    /// settings (both default on).
+    /// </summary>
+    /// <param name="builder">The web-application host builder to configure.</param>
     private static void ConfigureOpenTelemetry( WebApplicationBuilder builder ) {
         string? otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
         string? otlpHeaders = builder.Configuration["OpenTelemetry:OtlpHeaders"];
@@ -259,9 +284,14 @@ public static class AspireServiceExtensions {
     }
 
     /// <summary>
-    /// Configures OpenTelemetry for non-web hosts (without ASP.NET Core instrumentation).
+    /// Configures OpenTelemetry for a generic host (worker services). Mirrors
+    /// <see cref="ConfigureOpenTelemetry"/> but omits ASP.NET Core instrumentation, since worker hosts
+    /// serve no inbound HTTP. Wires logging, tracing, and metrics exporters to a configured OTLP
+    /// endpoint, enables HTTP-client and runtime instrumentation, and registers the
+    /// <c>BridgeBeats.Queue</c>, <c>BridgeBeats.Providers</c>, and <c>BridgeBeats.Spotify.Batch</c>
+    /// meters.
     /// </summary>
-    /// <param name="builder">The host application builder.</param>
+    /// <param name="builder">The generic host builder to configure.</param>
     private static void ConfigureOpenTelemetryForHost( IHostApplicationBuilder builder ) {
         string? otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
         string? otlpHeaders = builder.Configuration["OpenTelemetry:OtlpHeaders"];
@@ -335,6 +365,16 @@ public static class AspireServiceExtensions {
         }
     }
 
+    /// <summary>
+    /// Parses a configured OTLP endpoint string into an absolute <see cref="Uri"/>. A blank value
+    /// yields no endpoint (use the exporter default); a non-blank but malformed value logs a warning to
+    /// the console and disables custom-endpoint export.
+    /// </summary>
+    /// <param name="otlpEndpoint">The configured endpoint string, or <see langword="null"/>.</param>
+    /// <param name="otlpUri">
+    /// On return, the parsed absolute URI, or <see langword="null"/> when none was usable.
+    /// </param>
+    /// <returns><see langword="true"/> when a valid custom endpoint was parsed; otherwise <see langword="false"/>.</returns>
     private static bool TryGetOtlpEndpoint( string? otlpEndpoint, out Uri? otlpUri ) {
         otlpUri = null;
 
@@ -351,18 +391,26 @@ public static class AspireServiceExtensions {
         return true;
     }
 
+    /// <summary>
+    /// Returns the entry assembly's version string for the OpenTelemetry resource, falling back to
+    /// <c>"0.0.1"</c> when no entry assembly or version is available.
+    /// </summary>
+    /// <returns>The service version string.</returns>
     private static string GetServiceVersion( ) {
         Assembly? assembly = Assembly.GetEntryAssembly( );
         return assembly?.GetName( ).Version?.ToString( ) ?? "0.0.1";
     }
 
     /// <summary>
-    /// Configures Serilog for file logging with rotation and retention.
-    /// Writes logs to logs/{projectName}-.log relative to the application directory.
+    /// Configures Serilog console and rolling-file logging for a web-application host. Log files roll
+    /// daily and at 50&#160;MB, keeping the five most recent. Health-check noise is filtered out:
+    /// <c>Information</c>-level events from ASP.NET Core MVC/routing whose action or message mentions
+    /// "Health", and successful (200) requests to the health/alive endpoints, are excluded. If the log
+    /// directory cannot be created, a warning is written to the console and logging is left unconfigured.
     /// </summary>
-    /// <param name="builder">The web application builder to configure.</param>
-    /// <param name="projectName">The name of the project (used for the log file name).</param>
-    /// <returns>The configured builder.</returns>
+    /// <param name="builder">The web-application host builder to configure.</param>
+    /// <param name="projectName">The project name used as the log-file name prefix.</param>
+    /// <returns>The same <paramref name="builder"/>, to allow call chaining.</returns>
     public static WebApplicationBuilder ConfigureFileLogging( this WebApplicationBuilder builder, string projectName ) {
         // Use LogDirPath from configuration or default to ./logs
         string logDir = builder.Configuration["BridgeBeats:LogDirPath"] ?? "./logs";
@@ -442,12 +490,15 @@ public static class AspireServiceExtensions {
     }
 
     /// <summary>
-    /// Configures Serilog for file logging with rotation and retention for non-web hosts.
-    /// Writes logs to logs/{projectName}-.log relative to the application directory.
+    /// Configures Serilog console and rolling-file logging for a generic host (worker services). Log
+    /// files roll daily and at 50&#160;MB, keeping the five most recent. Unlike the
+    /// <see cref="ConfigureFileLogging(WebApplicationBuilder, string)"/> overload, no health-check noise
+    /// filter is applied, since worker hosts do not serve the health endpoints. If the log directory
+    /// cannot be created, a warning is written to the console and logging is left unconfigured.
     /// </summary>
-    /// <param name="builder">The host application builder to configure.</param>
-    /// <param name="projectName">The name of the project (used for the log file name).</param>
-    /// <returns>The configured builder.</returns>
+    /// <param name="builder">The generic host builder to configure.</param>
+    /// <param name="projectName">The project name used as the log-file name prefix.</param>
+    /// <returns>The same <paramref name="builder"/>, to allow call chaining.</returns>
     public static IHostApplicationBuilder ConfigureFileLogging( this IHostApplicationBuilder builder, string projectName ) {
         // Use LogDirPath from configuration or default to ./logs
         string logDir = builder.Configuration["BridgeBeats:LogDirPath"] ?? "./logs";

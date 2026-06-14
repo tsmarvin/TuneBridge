@@ -10,63 +10,113 @@ using StackExchange.Redis;
 namespace BridgeBeats.Core.Infrastructure.Queue;
 
 /// <summary>
-/// Helper class containing shared regex patterns for Redis queue operations.
-/// Separate from generic <see cref="RedisRequestQueue{T}"/> to avoid static field in generic type warning.
+/// Helper class containing the compiled regular expressions used by Redis queue operations.
+/// Separate from the generic <see cref="RedisRequestQueue{T}"/> to avoid a static field in a
+/// generic type.
 /// </summary>
 internal static partial class RedisQueuePatterns {
     /// <summary>
-    /// Regex pattern to match Redis stream ID format (timestamp-sequence) at the end of a composite ID.
-    /// Stream name must contain at least one character (pattern matches everything before last colon-delimited Redis ID).
+    /// Matches a composite message id of the form <c>{streamName}:{redisId}</c>, where the Redis
+    /// stream id is a <c>timestamp-sequence</c> pair. Group 1 is the stream name, group 2 is the
+    /// Redis stream id. The stream name must contain at least one character.
     /// </summary>
     internal static readonly Regex RedisStreamIdPattern = GenerateRedisStreamIdPattern( );
 
+    /// <summary>Source generator for <see cref="RedisStreamIdPattern"/>.</summary>
+    /// <returns>The compiled composite-id pattern.</returns>
     [GeneratedRegex( @"^(.+):(\d+-\d+)$" )]
     private static partial Regex GenerateRedisStreamIdPattern( );
 }
 
 /// <summary>
-/// Redis Streams-based implementation of <see cref="IRequestQueue{T}"/> for a specific music provider.
+/// Redis Streams-backed implementation of <see cref="IRequestQueue{T}"/> for a single music
+/// provider, with priority lanes and a dead-letter queue.
 /// </summary>
+/// <typeparam name="T">The queued request type; must be a reference type implementing the queueable contract.</typeparam>
 /// <remarks>
-/// Uses Redis Streams with consumer groups. Stream keys: <c>queue:{provider}:interactive</c>,
-/// <c>queue:{provider}:background</c>, <c>queue:{provider}:bulk</c>, <c>queue:{provider}:dlq</c>.
+/// Each provider gets four streams: <c>queue:{provider}:interactive</c>,
+/// <c>:background</c>, <c>:bulk</c>, and <c>:dlq</c> (provider name lower-cased). Messages are read
+/// through a per-provider consumer group (<c>{provider}-workers</c>) by a per-process consumer
+/// (<c>{provider}-worker-{guid}</c>). Two behaviors are easy to misread and are called out here:
+/// acknowledgement does XACK followed by XDEL, so a processed message is deleted and cannot be
+/// replayed from the stream; and the delayed form of requeue is a logged stub that requeues
+/// immediately, so the requested delay is not honored. The unit other components pass around is
+/// the composite message id <c>{streamName}:{redisId}</c>.
 /// </remarks>
-/// <typeparam name="T">The type of request to queue.</typeparam>
 public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQueueableRequest {
 
+    /// <summary>Redis connection used for all stream operations.</summary>
     private readonly IConnectionMultiplexer _redis;
+
+    /// <summary>Logger for queue diagnostics.</summary>
     private readonly ILogger<RedisRequestQueue<T>> _logger;
+
+    /// <summary>Queue configuration (aging interval, bulk thresholds, job expiry, and so on).</summary>
     private readonly QueueSettings _settings;
+
+    /// <summary>The provider this queue instance serves.</summary>
     private readonly SupportedProviders _provider;
+
+    /// <summary>The Redis consumer group name (<c>{provider}-workers</c>).</summary>
     private readonly string _consumerGroup;
+
+    /// <summary>This process's unique consumer id (<c>{provider}-worker-{guid}</c>).</summary>
     private readonly string _consumerId;
+
+    /// <summary>Camel-case, non-indented options used to serialize and deserialize payloads.</summary>
     private readonly JsonSerializerOptions _jsonOptions;
 
     // Stream keys
+
+    /// <summary>Stream key for the interactive (highest) priority lane.</summary>
     private readonly string _interactiveStream;
+
+    /// <summary>Stream key for the background priority lane.</summary>
     private readonly string _backgroundStream;
+
+    /// <summary>Stream key for the bulk (lowest) priority lane.</summary>
     private readonly string _bulkStream;
+
+    /// <summary>Stream key for the dead-letter queue.</summary>
     private readonly string _dlqStream;
 
-    // Effective aging interval (validated in constructor; N ≤ 1 falls back to default)
+    /// <summary>
+    /// Effective aging interval (validated in constructor; N ≤ 1 falls back to default). Every
+    /// aging slot promotes background/bulk ahead of interactive (minimum 2).
+    /// </summary>
     private readonly int _agingInterval;
 
-    // Per-instance dequeue ordering counter — single consumer per queue instance, no volatile required.
-    // Unchecked increment: wraps at int.MaxValue harmlessly (the modulo arithmetic continues to work).
+    /// <summary>
+    /// Per-instance dequeue ordering counter that drives aging-slot selection. There is a single
+    /// consumer per queue instance, so no volatile is required; the unchecked increment wraps at
+    /// int.MaxValue harmlessly because the modulo arithmetic continues to work.
+    /// </summary>
     private int _dequeueCounter;
 
     // Track which stream a message came from for ack/requeue
+
+    /// <summary>Dead-letter field holding the reason a message was dead-lettered. Literal: <c>"dlqReason"</c>.</summary>
     private const string DlqReasonField = "dlqReason";
+
+    /// <summary>Dead-letter field holding when the message was dead-lettered. Literal: <c>"dlqMovedAt"</c>.</summary>
     private const string DlqMovedAtField = "dlqMovedAt";
+
+    /// <summary>Dead-letter field holding the stream the message came from. Literal: <c>"originalStream"</c>.</summary>
     private const string DlqOriginalStreamField = "originalStream";
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="RedisRequestQueue{T}"/> class.
+    /// Initializes a new instance of the <see cref="RedisRequestQueue{T}"/> class for one provider,
+    /// derives its stream and consumer names, and validates the aging interval.
     /// </summary>
     /// <param name="redis">The Redis connection multiplexer.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="settings">Queue configuration settings.</param>
     /// <param name="provider">The provider this queue serves.</param>
+    /// <remarks>
+    /// A configured aging interval of 1 or less is treated as a misconfiguration and replaced with
+    /// a default of 8 (logged), keeping the starvation-prevention logic well-defined.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="redis"/>, <paramref name="logger"/>, or <paramref name="settings"/> is null.</exception>
     public RedisRequestQueue(
         IConnectionMultiplexer redis,
         ILogger<RedisRequestQueue<T>> logger,
@@ -107,9 +157,14 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     }
 
     /// <summary>
-    /// Ensures consumer groups exist for all priority streams.
-    /// Call this during worker startup.
+    /// Ensures consumer groups exist for all priority streams. Call this during worker startup.
     /// </summary>
+    /// <param name="cancellationToken">Token checked between streams to stop early.</param>
+    /// <returns>A task that completes once each stream has the consumer group.</returns>
+    /// <remarks>
+    /// Creates the stream if absent. A <c>BUSYGROUP</c> error (group already exists) is caught and
+    /// treated as success. The dead-letter stream does not get a consumer group; it is read by range.
+    /// </remarks>
     public async Task EnsureConsumerGroupsAsync( CancellationToken cancellationToken = default ) {
         IDatabase db = _redis.GetDatabase( );
 
@@ -131,7 +186,18 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Serializes a request and appends it to the stream for the given priority.
+    /// </summary>
+    /// <param name="request">The request to enqueue.</param>
+    /// <param name="priority">The priority lane to enqueue onto.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the entry is added.</returns>
+    /// <remarks>
+    /// The entry carries <c>payload</c> (JSON) and <c>enqueuedAt</c> (ISO-8601 UTC). An enqueue
+    /// metric is recorded for the provider and priority.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is null.</exception>
     public async Task EnqueueAsync( T request, QueuePriority priority, CancellationToken cancellationToken = default ) {
         ArgumentNullException.ThrowIfNull( request );
 
@@ -155,7 +221,16 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Dequeues the next message in priority order (ignoring rate-limit state).
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>The next message, or null when all eligible streams are empty.</returns>
+    /// <remarks>
+    /// Streams are visited in the order produced by the weighted, bulk-gated scheduler, so this
+    /// reflects the same aging and bulk-threshold behavior as the rate-limit-aware overload. A
+    /// dequeue metric is recorded when a message is returned.
+    /// </remarks>
     public async Task<QueuedMessage<T>?> DequeueAsync( CancellationToken cancellationToken = default ) {
         IDatabase db = _redis.GetDatabase( );
 
@@ -187,7 +262,18 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         return null;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Dequeues the next message whose endpoint is not currently rate-limited.
+    /// </summary>
+    /// <param name="rateLimitTracker">Tracker queried for the provider's currently blocked endpoints.</param>
+    /// <param name="cancellationToken">Token forwarded to the rate-limit lookup.</param>
+    /// <returns>The next eligible message, or null when no unblocked message is available.</returns>
+    /// <remarks>
+    /// Reads the set of blocked endpoints once, then visits streams in priority order, skipping
+    /// messages whose lookup type maps to a blocked endpoint. A dequeue metric is recorded when an
+    /// eligible message is returned.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="rateLimitTracker"/> is null.</exception>
     public async Task<QueuedMessage<T>?> DequeueAsync( IRateLimitTracker rateLimitTracker, CancellationToken cancellationToken = default ) {
         ArgumentNullException.ThrowIfNull( rateLimitTracker );
 
@@ -224,9 +310,19 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     }
 
     /// <summary>
-    /// Finds the first eligible message in the stream that is not rate-limited.
-    /// First processes pending messages (recovery scenario), then reads new messages via XREADGROUP.
+    /// Finds the first eligible message in the stream that is not rate-limited, checking the
+    /// consumer's pending list before reading new messages via XREADGROUP.
     /// </summary>
+    /// <param name="db">The Redis database to read from.</param>
+    /// <param name="stream">The stream to scan.</param>
+    /// <param name="blockedEndpoints">Endpoints currently rate-limited and therefore skipped.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>The first eligible message, or null if none found within the scan caps.</returns>
+    /// <remarks>
+    /// Pending messages already claimed by this consumer are checked first (up to 50, recovery
+    /// scenario), then up to 50 new messages are read. Blocked messages are left in place to be
+    /// retried once their endpoint clears. The scan caps bound the per-stream work each dequeue does.
+    /// </remarks>
     private async Task<QueuedMessage<T>?> FindEligibleMessageAsync(
         IDatabase db,
         string stream,
@@ -342,8 +438,15 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     }
 
     /// <summary>
-    /// Determines if a message should be blocked based on its lookup type.
+    /// Determines whether a request targets a currently rate-limited (blocked) endpoint, based on
+    /// its lookup type.
     /// </summary>
+    /// <param name="request">The request to test.</param>
+    /// <param name="blockedEndpoints">The set of blocked endpoint keys.</param>
+    /// <returns>
+    /// True if the request is a lookup request whose lookup type matches a blocked endpoint;
+    /// otherwise false. Non-lookup request types are never treated as blocked.
+    /// </returns>
     private static bool IsMessageBlocked( T request, HashSet<string> blockedEndpoints ) {
         // Extract the lookup type from the request if it's a QueuedLookupRequest
         if (request is QueuedLookupRequest lookupRequest) {
@@ -356,7 +459,18 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         return false;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Acknowledges a processed message: XACK to the consumer group, then XDEL to remove it.
+    /// </summary>
+    /// <param name="messageId">The composite message id to acknowledge.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the message is acknowledged and deleted.</returns>
+    /// <remarks>
+    /// Because acknowledgement deletes the message (XACK + XDEL), the stream does not retain
+    /// processed entries and a message cannot be replayed from the stream itself. Any retry must
+    /// re-enqueue a fresh entry. An acknowledge metric is recorded.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="messageId"/> is null or whitespace, or is not a valid composite id.</exception>
     public async Task AcknowledgeAsync( string messageId, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( messageId );
 
@@ -374,7 +488,22 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         LogAcknowledged( _logger, id, stream );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Requeues a message back onto its original stream with a fresh enqueue timestamp.
+    /// </summary>
+    /// <param name="messageId">The composite message id to requeue.</param>
+    /// <param name="delay">
+    /// Requested delay before the message becomes available again. <b>Not honored:</b> a non-zero
+    /// delay is logged and then ignored, and the message is requeued immediately.
+    /// </param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the message is requeued, or immediately if the original entry no longer exists.</returns>
+    /// <remarks>
+    /// Reads the original entry, acknowledges and deletes it, then re-adds the same payload with a
+    /// new <c>enqueuedAt</c>. The delayed-requeue path is a known stub: it only logs that delay is
+    /// not implemented and proceeds with an immediate requeue. A requeue metric is recorded.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="messageId"/> is null or whitespace, or is not a valid composite id.</exception>
     public async Task RequeueAsync( string messageId, TimeSpan? delay = null, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( messageId );
 
@@ -397,7 +526,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
         if (delay.HasValue && delay.Value > TimeSpan.Zero) {
             // For delayed requeue, we'd need a separate delay mechanism (e.g., sorted set with score = delivery time)
-            // For now, add immediately with a note. Phase 4 workers can implement delay checking.
+            // For now, add immediately with a note. Workers can implement delay checking later.
             LogDelayedRequeueNotImplemented( _logger );
         }
 
@@ -415,7 +544,12 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         LogRequeued( _logger, stream );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Returns the current depth of each priority lane and their total.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A <see cref="QueueDepth"/> with the interactive, background, bulk, and total lengths.</returns>
+    /// <remarks>The dead-letter stream is not included in the total.</remarks>
     public async Task<QueueDepth> GetDepthAsync( CancellationToken cancellationToken = default ) {
         IDatabase db = _redis.GetDatabase( );
 
@@ -431,7 +565,12 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Reads messages from the dead-letter queue by range.
+    /// </summary>
+    /// <param name="limit">Maximum number to return; a non-positive value defaults to 100.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>The parsed dead-letter messages, skipping any entry that fails to parse.</returns>
     public async Task<IReadOnlyList<QueuedMessage<T>>> GetDlqMessagesAsync( int limit, CancellationToken cancellationToken = default ) {
         if (limit <= 0) { limit = 100; }
 
@@ -449,7 +588,16 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         return messages;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Moves a message out of the dead-letter queue and back onto a live priority lane.
+    /// </summary>
+    /// <param name="messageId">The composite dead-letter message id.</param>
+    /// <param name="priority">The priority lane to requeue the message onto.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the message is requeued and removed from the dead-letter queue.</returns>
+    /// <remarks>The original payload is re-added with a fresh <c>enqueuedAt</c>; the dead-letter metadata fields are dropped.</remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="messageId"/> is null/whitespace or does not belong to the dead-letter queue.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the message is not found in the dead-letter queue.</exception>
     public async Task RequeueFromDlqAsync( string messageId, QueuePriority priority, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( messageId );
 
@@ -483,7 +631,19 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         LogMovedFromDlq( _logger, id, targetStream, priority );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Moves a message from a live stream into the dead-letter queue, recording why.
+    /// </summary>
+    /// <param name="messageId">The composite message id to dead-letter.</param>
+    /// <param name="reason">The reason recorded on the dead-letter entry.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes once the message is dead-lettered, or immediately if the original entry no longer exists.</returns>
+    /// <remarks>
+    /// The dead-letter entry preserves the original <c>payload</c> and <c>enqueuedAt</c> and adds
+    /// <c>originalStream</c>, <c>dlqReason</c>, and <c>dlqMovedAt</c>. The source message is then
+    /// acknowledged and deleted from its stream.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="messageId"/> is null or whitespace, or is not a valid composite id.</exception>
     public async Task MoveToDlqAsync( string messageId, string reason, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( messageId );
 
@@ -518,7 +678,13 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         LogMovedToDlq( _logger, id, stream, reason );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Permanently deletes a message from the dead-letter queue.
+    /// </summary>
+    /// <param name="messageId">The composite dead-letter message id to delete.</param>
+    /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
+    /// <returns>True if a message was deleted; false if the id is not a dead-letter id or nothing was deleted.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="messageId"/> is null or whitespace, or is not a valid composite id.</exception>
     public async Task<bool> DeleteFromDlqAsync( string messageId, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( messageId );
 
@@ -538,6 +704,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         return deleted > 0;
     }
 
+    /// <summary>Maps a priority to its stream key.</summary>
+    /// <param name="priority">The priority to map.</param>
+    /// <returns>The stream key for that priority.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown for an unrecognized priority.</exception>
     private string GetStreamForPriority( QueuePriority priority ) => priority switch {
         QueuePriority.Interactive => _interactiveStream,
         QueuePriority.Background => _backgroundStream,
@@ -545,6 +715,9 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         _ => throw new ArgumentOutOfRangeException( nameof( priority ) )
     };
 
+    /// <summary>Maps a stream key back to its priority, defaulting to background for unknown streams.</summary>
+    /// <param name="stream">The stream key to map.</param>
+    /// <returns>The priority the stream represents.</returns>
     private QueuePriority GetPriorityFromStream( string stream ) {
         if (stream == _interactiveStream) { return QueuePriority.Interactive; }
         if (stream == _backgroundStream) { return QueuePriority.Background; }
@@ -556,20 +729,27 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     /// Returns the ordered stream array for the current dequeue call, applying bulk gating and
     /// passing the current depth to the pure ordering seam.
     /// </summary>
+    /// <param name="dequeueCounter">The current dequeue counter that drives aging-slot selection.</param>
+    /// <returns>The ordered stream keys to attempt for this dequeue.</returns>
     private async Task<string[]> GetWeightedStreamOrderWithBulkGatingAsync( int dequeueCounter ) {
         QueueDepth depth = await GetDepthAsync( );
         return GetStreamDequeueOrder( dequeueCounter, depth );
     }
 
     /// <summary>
-    /// Pure method: returns the deterministic stream dequeue order given the current counter and queue depth.
-    /// Interactive is served first on every non-aging call. On every <c>InteractiveAgingInterval</c>-th
-    /// call a lower-priority tier leads (background and bulk alternate) to prevent starvation.
-    /// Bulk is excluded when its depth is below the per-provider minimum threshold.
+    /// Pure method: returns the deterministic stream dequeue order given the current counter and
+    /// queue depth, balancing priority against starvation prevention and bulk batching.
     /// </summary>
-    /// <param name="dequeueCounter">The current dequeue ordering counter (incremented by caller before this call).</param>
+    /// <param name="dequeueCounter">The current dequeue ordering counter (incremented by the caller before this call); every <c>InteractiveAgingInterval</c>-th value is an aging slot.</param>
     /// <param name="depth">Current queue depths used for bulk gating.</param>
     /// <returns>Ordered array of stream keys, highest effective priority first.</returns>
+    /// <remarks>
+    /// Interactive is served first on every non-aging call. On every aging slot a lower-priority
+    /// tier leads (background and bulk alternate across successive aging slots) to prevent
+    /// starvation. Bulk is only included once its depth reaches the per-provider minimum threshold
+    /// (gating lets bulk accumulate for batch efficiency); below the threshold, bulk is omitted from
+    /// the order.
+    /// </remarks>
     internal string[] GetStreamDequeueOrder( int dequeueCounter, QueueDepth depth ) {
         // Bulk gating: exclude bulk stream if its depth is below the threshold.
         int minBulkThreshold = _settings.GetMinBulkThreshold( _provider );
@@ -610,6 +790,13 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
             : [_interactiveStream, _backgroundStream];
     }
 
+    /// <summary>
+    /// Parses a raw stream entry into a typed message, building the composite id and recovering the
+    /// enqueue time.
+    /// </summary>
+    /// <param name="entry">The raw stream entry.</param>
+    /// <param name="stream">The stream the entry came from (used to build the composite id).</param>
+    /// <returns>The parsed message, or null if the entry has no payload or fails to deserialize.</returns>
     private QueuedMessage<T>? ParseStreamEntry( StreamEntry entry, string stream ) {
         string? payload = entry[QueueStreamFieldNames.Payload];
         string? enqueuedAtStr = entry[QueueStreamFieldNames.EnqueuedAt];
@@ -640,6 +827,13 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         }
     }
 
+    /// <summary>
+    /// Splits a composite message id (<c>{stream}:{timestamp-sequence}</c>) into its stream name and
+    /// Redis stream id.
+    /// </summary>
+    /// <param name="compositeId">The composite id to parse.</param>
+    /// <returns>A tuple of the stream name and the Redis stream id.</returns>
+    /// <exception cref="ArgumentException">Thrown when the id is null/whitespace or does not match the expected format.</exception>
     private static (string stream, string id) ParseMessageId( string compositeId ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( compositeId );
 
@@ -663,144 +857,239 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
 
     #region LoggerMessage Methods
 
+    /// <summary>Logs that a consumer group was created for a stream.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="group">The consumer group name.</param>
+    /// <param name="stream">The stream the group was created on.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueConsumerGroupCreated,
         Level = LogLevel.Information,
         Message = "Created consumer group {Group} for stream {Stream}" )]
     internal static partial void LogConsumerGroupCreated( ILogger logger, string group, string stream );
 
+    /// <summary>Logs that a consumer group already existed for a stream (BUSYGROUP).</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="group">The consumer group name.</param>
+    /// <param name="stream">The stream that already had the group.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueConsumerGroupExists,
         Level = LogLevel.Debug,
         Message = "Consumer group {Group} already exists for stream {Stream}" )]
     internal static partial void LogConsumerGroupExists( ILogger logger, string group, string stream );
 
+    /// <summary>Logs that a message was enqueued.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The Redis stream id of the new entry.</param>
+    /// <param name="stream">The stream the message was added to.</param>
+    /// <param name="priority">The priority lane.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueEnqueued,
         Level = LogLevel.Debug,
         Message = "Enqueued message {MessageId} to {Stream} with priority {Priority}" )]
     internal static partial void LogEnqueued( ILogger logger, string messageId, string stream, QueuePriority priority );
 
+    /// <summary>Logs that a pending message was skipped because its endpoint is blocked.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The skipped message id.</param>
+    /// <param name="stream">The stream being scanned.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueSkippingBlockedMessage,
         Level = LogLevel.Debug,
         Message = "Skipping rate-limited message {MessageId} in {Stream} - endpoint is blocked" )]
     internal static partial void LogSkippingBlockedMessage( ILogger logger, string messageId, string stream );
 
+    /// <summary>Logs that a newly read message was skipped because its endpoint is rate-limited.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The skipped message id.</param>
+    /// <param name="stream">The stream being scanned.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueSkippingRateLimitedMessage,
         Level = LogLevel.Debug,
         Message = "Skipping rate-limited message {MessageId} in {Stream}" )]
     internal static partial void LogSkippingRateLimitedMessage( ILogger logger, string messageId, string stream );
 
+    /// <summary>Logs that a message was acknowledged and deleted (XACK + XDEL).</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The acknowledged message id.</param>
+    /// <param name="stream">The stream the message was in.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueAcknowledged,
         Level = LogLevel.Debug,
         Message = "Acknowledged and deleted message {MessageId} from {Stream}" )]
     internal static partial void LogAcknowledged( ILogger logger, string messageId, string stream );
 
+    /// <summary>Logs that a message to requeue was not found in its stream.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The missing message id.</param>
+    /// <param name="stream">The stream searched.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMessageNotFoundForRequeue,
         Level = LogLevel.Warning,
         Message = "Message {MessageId} not found in {Stream} for requeue" )]
     internal static partial void LogMessageNotFoundForRequeue( ILogger logger, string messageId, string stream );
 
+    /// <summary>Logs that a delayed requeue was requested but the delay is not implemented (the message is requeued immediately).</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDelayedRequeueNotImplemented,
         Level = LogLevel.Debug,
         Message = "Delayed requeue requested but not yet implemented. Adding immediately." )]
     internal static partial void LogDelayedRequeueNotImplemented( ILogger logger );
 
+    /// <summary>Logs that a message was requeued.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="stream">The stream the message was requeued onto.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueRequeued,
         Level = LogLevel.Debug,
         Message = "Requeued message from {Stream}" )]
     internal static partial void LogRequeued( ILogger logger, string stream );
 
+    /// <summary>Logs that a message was moved out of the dead-letter queue onto a live lane.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The dead-letter message id.</param>
+    /// <param name="stream">The target stream.</param>
+    /// <param name="priority">The target priority.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMovedFromDlq,
         Level = LogLevel.Information,
         Message = "Moved message {MessageId} from DLQ to {Stream} with priority {Priority}" )]
     internal static partial void LogMovedFromDlq( ILogger logger, string messageId, string stream, QueuePriority priority );
 
+    /// <summary>Logs that a message to dead-letter was not found in its stream.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The missing message id.</param>
+    /// <param name="stream">The stream searched.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMessageNotFoundForDlqMove,
         Level = LogLevel.Warning,
         Message = "Message {MessageId} not found in {Stream} for DLQ move" )]
     internal static partial void LogMessageNotFoundForDlqMove( ILogger logger, string messageId, string stream );
 
+    /// <summary>Logs that a message was moved into the dead-letter queue.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The dead-lettered message id.</param>
+    /// <param name="stream">The originating stream.</param>
+    /// <param name="reason">The dead-letter reason.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMovedToDlq,
         Level = LogLevel.Warning,
         Message = "Moved message {MessageId} from {Stream} to DLQ. Reason: {Reason}" )]
     internal static partial void LogMovedToDlq( ILogger logger, string messageId, string stream, string reason );
 
+    /// <summary>Logs that a message was deleted from the dead-letter queue.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The deleted message id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDeletedFromDlq,
         Level = LogLevel.Information,
         Message = "Deleted message {MessageId} from DLQ" )]
     internal static partial void LogDeletedFromDlq( ILogger logger, string messageId );
 
+    /// <summary>Logs that the bulk lane was gated because its depth is below the threshold.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="depth">The current bulk depth.</param>
+    /// <param name="threshold">The minimum bulk threshold.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueBulkGated,
         Level = LogLevel.Debug,
         Message = "Gating bulk operations - queue depth ({Depth}) below threshold ({Threshold})" )]
     internal static partial void LogBulkGated( ILogger logger, int depth, int threshold );
 
+    /// <summary>Logs that a stream entry had no payload field and was ignored.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="id">The entry id.</param>
+    /// <param name="stream">The stream the entry was in.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueMessageNoPayload,
         Level = LogLevel.Warning,
         Message = "Message {Id} in {Stream} has no payload" )]
     internal static partial void LogMessageNoPayload( ILogger logger, string id, string stream );
 
+    /// <summary>Logs that a payload deserialized to null.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="id">The entry id.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDeserializationFailed,
         Level = LogLevel.Warning,
         Message = "Failed to deserialize message {Id} payload" )]
     internal static partial void LogDeserializationFailed( ILogger logger, string id );
 
+    /// <summary>Logs that a payload failed to deserialize with an exception.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The deserialization exception.</param>
+    /// <param name="id">The entry id.</param>
+    /// <param name="stream">The stream the entry was in.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDeserializationError,
         Level = LogLevel.Error,
         Message = "Failed to deserialize message {Id} from {Stream}" )]
     internal static partial void LogDeserializationError( ILogger logger, Exception ex, string id, string stream );
 
+    /// <summary>Logs the start of a rate-limit-aware dequeue.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="blockedCount">Number of blocked endpoints.</param>
+    /// <param name="streamCount">Number of streams to search.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDequeueStarting,
         Level = LogLevel.Debug,
         Message = "Rate-limit-aware dequeue starting with {BlockedCount} blocked endpoints, searching {StreamCount} streams" )]
     internal static partial void LogDequeueStarting( ILogger logger, int blockedCount, int streamCount );
 
+    /// <summary>Logs that a dequeue found no eligible message.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="streamCount">Number of streams that were searched.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueDequeueNoEligibleMessages,
         Level = LogLevel.Debug,
         Message = "Dequeue completed with no eligible messages after searching {StreamCount} streams" )]
     internal static partial void LogDequeueNoEligibleMessages( ILogger logger, int streamCount );
 
+    /// <summary>Logs a per-stream scan summary.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="stream">The stream scanned.</param>
+    /// <param name="pendingCount">Pending entries examined.</param>
+    /// <param name="newCount">New entries read.</param>
+    /// <param name="blockedCount">Entries skipped because their endpoint was blocked.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueStreamScanSummary,
         Level = LogLevel.Debug,
         Message = "Stream {Stream} scan: {PendingCount} pending, {NewCount} new entries, {BlockedCount} blocked" )]
     internal static partial void LogStreamScanSummary( ILogger logger, string stream, int pendingCount, int newCount, int blockedCount );
 
+    /// <summary>Logs that an XCLAIM attempt failed (for example because the message is not pending).</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The message id that could not be claimed.</param>
+    /// <param name="stream">The stream involved.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueClaimFailed,
         Level = LogLevel.Warning,
         Message = "XCLAIM failed for message {MessageId} in stream {Stream} - message may not be pending (new messages cannot be claimed with XCLAIM)" )]
     internal static partial void LogClaimFailed( ILogger logger, string messageId, string stream );
 
+    /// <summary>Logs that an eligible (unblocked) message was found.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The eligible message id.</param>
+    /// <param name="stream">The stream it was found in.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueFoundEligibleMessage,
         Level = LogLevel.Debug,
         Message = "Found eligible message {MessageId} in stream {Stream}" )]
     internal static partial void LogFoundEligibleMessage( ILogger logger, string messageId, string stream );
 
+    /// <summary>Logs that a stream had no new messages.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="stream">The empty stream.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueNoNewMessagesInStream,
         Level = LogLevel.Debug,
         Message = "No messages found in stream {Stream}" )]
     internal static partial void LogNoNewMessagesInStream( ILogger logger, string stream );
 
+    /// <summary>Logs that a misconfigured aging interval (1 or less) was replaced with the default.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="configuredValue">The configured (invalid) value.</param>
+    /// <param name="defaultValue">The default value applied instead.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueAgingIntervalMisconfigured,
         Level = LogLevel.Warning,

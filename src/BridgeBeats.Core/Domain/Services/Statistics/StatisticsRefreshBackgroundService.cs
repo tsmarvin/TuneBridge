@@ -5,22 +5,31 @@ using Microsoft.Extensions.Hosting;
 namespace BridgeBeats.Core.Domain.Services;
 
 /// <summary>
-/// Background service that periodically refreshes statistics and responds to manual
-/// trigger signals via a <see cref="Channel{T}"/>.
+/// Drives <see cref="StatisticsService"/> refreshes both on a periodic timer and on manual triggers.
+/// After a configured startup delay it forces one initial refresh, then loops waiting on whichever
+/// comes first: the next periodic tick or a manual trigger from the service's refresh channel.
 /// </summary>
 /// <remarks>
-/// Initializes a new instance of the <see cref="StatisticsRefreshBackgroundService"/> class.
+/// The loop races a <see cref="PeriodicTimer"/> tick against the trigger channel with
+/// <see cref="Task.WhenAny(System.Threading.Tasks.Task[])"/>, drains any coalesced extra triggers,
+/// and re-arms whichever task fired. A transient refresh error is logged and followed by a short
+/// backoff before the loop continues; cancellation ends the loop.
 /// </remarks>
-/// <param name="statisticsService">The statistics service used to refresh data.</param>
-/// <param name="settings">Configuration settings including cache duration and startup delay.</param>
-/// <param name="logger">Logger for diagnostic information.</param>
+/// <param name="statisticsService">The statistics service whose refreshes this loop drives.</param>
+/// <param name="settings">Statistics configuration: startup delay and cache duration (timer interval).</param>
+/// <param name="logger">The logger for lifecycle and trigger-source messages.</param>
 public sealed partial class StatisticsRefreshBackgroundService(
     StatisticsService statisticsService,
     StatisticsSettings settings,
     ILogger<StatisticsRefreshBackgroundService> logger
 ) : BackgroundService {
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Runs the refresh loop: waits the startup delay, forces an initial refresh, then repeatedly
+    /// refreshes on the periodic timer or on manual triggers until the host stops.
+    /// </summary>
+    /// <param name="stoppingToken">Signals that the host is shutting down.</param>
+    /// <returns>A task that completes when the service stops.</returns>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
         LogStarting( settings.StartupDelay, settings.CacheDuration );
 

@@ -4,18 +4,24 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for health endpoint authorization middleware.
+/// Integration tests for the health endpoint's accessibility, running the real web app in-memory via
+/// <see cref="CustomWebApplicationFactory"/> against the shared Redis container. Verifies the
+/// <c>/health</c> endpoint returns 200 OK with the expected JSON for the test client, and that the
+/// health middleware does not affect other routes.
 /// </summary>
 [TestClass]
 [TestCategory( "Integration" )]
 public class HealthEndpointAuthorizationTests {
+    /// <summary>The shared web application factory hosting the app for this test class.</summary>
     private static CustomWebApplicationFactory? s_factory;
+    /// <summary>The HTTP client connected to the test host.</summary>
     private static HttpClient? s_client;
 
     /// <summary>
-    /// Initializes the test factory and HTTP client for all tests in this class.
+    /// Builds the test host with worker services disabled and external integrations blanked, creates a
+    /// client, and migrates the identity database.
     /// </summary>
-    /// <param name="_">The test context provided by MSTest (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task Setup( TestContext _ ) {
         // Load configuration from appsettings.json and user secrets
@@ -49,7 +55,7 @@ public class HealthEndpointAuthorizationTests {
     }
 
     /// <summary>
-    /// Disposes the test factory after all tests in this class have completed.
+    /// Disposes the test host after the class completes.
     /// </summary>
     [ClassCleanup]
     public static void Cleanup( ) {
@@ -57,8 +63,8 @@ public class HealthEndpointAuthorizationTests {
     }
 
     /// <summary>
-    /// Tests that the health endpoint is accessible (the test environment appears as localhost).
-    /// In production, this would be restricted to internal Docker network IPs.
+    /// Verifies the health endpoint returns 200 OK for the test client (the test environment appears as
+    /// localhost). In production, this would be restricted to internal Docker network IPs.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -74,7 +80,8 @@ public class HealthEndpointAuthorizationTests {
     }
 
     /// <summary>
-    /// Tests that the health endpoint returns JSON with expected structure.
+    /// Verifies the health endpoint returns 200 OK with JSON containing the health status and a
+    /// timestamp.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -90,7 +97,8 @@ public class HealthEndpointAuthorizationTests {
     }
 
     /// <summary>
-    /// Tests that non-health endpoints are not affected by the health endpoint middleware.
+    /// Verifies a non-health route (the home page) is unaffected by the health middleware and returns
+    /// 200 OK.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -102,8 +110,6 @@ public class HealthEndpointAuthorizationTests {
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
     }
 
-    /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 }

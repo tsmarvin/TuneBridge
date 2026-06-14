@@ -4,27 +4,38 @@ using System.Text.Json.Nodes;
 namespace BridgeBeats.Core.Infrastructure.Storage.Car;
 
 /// <summary>
-/// Converts DAG-CBOR encoded bytes into a <see cref="JsonNode"/> tree.
+/// Converts a DAG-CBOR encoded block into a <see cref="System.Text.Json.Nodes.JsonNode"/> tree,
+/// following the IPLD dag-json conventions atproto records use.
 /// </summary>
 /// <remarks>
-/// DAG-CBOR is a deterministic subset of CBOR (RFC 7049) used by atproto.
-/// Tag 42 encodes CID links; bare byte strings encode binary data.
-/// Key ordering in maps is length-first, then lexicographic (deterministic CBOR).
+/// DAG-CBOR is a deterministic subset of CBOR (RFC 7049) used by atproto, in which the spec
+/// requires map key ordering to be length-first, then lexicographic. This decoder uses
+/// <see cref="System.Formats.Cbor.CborConformanceMode.Lax"/> and does <b>not</b> enforce
+/// canonical key ordering; the ordering property describes the format spec, not an invariant
+/// the decoder verifies. Scalars (integers, booleans, floats, text strings, null) map to their
+/// JSON equivalents. Two cases use the dag-json sentinel-object convention so the JSON is
+/// unambiguous: a CBOR byte string becomes <c>{"$bytes": "&lt;base64&gt;"}</c> and a CBOR tag-42
+/// CID link becomes <c>{"$link": "&lt;base32 cid&gt;"}</c>. Any other CBOR tag is rejected.
+/// Nesting is capped at depth 32 to bound work against maliciously deep input.
 /// </remarks>
 internal static class DagCborConverter {
 
     /// <summary>
-    /// Maximum nesting depth for CBOR maps and arrays.
-    /// atproto records are shallow; 32 levels is generous and prevents
-    /// unbounded recursion that would cause an uncatchable StackOverflow.
+    /// Maximum nesting depth for CBOR maps and arrays. atproto records are shallow, so 32 levels is
+    /// generous; decoding past this throws, preventing a deeply nested or recursive structure from
+    /// causing an uncatchable StackOverflow (a denial-of-service guard).
     /// </summary>
     private const int MaxDepth = 32;
 
     /// <summary>
-    /// Converts DAG-CBOR bytes to a <see cref="JsonNode"/> representation.
-    /// Returns null for a CBOR null value.
-    /// Throws <see cref="CarParseException"/> for malformed or unsupported CBOR.
+    /// Decodes DAG-CBOR bytes into a JSON node tree.
     /// </summary>
+    /// <param name="bytes">The DAG-CBOR encoded block bytes.</param>
+    /// <returns>The decoded <see cref="JsonNode"/> tree, or <see langword="null"/> if the top-level value is CBOR null.</returns>
+    /// <exception cref="CarParseException">
+    /// Thrown when nesting exceeds depth 32, an unsupported CBOR tag or state is encountered, or the
+    /// underlying CBOR is malformed.
+    /// </exception>
     internal static JsonNode? ToJsonNode( ReadOnlyMemory<byte> bytes ) {
         try {
             CborReader reader = new( bytes, CborConformanceMode.Lax );
@@ -36,6 +47,14 @@ internal static class DagCborConverter {
         }
     }
 
+    /// <summary>
+    /// Reads a single CBOR value at the current reader position and dispatches by its type,
+    /// recursing into maps and arrays.
+    /// </summary>
+    /// <param name="reader">The CBOR reader positioned at the value to read.</param>
+    /// <param name="depth">The current nesting depth, checked against <see cref="MaxDepth"/>.</param>
+    /// <returns>The decoded <see cref="JsonNode"/>, or <see langword="null"/> for a CBOR null value.</returns>
+    /// <exception cref="CarParseException">Thrown when depth exceeds <see cref="MaxDepth"/> or the CBOR state is unsupported.</exception>
     private static JsonNode? ReadValue( CborReader reader, int depth ) {
         if (depth > MaxDepth) {
             throw new CarParseException(
@@ -61,11 +80,22 @@ internal static class DagCborConverter {
         };
     }
 
+    /// <summary>
+    /// Consumes a CBOR null and returns a JSON null.
+    /// </summary>
+    /// <param name="reader">The CBOR reader positioned at a null value.</param>
+    /// <returns>Always <see langword="null"/>.</returns>
     private static JsonNode? ReadNull( CborReader reader ) {
         reader.ReadNull( );
         return null;
     }
 
+    /// <summary>
+    /// Reads a CBOR byte string and wraps it in the dag-json <c>$bytes</c> sentinel object with the
+    /// bytes base64-encoded.
+    /// </summary>
+    /// <param name="reader">The CBOR reader positioned at a byte string.</param>
+    /// <returns>A <c>{"$bytes": "&lt;base64&gt;"}</c> object.</returns>
     private static JsonNode ReadByteString( CborReader reader ) {
         byte[] bytes = reader.ReadByteString( );
         return JsonValue.Create( Convert.ToBase64String( bytes ) ) is JsonNode node
@@ -73,6 +103,12 @@ internal static class DagCborConverter {
             : new JsonObject { ["$bytes"] = JsonValue.Create( "" ) };
     }
 
+    /// <summary>
+    /// Reads a CBOR map into a <see cref="JsonObject"/>, recursing on each value at the next depth.
+    /// </summary>
+    /// <param name="reader">The CBOR reader positioned at the start of a map.</param>
+    /// <param name="depth">The current nesting depth; child values are read at <paramref name="depth"/> + 1.</param>
+    /// <returns>The decoded object.</returns>
     private static JsonNode ReadMap( CborReader reader, int depth ) {
         _ = reader.ReadStartMap( );
         JsonObject obj = [];
@@ -87,6 +123,12 @@ internal static class DagCborConverter {
         return obj;
     }
 
+    /// <summary>
+    /// Reads a CBOR array into a <see cref="JsonArray"/>, recursing on each element at the next depth.
+    /// </summary>
+    /// <param name="reader">The CBOR reader positioned at the start of an array.</param>
+    /// <param name="depth">The current nesting depth; elements are read at <paramref name="depth"/> + 1.</param>
+    /// <returns>The decoded array.</returns>
     private static JsonNode ReadArray( CborReader reader, int depth ) {
         _ = reader.ReadStartArray( );
         JsonArray arr = [];
@@ -99,6 +141,17 @@ internal static class DagCborConverter {
         return arr;
     }
 
+    /// <summary>
+    /// Reads a CBOR tagged value. Only tag 42 (an IPLD CID link) is supported; it must be followed
+    /// by a byte string carrying the <c>0x00</c> multibase prefix and the CID, which is re-encoded
+    /// to a base32 string and wrapped in the dag-json <c>$link</c> sentinel object.
+    /// </summary>
+    /// <param name="reader">The CBOR reader positioned at a tag.</param>
+    /// <returns>A <c>{"$link": "&lt;base32 cid&gt;"}</c> object for a tag-42 CID link.</returns>
+    /// <exception cref="CarParseException">
+    /// Thrown for any tag other than 42, when a tag-42 value is not a byte string, or when the link
+    /// bytes lack the <c>0x00</c> multibase prefix or are not a valid CID.
+    /// </exception>
     private static JsonNode ReadTag( CborReader reader ) {
         CborTag tag = reader.ReadTag( );
 
@@ -119,9 +172,8 @@ internal static class DagCborConverter {
             return new JsonObject { ["$link"] = JsonValue.Create( cid.ToString( ) ) };
         }
 
-        // Other tags: reject.
-        // Tag-42 reads a byte string directly (no recursive ReadValue), so depth is not applicable.
-        // Any other unsupported tag causes an immediate rejection.
+        // Other tags: reject. Tag-42 reads a byte string directly (no recursive ReadValue), so depth
+        // is not applicable; any other unsupported tag causes an immediate rejection.
         throw new CarParseException( $"Unsupported CBOR tag: {(ulong)tag}." );
     }
 }

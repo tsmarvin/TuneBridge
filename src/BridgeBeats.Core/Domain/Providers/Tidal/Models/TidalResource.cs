@@ -3,35 +3,44 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Tidal.Models {
 
     /// <summary>
-    /// Base resource object for all Tidal API entities following JSON:API specification.
-    /// All Tidal resources (tracks, albums, artists) share this base structure.
+    /// DTO mirroring a Tidal API (JSON:API-style) resource object.
     /// </summary>
     /// <remarks>
-    /// JSON:API resource objects MUST contain at least 'type' and 'id' members.
-    /// Documentation: https://jsonapi.org/format/#document-resource-objects
+    /// A resource object is the unit of data in a Tidal response. It is identified by
+    /// the <see cref="Type"/>/<see cref="Id"/> pair (for example <c>"tracks"</c>,
+    /// <c>"albums"</c>, <c>"artists"</c>, <c>"artworks"</c>, <c>"genres"</c>), carries
+    /// its own field values in <see cref="Attributes"/>, and links to other resources
+    /// via <see cref="Relationships"/>. Resources appear both as the primary
+    /// <see cref="TidalResponse{T}.Data"/> and as entries in
+    /// <see cref="TidalResponse{T}.Included"/>.
     /// </remarks>
     public sealed class TidalResource {
 
         /// <summary>
-        /// The resource type identifier (e.g., "tracks", "albums", "artists", "artworks").
+        /// Gets or sets the resource type, mapped from the Tidal <c>type</c> member
+        /// (for example <c>"tracks"</c>, <c>"albums"</c>, <c>"artists"</c>).
         /// </summary>
         [JsonPropertyName( "type" )]
         public string Type { get; set; } = string.Empty;
 
         /// <summary>
-        /// The unique identifier for this resource.
+        /// Gets or sets the resource identifier, mapped from the Tidal <c>id</c> member.
         /// </summary>
         [JsonPropertyName( "id" )]
         public string Id { get; set; } = string.Empty;
 
         /// <summary>
-        /// The resource's attributes containing the actual data.
+        /// Gets or sets the resource's field values, mapped from the Tidal
+        /// <c>attributes</c> object. May be <see langword="null"/> when the resource
+        /// is referenced only as an identifier.
         /// </summary>
         [JsonPropertyName( "attributes" )]
         public TidalAttributes? Attributes { get; set; }
 
         /// <summary>
-        /// The resource's relationships to other resources.
+        /// Gets or sets the resource's links to related resources, mapped from the
+        /// Tidal <c>relationships</c> object. May be <see langword="null"/> when no
+        /// relationships are returned.
         /// </summary>
         [JsonPropertyName( "relationships" )]
         public TidalRelationships? Relationships { get; set; }

@@ -5,31 +5,36 @@ using BridgeBeats.Contracts.Enums;
 namespace BridgeBeats.Contracts.Records;
 
 /// <summary>
-/// Result of a lookup operation, including partial result status and rate limit information.
+/// Orchestrator-facing envelope for a single lookup outcome. Wraps an optional resolved
+/// result with the metadata callers need to interpret it: whether it is partial, the saga
+/// it belongs to, and which providers were rate-limited. Produced by the lookup orchestrator,
+/// which may emit several of these over the life of one lookup.
 /// </summary>
 public sealed record LookupResult {
+
     /// <summary>
-    /// Gets the media link result, or null if no providers returned data.
+    /// The resolved cross-provider result, or <see langword="null"/> when no result is
+    /// available yet (for example, an early partial emission).
     /// </summary>
     [JsonPropertyName( "result" )]
     [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
     public MediaLinkResult? Result { get; init; }
 
     /// <summary>
-    /// Gets whether this is a partial result with pending providers.
+    /// <see langword="true"/> when this result is partial, meaning not every provider has
+    /// responded yet and a more complete result may follow.
     /// </summary>
     [JsonPropertyName( "isPartial" )]
     public bool IsPartial { get; init; }
 
-    /// <summary>
-    /// Gets the saga ID for tracking completion of pending providers.
-    /// </summary>
+    /// <summary>The identifier of the saga coordinating this lookup, when one is in play.</summary>
     [JsonPropertyName( "sagaId" )]
     [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
     public string? SagaId { get; init; }
 
     /// <summary>
-    /// Gets information about rate-limited providers, if any.
+    /// The providers currently rate-limited for this lookup, when any. Each entry carries
+    /// the provider's retry window; see <see cref="ProviderRateLimitInfo"/>.
     /// </summary>
     [JsonPropertyName( "rateLimitedProviders" )]
     [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
@@ -37,11 +42,16 @@ public sealed record LookupResult {
 }
 
 /// <summary>
-/// Information about a rate-limited provider for user notification.
+/// Describes one provider's rate-limit window during a lookup: which provider is limited,
+/// the absolute instant at which it may be retried, and optionally the specific endpoint.
 /// </summary>
 /// <param name="Provider">The provider that is rate-limited.</param>
-/// <param name="RetryAfter">When the rate limit expires.</param>
-/// <param name="Endpoint">The API endpoint that was rate-limited.</param>
+/// <param name="RetryAfter">
+/// The absolute wall-clock instant before which the provider should not be retried. This is
+/// an instant, not a duration.
+/// </param>
+/// <param name="Endpoint">The specific provider endpoint that is rate-limited, when the limit is endpoint-scoped; otherwise <see langword="null"/>.</param>
+
 public sealed record ProviderRateLimitInfo(
     [property: JsonPropertyName( "provider" )] SupportedProviders Provider,
     [property: JsonPropertyName( "retryAfter" )] DateTimeOffset RetryAfter,

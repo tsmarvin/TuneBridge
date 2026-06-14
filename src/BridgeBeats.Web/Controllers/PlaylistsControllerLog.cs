@@ -1,12 +1,15 @@
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// LoggerMessage methods for <see cref="PlaylistsController"/>.
+/// Source-generated <see cref="Microsoft.Extensions.Logging.LoggerMessageAttribute"/> logging methods
+/// for <see cref="PlaylistsController"/>.
 /// </summary>
 public partial class PlaylistsController {
     /// <summary>
-    /// Logs error loading user playlists.
+    /// Logs an error while loading a user's playlists.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="userId">The id of the user whose playlists were being loaded.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.PlaylistsControllerLoadError,
         Level = LogLevel.Error,
@@ -14,8 +17,11 @@ public partial class PlaylistsController {
     private partial void LogLoadError( Exception ex, string userId );
 
     /// <summary>
-    /// Logs error deleting playlist.
+    /// Logs an error while deleting a user's playlist.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="playlistId">The (sanitized) id of the playlist being deleted.</param>
+    /// <param name="userId">The id of the user who owns the playlist.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.PlaylistsControllerDeleteError,
         Level = LogLevel.Error,

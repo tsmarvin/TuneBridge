@@ -12,34 +12,52 @@ using Moq;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="LookupOrchestrator"/> to verify proper orchestration
-/// of lookup operations including cache checking, deduplication, saga creation, and queue submission.
+/// Tests <see cref="LookupOrchestrator"/>, the saga/dedup/queue orchestrator for the distributed lookup path.
+/// Covers constructor argument guards; the ISRC, UPC, metadata, provider-id, and free-text content entry points;
+/// cache-hit short-circuits and cache-miss enqueue behavior; the per-link interactive wait budget (90s total, a
+/// 5s floor); and the saga partial-versus-final resolution including rate-limit sentinels, in-flight dedup waits,
+/// resumed sagas, and lock release on error. Collaborators are mocked.
 /// </summary>
 [TestClass]
 public class LookupOrchestratorTests {
+    /// <summary>Mock cache repository used to drive cache-hit and cache-miss paths.</summary>
     private Mock<IMediaLinkCacheRepository> _cacheMock = null!;
+    /// <summary>Mock request deduplicator used to drive acquire/in-flight and completion-wait behavior.</summary>
     private Mock<IRequestDeduplicator> _deduplicatorMock = null!;
+    /// <summary>Mock saga state manager used to drive saga creation and partial/final state reads.</summary>
     private Mock<ISagaStateManager> _sagaManagerMock = null!;
+    /// <summary>Mock provider-queue resolver returning <see cref="_queueMock"/> for any provider.</summary>
     private Mock<IProviderQueueResolver<QueuedLookupRequest>> _queueResolverMock = null!;
+    /// <summary>Mock ATProto storage used to return the stored <see cref="MediaLinkResult"/> for a result URI.</summary>
     private Mock<IATProtoStorageService> _atProtoStorageMock = null!;
+    /// <summary>Mock request queue used to assert enqueue calls and their payloads/priorities.</summary>
     private Mock<IRequestQueue<QueuedLookupRequest>> _queueMock = null!;
+    /// <summary>Mock logger for the orchestrator.</summary>
     private Mock<ILogger<LookupOrchestrator>> _loggerMock = null!;
+    /// <summary>The set of enabled providers (Spotify, Apple Music, Tidal) the orchestrator fans out across.</summary>
     private HashSet<SupportedProviders> _enabledProviders = null!;
+    /// <summary>The orchestrator under test, rebuilt before each test.</summary>
     private LookupOrchestrator _orchestrator = null!;
 
+    /// <summary>Sample ISRC used as a track lookup value.</summary>
     private const string TestIsrc = "USRC17607839";
+    /// <summary>Sample UPC used as an album lookup value.</summary>
     private const string TestUpc = "012345678901";
+    /// <summary>Sample track title used in metadata lookups.</summary>
     private const string TestTitle = "Test Song";
+    /// <summary>Sample artist used in metadata lookups.</summary>
     private const string TestArtist = "Test Artist";
+    /// <summary>Sample AT-URI returned as a stored result pointer.</summary>
     private const string TestRecordUri = "at://did:plc:test/com.bridgebeats.media.link/123abc";
 
     /// <summary>
-    /// Gets or sets the test context for the current test.
+    /// MSTest-injected test context.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes mocks and test dependencies before each test.
+    /// Creates fresh mocks, sets the enabled-provider set, wires the queue resolver to the queue mock, and builds the
+    /// orchestrator before each test.
     /// </summary>
     [TestInitialize]
     public void Initialize( ) {
@@ -64,7 +82,7 @@ public class LookupOrchestratorTests {
     #region Constructor Tests
 
     /// <summary>
-    /// Verifies that the constructor creates a valid instance with all valid dependencies.
+    /// Verifies the constructor succeeds when all dependencies are provided.
     /// </summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
@@ -76,7 +94,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when cache is null.
+    /// Verifies a null cache repository is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullCache_ShouldThrowArgumentNullException( ) {
@@ -95,7 +113,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when deduplicator is null.
+    /// Verifies a null deduplicator is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullDeduplicator_ShouldThrowArgumentNullException( ) {
@@ -114,7 +132,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when saga manager is null.
+    /// Verifies a null saga state manager is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullSagaManager_ShouldThrowArgumentNullException( ) {
@@ -133,7 +151,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when queue resolver is null.
+    /// Verifies a null queue resolver is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullQueueResolver_ShouldThrowArgumentNullException( ) {
@@ -152,7 +170,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when ATProto storage is null.
+    /// Verifies a null ATProto storage service is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullAtProtoStorage_ShouldThrowArgumentNullException( ) {
@@ -171,7 +189,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when enabled providers is null.
+    /// Verifies a null enabled-providers set is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullEnabledProviders_ShouldThrowArgumentNullException( ) {
@@ -190,7 +208,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when logger is null.
+    /// Verifies a null logger is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
@@ -213,7 +231,7 @@ public class LookupOrchestratorTests {
     #region LookupByIsrcAsync Tests
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync returns an empty result when ISRC is null.
+    /// Verifies a null ISRC returns an empty, non-partial result without touching the deduplicator.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -227,7 +245,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync returns an empty result when ISRC is empty.
+    /// Verifies an empty ISRC returns an empty, non-partial result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -241,7 +259,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync returns an empty result when ISRC contains only whitespace.
+    /// Verifies a whitespace-only ISRC returns an empty, non-partial result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -255,7 +273,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync returns cached result when cache hit occurs.
+    /// Verifies a fresh (non-stale) ISRC cache hit returns immediately without acquiring the deduplication lock.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -279,7 +297,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync creates a saga and enqueues request when cache misses and deduplication is acquired.
+    /// Verifies a cache miss with the dedup lock acquired creates an ISRC saga and enqueues the first provider request
+    /// at <see cref="QueuePriority.Interactive"/>.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -313,8 +332,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the queued request carries the Interactive origin priority so the saga
-    /// coordinator can enqueue secondary lookups at the originating caller's priority.
+    /// Verifies the enqueued request carries <see cref="QueuePriority.Interactive"/> as its origin priority, so a
+    /// rate-limit deferral can later distinguish an interactive-origin request.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -344,7 +363,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync waits for completion when request is already in-flight.
+    /// Verifies that when another caller is already in flight, this caller waits for completion and reads the result
+    /// rather than creating a new saga.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -374,7 +394,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync retries cache check when in-flight request times out.
+    /// Verifies that when an in-flight wait times out (returns no URI), the orchestrator re-checks the cache (which
+    /// now hits), reading the cache twice in total.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -405,7 +426,7 @@ public class LookupOrchestratorTests {
     #region LookupByUpcAsync Tests
 
     /// <summary>
-    /// Verifies that LookupByUpcAsync returns an empty result when UPC is null.
+    /// Verifies a null UPC returns an empty, non-partial result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -419,7 +440,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByUpcAsync returns cached result when cache hit occurs.
+    /// Verifies a fresh UPC cache hit returns immediately.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -439,7 +460,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByUpcAsync queues the request with IsAlbum set to true when cache misses.
+    /// Verifies a UPC cache miss enqueues a request marked <c>IsAlbum = true</c> with
+    /// <see cref="LookupRequestType.UpcLookup"/> (UPC resolves an album/release).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -470,7 +492,7 @@ public class LookupOrchestratorTests {
     #region LookupByMetadataAsync Tests
 
     /// <summary>
-    /// Verifies that LookupByMetadataAsync returns an empty result when title is null.
+    /// Verifies a null title returns an empty result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -483,7 +505,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByMetadataAsync returns an empty result when artist is null.
+    /// Verifies a null artist returns an empty result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -496,7 +518,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByMetadataAsync returns cached result when cache hit occurs.
+    /// Verifies a metadata (title + artist) cache hit returns immediately.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -515,7 +537,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByMetadataAsync queues the request with title and artist metadata when cache misses.
+    /// Verifies a metadata cache miss enqueues a <see cref="LookupRequestType.SongLookup"/> request carrying the title
+    /// and artist.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -550,7 +573,7 @@ public class LookupOrchestratorTests {
     #region LookupByProviderIdAsync Tests
 
     /// <summary>
-    /// Verifies that LookupByProviderIdAsync returns an empty result when provider ID is null.
+    /// Verifies a null provider id returns an empty result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -563,7 +586,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByProviderIdAsync uses SongIdLookup type for track lookups.
+    /// Verifies a provider-id lookup for a track (<c>isAlbum: false</c>) enqueues a
+    /// <see cref="LookupRequestType.SongIdLookup"/> request.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -590,7 +614,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByProviderIdAsync uses AlbumIdLookup type for album lookups.
+    /// Verifies a provider-id lookup for an album (<c>isAlbum: true</c>) enqueues a
+    /// <see cref="LookupRequestType.AlbumIdLookup"/> request.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -621,7 +646,7 @@ public class LookupOrchestratorTests {
     #region LookupByContentAsync Tests
 
     /// <summary>
-    /// Verifies that LookupByContentAsync returns an empty collection when content is null.
+    /// Verifies null free-text content yields no streamed results.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -637,7 +662,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync returns an empty collection when content is empty.
+    /// Verifies empty free-text content yields no streamed results.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -653,7 +678,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync returns a result when content contains a Spotify URL.
+    /// Verifies a Spotify URL embedded in free text is extracted and resolved to a single streamed result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -682,7 +707,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync returns a result when content contains an Apple Music URL.
+    /// Verifies an Apple Music URL in free text is extracted and resolved to a single streamed result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -710,7 +735,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync returns a result when content contains a Tidal URL.
+    /// Verifies a Tidal URL in free text is extracted and resolved to a single streamed result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -738,7 +763,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync deduplicates identical URLs in the content.
+    /// Verifies the same URL appearing twice in free text is deduplicated to a single streamed result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -767,8 +792,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync uses the full interactive wait budget when the
-    /// content contains a single link.
+    /// Verifies a single link gets the full interactive wait budget (30 seconds), the configured interactive wait.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -803,8 +827,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync scales the per-link wait budget down when multiple
-    /// links are present so the total stays under the content wait budget (90s).
+    /// Verifies that with four links the 90-second total budget is divided per link, giving each a 22.5-second wait.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -844,8 +867,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync applies the per-link wait budget floor (5s) when
-    /// the content contains many links.
+    /// Verifies that with many links (20) the per-link wait is clamped at the 5-second floor rather than shrinking
+    /// proportionally.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -885,7 +908,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByContentAsync returns an empty collection when content has no music URLs.
+    /// Verifies free text containing only non-music URLs yields no results (the link regex matches only the supported
+    /// provider hosts).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -908,7 +932,8 @@ public class LookupOrchestratorTests {
     #region Saga and Partial Result Tests
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync returns a partial result with rate limit info when saga indicates partial completion.
+    /// Verifies that when the saga is partial with rate-limit info, the result is flagged partial and carries the
+    /// rate-limited provider list.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -957,8 +982,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the orchestrator keeps waiting after a partial result and returns the final
-    /// result when it is published within the time budget.
+    /// Verifies that when a partial saga becomes final within the wait budget, the orchestrator waits for final
+    /// completion and returns the final (non-partial) result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1014,8 +1039,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the orchestrator returns an honestly-flagged partial result when the final
-    /// result never arrives within the time budget.
+    /// Verifies that when the final result never arrives within budget, the orchestrator returns an honest partial
+    /// result carrying the saga id.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1061,8 +1086,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the orchestrator returns the partial with rate limit info when the
-    /// rate-limited sentinel is published while waiting for the final result.
+    /// Verifies that when the rate-limit sentinel is published during the final wait, the orchestrator returns a
+    /// partial result with the rate-limited provider info.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1116,8 +1141,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the orchestrator returns the partial immediately (without waiting)
-    /// when every pending provider is rate-limited.
+    /// Verifies that when every pending provider is already rate-limited, the orchestrator returns a partial result
+    /// immediately without entering the final wait.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1167,8 +1192,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that a second caller (already-in-flight branch) also waits for the final
-    /// result when the published result is only partial.
+    /// Verifies that an in-flight request whose saga is currently partial keeps waiting for the final result and
+    /// returns it once available, without creating a new saga.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1222,8 +1247,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that resuming a saga that already stored a partial result resolves it
-    /// directly without re-queueing the initial provider lookup.
+    /// Verifies that when the acquired saga is resumed and already holds a partial result, the orchestrator does not
+    /// re-enqueue and does not blind-wait, returning the existing partial.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1274,9 +1299,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that resuming a saga with a stored result releases the just-acquired
-    /// deduplication lock with the known result URI (instead of leaking it for its full
-    /// TTL), so concurrently blocked waiters receive the stored result.
+    /// Verifies that when a resumed saga has a stored partial result URI, the dedup lock is released with that known
+    /// URI (so waiters wake with the result) rather than with null.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1319,9 +1343,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the already-in-flight branch skips the blind completion wait when the
-    /// saga already stored a result and instead goes to the final-result wait, which honors
-    /// the rate-limit escape hatch.
+    /// Verifies that an in-flight request whose saga already has a stored rate-limited result skips the blind
+    /// completion wait and returns the stored partial directly.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1366,8 +1389,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the already-in-flight branch returns the saga's stored partial data
-    /// (instead of a links-less result) when the rate-limited sentinel is received.
+    /// Verifies that an in-flight wait resolving to the rate-limit sentinel returns the stored partial data (read from
+    /// the saga that appears on the second read) with rate-limited provider info.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1415,8 +1438,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that expired rate-limit info does not trigger the escape hatch: the
-    /// orchestrator keeps waiting and returns the final result when it arrives.
+    /// Verifies that when the saga's recorded rate limits have already expired, the orchestrator keeps waiting for the
+    /// final result rather than returning a stale rate-limited partial, and returns the final once it arrives.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1477,8 +1500,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that expired rate-limit info is not reported to the caller when the wait
-    /// budget runs out (no stale "retry after" messaging).
+    /// Verifies that when rate limits have expired and the budget is exhausted, the returned partial does not report
+    /// the expired rate limits (the rate-limited provider list is null).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1529,8 +1552,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the creator-path timeout returns the final result when the saga has a
-    /// FinalResultUri but no partial (e.g. ISRC/UPC direct lookups never write a partial).
+    /// Verifies that when the create-path completion wait times out but the saga has since completed with a final
+    /// result, the orchestrator re-reads the saga and returns the final (non-partial) result.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1570,8 +1593,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that the create path returns the saga's stored partial data (instead of a
-    /// links-less result) when the rate-limited sentinel is received.
+    /// Verifies that when the create-path wait resolves to the rate-limit sentinel, the orchestrator returns the
+    /// stored partial result with rate-limited provider info.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1618,9 +1641,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that a rate-limit condition arising in the subscribe gap (between reading
-    /// saga state and the completion subscription becoming active) is detected by the
-    /// missed-result check and resolved into a partial result via the sentinel.
+    /// Verifies that a rate limit appearing in the gap between enqueue and subscription is caught by the final-wait
+    /// missed-result check, returning a partial with rate-limited provider info.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1676,7 +1698,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that LookupByIsrcAsync releases the deduplication lock when an error occurs.
+    /// Verifies that when saga creation throws, the exception propagates and the dedup lock is released (with a null
+    /// result URI), preventing a stuck in-flight lock.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1702,9 +1725,9 @@ public class LookupOrchestratorTests {
     #region Helper Methods
 
     /// <summary>
-    /// Creates a new <see cref="LookupOrchestrator"/> instance with the configured mocks.
+    /// Builds a <see cref="LookupOrchestrator"/> wired to the current mock objects and enabled-provider set.
     /// </summary>
-    /// <returns>A new <see cref="LookupOrchestrator"/> instance.</returns>
+    /// <returns>A new orchestrator instance.</returns>
     private LookupOrchestrator CreateOrchestrator( ) {
         return new LookupOrchestrator(
             _cacheMock.Object,
@@ -1718,9 +1741,10 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Creates a test <see cref="MediaLinkResult"/> with sample data.
+    /// Builds a sample <see cref="MediaLinkResult"/> with one Spotify provider result, used as the stored result the
+    /// ATProto storage mock returns.
     /// </summary>
-    /// <returns>A new <see cref="MediaLinkResult"/> with Spotify test data.</returns>
+    /// <returns>A populated media-link result.</returns>
     private static MediaLinkResult CreateMediaLinkResult( ) {
         return new MediaLinkResult {
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
@@ -1737,8 +1761,15 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Creates a test <see cref="LookupSagaState"/> with the given provider completion states.
+    /// Builds a <see cref="LookupSagaState"/> with the given partial/final URIs, rate-limit info, and per-provider
+    /// completion states (each provider's <c>IsSuccess</c> mirrors its <c>IsComplete</c>).
     /// </summary>
+    /// <param name="isPartial">Whether the saga is marked partial.</param>
+    /// <param name="partialResultUri">The partial result AT-URI, if any.</param>
+    /// <param name="finalResultUri">The final result AT-URI, if any.</param>
+    /// <param name="rateLimitInfo">The recorded provider rate-limit info, if any.</param>
+    /// <param name="providers">The per-provider (provider, isComplete) pairs to seed provider states.</param>
+    /// <returns>A populated saga state.</returns>
     private static LookupSagaState CreateSagaState(
         bool isPartial = false,
         string? partialResultUri = null,
@@ -1773,7 +1804,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the cache mock to return null for ISRC lookups (cache miss).
+    /// Configures the cache mock to return a miss for ISRC lookups.
     /// </summary>
     private void SetupCacheMiss( ) {
         _ = _cacheMock
@@ -1782,7 +1813,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the cache mock to return null for UPC lookups (cache miss).
+    /// Configures the cache mock to return a miss for UPC lookups.
     /// </summary>
     private void SetupCacheMissForUpc( ) {
         _ = _cacheMock
@@ -1791,7 +1822,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the cache mock to return null for metadata lookups (cache miss).
+    /// Configures the cache mock to return a miss for metadata (title + artist) lookups.
     /// </summary>
     private void SetupCacheMissForMetadata( ) {
         _ = _cacheMock
@@ -1800,7 +1831,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the cache mock to return null for provider ID lookups (cache miss).
+    /// Configures the cache mock to return a miss for provider-id lookups.
     /// </summary>
     private void SetupCacheMissForProviderId( ) {
         _ = _cacheMock
@@ -1809,7 +1840,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the cache mock to return null for URL lookups (cache miss).
+    /// Configures the cache mock to return a miss for URL (free-text link) lookups.
     /// </summary>
     private void SetupCacheMissForUrl( ) {
         _ = _cacheMock
@@ -1818,7 +1849,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the deduplicator mock to return a successful acquisition result.
+    /// Configures the deduplicator mock so this caller acquires the in-flight lock.
     /// </summary>
     private void SetupDeduplicationAcquired( ) {
         _ = _deduplicatorMock
@@ -1827,7 +1858,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the deduplicator mock to indicate the request is already in-flight.
+    /// Configures the deduplicator mock so another caller already holds the in-flight lock.
     /// </summary>
     private void SetupDeduplicationInFlight( ) {
         _ = _deduplicatorMock
@@ -1836,7 +1867,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the saga manager mock for saga creation and state management.
+    /// Configures the saga manager mock to create a saga, accept provider-state initialization and initial-provider
+    /// calls, and return a non-partial saga on read.
     /// </summary>
     private void SetupSagaCreation( ) {
         _ = _sagaManagerMock
@@ -1872,7 +1904,7 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Configures the deduplicator mock to return a result URI when waiting for completion.
+    /// Configures the deduplicator mock so the completion wait resolves to the sample result URI.
     /// </summary>
     private void SetupDeduplicationWaitWithResult( ) {
         _ = _deduplicatorMock

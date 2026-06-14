@@ -11,60 +11,101 @@ using StackExchange.Redis;
 namespace BridgeBeats.Core.Infrastructure.Storage;
 
 /// <summary>
-/// Redis-backed implementation of <see cref="IATProtoSessionManager"/> that centralizes
-/// ATProto session management across all service instances.
+/// Maintains a single authenticated atproto agent for the BridgeBeats service account, caching its
+/// session in Redis so it survives across instances and process restarts. This centralizes ATProto
+/// session management for all service instances.
 /// </summary>
 /// <remarks>
-/// Session credentials are persisted to Redis and shared across worker instances. Token rotation
-/// is serialized via a distributed lock so only one process calls <c>refreshSession</c> at a time.
-/// Key pattern: <c>atproto:session:{identifier}</c>.
+/// This is the writer identity for the PDS, distinct from end-user OAuth sessions. Mutating the
+/// shared session is guarded twice: an in-process semaphore serializes local callers, and a
+/// distributed Redis lock (<c>SET NX</c> with a TTL, released by a compare-and-delete Lua script so
+/// only the owner can release) serializes across instances. The agent's credentials are persisted to
+/// Redis after every authentication and refresh, and cleared when an unrecoverable auth failure is
+/// observed. A short cooldown prevents repeated clears from competing failure events. Token refresh
+/// is driven by this class's event handlers rather than the agent's background timer. Session key
+/// pattern: <c>atproto:session:{identifier}</c>.
 /// </remarks>
 public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager, IDisposable {
 
+    /// <summary>Redis key prefix for the persisted session, completed with the account identifier.</summary>
     private const string SessionKeyPrefix = "atproto:session:";
+
+    /// <summary>Redis key prefix for the distributed credential-mutation lock, completed with the account identifier.</summary>
     private const string LockKeyPrefix = "atproto:auth:lock:";
 
     // s_refreshTimeout < s_lockExpiry / 2 — worst-case refresh+login pair (2×12s=24s) must stay under lock TTL (30s).
+    /// <summary>Default time-to-live of the distributed lock (30 seconds), after which it auto-expires.</summary>
     private static readonly TimeSpan s_lockExpiry = TimeSpan.FromSeconds( 30 );
+
+    /// <summary>Timeout applied to the default agent's HTTP client, bounding refresh and login calls (12 seconds).</summary>
     private static readonly TimeSpan s_refreshTimeout = TimeSpan.FromSeconds( 12 );
+
+    /// <summary>Interval between attempts to acquire the distributed lock while another instance holds it (200&#160;ms).</summary>
     private static readonly TimeSpan s_lockPollInterval = TimeSpan.FromMilliseconds( 200 );
+
+    /// <summary>Minimum interval between credential clears, suppressing clear storms from concurrent failure events (5 seconds).</summary>
     private static readonly TimeSpan s_cooldownWindow = TimeSpan.FromSeconds( 5 );
 
     // Test seam: overridable lock timing. Production defaults match the static fields above.
+    /// <summary>Gets the distributed lock TTL. Settable at construction to support testing.</summary>
     internal TimeSpan LockExpiry { get; init; } = s_lockExpiry;
+
+    /// <summary>Gets the lock-acquisition poll interval. Settable at construction to support testing.</summary>
     internal TimeSpan LockPollInterval { get; init; } = s_lockPollInterval;
 
-    // Lua script for atomic compare-and-delete of the distributed lock.
-    // Returns 1 if the key was deleted (we still owned it), 0 otherwise.
+    /// <summary>
+    /// Lua script that releases the distributed lock only when its stored value matches the caller's
+    /// token, so an instance can never release a lock another instance acquired after the first one's
+    /// TTL expired. Returns 1 if the key was deleted (we still owned it), 0 otherwise.
+    /// </summary>
     private const string ReleaseLockScript =
         "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
 
+    /// <summary>In-process semaphore serializing local access to the shared agent.</summary>
     private readonly SemaphoreSlim _agentLock = new( 1, 1 );
+
+    /// <summary>The Redis connection used for session persistence and the distributed lock.</summary>
     private readonly IConnectionMultiplexer _redis;
+
+    /// <summary>The logger for session lifecycle events.</summary>
     private readonly ILogger<RedisATProtoSessionManager> _logger;
+
+    /// <summary>The service-account identifier (handle) used to authenticate.</summary>
     private readonly string _identifier;
+
+    /// <summary>The service-account password used for fresh logins.</summary>
     private readonly string _password;
+
+    /// <summary>The fully qualified Redis key for this account's persisted session.</summary>
     private readonly string _sessionKey;
+
+    /// <summary>The fully qualified Redis key for this account's distributed lock.</summary>
     private readonly string _lockKey;
+
+    /// <summary>JSON options used to serialize and deserialize the persisted credentials.</summary>
     private readonly JsonSerializerOptions _jsonOptions;
+
+    /// <summary>Factory that creates a new agent, allowing the default construction to be overridden for testing.</summary>
     private readonly Func<BlueskyAgent> _agentFactory;
 
+    /// <summary>The current authenticated agent, or <see langword="null"/> when none is established.</summary>
     private BlueskyAgent? _agent;
+
+    /// <summary>The time of the most recent credential clear, used to enforce the cooldown window.</summary>
     private DateTimeOffset _lastClearAt = DateTimeOffset.MinValue;
+
+    /// <summary>Whether this instance has been disposed.</summary>
     private bool _disposed;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="RedisATProtoSessionManager"/> class.
+    /// Initializes a new session manager for a single service account.
     /// </summary>
-    /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    /// <param name="identifier">The ATProto account identifier (handle or DID).</param>
-    /// <param name="password">The ATProto app password.</param>
-    /// <param name="agentFactory">
-    /// Optional factory for creating <see cref="BlueskyAgent"/> instances.
-    /// Defaults to creating agents with background token refresh disabled and a
-    /// <see cref="s_refreshTimeout"/>-bounded HTTP timeout.
-    /// </param>
+    /// <param name="redis">The Redis connection used for session persistence and the distributed lock.</param>
+    /// <param name="logger">The logger for session lifecycle events.</param>
+    /// <param name="identifier">The service-account identifier (handle or DID) to authenticate as.</param>
+    /// <param name="password">The service-account app password used for fresh logins.</param>
+    /// <param name="agentFactory">An optional factory for creating agents; when null, a default agent with background token refresh disabled and an <see cref="s_refreshTimeout"/>-bounded HTTP timeout is used.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="redis"/>, <paramref name="logger"/>, <paramref name="identifier"/>, or <paramref name="password"/> is null.</exception>
     public RedisATProtoSessionManager(
         IConnectionMultiplexer redis,
         ILogger<RedisATProtoSessionManager> logger,
@@ -88,7 +129,14 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
         _agentFactory = agentFactory ?? CreateDefaultAgent;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Returns an authenticated agent for the service account, reusing the current one when possible
+    /// and otherwise restoring or establishing a session under the local and distributed locks.
+    /// </summary>
+    /// <param name="cancellationToken">A token to cancel the wait and any authentication work.</param>
+    /// <returns>An authenticated agent.</returns>
+    /// <exception cref="ObjectDisposedException">Thrown when the manager has been disposed.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the distributed lock cannot be acquired within its TTL or login fails.</exception>
     public async Task<BlueskyAgent> GetAuthenticatedAgentAsync( CancellationToken cancellationToken = default ) {
         ObjectDisposedException.ThrowIf( _disposed, this );
 
@@ -116,7 +164,13 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Discards the current agent and any stored credentials and performs a fresh authentication.
+    /// </summary>
+    /// <param name="cancellationToken">A token to cancel the wait and the re-authentication.</param>
+    /// <returns>A freshly authenticated agent.</returns>
+    /// <exception cref="ObjectDisposedException">Thrown when the manager has been disposed.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the distributed lock cannot be acquired within its TTL or login fails.</exception>
     public async Task<BlueskyAgent> ForceReauthenticateAsync( CancellationToken cancellationToken = default ) {
         ObjectDisposedException.ThrowIf( _disposed, this );
 
@@ -141,9 +195,13 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Acquires the distributed Redis credential lock, then restores or logs in.
-    /// Lock-losers block-acquire and rotate sequentially.
+    /// Acquires the distributed Redis lock (polling until the TTL elapses if another instance holds
+    /// it), then re-checks the agent, restores the session from Redis, or performs a fresh login,
+    /// releasing the lock on completion. Lock-losers block-acquire and rotate sequentially.
     /// </summary>
+    /// <param name="cancellationToken">A token to cancel the lock wait and the authentication work.</param>
+    /// <returns>An authenticated agent.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the lock cannot be acquired within its TTL or login fails.</exception>
     private async Task<BlueskyAgent> AcquireDistributedLockAndRefreshAsync( CancellationToken cancellationToken ) {
         IDatabase db = _redis.GetDatabase( );
         string lockValue = Guid.NewGuid( ).ToString( );
@@ -190,10 +248,12 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Attempts to restore a session from Redis-stored credentials.
-    /// Callers must hold the distributed Redis lock before calling this method.
+    /// Attempts to restore the session from Redis: deserializes the persisted credentials, rebuilds
+    /// the agent's credential, and refreshes it; on success, persists the refreshed credentials and
+    /// adopts the agent. Callers must hold the distributed Redis lock before calling this method.
     /// </summary>
-    /// <returns>True if session was successfully restored, false otherwise.</returns>
+    /// <param name="cancellationToken">A token to cancel the restore.</param>
+    /// <returns><see langword="true"/> when a session was restored and refreshed; otherwise <see langword="false"/>.</returns>
     private async Task<bool> TryRestoreSessionAsync( CancellationToken cancellationToken ) {
         BlueskyAgent? agent = null;
         try {
@@ -264,9 +324,13 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Performs a fresh login with the stored identifier and password.
-    /// Callers must hold the distributed Redis lock before calling this method.
+    /// Performs a fresh login with the service-account identifier and password, persisting the
+    /// resulting credentials and adopting the new agent. Callers must hold the distributed Redis lock
+    /// before calling this method.
     /// </summary>
+    /// <param name="cancellationToken">A token to cancel the login.</param>
+    /// <returns>The newly authenticated agent.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the PDS login does not succeed.</exception>
     private async Task<BlueskyAgent> PerformFreshLoginAsync( CancellationToken cancellationToken ) {
         BlueskyAgent? agent = null;
         try {
@@ -302,8 +366,10 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Subscribes to agent authentication events to persist credential updates.
+    /// Subscribes to the agent's authentication lifecycle events so credentials are persisted on
+    /// authentication and update, and cleared on refresh failure or unauthentication.
     /// </summary>
+    /// <param name="agent">The agent to subscribe to.</param>
     private void SubscribeToAgentEvents( BlueskyAgent agent ) {
         agent.Authenticated += OnAuthenticated;
         agent.CredentialsUpdated += OnCredentialsUpdated;
@@ -312,8 +378,11 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Handles the Authenticated event - persists initial credentials.
+    /// Handles the agent's authenticated event by persisting the new credentials to Redis on a
+    /// background task.
     /// </summary>
+    /// <param name="sender">The agent that raised the event.</param>
+    /// <param name="e">The event arguments.</param>
     private void OnAuthenticated( object? sender, AuthenticatedEventArgs e ) {
         LogAgentAuthenticated( _identifier );
 
@@ -330,8 +399,12 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Handles the CredentialsUpdated event - persists refreshed credentials.
+    /// Handles the agent's credentials-updated event (for example after a token refresh) by
+    /// persisting the updated credentials, but only when the event came from the currently adopted
+    /// agent.
     /// </summary>
+    /// <param name="sender">The agent that raised the event.</param>
+    /// <param name="e">The event arguments.</param>
     private void OnCredentialsUpdated( object? sender, CredentialsUpdatedEventArgs e ) {
         LogCredentialsUpdated( _identifier );
 
@@ -359,18 +432,18 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Handles the TokenRefreshFailed event.
-    /// Disposes the failing agent if it is still current, and clears the shared Redis credential
-    /// only on a genuine auth rejection (dead-token error name per the refreshSession lexicon,
-    /// or 401/403). Transient transport failures (5xx/null) keep the credential so other
-    /// processes are not forced into a re-login storm.
+    /// Handles the agent's token-refresh-failed event. Drops the current agent and, when the failure
+    /// is unrecoverable (error name <c>ExpiredToken</c>, <c>InvalidToken</c>, or <c>AccountTakedown</c>,
+    /// or HTTP 401/403), clears the stored credentials, subject to the cooldown window. A transient
+    /// failure drops the agent without clearing, so a subsequent call re-attempts a refresh.
     /// </summary>
+    /// <param name="sender">The agent that raised the event.</param>
+    /// <param name="e">The event arguments carrying the error and status code.</param>
     private void OnTokenRefreshFailed( object? sender, TokenRefreshFailedEventArgs e ) {
         // Classify the refresh failure: clear the SHARED credential only when the refresh
         // token is genuinely dead. Decide on the XRPC error NAME first (it is authoritative
         // and the dead-token cases are HTTP 400, not 401); fall back to status band only when
         // no error body is present.
-        //
         // Dead-token error names per com.atproto.server.refreshSession lexicon.
         string? errorName = e.Error?.Error;
         int? status = e.StatusCode.HasValue ? (int)e.StatusCode.Value : null;
@@ -432,10 +505,11 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Handles the Unauthenticated event - the PDS has explicitly ended the session.
-    /// This is an unrecoverable auth result; always clear the shared Redis credential
-    /// (subject to the cooldown guard to prevent burst clears).
+    /// Handles the agent's unauthenticated event (the PDS has explicitly ended the session) by
+    /// dropping the current agent and clearing the stored credentials, subject to the cooldown window.
     /// </summary>
+    /// <param name="sender">The agent that raised the event.</param>
+    /// <param name="e">The event arguments.</param>
     private void OnUnauthenticated( object? sender, UnauthenticatedEventArgs e ) {
         LogUnauthenticated( _identifier );
 
@@ -473,8 +547,11 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Persists the agent's current credentials to Redis.
+    /// Serializes the agent's current credentials (including the refresh token and, when present, the
+    /// DPoP proof key and nonce) and stores them in Redis under the session key. No-ops when the agent
+    /// is not authenticated.
     /// </summary>
+    /// <param name="agent">The authenticated agent whose credentials are persisted.</param>
     private async Task PersistCredentialsFromAgentAsync( BlueskyAgent agent ) {
         if (!agent.IsAuthenticated || agent.Credentials is null) {
             LogCannotPersist( );
@@ -512,7 +589,7 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Clears stored credentials from Redis.
+    /// Deletes the persisted session from Redis, forcing the next authentication to perform a fresh login.
     /// </summary>
     private async Task ClearStoredCredentialsAsync( ) {
         IDatabase db = _redis.GetDatabase( );
@@ -521,9 +598,12 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Releases the distributed lock using an atomic compare-and-delete Lua script,
-    /// preventing deletion of a lock that was re-acquired by another process after TTL expiry.
+    /// Releases the distributed lock using the compare-and-delete Lua script, so the lock is only
+    /// deleted when its stored value still matches this caller's token (preventing deletion of a lock
+    /// another process re-acquired after TTL expiry). Failures are logged and swallowed.
     /// </summary>
+    /// <param name="db">The Redis database to run the release script against.</param>
+    /// <param name="lockValue">The caller's unique lock token, compared before deletion.</param>
     private async Task ReleaseLockAsync( IDatabase db, string lockValue ) {
         try {
             _ = await db.ScriptEvaluateAsync(
@@ -537,16 +617,19 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     }
 
     /// <summary>
-    /// Default agent factory: creates a <see cref="BlueskyAgent"/> with background token refresh
-    /// disabled and an HTTP timeout bounded below the distributed lock TTL.
+    /// Creates the default agent used when no factory is supplied: background token refresh is
+    /// disabled (refresh is driven by this class instead) and the HTTP client uses the refresh timeout.
     /// </summary>
+    /// <returns>A new agent configured for service-account use.</returns>
     private static BlueskyAgent CreateDefaultAgent( ) =>
         new( new BlueskyAgentOptions {
             EnableBackgroundTokenRefresh = false,
             HttpClientOptions = new HttpClientOptions( timeout: s_refreshTimeout )
         } );
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Disposes the current agent and the in-process lock. Idempotent; safe to call more than once.
+    /// </summary>
     public void Dispose( ) {
         if (_disposed) { return; }
 

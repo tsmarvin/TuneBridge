@@ -4,40 +4,45 @@ using BridgeBeats.Contracts.Interfaces;
 namespace BridgeBeats.Contracts.Enums;
 
 /// <summary>
-/// Identifies the supported music streaming platforms for cross-platform lookup and link translation.
+/// Identifies a music streaming provider that BridgeBeats can resolve links for. Used as the key for
+/// provider-scoped dictionaries, queues, and saga state across the solution.
 /// </summary>
 /// <remarks>
-/// New providers can be added by extending this enum and implementing the <see cref="IMusicLookupService"/> interface.
+/// New providers are added by extending this enum and implementing <see cref="IMusicLookupService"/>.
+/// Values are explicit and non-zero: there is no <c>Unknown</c> / 0 member because every value names
+/// a real provider. <see cref="DescriptionAttribute"/> supplies a display name where it differs from
+/// the member name.
 /// </remarks>
 public enum SupportedProviders {
+
     /// <summary>
-    /// Apple Music streaming service. Requires MusicKit API credentials (Team ID, Key ID, and private key .p8 file).
-    /// Uses JWT authentication.
+    /// Apple Music (displays as "Apple Music"). Authenticated with a MusicKit JWT built from the
+    /// Team ID, Key ID, and private key (.p8) credentials.
     /// </summary>
     /// <remarks>
-    /// API Documentation: https://developer.apple.com/documentation/applemusicapi
-    /// Credentials from: https://developer.apple.com/account/
+    /// API documentation: https://developer.apple.com/documentation/applemusicapi.
+    /// Credentials: https://developer.apple.com/account/.
     /// </remarks>
     [Description("Apple Music")]
     AppleMusic = 1,
 
     /// <summary>
-    /// Spotify streaming service. Requires Spotify for Developers app credentials (Client ID and Client Secret).
-    /// Uses OAuth 2.0 client credentials flow.
+    /// Spotify (the member name doubles as the display name). Authenticated with the OAuth 2.0 client
+    /// credentials flow using a Client ID and Client Secret.
     /// </summary>
     /// <remarks>
-    /// API Documentation: https://developer.spotify.com/documentation/web-api
-    /// Credentials from: https://developer.spotify.com/dashboard
+    /// API documentation: https://developer.spotify.com/documentation/web-api.
+    /// Credentials: https://developer.spotify.com/dashboard.
     /// </remarks>
     Spotify = 2,
 
     /// <summary>
-    /// Tidal streaming service. Requires Tidal API credentials (Client ID and Client Secret).
-    /// Uses OAuth 2.0 client credentials flow.
+    /// Tidal (displays as "Tidal"). Authenticated with the OAuth 2.0 client credentials flow using a
+    /// Client ID and Client Secret.
     /// </summary>
     /// <remarks>
-    /// API Documentation: https://developer.tidal.com/documentation/api/api-overview
-    /// Credentials from: https://developer.tidal.com/
+    /// API documentation: https://developer.tidal.com/documentation/api/api-overview.
+    /// Credentials: https://developer.tidal.com/.
     /// </remarks>
     [Description("Tidal")]
     Tidal = 3,

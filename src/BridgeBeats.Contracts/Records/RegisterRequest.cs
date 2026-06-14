@@ -2,9 +2,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace BridgeBeats.Contracts.Records {
 
-    /// <summary>Request for user registration.</summary>
-    /// <param name="Email">User email address (will be used as unique identifier).</param>
-    /// <param name="Password">User password.</param>
+    /// <summary>
+    /// First-party account registration request. Carries DataAnnotations validation on its
+    /// fields so it can be bound and validated as a model.
+    /// </summary>
+    /// <param name="Email">The new account's email address, used as the unique identifier. Required and validated as an email address.</param>
+    /// <param name="Password">The new account's password. Required.</param>
     public record RegisterRequest(
         [Required][EmailAddress] string Email,
         [Required] string Password

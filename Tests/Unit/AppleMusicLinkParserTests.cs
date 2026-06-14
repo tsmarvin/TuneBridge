@@ -3,13 +3,23 @@ using BridgeBeats.Providers.AppleMusic;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for AppleMusicLinkParser to verify URL parsing logic.
+/// Tests <see cref="AppleMusicLinkParser.TryParseUri"/>, which parses an Apple Music web URL into an
+/// API request path, a storefront code, and an album-versus-track classification.
 /// </summary>
+/// <remarks>
+/// The load-bearing invariant exercised throughout: an <c>?i=</c> query parameter selects a track
+/// within an album, so its presence yields a <c>songs/{id}</c> request and <c>isAlbum = false</c>,
+/// while its absence yields an <c>albums/{id}</c> request and <c>isAlbum = true</c>. The parser also
+/// extracts the storefront segment (e.g. <c>us</c>, <c>cl</c>) and strips all other query parameters
+/// from the resulting request path.
+/// </remarks>
 [TestClass]
 public class AppleMusicLinkParserTests {
 
     /// <summary>
-    /// Verifies that TryParseUri extracts track ID correctly when URL contains 'ls' query parameter.
+    /// Verifies that a URL carrying an <c>?i=</c> track selector followed by a bare <c>ls</c> flag
+    /// parses as a track: the <c>i</c> value becomes the song id, the storefront is extracted, and the
+    /// trailing query is dropped from the request path.
     /// </summary>
     [TestMethod]
     public void TryParseUri_WithTrackIdAndLsQueryParam_ExtractsTrackIdCorrectly( ) {
@@ -27,7 +37,8 @@ public class AppleMusicLinkParserTests {
     }
 
     /// <summary>
-    /// Verifies that TryParseUri extracts track ID correctly when URL contains 'uo' query parameter.
+    /// Verifies that a URL with an <c>?i=</c> track selector plus a <c>uo</c> query parameter parses as
+    /// a track, taking the song id from <c>i</c> and discarding the <c>uo</c> parameter.
     /// </summary>
     [TestMethod]
     public void TryParseUri_WithTrackIdAndUoQueryParam_ExtractsTrackIdCorrectly( ) {
@@ -45,7 +56,8 @@ public class AppleMusicLinkParserTests {
     }
 
     /// <summary>
-    /// Verifies that TryParseUri extracts track ID correctly when URL has no additional query parameters.
+    /// Verifies that a URL whose only query parameter is the <c>?i=</c> track selector parses as a
+    /// track, producing a <c>songs/{id}</c> request from the <c>i</c> value.
     /// </summary>
     [TestMethod]
     public void TryParseUri_WithTrackIdWithoutQueryParams_ExtractsTrackIdCorrectly( ) {
@@ -63,7 +75,8 @@ public class AppleMusicLinkParserTests {
     }
 
     /// <summary>
-    /// Verifies that TryParseUri extracts album ID correctly when URL has query parameters but no track ID.
+    /// Verifies that a URL with query parameters but no <c>?i=</c> selector parses as an album, taking
+    /// the path id as the album id and dropping the unrelated query parameters.
     /// </summary>
     [TestMethod]
     public void TryParseUri_WithAlbumIdAndQueryParams_ExtractsAlbumIdCorrectly( ) {
@@ -81,7 +94,8 @@ public class AppleMusicLinkParserTests {
     }
 
     /// <summary>
-    /// Verifies that TryParseUri extracts ID correctly when URL contains multiple query parameters.
+    /// Verifies that, given several query parameters including <c>?i=</c>, the parser still classifies
+    /// the URL as a track and extracts the <c>i</c> value as the song id, ignoring all other parameters.
     /// </summary>
     [TestMethod]
     public void TryParseUri_WithMultipleQueryParams_ExtractsIdCorrectly( ) {
@@ -99,7 +113,8 @@ public class AppleMusicLinkParserTests {
     }
 
     /// <summary>
-    /// Verifies that TryParseUri extracts album ID correctly when URL only has non-track query parameters.
+    /// Verifies that an album URL whose query consists only of non-selector parameters (<c>ls</c>,
+    /// <c>app</c>) parses as an album, keeping the path id as the album id.
     /// </summary>
     [TestMethod]
     public void TryParseUri_AlbumWithQueryParamsOnly_ExtractsAlbumIdCorrectly( ) {
@@ -117,7 +132,8 @@ public class AppleMusicLinkParserTests {
     }
 
     /// <summary>
-    /// Verifies that TryParseUri extracts album ID correctly when URL contains affiliate token query parameter.
+    /// Verifies that an album URL carrying an affiliate <c>at</c> parameter (and <c>uo</c>) but no
+    /// <c>?i=</c> selector parses as an album, taking the path id as the album id.
     /// </summary>
     [TestMethod]
     public void TryParseUri_AlbumWithAtQueryParam_ExtractsAlbumIdCorrectly( ) {
@@ -135,7 +151,8 @@ public class AppleMusicLinkParserTests {
     }
 
     /// <summary>
-    /// Verifies that TryParseUri extracts song ID correctly from direct song URLs with query parameters.
+    /// Verifies that a direct <c>/song/</c> URL (rather than an album URL with an <c>?i=</c> selector)
+    /// parses as a track, taking the path id as the song id and stripping the query parameters.
     /// </summary>
     [TestMethod]
     public void TryParseUri_DirectSongUrlWithQueryParams_ExtractsSongIdCorrectly( ) {

@@ -5,11 +5,17 @@ using BridgeBeats.Contracts.Records;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for Phase 2 queue contract records and enums.
-/// Tests record equality, JSON serialization round-trips, and enum value coverage.
+/// Unit tests for the queue-and-rate-limit contract surface in <c>BridgeBeats.Contracts</c>:
+/// the <see cref="QueuePriority"/> enum and the records <see cref="QueuedLookupRequest"/>,
+/// <see cref="QueuedMessage{T}"/>, <see cref="QueueDepth"/>, <see cref="DeduplicationResult"/>,
+/// <see cref="RateLimitState"/>, <see cref="RateLimitedEndpoint"/>, <see cref="LookupSagaState"/>,
+/// <see cref="ProviderLookupState"/>, <see cref="QueueSettings"/>, and <see cref="PriorityWeights"/>.
+/// Cover record value-equality, camelCase JSON round-tripping with null-omission for optional
+/// fields, default values, and the computed <see cref="LookupSagaState.IsComplete"/> invariant.
 /// </summary>
 [TestClass]
 public class QueueContractsTests {
+    /// <summary>Shared camelCase, non-indented serializer options matching the wire contract.</summary>
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) {
         WriteIndented = false,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -18,7 +24,8 @@ public class QueueContractsTests {
     #region QueuePriority Enum Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueuePriority"/> enum has expected numeric values.
+    /// <see cref="QueuePriority"/> has the expected ordinal values: Interactive=0, Background=1,
+    /// Bulk=2 (the lower ordinal is the higher-priority lane).
     /// </summary>
     [TestMethod]
     public void QueuePriority_HasExpectedValues( ) {
@@ -32,9 +39,7 @@ public class QueueContractsTests {
         Assert.AreEqual( 2, bulk );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="QueuePriority"/> enum has exactly three values.
-    /// </summary>
+    /// <summary><see cref="QueuePriority"/> defines exactly three lanes.</summary>
     [TestMethod]
     public void QueuePriority_HasExactlyThreeValues( ) {
         // Arrange
@@ -49,7 +54,8 @@ public class QueueContractsTests {
     #region QueuedLookupRequest Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueuedLookupRequest"/> record equality returns true for identical records.
+    /// Two <see cref="QueuedLookupRequest"/> instances with identical field values are equal and
+    /// share a hash code (record value-equality).
     /// </summary>
     [TestMethod]
     public void QueuedLookupRequest_Equality_ReturnsTrueForIdenticalRecords( ) {
@@ -78,7 +84,7 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueuedLookupRequest"/> record equality returns false for different records.
+    /// Two <see cref="QueuedLookupRequest"/> instances differing only by <c>RequestId</c> are not equal.
     /// </summary>
     [TestMethod]
     public void QueuedLookupRequest_Equality_ReturnsFalseForDifferentRecords( ) {
@@ -103,7 +109,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueuedLookupRequest"/> serializes and deserializes correctly via JSON round-trip.
+    /// A fully-populated <see cref="QueuedLookupRequest"/> (including optional fields) survives a
+    /// JSON serialize/deserialize round trip unchanged.
     /// </summary>
     [TestMethod]
     public void QueuedLookupRequest_Serialization_RoundTripsCorrectly( ) {
@@ -133,7 +140,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueuedLookupRequest"/> JSON serialization omits null optional fields.
+    /// Serializing a <see cref="QueuedLookupRequest"/> with unset optional fields omits
+    /// <c>artist</c>, <c>title</c>, and <c>rateLimitedEndpoint</c> from the JSON.
     /// </summary>
     [TestMethod]
     public void QueuedLookupRequest_Serialization_OmitsNullOptionalFields( ) {
@@ -160,7 +168,8 @@ public class QueueContractsTests {
     #region QueuedMessage<T> Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueuedMessage{T}"/> record equality returns true for identical records.
+    /// Two <see cref="QueuedMessage{T}"/> envelopes with identical message id, payload, and
+    /// enqueue time are equal and share a hash code.
     /// </summary>
     [TestMethod]
     public void QueuedMessage_Equality_ReturnsTrueForIdenticalRecords( ) {
@@ -175,7 +184,7 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueuedMessage{T}"/> serializes and deserializes correctly via JSON round-trip.
+    /// A <see cref="QueuedMessage{T}"/> survives a JSON serialize/deserialize round trip unchanged.
     /// </summary>
     [TestMethod]
     public void QueuedMessage_Serialization_RoundTripsCorrectly( ) {
@@ -197,7 +206,8 @@ public class QueueContractsTests {
     #region QueueDepth Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueueDepth"/> record equality returns true for identical records.
+    /// Two <see cref="QueueDepth"/> snapshots with identical per-lane counts and total are equal
+    /// and share a hash code.
     /// </summary>
     [TestMethod]
     public void QueueDepth_Equality_ReturnsTrueForIdenticalRecords( ) {
@@ -211,7 +221,7 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueDepth"/> serializes and deserializes correctly via JSON round-trip.
+    /// A <see cref="QueueDepth"/> survives a JSON serialize/deserialize round trip unchanged.
     /// </summary>
     [TestMethod]
     public void QueueDepth_Serialization_RoundTripsCorrectly( ) {
@@ -232,7 +242,8 @@ public class QueueContractsTests {
     #region DeduplicationResult Tests
 
     /// <summary>
-    /// Verifies that <see cref="DeduplicationResult"/> record equality returns true for identical records.
+    /// Two <see cref="DeduplicationResult"/> instances with identical acquired/in-flight flags and
+    /// request key are equal and share a hash code.
     /// </summary>
     [TestMethod]
     public void DeduplicationResult_Equality_ReturnsTrueForIdenticalRecords( ) {
@@ -246,7 +257,7 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="DeduplicationResult"/> serializes and deserializes correctly via JSON round-trip.
+    /// A <see cref="DeduplicationResult"/> survives a JSON serialize/deserialize round trip unchanged.
     /// </summary>
     [TestMethod]
     public void DeduplicationResult_Serialization_RoundTripsCorrectly( ) {
@@ -267,7 +278,8 @@ public class QueueContractsTests {
     #region RateLimitState Tests
 
     /// <summary>
-    /// Verifies that <see cref="RateLimitState"/> record equality returns true for identical records.
+    /// Two <see cref="RateLimitState"/> instances with identical limited flag, retry-after instant,
+    /// and time-remaining are equal and share a hash code.
     /// </summary>
     [TestMethod]
     public void RateLimitState_Equality_ReturnsTrueForIdenticalRecords( ) {
@@ -283,7 +295,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RateLimitState"/> serializes and deserializes correctly via JSON round-trip.
+    /// A rate-limited <see cref="RateLimitState"/> survives a JSON serialize/deserialize round trip
+    /// unchanged.
     /// </summary>
     [TestMethod]
     public void RateLimitState_Serialization_RoundTripsCorrectly( ) {
@@ -300,7 +313,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RateLimitState"/> JSON serialization omits null optional fields.
+    /// Serializing a not-rate-limited <see cref="RateLimitState"/> omits the null <c>retryAfter</c>
+    /// and <c>timeRemaining</c> fields from the JSON.
     /// </summary>
     [TestMethod]
     public void RateLimitState_Serialization_OmitsNullOptionalFields( ) {
@@ -320,7 +334,8 @@ public class QueueContractsTests {
     #region RateLimitedEndpoint Tests
 
     /// <summary>
-    /// Verifies that <see cref="RateLimitedEndpoint"/> record equality returns true for identical records.
+    /// Two <see cref="RateLimitedEndpoint"/> instances with identical endpoint and retry-after
+    /// instant are equal and share a hash code.
     /// </summary>
     [TestMethod]
     public void RateLimitedEndpoint_Equality_ReturnsTrueForIdenticalRecords( ) {
@@ -335,7 +350,7 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RateLimitedEndpoint"/> serializes and deserializes correctly via JSON round-trip.
+    /// A <see cref="RateLimitedEndpoint"/> survives a JSON serialize/deserialize round trip unchanged.
     /// </summary>
     [TestMethod]
     public void RateLimitedEndpoint_Serialization_RoundTripsCorrectly( ) {
@@ -356,7 +371,8 @@ public class QueueContractsTests {
     #region LookupSagaState Tests
 
     /// <summary>
-    /// Verifies that <see cref="LookupSagaState"/> record equality compares value properties correctly.
+    /// A <see cref="LookupSagaState"/> and its <c>with</c>-expression clone are equal, share a hash
+    /// code, and carry the same key value properties.
     /// </summary>
     [TestMethod]
     public void LookupSagaState_Equality_ComparesValueProperties( ) {
@@ -387,7 +403,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="LookupSagaState"/> serializes and deserializes correctly via JSON round-trip.
+    /// A <see cref="LookupSagaState"/> with per-provider <see cref="ProviderLookupState"/> entries
+    /// survives a JSON serialize/deserialize round trip, preserving its key fields and provider map.
     /// </summary>
     [TestMethod]
     public void LookupSagaState_Serialization_RoundTripsCorrectly( ) {
@@ -421,7 +438,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="LookupSagaState.IsComplete"/> returns false when no provider states exist.
+    /// <see cref="LookupSagaState.IsComplete"/> is <c>false</c> when no provider states are
+    /// registered (the empty-dictionary edge is deliberately incomplete).
     /// </summary>
     [TestMethod]
     public void LookupSagaState_IsComplete_ReturnsFalseWhenEmpty( ) {
@@ -438,7 +456,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="LookupSagaState.IsComplete"/> returns false when any provider is incomplete.
+    /// <see cref="LookupSagaState.IsComplete"/> is <c>false</c> while any registered provider state
+    /// is still incomplete.
     /// </summary>
     [TestMethod]
     public void LookupSagaState_IsComplete_ReturnsFalseWhenAnyProviderIncomplete( ) {
@@ -459,7 +478,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="LookupSagaState.IsComplete"/> returns true when all providers are complete.
+    /// <see cref="LookupSagaState.IsComplete"/> is <c>true</c> once every registered provider state
+    /// reports complete.
     /// </summary>
     [TestMethod]
     public void LookupSagaState_IsComplete_ReturnsTrueWhenAllProvidersComplete( ) {
@@ -484,7 +504,8 @@ public class QueueContractsTests {
     #region ProviderLookupState Tests
 
     /// <summary>
-    /// Verifies that <see cref="ProviderLookupState"/> record equality returns true for identical records.
+    /// Two <see cref="ProviderLookupState"/> instances with identical field values are equal and
+    /// share a hash code.
     /// </summary>
     [TestMethod]
     public void ProviderLookupState_Equality_ReturnsTrueForIdenticalRecords( ) {
@@ -499,7 +520,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ProviderLookupState"/> serializes and deserializes correctly via JSON round-trip.
+    /// A complete-but-failed <see cref="ProviderLookupState"/> (no result, with an error message)
+    /// survives a JSON serialize/deserialize round trip unchanged.
     /// </summary>
     [TestMethod]
     public void ProviderLookupState_Serialization_RoundTripsCorrectly( ) {
@@ -527,7 +549,9 @@ public class QueueContractsTests {
     #region QueueSettings Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueueSettings"/> has expected default values.
+    /// A default <see cref="QueueSettings"/> carries the expected defaults: a 2-minute
+    /// rate-limit retry threshold, a 2880-minute (48-hour) job expiration, and a non-null
+    /// <see cref="PriorityWeights"/>.
     /// </summary>
     [TestMethod]
     public void QueueSettings_HasExpectedDefaults( ) {
@@ -541,7 +565,8 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueSettings"/> serializes and deserializes correctly via JSON round-trip.
+    /// A customized <see cref="QueueSettings"/> (including its nested <see cref="PriorityWeights"/>)
+    /// survives a JSON serialize/deserialize round trip, preserving threshold, expiration, and weights.
     /// </summary>
     [TestMethod]
     public void QueueSettings_Serialization_RoundTripsCorrectly( ) {
@@ -574,7 +599,9 @@ public class QueueContractsTests {
     #region PriorityWeights Tests
 
     /// <summary>
-    /// Verifies that <see cref="PriorityWeights"/> has expected default values.
+    /// A default <see cref="PriorityWeights"/> carries the expected default values:
+    /// Interactive=5, Background=2, Bulk=1. (These are legacy weights retained for configuration
+    /// backwards compatibility; they no longer drive queue ordering.)
     /// </summary>
     [TestMethod]
     public void PriorityWeights_HasExpectedDefaults( ) {
@@ -588,7 +615,7 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="PriorityWeights"/> record equality returns true for identical records.
+    /// Two <see cref="PriorityWeights"/> with identical weights are equal and share a hash code.
     /// </summary>
     [TestMethod]
     public void PriorityWeights_Equality_ReturnsTrueForIdenticalRecords( ) {
@@ -602,7 +629,7 @@ public class QueueContractsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="PriorityWeights"/> serializes and deserializes correctly via JSON round-trip.
+    /// A <see cref="PriorityWeights"/> survives a JSON serialize/deserialize round trip unchanged.
     /// </summary>
     [TestMethod]
     public void PriorityWeights_Serialization_RoundTripsCorrectly( ) {

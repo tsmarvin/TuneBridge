@@ -7,21 +7,24 @@ using Microsoft.Extensions.Caching.Memory;
 namespace BridgeBeats.Web.Middleware;
 
 /// <summary>
-/// Middleware that enforces rate limiting on protected endpoints.
-/// Uses in-memory caching to reduce database load.
+/// Enforces a per-user hourly request quota on the rate-limited lookup routes, returning HTTP 429
+/// once a user exceeds the configured ceiling within a rolling one-hour window.
 /// </summary>
 /// <remarks>
-/// Initializes a new instance of the <see cref="RateLimitingMiddleware"/> class.
+/// Only authenticated POST requests to the ISRC, UPC, and title lookup routes are counted; all other
+/// requests pass through. The per-user counter and window start are tracked on the
+/// <see cref="ApplicationUser"/> row and updated atomically with a single SQL statement so concurrent
+/// requests cannot lose counts. The window resets when the stored start is null or older than one hour.
+/// When the quota is exceeded the response carries a <c>Retry-After</c> header and a JSON error body.
 /// </remarks>
-/// <param name="next">The next middleware in the pipeline.</param>
-/// <param name="logger">Logger for rate limiting events.</param>
-/// <param name="maxRequestsPerHour">Maximum number of requests allowed per hour per user.</param>
+/// <param name="next">The next delegate in the request pipeline.</param>
+/// <param name="logger">Logger used to record rate-limit-exceeded events.</param>
+/// <param name="maxRequestsPerHour">The maximum number of counted requests permitted per user per hour.</param>
 public partial class RateLimitingMiddleware(
     RequestDelegate next,
     ILogger<RateLimitingMiddleware> logger,
     int maxRequestsPerHour
 ) {
-
     // Only these endpoints are rate-limited (all are POST). Both public URL endpoints
     // (/music/lookup/url and /music/lookup/urlList) are excluded; only identifier-based
     // and name-search lookups are throttled.
@@ -35,13 +38,14 @@ public partial class RateLimitingMiddleware(
     );
 
     /// <summary>
-    /// Invokes the rate limiting middleware to check if the user has exceeded their hourly limit.
+    /// Counts the request against the authenticated user's hourly quota and short-circuits with HTTP 429
+    /// when the quota is exceeded; otherwise forwards the request to the next middleware.
     /// </summary>
-    /// <param name="context">The HTTP context for the current request.</param>
-    /// <param name="userManager">User manager for retrieving user information.</param>
-    /// <param name="dbContext">Database context for tracking request counts.</param>
-    /// <param name="cache">Memory cache for storing rate limit data.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <param name="context">The current HTTP context.</param>
+    /// <param name="userManager">Identity user manager used to resolve the caller by user name or id.</param>
+    /// <param name="dbContext">Database context used to atomically update the user's request counter and window.</param>
+    /// <param name="cache">Memory cache holding the resolved user for a short sliding window to avoid repeated lookups.</param>
+    /// <returns>A task that completes when the request has been forwarded or rejected.</returns>
     public async Task InvokeAsync(
         HttpContext context,
         UserManager<ApplicationUser> userManager,
@@ -149,8 +153,11 @@ public partial class RateLimitingMiddleware(
     }
 
     /// <summary>
-    /// Logs that a rate limit was exceeded for a user.
+    /// Logs a warning when a user exceeds the hourly request quota.
     /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="username">The user name (or id) of the throttled caller.</param>
+    /// <param name="minutes">The number of minutes until the user's window resets.</param>
     [LoggerMessage(
         EventId = LogEventIds.Middleware.RateLimitingMiddlewareRateLimitExceeded,
         Level = LogLevel.Warning,
@@ -159,7 +166,9 @@ public partial class RateLimitingMiddleware(
 }
 
 /// <summary>
-/// Projection type for the rate-limit atomic UPDATE result.
-/// Captures the post-write RequestCount and the effective window start returned by the RETURNING clause.
+/// Projection of the values returned by the atomic rate-limit update: the user's current request
+/// count and the start of the active window.
 /// </summary>
+/// <param name="RequestCount">The request count after the update was applied.</param>
+/// <param name="RateLimitWindowStart">The UTC timestamp marking the start of the current rate-limit window.</param>
 internal sealed record RateLimitWriteResult( int RequestCount, DateTime RateLimitWindowStart );

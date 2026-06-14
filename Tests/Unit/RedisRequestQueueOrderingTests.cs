@@ -9,17 +9,20 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="RedisRequestQueue{T}.GetStreamDequeueOrder"/> via the internal testability seam.
-/// Tests B1–B6 and the N≤1 misconfiguration edge-case contract (director decision).
-/// All tests are pure (no Redis) — the seam accepts a counter and QueueDepth directly.
+/// Unit tests for <see cref="RedisRequestQueue{T}"/>'s priority-stream dequeue ordering
+/// (<c>GetStreamDequeueOrder</c>). Verify the normal Interactive-first ordering, the anti-starvation
+/// "aging slot" every Nth dequeue that promotes a lower lane (alternating between background-first and
+/// bulk-first across slots), determinism for identical inputs, the misconfiguration fallback when
+/// <c>InteractiveAgingInterval</c> is &lt;= 1 (logs a warning and uses the default of 8), and bulk-lane
+/// gating by the configured minimum bulk threshold.
 /// </summary>
 [TestClass]
 public class RedisRequestQueueOrderingTests {
 
-    // -------------------------------------------------------------------------
-    // Fixture helpers
-    // -------------------------------------------------------------------------
-
+    /// <summary>
+    /// Builds a Spotify-bound <see cref="RedisRequestQueue{T}"/> with the given aging interval and
+    /// minimum bulk threshold over a bare Redis mock (only the ordering logic is exercised).
+    /// </summary>
     private static RedisRequestQueue<QueuedLookupRequest> CreateQueue( int agingInterval = 8, int minBulkThreshold = 0 ) {
         Mock<IConnectionMultiplexer> redisMock = new( );
         // GetDatabase() is called during GetStreamDequeueOrder only indirectly via GetDepthAsync;
@@ -37,19 +40,14 @@ public class RedisRequestQueueOrderingTests {
         );
     }
 
-    /// <summary>Returns a QueueDepth with bulk above any default threshold.</summary>
+    /// <summary>Builds a depth snapshot whose bulk lane is non-empty (default 99 items).</summary>
     private static QueueDepth DepthWithBulk( int bulk = 99 ) => new( Interactive: 5, Background: 5, Bulk: bulk, Total: 5 + 5 + bulk );
 
-    /// <summary>Returns a QueueDepth with bulk=0 (gated by threshold > 0).</summary>
+    /// <summary>Builds a depth snapshot with an empty bulk lane.</summary>
     private static QueueDepth DepthWithoutBulk( ) => new( Interactive: 5, Background: 5, Bulk: 0, Total: 10 );
 
-    // -------------------------------------------------------------------------
-    // B1 — Strict interactive-first base order
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// B1 — Non-aging calls (counter != multiple of N) return interactive as the first stream.
-    /// Failure-first: with the old weighted-random code, interactive was not always first.
+    /// On a non-aging dequeue (counter 1), the order leads with the interactive stream.
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_NonAgingCall_InteractiveFirst( ) {
@@ -65,13 +63,9 @@ public class RedisRequestQueueOrderingTests {
             $"Expected interactive first at counter=1, got: {order[0]}" );
     }
 
-    // -------------------------------------------------------------------------
-    // B2 — Demotion at Nth call
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// B2 — At counter = N (first aging slot), a lower tier leads.
-    /// Failure-first: with interactive-always-first, counter=8 would return interactive first.
+    /// On an aging-slot dequeue (counter == N), the order leads with a lower tier rather than
+    /// interactive.
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_AtNthCall_LowerTierLeads( ) {
@@ -88,13 +82,9 @@ public class RedisRequestQueueOrderingTests {
             $"Expected non-interactive first at counter=N={N}, got: {order[0]}" );
     }
 
-    // -------------------------------------------------------------------------
-    // B3 — Both background and bulk lead at least once over a 2N window
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// B3 — Over a 2N window, at least one aging slot promotes background and at least one promotes bulk.
-    /// Failure-first: with only background-first rotation, bulk would never lead.
+    /// Across a 2N window of dequeues, both the background and bulk streams lead at least once,
+    /// confirming aging slots promote both lower lanes.
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_TwoNWindow_BackgroundAndBulkEachLead( ) {
@@ -118,13 +108,9 @@ public class RedisRequestQueueOrderingTests {
         Assert.IsTrue( bulkLed, "Bulk stream must lead at least once in a 2N window" );
     }
 
-    // -------------------------------------------------------------------------
-    // B4 — Rotation alternates between background and bulk across aging slots
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// B4 — Aging slot 1 (counter=N) and aging slot 2 (counter=2N) must promote different tiers.
-    /// Failure-first: without alternation, both slots would promote the same tier.
+    /// Consecutive aging slots (at N and 2N) alternate the promoted lower tier, and neither aging
+    /// slot leads with interactive.
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_RotationAlternates_BackgroundAndBulk( ) {
@@ -148,13 +134,8 @@ public class RedisRequestQueueOrderingTests {
             $"Second aging slot must not lead with interactive, got: {secondAgingSlotLeader}" );
     }
 
-    // -------------------------------------------------------------------------
-    // B5 — Non-Nth calls stay interactive-first (control)
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// B5 — Every non-aging counter in a 3N window returns interactive first.
-    /// Failure-first: random weighted selection would not guarantee this.
+    /// Every non-aging dequeue (counters not divisible by N) leads with the interactive stream.
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_NonAgingCalls_AlwaysInteractiveFirst( ) {
@@ -172,13 +153,9 @@ public class RedisRequestQueueOrderingTests {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // B6 — Determinism (no Random)
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// B6 — Same counter and depth always produce the same order (no randomness).
-    /// Failure-first: with Random.Shared, repeated calls would sometimes differ.
+    /// The ordering is deterministic: repeated calls with the same counter and depth produce the same
+    /// stream order.
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_SameInputs_ProduceSameOutput( ) {
@@ -199,14 +176,10 @@ public class RedisRequestQueueOrderingTests {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // N ≤ 1 edge-case (director decision: misconfiguration → fall back to default=8 + warn)
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// N=1 would demote on every single dequeue, silently inverting interactive priority on a config typo.
-    /// Director decision: treat N ≤ 1 as misconfiguration and fall back to default (8).
-    /// Failure-first: with a naïve clamp to 1, counter=1 would produce a non-interactive leader.
+    /// An <c>InteractiveAgingInterval</c> of 1 is treated as a misconfiguration: the queue falls back
+    /// to the default of 8 (so counter 1 is not an aging slot and leads with interactive) and logs a
+    /// warning.
     /// </summary>
     [TestMethod]
     public void Constructor_AgingIntervalOne_FallsBackToDefault( ) {
@@ -247,7 +220,8 @@ public class RedisRequestQueueOrderingTests {
     }
 
     /// <summary>
-    /// N=0 (another misconfiguration): same fallback-to-default contract as N=1.
+    /// An <c>InteractiveAgingInterval</c> of 0 is treated as a misconfiguration: the queue falls back
+    /// to the default of 8 and logs a warning.
     /// </summary>
     [TestMethod]
     public void Constructor_AgingIntervalZero_FallsBackToDefault( ) {
@@ -286,12 +260,9 @@ public class RedisRequestQueueOrderingTests {
             "Expected a Warning log when InteractiveAgingInterval ≤ 1" );
     }
 
-    // -------------------------------------------------------------------------
-    // Bulk gating tests (B3 counterpart — bulk excluded when depth below threshold)
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// When bulk depth is below the minimum threshold, GetStreamDequeueOrder excludes the bulk stream.
+    /// When the bulk depth is below the minimum bulk threshold, the bulk stream is excluded from the
+    /// order, leaving only interactive and background.
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_BulkBelowThreshold_BulkExcluded( ) {
@@ -309,7 +280,8 @@ public class RedisRequestQueueOrderingTests {
     }
 
     /// <summary>
-    /// When bulk depth meets the threshold, GetStreamDequeueOrder includes the bulk stream.
+    /// When the bulk depth meets the minimum bulk threshold, the bulk stream is included, yielding all
+    /// three streams in the order.
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_BulkAtThreshold_BulkIncluded( ) {

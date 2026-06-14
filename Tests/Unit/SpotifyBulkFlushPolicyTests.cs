@@ -7,27 +7,38 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for the size-OR-age flush policy.
-/// Exercises <see cref="SpotifyBatchQueueHelper.GetIdLookupDepthAsync"/> and
-/// <see cref="SpotifyBatchQueueHelper.GetOldestEnqueuedAtAsync"/> — the two methods
-/// that <c>SpotifyBulkProcessorService.ShouldProcessBulkTracksAsync</c> /
-/// <c>ShouldProcessBulkAlbumsAsync</c> call to make the flush decision.
+/// Unit tests for the Spotify bulk-flush policy: the queue-depth and oldest-age reads on
+/// <see cref="SpotifyBatchQueueHelper"/> that feed the flush decision, and the pure
+/// <c>SpotifyBulkProcessorService.ShouldFlush</c> predicate. Encodes the flush invariants — a size
+/// trigger when the queued count reaches the batch threshold, an age trigger when the oldest entry's
+/// age reaches the linger (an inclusive <c>&gt;=</c> boundary), no flush on an empty queue or a
+/// missing oldest-age timestamp — and confirms the depth/age reads return per-type counts and the
+/// recorded <c>enqueuedAt</c> timestamp.
 /// </summary>
 [TestClass]
 public class SpotifyBulkFlushPolicyTests {
 
+    /// <summary>Mock Redis multiplexer supplying the database the helper reads stream metadata from.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mock Redis database backing stream length and range reads.</summary>
     private Mock<IDatabase> _databaseMock = null!;
+    /// <summary>Mock logger for the helper.</summary>
     private Mock<ILogger<SpotifyBatchQueueHelper>> _loggerMock = null!;
+    /// <summary>The batch queue helper under test.</summary>
     private SpotifyBatchQueueHelper _helper = null!;
 
+    /// <summary>Redis stream key for bulk Spotify track-id lookups.</summary>
     private const string BulkTrackIdStream = "queue:spotify:bulk:track-id";
+    /// <summary>Redis stream key for bulk Spotify album-id lookups.</summary>
     private const string BulkAlbumIdStream = "queue:spotify:bulk:album-id";
 
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>MSTest-injected context; its cancellation token bounds the helper's async reads.</summary>
     public TestContext TestContext { get; set; } = null!;
 
-    /// <summary>Initializes mocks before each test.</summary>
+    /// <summary>
+    /// Creates fresh mocks before each test, defaults all stream lengths to zero and all stream
+    /// ranges to empty, and constructs the helper.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _redisMock = new Mock<IConnectionMultiplexer>( );
@@ -57,8 +68,8 @@ public class SpotifyBulkFlushPolicyTests {
     #region GetIdLookupDepthAsync — BulkTrackIdCount / BulkAlbumIdCount
 
     /// <summary>
-    /// Verifies that BulkTrackIdCount reflects only the type-specific track-id stream,
-    /// not the generic priority streams.
+    /// Verifies that <c>GetIdLookupDepthAsync</c> reports the track-id stream length as
+    /// <c>BulkTrackIdCount</c>.
     /// </summary>
     [TestMethod]
     public async Task GetIdLookupDepthAsync_WhenTrackIdStreamHasMessages_ShouldReturnBulkTrackIdCount( ) {
@@ -75,7 +86,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that BulkAlbumIdCount reflects only the type-specific album-id stream.
+    /// Verifies that <c>GetIdLookupDepthAsync</c> reports the album-id stream length as
+    /// <c>BulkAlbumIdCount</c>.
     /// </summary>
     [TestMethod]
     public async Task GetIdLookupDepthAsync_WhenAlbumIdStreamHasMessages_ShouldReturnBulkAlbumIdCount( ) {
@@ -92,8 +104,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that BulkTrackIdCount equals exactly the max threshold (50) when 50 messages are
-    /// in the track-id stream — this is the size-flush trigger boundary.
+    /// Verifies that when the track-id stream sits at the maximum batch size, the reported
+    /// <c>BulkTrackIdCount</c> reflects that threshold value exactly.
     /// </summary>
     [TestMethod]
     public async Task GetIdLookupDepthAsync_WhenTrackIdStreamAtThreshold_ShouldReflectMaxCount( ) {
@@ -109,7 +121,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that both BulkTrackIdCount and BulkAlbumIdCount are zero when all streams are empty.
+    /// Verifies that when every stream is empty, all four depth counters (bulk track-id, bulk
+    /// album-id, track-id, album-id) read zero.
     /// </summary>
     [TestMethod]
     public async Task GetIdLookupDepthAsync_WhenAllStreamsEmpty_ShouldReturnZeroCounts( ) {
@@ -130,7 +143,8 @@ public class SpotifyBulkFlushPolicyTests {
     #region GetOldestEnqueuedAtAsync — age-based flush trigger
 
     /// <summary>
-    /// Verifies that GetOldestEnqueuedAtAsync returns null when the stream is empty.
+    /// Verifies that <c>GetOldestEnqueuedAtAsync</c> returns null when the stream is empty, so the
+    /// age trigger cannot fire on an empty queue.
     /// </summary>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_WhenStreamIsEmpty_ShouldReturnNull( ) {
@@ -145,8 +159,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that GetOldestEnqueuedAtAsync parses the enqueuedAt field from the oldest entry
-    /// in the track-id stream.
+    /// Verifies that for the track stream, <c>GetOldestEnqueuedAtAsync</c> returns the
+    /// <c>enqueuedAt</c> timestamp of the oldest entry.
     /// </summary>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_WhenTrackStreamHasEntry_ShouldReturnEnqueuedAtTimestamp( ) {
@@ -173,7 +187,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that GetOldestEnqueuedAtAsync checks the album-id stream when isTracks=false.
+    /// Verifies that for the album stream (selected via <c>isTracks: false</c>),
+    /// <c>GetOldestEnqueuedAtAsync</c> returns the oldest entry's <c>enqueuedAt</c> timestamp.
     /// </summary>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_WhenAlbumStreamHasEntry_ShouldReturnEnqueuedAtTimestamp( ) {
@@ -199,8 +214,9 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that GetOldestEnqueuedAtAsync returns null when the enqueuedAt field is absent.
-    /// Ensures the helper degrades gracefully for messages without the field.
+    /// Verifies that when the oldest entry carries no <c>enqueuedAt</c> field,
+    /// <c>GetOldestEnqueuedAtAsync</c> returns null, so a malformed entry degrades safely rather
+    /// than forcing a flush.
     /// </summary>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_WhenEnqueuedAtFieldAbsent_ShouldReturnNull( ) {
@@ -228,10 +244,8 @@ public class SpotifyBulkFlushPolicyTests {
     #region ShouldFlush predicate — direct tests of the extracted pure function
 
     /// <summary>
-    /// Verifies that <see cref="SpotifyBulkProcessorService.ShouldFlush"/> returns true
-    /// when count equals the size threshold (immediate size flush).
-    /// Failure-first: the predicate was extracted in M7a; before extraction it was inlined
-    /// in ShouldProcessBulkTracksAsync and the count check could not be unit-tested in isolation.
+    /// Verifies that <c>ShouldFlush</c> returns true when the count reaches the size threshold, even
+    /// with no oldest-age timestamp: the size trigger fires on its own.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_WhenCountAtSizeThreshold_ShouldReturnTrue( ) {
@@ -245,8 +259,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that count below threshold with an old-enough message triggers the age flush.
-    /// This is the low-volume correctness guarantee: a single stale message must not wait forever.
+    /// Verifies that <c>ShouldFlush</c> returns true when the count is below the size threshold but
+    /// the oldest entry's age exceeds the linger: the age trigger fires.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_WhenCountBelowThresholdAndAgeExceedsLinger_ShouldReturnTrue( ) {
@@ -262,8 +276,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that count below threshold with a fresh message does NOT trigger the age flush.
-    /// Ensures premature flushes on just-enqueued messages are prevented.
+    /// Verifies that <c>ShouldFlush</c> returns false when the count is below the threshold and the
+    /// oldest entry's age is below the linger: a fresh, small batch is held.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_WhenCountBelowThresholdAndAgeBelowLinger_ShouldReturnFalse( ) {
@@ -279,8 +293,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that count == 0 never triggers a flush even if oldestAge is large.
-    /// An empty stream must not cause processing.
+    /// Verifies that <c>ShouldFlush</c> returns false when the count is zero regardless of age: an
+    /// empty queue never flushes.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_WhenCountIsZero_ShouldReturnFalse( ) {
@@ -294,9 +308,8 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// Verifies that count below threshold with null oldestAge does NOT flush.
-    /// Null oldestAge occurs when the enqueuedAt field is absent or the stream is empty —
-    /// the linger check cannot fire without a timestamp.
+    /// Verifies that <c>ShouldFlush</c> returns false when the count is below the threshold and the
+    /// oldest age is null: with no timestamp there is nothing to linger-flush on.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_WhenOldestAgeIsNull_ShouldReturnFalse( ) {
@@ -310,12 +323,9 @@ public class SpotifyBulkFlushPolicyTests {
     }
 
     /// <summary>
-    /// At <see cref="SpotifyBatchSettings.DefaultLingerMs"/> (24 h) scale:
-    /// a single message whose age equals DefaultLingerMs triggers ShouldFlush,
-    /// while a message just under that age does not.
-    /// Uses the constant directly so the test is not sensitive to the literal value.
-    /// Failure-first: before ShouldFlush was extracted into a pure function, the linger
-    /// threshold was inlined and could not be exercised here with arbitrary ages.
+    /// Verifies the inclusive age boundary at the default linger: an entry aged exactly
+    /// <c>DefaultLingerMs</c> flushes, while one a millisecond under does not, confirming the age
+    /// trigger uses <c>&gt;=</c> rather than strict <c>&gt;</c>.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_AtDefaultLingerMs_FlushesWhenAgeEqualsLinger_NotJustUnder( ) {
@@ -344,6 +354,12 @@ public class SpotifyBulkFlushPolicyTests {
 
     #region Helpers
 
+    /// <summary>
+    /// Builds a stream entry carrying a minimal <c>payload</c> field and an <c>enqueuedAt</c> field
+    /// set to <paramref name="enqueuedAt"/>, for the oldest-age read tests.
+    /// </summary>
+    /// <param name="enqueuedAt">The enqueue timestamp to embed.</param>
+    /// <returns>A stream entry with a populated <c>enqueuedAt</c> field.</returns>
     private static StreamEntry CreateStreamEntryWithEnqueuedAt( DateTimeOffset enqueuedAt ) {
         NameValueEntry[] values = [
             new NameValueEntry( "payload", "{\"lookupType\":0}" ),
@@ -352,6 +368,11 @@ public class SpotifyBulkFlushPolicyTests {
         return new StreamEntry( (RedisValue)"1234567890-0", values );
     }
 
+    /// <summary>
+    /// Builds a stream entry with only a <c>payload</c> field and no <c>enqueuedAt</c>, exercising
+    /// the missing-timestamp degradation path.
+    /// </summary>
+    /// <returns>A stream entry without an <c>enqueuedAt</c> field.</returns>
     private static StreamEntry CreateStreamEntryWithoutEnqueuedAt( ) {
         NameValueEntry[] values = [
             new NameValueEntry( "payload", "{\"lookupType\":0}" )

@@ -13,21 +13,31 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Component-level tests for <see cref="RateLimitingMiddleware"/> (T1–T7).
-/// T3 and T7 are SEC-004 discriminators: they assert against the PERSISTED SQLite store, not mocks.
+/// Unit tests for <c>RateLimitingMiddleware</c>, the per-user hourly request limiter. Back the
+/// middleware with a real in-memory SQLite <see cref="ApplicationDbContext"/> and Identity
+/// <see cref="UserManager{ApplicationUser}"/> so the atomic per-user counter UPDATE runs against an
+/// actual database. Cover the fresh-window first request, the at-cap boundary (allowed),
+/// over-cap rejection with a 429 (the count still increments), expired-window reset, two concurrent
+/// requests at the boundary (exactly one passes), API-key-scheme user resolution, and the
+/// startup-recovery SQL that releases users pinned by an expired window.
 /// </summary>
 [TestClass]
 public class RateLimitingMiddlewareTests {
 
-    /// <summary>Gets or sets the test context (provides CancellationToken for async operations).</summary>
+    /// <summary>MSTest-injected context, used for per-test cancellation tokens.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>The per-hour request cap the middleware is configured with for these tests.</summary>
     private const int MaxRequestsPerHour = 5;
 
+    /// <summary>The open in-memory SQLite connection backing the test database for its lifetime.</summary>
     private SqliteConnection _connection = null!;
+    /// <summary>The EF Core context over the in-memory database.</summary>
     private ApplicationDbContext _dbContext = null!;
+    /// <summary>Identity user manager the middleware uses to resolve the current user.</summary>
     private UserManager<ApplicationUser> _userManager = null!;
 
+    /// <summary>Opens an in-memory SQLite database, creates the schema, and builds the user manager.</summary>
     [TestInitialize]
     public void Initialize( ) {
         // Open a shared in-process SQLite connection so the schema persists for the lifetime of
@@ -51,6 +61,7 @@ public class RateLimitingMiddlewareTests {
             null!, null! );
     }
 
+    /// <summary>Disposes the user manager, context, and SQLite connection after each test.</summary>
     [TestCleanup]
     public void Cleanup( ) {
         _userManager.Dispose( );
@@ -58,8 +69,10 @@ public class RateLimitingMiddlewareTests {
         _connection.Dispose( );
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────
-
+    /// <summary>
+    /// Inserts an <see cref="ApplicationUser"/> with the given user name, request count, and
+    /// rate-limit window start, and returns it.
+    /// </summary>
     private async Task<ApplicationUser> SeedUserAsync(
         ApplicationDbContext ctx,
         string userName = "testuser",
@@ -81,6 +94,10 @@ public class RateLimitingMiddlewareTests {
         return user;
     }
 
+    /// <summary>
+    /// Builds an authenticated <see cref="HttpContext"/> for a <c>POST /music/lookup/isrc</c> request
+    /// whose principal carries the given user name.
+    /// </summary>
     private static HttpContext BuildAuthenticatedContext( string userName ) {
         DefaultHttpContext ctx = new( );
         ctx.Request.Method = HttpMethods.Post;
@@ -93,11 +110,13 @@ public class RateLimitingMiddlewareTests {
         return ctx;
     }
 
+    /// <summary>Builds a fresh in-memory cache for the middleware's per-user lookups.</summary>
     private static IMemoryCache BuildCache( ) =>
         new MemoryCache( new MemoryCacheOptions( ) );
 
     /// <summary>
-    /// Invokes the middleware and returns the HTTP status code plus whether next() was called.
+    /// Invokes the middleware for the given user and returns the resulting HTTP status code plus
+    /// whether the downstream delegate ran (passed) or was short-circuited (rejected).
     /// </summary>
     private async Task<(int StatusCode, bool NextCalled)> InvokeAsync(
         ApplicationUser user,
@@ -120,14 +139,9 @@ public class RateLimitingMiddlewareTests {
         return (httpCtx.Response.StatusCode, nextCalled);
     }
 
-    // ─── T1: First request in fresh window ───────────────────────────────────
-
     /// <summary>
-    /// T1 — First request in a fresh window: passes, persisted RequestCount = 1, window set.
-    /// Failure-first evidence: before implementation the in-memory window reset kept RequestCount
-    /// at 0 and the UPDATE incremented it — both paths worked but were diverged. The atomic rewrite
-    /// always sets count = 1 on a new window; any deviation would either fail the 200-assert (if
-    /// the middleware returned 429) or the persisted-count assert.
+    /// The first request from a user with no active window passes (200), the downstream delegate runs,
+    /// and the persisted count is 1 with a freshly set window start.
     /// </summary>
     [TestMethod]
     public async Task T1_FirstRequestFreshWindow_PassesAndPersistsCountOf1( ) {
@@ -148,13 +162,9 @@ public class RateLimitingMiddlewareTests {
         Assert.IsNotNull( persisted.RateLimitWindowStart );
     }
 
-    // ─── T2: At-cap boundary, allowed ────────────────────────────────────────
-
     /// <summary>
-    /// T2 — At-cap boundary: the N-th request (RequestCount already at max-1) is allowed;
-    /// persisted count becomes max (strict-greater semantics: max is allowed, max+1 is rejected).
-    /// Failure-first evidence: if the comparison were ">=" the N-th request would be rejected
-    /// (429), failing the 200-assert.
+    /// A request from a user one below the cap (within an active window) passes (200) and persists
+    /// the count at exactly the maximum.
     /// </summary>
     [TestMethod]
     public async Task T2_AtCapBoundaryAllowed_PassesAndPersistsCountAtMax( ) {
@@ -175,18 +185,10 @@ public class RateLimitingMiddlewareTests {
         Assert.AreEqual( MaxRequestsPerHour, persisted.RequestCount );
     }
 
-    // ─── T3: Over-cap within active window — SEC-004 discriminator ───────────
-
     /// <summary>
-    /// T3 — Over-cap within active window: RequestCount is already at max, active window.
-    /// The (N+1)-th request must be rejected (429). The persisted count increments to max+1
-    /// (the atomic statement ran), but the request is rejected.
-    /// This is the primary SEC-004 discriminator: asserts against the PERSISTED SQLite row.
-    /// A mock-only test would pass even on the buggy code.
-    /// Failure-first evidence: the original code had a divergent path where the in-memory count
-    /// was reset to 0 (window expiry check passing) but the DB was still at max — the UPDATE
-    /// matched 0 rows, triggering a 429 even after window expiry. After the fix this test
-    /// verifies the 429 case means the window is genuinely active (count > max after increment).
+    /// A request from a user already at the cap (active window) is rejected with 429 and the
+    /// downstream delegate does not run, yet the atomic UPDATE still increments the persisted count
+    /// to max + 1.
     /// </summary>
     [TestMethod]
     public async Task T3_OverCapActiveWindow_Returns429AndPersistsIncrementedCount( ) {
@@ -208,15 +210,9 @@ public class RateLimitingMiddlewareTests {
             "The atomic UPDATE must have incremented the count even though the request was rejected." );
     }
 
-    // ─── T4: Expired window was at cap ───────────────────────────────────────
-
     /// <summary>
-    /// T4 — Window just expired: RequestCount was at cap but window is older than 1 hour.
-    /// The CASE resets to count=1 and a new window start. Request passes.
-    /// This is the regression that the original bug broke: an expired window never reopened.
-    /// Failure-first evidence: the original code reset the in-memory count but the DB UPDATE
-    /// matched 0 rows (WHERE RequestCount &lt; max failed) → permanent 429. After the fix
-    /// the CASE resets atomically → count=1 → passes.
+    /// A request from a user at the cap but whose window has expired passes (200), resets the count
+    /// to 1, and sets a new window start later than the old expired one.
     /// </summary>
     [TestMethod]
     public async Task T4_ExpiredWindowAtCap_PassesAndResetsWindow( ) {
@@ -240,14 +236,10 @@ public class RateLimitingMiddlewareTests {
             "Window start must have been reset to a time after the old expired window." );
     }
 
-    // ─── T5: Concurrent requests at the boundary ─────────────────────────────
-
     /// <summary>
-    /// T5 — Two concurrent requests when RequestCount is at max-1. The atomic CASE serializes
-    /// writes at the SQLite row level; after both complete, the combined count is max+1
-    /// (the second writer saw count=max → max+1 → rejected).
-    /// Failure-first evidence: with two non-atomic increments, a lost-update could leave count
-    /// at max (both read max-1, both write max, both pass). The atomic CASE prevents that.
+    /// Two concurrent requests from a user one below the cap (sharing a cache but using separate DB
+    /// contexts) resolve to exactly one pass (200) and one rejection (429), with the persisted count
+    /// landing at max + 1 — confirming the atomic UPDATE serializes the boundary.
     /// </summary>
     [TestMethod]
     public async Task T5_ConcurrentRequestsAtBoundary_ExactlyOnePassesOneRejected( ) {
@@ -286,13 +278,9 @@ public class RateLimitingMiddlewareTests {
             "After two concurrent requests from max-1, count must be max+1." );
     }
 
-    // ─── T6: ApiKey-scheme principal resolves correctly ──────────────────────
-
     /// <summary>
-    /// T6 — ApiKey-scheme principal: Identity.Name is set to UserName (the common case).
-    /// The OR-load query resolves the user by UserName; limit is enforced on the resolved PK.
-    /// Failure-first evidence: the original code used u.UserName == username; a NameIdentifier-only
-    /// read would null here. The OR-load means both UserName and Id work as lookup keys.
+    /// A request whose principal carries an API-key-scheme user name resolves the user by name and
+    /// enforces the same limit, passing (200) and persisting a count of 1 on first use.
     /// </summary>
     [TestMethod]
     public async Task T6_ApiKeyScheme_ResolvesUserByUserNameAndEnforcesLimit( ) {
@@ -312,16 +300,10 @@ public class RateLimitingMiddlewareTests {
         Assert.AreEqual( 1, persisted.RequestCount );
     }
 
-    // ─── T7: Startup recovery releases pinned user — SEC-004 discriminator ───
-
     /// <summary>
-    /// T7 — Startup recovery pass (§6 of the brief): a user pinned at max count with an expired
-    /// window must be released by the recovery SQL used in <c>InitializeDatabaseAsync</c>.
-    /// After the recovery pass: persisted RequestCount = 0, RateLimitWindowStart = NULL.
-    /// Re-running the pass (idempotency) must not thrash an active window.
-    /// This is the second SEC-004 discriminator: asserts against the PERSISTED SQLite row.
-    /// Failure-first evidence: the original code never ran a recovery pass; users stayed pinned
-    /// across restarts. The recovery SQL is the only fix; a mock would trivially pass without it.
+    /// The startup-recovery UPDATE (reset count and window where the window is older than one hour)
+    /// releases a user pinned at the cap by an expired window while leaving a user with an active
+    /// window untouched, and is idempotent on a second pass.
     /// </summary>
     [TestMethod]
     public async Task T7_StartupRecovery_ReleasesPinnedUserWithExpiredWindow( ) {
@@ -341,7 +323,7 @@ public class RateLimitingMiddlewareTests {
             requestCount: 2,
             windowStart: activeWindow );
 
-        // Act — run the same recovery SQL used by InitializeDatabaseAsync (§6 of brief)
+        // Act — run the same recovery SQL used by InitializeDatabaseAsync
         DateTime windowFloor = DateTime.UtcNow.AddHours( -1 );
         _ = await _dbContext.Database.ExecuteSqlInterpolatedAsync(
             $@"UPDATE AspNetUsers

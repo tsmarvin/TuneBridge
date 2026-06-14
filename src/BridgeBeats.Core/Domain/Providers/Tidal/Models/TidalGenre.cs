@@ -3,40 +3,46 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Tidal.Models {
 
     /// <summary>
-    /// Represents a genre resource from the Tidal API.
+    /// DTO mirroring a Tidal API genre resource object.
     /// </summary>
     /// <remarks>
-    /// Genres are included in the 'included' array of JSON:API responses
-    /// when tracks reference them via relationships.
+    /// A genre resource is identified by its <see cref="Type"/>/<see cref="Id"/> pair
+    /// and carries the genre name in <see cref="Attributes"/>. Genres appear in the
+    /// <c>included</c> array of a response when a track or album references them via
+    /// relationships. The shape mirrors Tidal's wire format and is a deserialization
+    /// target only.
     /// </remarks>
     public sealed class TidalGenre {
 
         /// <summary>
-        /// The unique identifier for this genre resource.
+        /// Gets or sets the genre identifier, mapped from the Tidal <c>id</c> member.
         /// </summary>
         [JsonPropertyName( "id" )]
         public string Id { get; set; } = string.Empty;
 
         /// <summary>
-        /// The resource type. Should be "genres".
+        /// Gets or sets the resource type, mapped from the Tidal <c>type</c> member
+        /// (typically <c>"genres"</c>).
         /// </summary>
         [JsonPropertyName( "type" )]
         public string Type { get; set; } = string.Empty;
 
         /// <summary>
-        /// The genre's attributes containing the genre name.
+        /// Gets or sets the genre's field values, mapped from the Tidal
+        /// <c>attributes</c> object. May be <see langword="null"/> when the genre is
+        /// referenced only as an identifier.
         /// </summary>
         [JsonPropertyName( "attributes" )]
         public TidalGenreAttributes? Attributes { get; set; }
     }
 
     /// <summary>
-    /// Attributes for a Tidal genre resource.
+    /// DTO mirroring the <c>attributes</c> object of a Tidal genre resource.
     /// </summary>
     public sealed class TidalGenreAttributes {
 
         /// <summary>
-        /// The display name of the genre.
+        /// Gets or sets the genre name, mapped from the Tidal <c>genreName</c> member.
         /// </summary>
         [JsonPropertyName( "genreName" )]
         public string? GenreName { get; set; }

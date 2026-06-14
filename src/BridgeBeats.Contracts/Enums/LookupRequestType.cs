@@ -1,56 +1,62 @@
 namespace BridgeBeats.Contracts.Enums;
 
 /// <summary>
-/// The type of lookup request being made.
+/// The strategy used to look up a piece of media. Tags each provider API request and drives the
+/// saga's <c>LookupType</c>.
 /// </summary>
+/// <remarks>
+/// There are more lookup strategies here than there are worker request records, so the mapping is
+/// not one-to-one: several strategies are served by the same request shape on the worker side.
+/// </remarks>
 public enum LookupRequestType {
+
     /// <summary>
-    /// Used when looking up a song/track by its isrc/external ID.
+    /// Look up a track by its ISRC (International Standard Recording Code).
     /// </summary>
     IsrcLookup,
 
     /// <summary>
-    /// Used when looking up an album by its upc/external ID.
+    /// Look up a release by its UPC (Universal Product Code / barcode).
     /// </summary>
     UpcLookup,
 
     /// <summary>
-    /// Used when looking up an artist by name.
+    /// Look up (search for) an artist by name.
     /// </summary>
     ArtistLookup,
 
     /// <summary>
-    /// Used when looking up a track or album by its provider URI.
+    /// Look up a track or album by its provider URI, which the worker parses to identify the item.
     /// </summary>
     UriLookup,
 
     /// <summary>
-    /// Used when looking up an album by its title and artist.
+    /// Look up an album.
     /// </summary>
     AlbumLookup,
 
     /// <summary>
-    /// Used when looking up an album from a specific artist.
+    /// Look up the albums of a known artist (then match by album title).
     /// </summary>
     ArtistAlbumLookup,
 
     /// <summary>
-    /// Used when looking up a track from a specific album.
+    /// Look up a track within the context of a known album or artist.
     /// </summary>
     AlbumTrackLookup,
 
     /// <summary>
-    /// Used when looking up a song/track by its title and artist.
+    /// Look up a song (track).
     /// </summary>
     SongLookup,
 
     /// <summary>
-    /// Used when looking up an album directly by its provider ID.
+    /// Look up an album directly by its provider-native album id.
     /// </summary>
     AlbumIdLookup,
 
     /// <summary>
-    /// Used when looking up a song/track directly by its provider ID.
+    /// Look up a song (track) directly by its provider-native track id.
     /// </summary>
     SongIdLookup
 }

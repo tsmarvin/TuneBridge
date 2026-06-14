@@ -19,23 +19,31 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests;
 
 /// <summary>
-/// Custom web application factory for integration testing.
-/// Ensures test configuration completely overrides any file-based configuration (like appsettings.json).
-/// Uses file-based SQLite databases with unique names per factory instance to ensure test isolation.
+/// A <see cref="WebApplicationFactory{TEntryPoint}"/> over the BridgeBeats web app's entry point that
+/// hosts the real application in-memory for integration and end-to-end tests. It points the app at the
+/// shared Redis container, replaces the identity store with a per-instance SQLite database, applies a
+/// fast retry/timeout resilience profile, and can swap the media-link service into a direct
+/// (non-worker) mode for tests that bypass the distributed queue.
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
+    /// <summary>The in-memory configuration overlaid on the host's normal configuration sources.</summary>
     private readonly Dictionary<string, string?> _configData;
+    /// <summary>Filesystem path of this instance's isolated SQLite identity database.</summary>
     private readonly string _identityDbPath;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CustomWebApplicationFactory"/> with default configuration.
+    /// Creates a factory with the default test configuration and no overrides.
     /// </summary>
     public CustomWebApplicationFactory( ) : this( null ) { }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CustomWebApplicationFactory"/> with optional configuration overrides.
+    /// Creates a factory, optionally overlaying caller-supplied configuration on top of the test
+    /// defaults. Requires the shared Redis container and provisions a unique SQLite identity database;
+    /// the Redis connection keys are protected and cannot be overridden.
     /// </summary>
-    /// <param name="configOverrides">Optional dictionary of configuration values to override defaults.</param>
+    /// <param name="configOverrides">
+    /// Optional configuration key/value overrides; protected Redis keys are ignored.
+    /// </param>
     public CustomWebApplicationFactory( Dictionary<string, string?>? configOverrides ) {
         // IMPORTANT: Require Redis FIRST, before accessing RedisConnectionString.
         // This ensures the container is started and the connection string is populated.
@@ -92,6 +100,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
         }
     }
 
+    /// <summary>
+    /// Extracts the <c>Data Source=</c> file path from a SQLite connection string, returning the whole
+    /// string when no such segment is found.
+    /// </summary>
+    /// <param name="connectionString">The SQLite connection string to parse.</param>
+    /// <returns>The data-source path, or the original string if no data source is present.</returns>
     private static string ExtractDataSource( string connectionString ) {
         // Extract Data Source path from connection string
         string[] parts = connectionString.Split( ';' );
@@ -104,9 +118,13 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     }
 
     /// <summary>
-    /// Configures the web host for testing with test-specific configuration and services.
+    /// Configures the test host: switches to the <c>Testing</c> environment, replaces any in-memory
+    /// configuration with the test configuration, repoints the Redis connection and identity
+    /// <c>DbContext</c> at the test infrastructure, registers a fast resilience profile, and (when
+    /// <c>BridgeBeats:Workers:UseWorkerServices</c> is <c>false</c>) wires a direct, in-process
+    /// media-link service over the enabled providers.
     /// </summary>
-    /// <param name="builder">The web host builder to configure.</param>
+    /// <param name="builder">The web host builder supplied by the test host.</param>
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
         _ = builder.UseEnvironment( "Testing" );
 
@@ -213,8 +231,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     }
 
     /// <summary>
-    /// Initializes the test databases after the server has been created and services configured.
-    /// Must be called after CreateClient() or accessing Services to ensure the server is running.
+    /// Applies pending EF Core migrations to the isolated identity database and seeds the Aspire
+    /// dashboard access role. Call once after the host is built and before exercising endpoints that
+    /// touch identity.
     /// </summary>
     public async Task InitializeDatabasesAsync( ) {
         // Get service provider from the server
@@ -240,9 +259,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     }
 
     /// <summary>
-    /// Disposes of resources including temporary database files.
+    /// Disposes the test host and deletes this instance's SQLite identity database file.
     /// </summary>
-    /// <param name="disposing">True if disposing managed resources.</param>
+    /// <param name="disposing"><c>true</c> when called from <c>Dispose</c> rather than a finalizer.</param>
     protected override void Dispose( bool disposing ) {
         base.Dispose( disposing );
 
@@ -252,6 +271,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
         }
     }
 
+    /// <summary>
+    /// Deletes the file at the given path if it exists, swallowing any I/O errors during cleanup.
+    /// </summary>
+    /// <param name="path">The file path to delete.</param>
     private static void TryDeleteFile( string path ) {
         try {
             if (File.Exists( path )) {

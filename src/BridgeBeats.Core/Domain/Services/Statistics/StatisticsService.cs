@@ -11,16 +11,20 @@ using StackExchange.Redis;
 namespace BridgeBeats.Core.Domain.Services;
 
 /// <summary>
-/// Service for retrieving and caching statistics about the lookup collection.
-/// Maintains an in-memory cache that is refreshed by a background service.
+/// Computes and caches aggregate lookup statistics from the ATProto record store: total records,
+/// album/track split, per-provider counts, the most recent entries, earliest/latest lookup times,
+/// and the cache-bootstrap status read from Redis. A single in-memory snapshot is served to callers
+/// and refreshed either on a cache-expiry schedule or on demand.
 /// </summary>
 /// <remarks>
-/// Initializes a new instance of the <see cref="StatisticsService"/> class.
+/// Refreshes are serialized by a semaphore and gated by cache expiry, so only one computation runs
+/// at a time and a fresh cache is reused unless a force refresh is requested. Manual refreshes are
+/// requested through a bounded, drop-newest channel that coalesces bursts into a single run.
 /// </remarks>
-/// <param name="atProtoStorage">Service for accessing ATProto storage.</param>
-/// <param name="redis">Redis connection multiplexer for reading cache bootstrap status.</param>
-/// <param name="settings">Configuration settings.</param>
-/// <param name="logger">Logger for diagnostic information.</param>
+/// <param name="atProtoStorage">The ATProto record store streamed to compute statistics.</param>
+/// <param name="redis">The Redis connection used to read cache-bootstrap status.</param>
+/// <param name="settings">Statistics configuration: PDS, user DID, cache duration, startup delay.</param>
+/// <param name="logger">The logger for refresh lifecycle and Redis read failures.</param>
 public sealed partial class StatisticsService(
     IATProtoStorageService atProtoStorage,
     IConnectionMultiplexer redis,
@@ -28,56 +32,87 @@ public sealed partial class StatisticsService(
     ILogger<StatisticsService> logger
 ) : IStatisticsService {
 
+    /// <summary>Case-insensitive JSON options used to deserialize the Redis cache-bootstrap status.</summary>
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) { PropertyNameCaseInsensitive = true };
+    /// <summary>Serializes refreshes so only one statistics computation runs at a time.</summary>
     private readonly SemaphoreSlim _cacheLock = new( 1, 1 );
+    /// <summary>The most recently computed statistics snapshot served to callers, or null before the first run.</summary>
     private LookupStatistics? _cachedStats;
+    /// <summary>The time at which the cached snapshot becomes stale and eligible for a non-forced refresh.</summary>
     private DateTimeOffset _cacheExpiry = DateTimeOffset.MinValue;
+    /// <summary>Flag (0/1) indicating whether a refresh is currently in progress; see <see cref="IsRefreshing"/>.</summary>
     private volatile int _isRefreshing;
 
+    /// <summary>
+    /// Bounded, single-slot channel used to request manual refreshes. The drop-newest policy
+    /// coalesces a burst of triggers into at most one pending refresh.
+    /// </summary>
     private readonly Channel<bool> _refreshChannel = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropNewest }
     );
 
     /// <summary>
-    /// Gets the <see cref="ChannelReader{T}"/> that the background service reads from
-    /// to receive manual refresh signals.
+    /// Gets the reader side of the manual-refresh trigger channel. The background refresh service
+    /// awaits this to coalesce and drive on-demand refreshes.
     /// </summary>
     public ChannelReader<bool> RefreshTriggerReader => _refreshChannel.Reader;
 
-    /// <inheritdoc/>
+    /// <summary>Gets a value indicating whether a statistics refresh is currently in progress.</summary>
     public bool IsRefreshing => Interlocked.CompareExchange( ref _isRefreshing, 0, 0 ) == 1;
 
-    /// <inheritdoc/>
+    /// <summary>Gets the last computed statistics snapshot without triggering a refresh, or null if none has been computed yet.</summary>
+    /// <returns>The cached snapshot, or <see langword="null"/> when no refresh has completed.</returns>
     public LookupStatistics? GetCachedStatistics( ) {
         return _cachedStats;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Requests a manual refresh by writing to the trigger channel. No-op (returns
+    /// <see langword="false"/>) when a refresh is already running or a trigger is already pending.
+    /// </summary>
+    /// <returns><see langword="true"/> if a refresh was queued; otherwise <see langword="false"/>.</returns>
     public bool TriggerRefresh( ) {
         return !IsRefreshing && _refreshChannel.Writer.TryWrite( true );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Returns the current statistics snapshot without recomputing. If no snapshot exists yet,
+    /// returns an empty <see cref="LookupStatistics"/> with a minimal <c>GeneratedAt</c>.
+    /// </summary>
+    /// <param name="cancellationToken">Unused; present to satisfy the interface.</param>
+    /// <returns>The cached snapshot, or an empty placeholder when none exists.</returns>
     public Task<LookupStatistics> GetStatisticsAsync( CancellationToken cancellationToken = default ) {
         LookupStatistics stats = _cachedStats ?? new LookupStatistics { GeneratedAt = DateTimeOffset.MinValue };
         return Task.FromResult( stats );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Refreshes the statistics snapshot, reusing a fresh cache when present. Equivalent to calling
+    /// the force-aware overload with <c>forceRefresh: false</c>.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the refresh.</param>
+    /// <returns>The refreshed (or still-fresh cached) statistics snapshot.</returns>
     public async Task<LookupStatistics> RefreshStatisticsAsync( CancellationToken cancellationToken = default ) {
         return await RefreshStatisticsAsync( false, cancellationToken );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Reads the live cache-bootstrap status directly from Redis, bypassing the cached snapshot.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>The current bootstrap status, or <see langword="null"/> when absent or unreadable.</returns>
     public async Task<CacheBootstrapStatus?> GetLiveBootstrapStatusAsync( CancellationToken cancellationToken = default ) =>
         await GetCacheBootstrapStatusAsync( ).WaitAsync( cancellationToken );
 
     /// <summary>
-    /// Refreshes cached statistics, optionally forcing recomputation even when cache is fresh.
+    /// Refreshes the statistics snapshot under the refresh lock. When <paramref name="forceRefresh"/>
+    /// is <see langword="false"/> and the cache is still fresh, the cached snapshot is returned
+    /// without recomputation. Otherwise the statistics are recomputed, cached, and the cache expiry
+    /// is reset to now plus the configured cache duration.
     /// </summary>
-    /// <param name="forceRefresh">True to bypass freshness check and recompute immediately.</param>
-    /// <param name="cancellationToken">Cancellation token for the operation.</param>
-    /// <returns>The refreshed lookup statistics.</returns>
+    /// <param name="forceRefresh">When <see langword="true"/>, recomputes even if the cache is still fresh.</param>
+    /// <param name="cancellationToken">Cancels the refresh.</param>
+    /// <returns>The refreshed (or still-fresh cached) statistics snapshot.</returns>
     public async Task<LookupStatistics> RefreshStatisticsAsync( bool forceRefresh, CancellationToken cancellationToken = default ) {
         await _cacheLock.WaitAsync( cancellationToken );
         try {
@@ -111,8 +146,14 @@ public sealed partial class StatisticsService(
     }
 
     /// <summary>
-    /// Computes statistics by fetching all records from ATProto PDS.
+    /// Streams every record from the ATProto store and aggregates them into a
+    /// <see cref="LookupStatistics"/>: total count, album/track split, per-provider counts (sorted
+    /// descending), earliest/latest lookup times, and the most recent entries. A bounded buffer is
+    /// kept while streaming and trimmed to the top entries by lookup time, so memory stays bounded
+    /// regardless of record count. The Redis cache-bootstrap status is attached at the end.
     /// </summary>
+    /// <param name="cancellationToken">Cancels the streaming aggregation.</param>
+    /// <returns>The freshly computed statistics snapshot.</returns>
     private async Task<LookupStatistics> ComputeStatisticsAsync( CancellationToken cancellationToken ) {
         int totalCount = 0;
         int albumCount = 0;
@@ -184,8 +225,11 @@ public sealed partial class StatisticsService(
     }
 
     /// <summary>
-    /// Retrieves the cache bootstrap status from Redis.
+    /// Reads and deserializes the cache-bootstrap status from its well-known Redis key. Returns
+    /// <see langword="null"/> when the key is absent; failures are logged and swallowed so a Redis
+    /// hiccup does not fail a statistics refresh.
     /// </summary>
+    /// <returns>The deserialized bootstrap status, or <see langword="null"/> when absent or on error.</returns>
     private async Task<CacheBootstrapStatus?> GetCacheBootstrapStatusAsync( ) {
         try {
             IDatabase db = redis.GetDatabase( );
@@ -199,8 +243,13 @@ public sealed partial class StatisticsService(
     }
 
     /// <summary>
-    /// Creates a RecentLookupEntry from an AT-URI and MediaLinkResult.
+    /// Projects a stored record into a <see cref="RecentLookupEntry"/> for the "recent lookups"
+    /// list, taking artist/title/album from the first provider result and deriving a card id from
+    /// the record key embedded in the AT URI when the URI has the expected shape.
     /// </summary>
+    /// <param name="atUri">The record's AT URI; its last segment is the record key.</param>
+    /// <param name="result">The stored multi-provider result.</param>
+    /// <returns>A recent-lookup entry summarizing the record.</returns>
     private static RecentLookupEntry CreateRecentEntry( string atUri, MediaLinkResult result ) {
         MusicLookupResult? firstResult = result.Results.Values.FirstOrDefault( );
         string? cardId = null;
@@ -225,36 +274,37 @@ public sealed partial class StatisticsService(
 
     #region LoggerMessage Definitions
 
-    /// <summary>
-    /// Logs that statistics are being refreshed from ATProto PDS.
-    /// </summary>
+    /// <summary>Logs (Information) that a statistics refresh is starting, naming the PDS and user DID.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="pdsUri">The PDS endpoint being read.</param>
+    /// <param name="userDid">The user DID whose records are aggregated.</param>
     [LoggerMessage(
         EventId = LogEventIds.Services.Other.RefreshingStatistics,
         Level = LogLevel.Information,
         Message = "Refreshing statistics from ATProto PDS: {PdsUri}, DID: {UserDid}" )]
     private static partial void LogRefreshingStatistics( ILogger logger, string pdsUri, string userDid );
 
-    /// <summary>
-    /// Logs that statistics have been refreshed.
-    /// </summary>
+    /// <summary>Logs (Information) that a refresh completed, with the record total and new cache expiry.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="totalRecords">The total number of records aggregated.</param>
+    /// <param name="cacheExpiry">The time at which the new snapshot becomes stale.</param>
     [LoggerMessage(
         EventId = LogEventIds.Services.Other.StatisticsRefreshed,
         Level = LogLevel.Information,
         Message = "Statistics refreshed: {TotalRecords} total records, cache expires at {CacheExpiry}" )]
     private static partial void LogStatisticsRefreshed( ILogger logger, int totalRecords, DateTimeOffset cacheExpiry );
 
-    /// <summary>
-    /// Logs failure to read cache bootstrap status from Redis.
-    /// </summary>
+    /// <summary>Logs (Warning) that the cache-bootstrap status could not be read from Redis.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception raised while reading Redis.</param>
     [LoggerMessage(
         EventId = LogEventIds.Services.Other.CacheBootstrapStatusReadError,
         Level = LogLevel.Warning,
         Message = "Failed to read cache bootstrap status from Redis" )]
     private static partial void LogCacheBootstrapStatusError( ILogger logger, Exception ex );
 
-    /// <summary>
-    /// Logs that a statistics refresh was skipped because the cache is still fresh.
-    /// </summary>
+    /// <summary>Logs (Information) that a refresh was skipped because the cache is still fresh.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.Services.Other.StatisticsRefreshSkipped,
         Level = LogLevel.Information,

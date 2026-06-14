@@ -3,7 +3,11 @@ using BridgeBeats.Core.Domain.Providers.Common;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="LinkNormalizer"/>.
+/// Tests <see cref="LinkNormalizer"/>, which canonicalizes a link for cache-key stability: it strips the
+/// scheme and <c>www.</c>, lowercases the host while preserving path case, drops the fragment and the trailing
+/// slash, and removes every query parameter except Apple Music's <c>i</c> track-within-album selector. Grouped by
+/// query/fragment removal, protocol/prefix removal, edge cases, full normalization, Apple Music parameter
+/// preservation, and case sensitivity.
 /// </summary>
 [TestClass]
 public class LinkNormalizerTests {
@@ -11,7 +15,7 @@ public class LinkNormalizerTests {
     #region Query Parameter Removal Tests
 
     /// <summary>
-    /// Verifies that Normalize removes Spotify tracking query parameters from URLs while preserving case-sensitive IDs.
+    /// Verifies a Spotify tracking query parameter (<c>?si=</c>) is stripped, leaving host and path.
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesQueryParameters_FromUrl( ) {
@@ -26,7 +30,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize removes all query parameters (including unknown ones).
+    /// Verifies all of several query parameters are removed.
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesMultipleQueryParameters( ) {
@@ -41,7 +45,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize removes fragments from URLs.
+    /// Verifies the URL fragment (<c>#section</c>) is removed.
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesFragments_FromUrl( ) {
@@ -56,7 +60,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize removes both tracking query params and fragments.
+    /// Verifies both the query string and the fragment are removed together.
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesQueryAndFragment( ) {
@@ -75,7 +79,7 @@ public class LinkNormalizerTests {
     #region Protocol and Prefix Removal Tests
 
     /// <summary>
-    /// Verifies that Normalize removes https protocol.
+    /// Verifies the <c>https://</c> scheme is stripped.
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesHttpsProtocol( ) {
@@ -90,7 +94,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize removes http protocol.
+    /// Verifies the <c>http://</c> scheme is stripped.
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesHttpProtocol( ) {
@@ -105,7 +109,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize removes www prefix.
+    /// Verifies the <c>www.</c> host prefix is stripped.
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesWwwPrefix( ) {
@@ -120,7 +124,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize removes trailing slash.
+    /// Verifies a trailing slash is trimmed.
     /// </summary>
     [TestMethod]
     public void Normalize_RemovesTrailingSlash( ) {
@@ -139,7 +143,7 @@ public class LinkNormalizerTests {
     #region Edge Cases
 
     /// <summary>
-    /// Verifies that Normalize returns empty for null input.
+    /// Verifies a null input normalizes to an empty string rather than throwing.
     /// </summary>
     [TestMethod]
     public void Normalize_ReturnsEmpty_ForNullInput( ) {
@@ -151,7 +155,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize returns empty for empty input.
+    /// Verifies an empty input normalizes to an empty string.
     /// </summary>
     [TestMethod]
     public void Normalize_ReturnsEmpty_ForEmptyInput( ) {
@@ -163,7 +167,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Normalize returns empty for whitespace input.
+    /// Verifies a whitespace-only input normalizes to an empty string.
     /// </summary>
     [TestMethod]
     public void Normalize_ReturnsEmpty_ForWhitespaceInput( ) {
@@ -179,7 +183,8 @@ public class LinkNormalizerTests {
     #region Complete Normalization Test
 
     /// <summary>
-    /// Verifies that Normalize handles all transformations together while preserving case-sensitive paths.
+    /// Verifies a URL exercising every rule at once (scheme, <c>www.</c>, mixed-case host, trailing slash, query,
+    /// fragment) normalizes to a lowercased host with case-preserved path and nothing else.
     /// </summary>
     [TestMethod]
     public void Normalize_AppliesAllTransformations( ) {
@@ -194,7 +199,8 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Spotify URLs with tracking params normalize correctly while preserving case-sensitive IDs.
+    /// Verifies the same Spotify track with no <c>?si=</c>, with one <c>?si=</c>, and with a different <c>?si=</c>
+    /// all normalize to the same value, the key property that makes tracking-laden links share a cache key.
     /// </summary>
     [TestMethod]
     public void Normalize_SpotifyUrlsWithTracking_NormalizeIdentically( ) {
@@ -219,7 +225,8 @@ public class LinkNormalizerTests {
     #region Apple Music Semantic Parameter Preservation Tests
 
     /// <summary>
-    /// Verifies that Apple Music ?i= parameter is preserved as it's semantic (identifies track in album).
+    /// Verifies the Apple Music <c>i</c> track selector is preserved (it identifies a track within an album, so it
+    /// is semantically significant unlike tracking parameters).
     /// </summary>
     [TestMethod]
     public void Normalize_PreservesAppleMusicTrackParameter( ) {
@@ -234,7 +241,8 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Apple Music ?i= is preserved but tracking params are removed.
+    /// Verifies the <c>i</c> parameter is kept while the surrounding tracking parameters (<c>at</c>, <c>ls</c>,
+    /// <c>uo</c>) are removed.
     /// </summary>
     [TestMethod]
     public void Normalize_PreservesAppleMusicTrackParameter_RemovesTrackingParams( ) {
@@ -249,7 +257,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that Apple Music album URLs without ?i= have tracking params removed.
+    /// Verifies an Apple Music album URL with only tracking parameters (no <c>i</c>) normalizes to just host and path.
     /// </summary>
     [TestMethod]
     public void Normalize_AppleMusicAlbum_RemovesTrackingParams( ) {
@@ -264,7 +272,8 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that different Apple Music URLs with same album+track are treated as distinct.
+    /// Verifies the album, and two tracks within it differing only by <c>i</c>, all normalize to distinct values,
+    /// confirming the preserved <c>i</c> parameter keeps separate tracks from collapsing to one cache key.
     /// </summary>
     [TestMethod]
     public void Normalize_AppleMusicDifferentTracks_NormalizeDifferently( ) {
@@ -288,7 +297,7 @@ public class LinkNormalizerTests {
     #region Case Sensitivity Tests
 
     /// <summary>
-    /// Verifies that domain is normalized to lowercase but path preserves case.
+    /// Verifies the host is lowercased while the path (a case-sensitive provider id) keeps its original case.
     /// </summary>
     [TestMethod]
     public void Normalize_LowercasesDomain_PreservesPathCase( ) {
@@ -303,7 +312,7 @@ public class LinkNormalizerTests {
     }
 
     /// <summary>
-    /// Verifies that different case IDs are treated as different resources.
+    /// Verifies two URLs whose path ids differ only in case normalize to different values (path case is significant).
     /// </summary>
     [TestMethod]
     public void Normalize_PreservesIDCase_DifferentCasesAreDifferent( ) {

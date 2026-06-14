@@ -1,8 +1,16 @@
 namespace BridgeBeats.Contracts.Records.WorkerApi;
 
 /// <summary>
-/// Request to lookup track or album information by provider-specific ID.
+/// Worker request asking a provider to resolve an item by its provider-native identifier.
+/// Sent to a provider worker's <c>/lookup/id</c> endpoint; the worker replies with a
+/// <see cref="ProviderLookupResponse"/>.
 /// </summary>
-/// <param name="ProviderId">The provider-specific identifier (e.g., Apple Music catalog ID, Spotify track/album ID).</param>
-/// <param name="IsAlbum">True to look up an album, false to look up a track.</param>
+/// <param name="ProviderId">
+/// The provider's own identifier for the album or track to look up (for example an Apple Music
+/// catalog id or a Spotify track/album id).
+/// </param>
+/// <param name="IsAlbum">
+/// <see langword="true"/> to resolve <paramref name="ProviderId"/> as an album; otherwise it is
+/// resolved as a track.
+/// </param>
 public sealed record LookupByIdRequest( string ProviderId, bool IsAlbum );

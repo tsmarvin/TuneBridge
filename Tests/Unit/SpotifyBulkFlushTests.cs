@@ -15,61 +15,62 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Invariant-pinning tests for the Spotify bulk-flush semantics: routing gate,
-/// saga-deferral contract, size/age flush policy, enqueuedAt graceful degradation,
-/// and saga-hash pre-materialization.
+/// Unit tests spanning the Spotify bulk path's flush and routing seams: the
+/// <see cref="SpotifyBulkQueueDecorator"/> delegation of interactive-priority typed lookups to the
+/// inner queue (with no warning emitted), the pure <c>SpotifyBulkProcessorService.ShouldFlush</c>
+/// predicate at the size threshold and the inclusive 24-hour-backstop age boundary, the
+/// oldest-enqueued-at read's malformed-versus-well-formed handling, and the ordering guarantee that
+/// rate-limit and retry-cap handling call <c>GetOrCreateAsync</c> to materialize the saga core hash
+/// before writing provider state. Also asserts that interactive Spotify id lookups are never treated
+/// as approved bulk callers.
 /// </summary>
-/// <remarks>
-/// Tests are grouped by the invariant they pin:
-/// <list type="bullet">
-///   <item>"Interactive never rides bulk": <see cref="SpotifyBulkQueueDecorator"/> routes
-///   <see cref="LookupRequestType.SongIdLookup"/>/<see cref="LookupRequestType.AlbumIdLookup"/>
-///   to the bulk streams irrespective of <see cref="QueuePriority"/>, including
-///   <see cref="QueuePriority.Interactive"/>.</item>
-///   <item>Bulk-stream items are saga-less until flush: the decorator writes no saga state;
-///   saga materialization happens only in <c>ProcessBulkResultAsync</c> via
-///   <see cref="ISagaStateManager.GetOrCreateAsync"/>.</item>
-///   <item>Flush contract: size-50 fires immediately; sub-backstop age does not flush;
-///   age ≥ backstop does flush; malformed <c>enqueuedAt</c> yields null + no flush.</item>
-///   <item><c>GetOldestEnqueuedAtAsync</c> graceful degradation on malformed
-///   <c>enqueuedAt</c>: returns null + emits a warning log, no exception.</item>
-///   <item><c>HandleBulkRateLimitAsync</c> and the <see cref="RequeueOutcome.CapReached"/>
-///   branch in <c>RequeueSingleAsync</c> call <see cref="ISagaStateManager.GetOrCreateAsync"/>
-///   before writing provider state (saga-hash fix for JetStream fire-and-forget items).</item>
-/// </list>
-/// </remarks>
 [TestClass]
 public class SpotifyBulkFlushTests {
 
-    // -------------------------------------------------------------------------
-    // Shared mocks (reset per test via Initialize)
-    // -------------------------------------------------------------------------
-
+    /// <summary>Mock Redis multiplexer supplying the database and subscriber to the service under test.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mock Redis database backing all stream operations.</summary>
     private Mock<IDatabase> _dbMock = null!;
+    /// <summary>Mock Redis subscriber used to assert completion and sentinel publishes.</summary>
     private Mock<ISubscriber> _subscriberMock = null!;
+    /// <summary>Mock rate-limit tracker the service consults and updates on rate-limit handling.</summary>
     private Mock<IRateLimitTracker> _rateLimitTrackerMock = null!;
+    /// <summary>Mock saga state manager used to assert saga create/update ordering.</summary>
     private Mock<ISagaStateManager> _sagaManagerMock = null!;
+    /// <summary>Mock bulk lookup service supplying batch track/album results.</summary>
     private Mock<ISpotifyBulkLookupService> _lookupServiceMock = null!;
+    /// <summary>Mock logger for the batch queue helper.</summary>
     private Mock<ILogger<SpotifyBatchQueueHelper>> _helperLoggerMock = null!;
+    /// <summary>Mock logger for the bulk processor service.</summary>
     private Mock<ILogger<SpotifyBulkProcessorService>> _serviceLoggerMock = null!;
+    /// <summary>Mock inner queue the decorator wraps.</summary>
     private Mock<IRequestQueue<QueuedLookupRequest>> _innerQueueMock = null!;
+    /// <summary>Mock logger for the decorator, used to assert warning suppression.</summary>
     private Mock<ILogger<SpotifyBulkQueueDecorator>> _decoratorLoggerMock = null!;
 
+    /// <summary>Redis stream key for bulk Spotify track-id lookups.</summary>
     private const string TrackStream = SpotifyConstants.BulkTrackIdStream;
+    /// <summary>Redis stream key for bulk Spotify album-id lookups.</summary>
     private const string AlbumStream = SpotifyConstants.BulkAlbumIdStream;
+    /// <summary>Sample Spotify track id used throughout the tests.</summary>
     private const string TestTrackId = "3n3Ppam7vgaVa1iaRUc9Lp";
+    /// <summary>Fixed saga id the mocks return for the sample track.</summary>
     private const string TestSagaId = "aabbccddeeff00112233445566778899";
 
+    /// <summary>Serialization options (camel-case, non-indented) used to build stream payloads.</summary>
     private static readonly System.Text.Json.JsonSerializerOptions s_jsonOptions = new( ) {
         PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
 
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>MSTest-injected context; its cancellation token bounds the async operations under test.</summary>
     public TestContext TestContext { get; set; } = null!;
 
-    /// <summary>Initializes mocks before each test.</summary>
+    /// <summary>
+    /// Creates fresh mocks before each test and wires their default behaviors: Redis database and
+    /// subscriber resolution, no-op stream operations, a not-rate-limited tracker state, and saga
+    /// manager methods that return a saga for the sample track and complete successfully.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _redisMock = new Mock<IConnectionMultiplexer>( );
@@ -222,22 +223,10 @@ public class SpotifyBulkFlushTests {
             .Returns( Task.CompletedTask );
     }
 
-    // =========================================================================
-    // "Interactive never rides bulk" invariant
-    // =========================================================================
-
     /// <summary>
-    /// Pins that SongIdLookup with <see cref="QueuePriority.Interactive"/> is delegated to
-    /// the inner queue and NOT written to the bulk stream.
-    /// Interactive lookups must never wait in the 24 h-linger bulk stream; the routing gate
-    /// now keys on the priority argument so Interactive passes through to the interactive lane.
+    /// Verifies that a song-id lookup at interactive priority is delegated to the inner queue and is
+    /// never written to a bulk stream.
     /// </summary>
-    /// <remarks>
-    /// Updated from the pre-routing-gate behavior: previously the decorator routed by LookupType
-    /// alone, which meant Interactive SongIdLookup went to the 24 h bulk stream. The routing fix
-    /// adds <c>&amp;&amp; priority != QueuePriority.Interactive</c> to the interception predicate;
-    /// this test now documents the corrected invariant.
-    /// </remarks>
     [TestMethod]
     public async Task Decorator_SongIdLookup_WithInteractivePriority_DelegatesToInnerQueue( ) {
         // Arrange — SongIdLookup with explicitly Interactive priority
@@ -273,12 +262,9 @@ public class SpotifyBulkFlushTests {
     }
 
     /// <summary>
-    /// Pins that AlbumIdLookup with <see cref="QueuePriority.Interactive"/> is delegated to
-    /// the inner queue and NOT written to the bulk stream.
+    /// Verifies that an album-id lookup at interactive priority is delegated to the inner queue and
+    /// is never written to a bulk stream.
     /// </summary>
-    /// <remarks>
-    /// Updated from the pre-routing-gate behavior: same reasoning as the track variant.
-    /// </remarks>
     [TestMethod]
     public async Task Decorator_AlbumIdLookup_WithInteractivePriority_DelegatesToInnerQueue( ) {
         // Arrange
@@ -313,22 +299,10 @@ public class SpotifyBulkFlushTests {
             "Interactive AlbumIdLookup must not be written to any bulk stream" );
     }
 
-    // =========================================================================
-    // Bulk-stream items are saga-less until flush
-    // =========================================================================
-
     /// <summary>
-    /// Pins that <see cref="SpotifyBulkQueueDecorator.EnqueueAsync"/> writes to the Redis stream
-    /// but never calls <see cref="ISagaStateManager.GetOrCreateAsync"/> — saga creation is deferred
-    /// to flush time (ProcessBulkResultAsync).
+    /// Verifies that enqueuing a bulk song-id lookup does not materialize a saga: sagas are created
+    /// later, at flush time in result processing, not at enqueue time.
     /// </summary>
-    /// <remarks>
-    /// Failure-first: if the decorator were modified to call GetOrCreateAsync, the
-    /// sagaManagerMock.Verify(Times.Never) assertion fails. This test documents that the
-    /// saga-less-until-flush contract is load-bearing for the TTL-raise safety story: Redis
-    /// retention is bounded by saga count × TTL, and materializing a saga at enqueue time
-    /// for every JetStream fire-and-forget item would inflate retention dramatically.
-    /// </remarks>
     [TestMethod]
     public async Task Decorator_SongIdLookup_DoesNotCreateSaga( ) {
         // Arrange
@@ -350,10 +324,6 @@ public class SpotifyBulkFlushTests {
             Times.Never,
             "Decorator must not materialize a saga at enqueue time — sagas are created at flush in ProcessBulkResultAsync" );
     }
-
-    // =========================================================================
-    // Flush contract: size trigger / linger backstop
-    // =========================================================================
 
     /// <summary>
     /// Pins that size = 50 (MaxTracksPerBatchLookup) fires immediately with no age required.
@@ -422,16 +392,10 @@ public class SpotifyBulkFlushTests {
     }
 
     /// <summary>
-    /// Pins that a null oldestAge (from a malformed enqueuedAt) does not flush on age,
-    /// but the stream still flushes on size.
+    /// Verifies the degradation contract for a malformed <c>enqueuedAt</c> surfaced as a null age:
+    /// the age trigger does not fire, but the size trigger still does when the count reaches the
+    /// threshold.
     /// </summary>
-    /// <remarks>
-    /// This is the critical safety case for the graceful-degradation path: a malformed enqueuedAt
-    /// in a low-volume stream yields null from <c>GetOldestEnqueuedAtAsync</c>. The age trigger
-    /// must not fire; the size trigger must still work normally.
-    /// Failure-first: if null were treated as "age = 0" the age trigger would never fire, but
-    /// the count=50 size check still returns true — the test distinguishes these correctly.
-    /// </remarks>
     [TestMethod]
     public void ShouldFlush_MalformedEnqueuedAt_NullAge_DoesNotFlushOnAge_ButFlushesOnSize( ) {
         TimeSpan backstop = TimeSpan.FromMilliseconds( SpotifyBatchSettings.DefaultLingerMs );
@@ -453,21 +417,11 @@ public class SpotifyBulkFlushTests {
         Assert.IsTrue( sizeResult, "Size trigger must still fire when oldestAge is null" );
     }
 
-    // =========================================================================
-    // GetOldestEnqueuedAtAsync graceful degradation on malformed enqueuedAt
-    // =========================================================================
-
     /// <summary>
-    /// Pins that a malformed <c>enqueuedAt</c> field causes <c>GetOldestEnqueuedAtAsync</c>
-    /// to return null and emit a warning log rather than throwing <see cref="FormatException"/>.
+    /// Verifies that a malformed <c>enqueuedAt</c> value causes <c>GetOldestEnqueuedAtAsync</c> to
+    /// return null and log a warning, so an unparseable timestamp degrades safely rather than
+    /// throwing.
     /// </summary>
-    /// <remarks>
-    /// Failure-first: before the graceful-degradation fix, <c>DateTimeOffset.ParseExact</c>
-    /// threw <see cref="FormatException"/> for a malformed field. The test verifies the
-    /// hardened behaviour by asserting (a) no exception is thrown, (b) null is returned, and
-    /// (c) a warning-level log is emitted. Running the test against the pre-fix code causes
-    /// an unhandled <see cref="FormatException"/>, failing the test.
-    /// </remarks>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_MalformedEnqueuedAt_ReturnsNullAndLogsWarning( ) {
         // Arrange — entry with a timestamp that cannot be parsed by "O" round-trip format
@@ -510,15 +464,9 @@ public class SpotifyBulkFlushTests {
     }
 
     /// <summary>
-    /// Pins that a well-formed <c>enqueuedAt</c> field is still parsed correctly after
-    /// the graceful-degradation hardening (regression guard: TryParseExact must not
-    /// silently reject valid timestamps).
+    /// Verifies that a well-formed round-trip <c>O</c>-format <c>enqueuedAt</c> value is parsed back
+    /// to the original timestamp by <c>GetOldestEnqueuedAtAsync</c>.
     /// </summary>
-    /// <remarks>
-    /// Failure-first: if TryParseExact were incorrectly configured (wrong format string,
-    /// wrong DateTimeStyles) it would reject valid round-trip timestamps. This test ensures
-    /// the happy path still works after the hardening change.
-    /// </remarks>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_WellFormedEnqueuedAt_ReturnsCorrectTimestamp( ) {
         // Arrange — valid round-trip timestamp
@@ -551,21 +499,11 @@ public class SpotifyBulkFlushTests {
             "Parsed timestamp must equal the original value" );
     }
 
-    // =========================================================================
-    // Saga-hash fix: HandleBulkRateLimitAsync calls GetOrCreateAsync first
-    // =========================================================================
-
     /// <summary>
-    /// Pins that <c>HandleBulkRateLimitAsync</c> calls <see cref="ISagaStateManager.GetOrCreateAsync"/>
-    /// before writing any per-saga provider state, so the core hash exists for JetStream
-    /// fire-and-forget items that never pre-materialized a saga.
+    /// Verifies the ordering guarantee in rate-limit handling: <c>HandleBulkRateLimitAsync</c> calls
+    /// <c>GetOrCreateAsync</c> to ensure the saga core hash exists before <c>SetIsPartialAsync</c>
+    /// writes provider state, so partial state is never written against a missing saga.
     /// </summary>
-    /// <remarks>
-    /// Failure-first: before the saga-hash fix, <c>HandleBulkRateLimitAsync</c> went
-    /// straight to <c>SetIsPartialAsync</c> without calling <c>GetOrCreateAsync</c>.
-    /// Removing the <c>GetOrCreateAsync</c> call from the production code causes
-    /// <c>Times.Once</c> to become <c>Times.Never</c>, failing the test.
-    /// </remarks>
     [TestMethod]
     public async Task HandleBulkRateLimitAsync_CallsGetOrCreateAsync_BeforeWritingProviderState( ) {
         // Arrange — a JetStream-style fire-and-forget message (saga not pre-created)
@@ -632,23 +570,12 @@ public class SpotifyBulkFlushTests {
             "GetOrCreateAsync must be called before SetIsPartialAsync so the core hash exists before provider state is written" );
     }
 
-    // =========================================================================
-    // Saga-hash fix: RequeueSingleAsync CapReached calls GetOrCreateAsync first
-    // =========================================================================
-
     /// <summary>
-    /// Pins that the <see cref="RequeueOutcome.CapReached"/> branch of <c>RequeueSingleAsync</c>
-    /// calls <see cref="ISagaStateManager.GetOrCreateAsync"/> before
-    /// <see cref="ISagaStateManager.UpdateProviderStateAsync"/>, so the core hash exists for
-    /// JetStream fire-and-forget items.
+    /// Verifies the same ordering guarantee on the retry-cap path: when a message reaches the retry
+    /// cap, the requeue-single cap branch calls <c>GetOrCreateAsync</c> before
+    /// <c>UpdateProviderStateAsync</c>, so the failed provider state is written against an existing
+    /// saga.
     /// </summary>
-    /// <remarks>
-    /// Failure-first: before the saga-hash fix, the CapReached branch went straight to
-    /// <c>UpdateProviderStateAsync</c> without ensuring the core saga hash existed.
-    /// Removing the <c>GetOrCreateAsync</c> call from the production code causes the
-    /// <c>Times.Once</c> assertion on <c>GetOrCreateAsync</c> to become <c>Times.Never</c>,
-    /// failing the test.
-    /// </remarks>
     [TestMethod]
     public async Task RequeueSingle_CapReached_CallsGetOrCreateAsync_BeforeUpdateProviderState( ) {
         // Arrange — message at retry cap
@@ -738,39 +665,13 @@ public class SpotifyBulkFlushTests {
             "GetOrCreateAsync must be called before UpdateProviderStateAsync in the CapReached branch" );
     }
 
-    // =========================================================================
-    // CI guard: caller-enumeration invariant (interactive never waits)
-    // =========================================================================
-
     /// <summary>
-    /// CI guard: enumerates every <see cref="SupportedProviders"/> value and asserts that
-    /// <see cref="SupportedProviders.Spotify"/> is NOT in the set of providers for which
-    /// callers may safely use the interactive provider-ID entry point
-    /// (<c>ICachingMediaLinkService.GetInfoByProviderIdAsync</c>).
+    /// Verifies that Spotify is never an approved interactive caller for provider-id lookups:
+    /// because Spotify song-id and album-id lookups route to the 24-hour-linger bulk stream
+    /// regardless of priority, an interactive caller would not get a timely result. The test also
+    /// fails if a newly added provider is neither approved nor explicitly banned, forcing
+    /// classification before merge.
     /// </summary>
-    /// <remarks>
-    /// Invariant: interactive lookups never wait. For Spotify, both
-    /// <see cref="LookupRequestType.SongIdLookup"/> and <see cref="LookupRequestType.AlbumIdLookup"/>
-    /// are intercepted by <see cref="SpotifyBulkQueueDecorator"/> and routed to the
-    /// 24 h-linger bulk stream regardless of the <see cref="QueuePriority"/> argument.
-    /// A caller that passes <c>SupportedProviders.Spotify</c> to the interactive entry point
-    /// will wait up to 24 h — not the interactive wait budget — violating the "interactive
-    /// lookups never wait" invariant.
-    /// <para>
-    /// "One commit away" failure: adding <c>SupportedProviders.Spotify</c> to
-    /// <c>approvedCallerProviders</c> causes the first assertion to fail immediately.
-    /// Adding a new <see cref="SupportedProviders"/> value without classifying it causes
-    /// the exhaustive-coverage assertion to fail, requiring the developer to explicitly
-    /// place the new provider in either the approved or the banned set.
-    /// </para>
-    /// <para>
-    /// Failure-first: this test was verified to pass before implementation by running it with
-    /// <c>approvedCallerProviders</c> containing only <c>AppleMusic</c> and <c>Tidal</c>; the
-    /// assertions hold. To simulate the "one commit away" regression, temporarily adding
-    /// <c>SupportedProviders.Spotify</c> to <c>approvedCallerProviders</c> causes the first
-    /// assertion to fail with "Spotify must never appear in the approved-caller set."
-    /// </para>
-    /// </remarks>
     [TestMethod]
     public void InteractiveProviderIdLookup_Spotify_IsNotApprovedCaller( ) {
         // The approved set is the authoritative reference for which providers are safe
@@ -801,21 +702,11 @@ public class SpotifyBulkFlushTests {
         }
     }
 
-    // =========================================================================
-    // Runtime guard: no Interactive-priority warning emitted by decorator
-    // =========================================================================
-
     /// <summary>
-    /// Pins that the decorator does NOT emit a WARNING log when a <see cref="LookupRequestType.SongIdLookup"/>
-    /// arrives with <see cref="QueuePriority.Interactive"/> priority.
+    /// Verifies that a song-id lookup at interactive priority does not emit a warning log: the item
+    /// is correctly passed through to the inner queue, so the warning guard (which fires only on a
+    /// genuine misroute) stays silent.
     /// </summary>
-    /// <remarks>
-    /// Updated from the pre-routing-gate behavior: the <c>LogInteractivePriorityOnBulkStream</c>
-    /// warning and its <c>[LoggerMessage]</c> were removed because Interactive SongIdLookup
-    /// now passes through to the inner queue — the warning was documenting a routing bug
-    /// (interactive going to the 24 h bulk stream). With the fix in place there is no
-    /// anomalous condition to warn about.
-    /// </remarks>
     [TestMethod]
     public async Task Decorator_SongIdLookup_WithInteractivePriority_DoesNotEmitWarning( ) {
         // Arrange
@@ -849,12 +740,9 @@ public class SpotifyBulkFlushTests {
     }
 
     /// <summary>
-    /// Pins that the decorator does NOT emit a WARNING log when a <see cref="LookupRequestType.AlbumIdLookup"/>
-    /// arrives with <see cref="QueuePriority.Interactive"/> priority.
+    /// Verifies that an album-id lookup at interactive priority likewise emits no warning and is
+    /// passed through to the inner queue.
     /// </summary>
-    /// <remarks>
-    /// Same as the SongIdLookup variant — the warning was removed with the routing fix.
-    /// </remarks>
     [TestMethod]
     public async Task Decorator_AlbumIdLookup_WithInteractivePriority_DoesNotEmitWarning( ) {
         // Arrange
@@ -888,14 +776,10 @@ public class SpotifyBulkFlushTests {
     }
 
     /// <summary>
-    /// Pins that the decorator does NOT emit a WARNING log when a
-    /// <see cref="LookupRequestType.SongIdLookup"/> arrives with
-    /// <see cref="QueuePriority.Background"/> or <see cref="QueuePriority.Bulk"/> priority.
+    /// Verifies that a song-id lookup at non-interactive priorities (background and bulk) emits no
+    /// warning: these are correctly bulk-routed, and the warning guard fires only on interactive
+    /// misroutes. The test clears the logger's recorded invocations between priorities.
     /// </summary>
-    /// <remarks>
-    /// Failure-first: if the warning were emitted unconditionally (regardless of priority),
-    /// this test would fail. The guard must only fire for Interactive priority.
-    /// </remarks>
     [TestMethod]
     public async Task Decorator_SongIdLookup_WithNonInteractivePriority_DoesNotEmitWarningLog( ) {
         _ = _decoratorLoggerMock.Setup( l => l.IsEnabled( It.IsAny<LogLevel>( ) ) ).Returns( true );
@@ -921,13 +805,18 @@ public class SpotifyBulkFlushTests {
         }
     }
 
-    // =========================================================================
-    // Helpers / factory methods
-    // =========================================================================
-
+    /// <summary>
+    /// Builds a decorator wrapping the inner-queue mock and wired to Redis and the decorator logger.
+    /// </summary>
+    /// <returns>A decorator under test.</returns>
     private SpotifyBulkQueueDecorator CreateDecorator( ) =>
         new( _innerQueueMock.Object, _redisMock.Object, _decoratorLoggerMock.Object );
 
+    /// <summary>
+    /// Builds a bulk processor service wired to the mocks and a batch settings instance using the
+    /// default linger.
+    /// </summary>
+    /// <returns>A service under test.</returns>
     private SpotifyBulkProcessorService CreateService( ) {
         IOptions<SpotifyBatchSettings> options = Options.Create(
             new SpotifyBatchSettings { LingerMs = SpotifyBatchSettings.DefaultLingerMs } );
@@ -941,9 +830,21 @@ public class SpotifyBulkFlushTests {
             options );
     }
 
+    /// <summary>
+    /// Builds a batch queue helper wired to Redis and the helper logger.
+    /// </summary>
+    /// <returns>A helper under test.</returns>
     private SpotifyBatchQueueHelper CreateHelper( ) =>
         new( _redisMock.Object, _helperLoggerMock.Object );
 
+    /// <summary>
+    /// Builds a Spotify song-id <c>QueuedLookupRequest</c> for the given track id, priority, and
+    /// attempt count, carrying the fixed test saga id.
+    /// </summary>
+    /// <param name="trackId">The track id to look up.</param>
+    /// <param name="priority">The origin priority; defaults to bulk.</param>
+    /// <param name="attemptCount">The retry attempt count; defaults to zero.</param>
+    /// <returns>A track lookup request.</returns>
     private static QueuedLookupRequest MakeTrackRequest(
         string trackId,
         QueuePriority priority = QueuePriority.Bulk,
@@ -959,6 +860,14 @@ public class SpotifyBulkFlushTests {
         AttemptCount = attemptCount
     };
 
+    /// <summary>
+    /// Builds a Spotify album-id <c>QueuedLookupRequest</c> for the given album id, priority, and
+    /// attempt count, carrying the fixed test saga id.
+    /// </summary>
+    /// <param name="albumId">The album id to look up.</param>
+    /// <param name="priority">The origin priority; defaults to bulk.</param>
+    /// <param name="attemptCount">The retry attempt count; defaults to zero.</param>
+    /// <returns>An album lookup request.</returns>
     private static QueuedLookupRequest MakeAlbumRequest(
         string albumId,
         QueuePriority priority = QueuePriority.Bulk,
@@ -974,6 +883,13 @@ public class SpotifyBulkFlushTests {
         AttemptCount = attemptCount
     };
 
+    /// <summary>
+    /// Builds a Redis stream entry whose <c>payload</c> field is the serialized request and whose
+    /// <c>enqueuedAt</c> field is the current time, for tests that feed entries through the helper's
+    /// dequeue and requeue paths.
+    /// </summary>
+    /// <param name="request">The request to embed as the entry payload.</param>
+    /// <returns>A stream entry carrying the serialized request and an enqueue timestamp.</returns>
     private static StreamEntry BuildStreamEntry( QueuedLookupRequest request ) {
         string payload = System.Text.Json.JsonSerializer.Serialize( request, s_jsonOptions );
         NameValueEntry[] fields = [
