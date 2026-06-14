@@ -10,29 +10,36 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for <see cref="RedisRequestQueue{T}"/> using the shared Redis container.
-/// Requires Docker to be running on the host machine.
+/// Integration tests for <see cref="RedisRequestQueue{T}"/> against a real Redis instance (the shared
+/// Testcontainers Redis), using Redis streams and consumer groups. Verifies enqueue/dequeue across the
+/// interactive, background, and bulk priority streams; acknowledgement; the dead-letter queue (move,
+/// requeue, delete); per-provider isolation; consumer-group fan-out across worker instances; retry
+/// requeue; consumer-id formatting; and the weighted scheduling policy (interactive preemption, bounded
+/// background starvation via aging, two-phase bulk gating, and rate-limit-aware selection). Requires
+/// Docker to be running on the host machine.
 /// </summary>
 [TestClass]
 [TestCategory( "Integration" )]
 [TestCategory( "Docker" )]
 public partial class RedisRequestQueueTests {
 
+    /// <summary>The shared Redis connection used by the queue under test.</summary>
     private static IConnectionMultiplexer? s_redis;
 
+    /// <summary>Mock logger captured for the queue under test.</summary>
     private Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>> _mockLogger = null!;
+    /// <summary>Queue settings supplied to the queue under test.</summary>
     private IOptions<QueueSettings> _settings = null!;
+    /// <summary>The Spotify-provider queue under test, recreated for each test.</summary>
     private RedisRequestQueue<QueuedLookupRequest> _queue = null!;
 
-    /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes the shared Redis connection for all tests in this class.
+    /// Requires the shared Redis container and opens a connection to it for the test class.
     /// </summary>
-    /// <param name="_">The test context provided by MSTest (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
@@ -40,7 +47,7 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Cleans up the Redis connection after all tests in this class have completed.
+    /// Closes and disposes the Redis connection after the class completes.
     /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
@@ -51,7 +58,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Clears queue-related keys and creates a fresh queue instance before each test.
+    /// Clears leftover <c>queue:*</c> keys, constructs a fresh Spotify queue, and ensures its consumer
+    /// groups exist before each test.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
@@ -77,7 +85,7 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the interactive priority stream.
+    /// Verifies enqueuing at interactive priority increases only the interactive depth.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -97,7 +105,7 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the background priority stream.
+    /// Verifies enqueuing at background priority increases only the background depth.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -116,7 +124,7 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestQueue{T}.EnqueueAsync"/> adds messages to the bulk priority stream.
+    /// Verifies enqueuing at bulk priority increases only the bulk depth.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -135,7 +143,7 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that DequeueAsync returns a message when one is available.
+    /// Verifies dequeuing returns the enqueued message with its request, saga, and lookup values intact.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -155,7 +163,7 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that DequeueAsync returns null when the queue is empty.
+    /// Verifies dequeuing from an empty queue returns null.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -168,7 +176,7 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestQueue{T}.AcknowledgeAsync"/> removes the message from the stream.
+    /// Verifies acknowledging a dequeued message removes it so the queue depth returns to zero.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -189,7 +197,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestQueue{T}.MoveToDlqAsync"/> moves the message to the dead letter queue.
+    /// Verifies moving a dequeued message to the dead-letter queue removes it from the main queue and
+    /// makes it retrievable from the DLQ.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -214,7 +223,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestQueue{T}.RequeueFromDlqAsync"/> moves the message back from DLQ to the main queue.
+    /// Verifies requeuing a message from the dead-letter queue removes it from the DLQ and places it
+    /// back on the requested priority stream.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -243,7 +253,7 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestQueue{T}.DeleteFromDlqAsync"/> permanently removes the message from the DLQ.
+    /// Verifies deleting a message from the dead-letter queue returns true and removes it.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -271,7 +281,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that queues for different providers are isolated and do not share messages.
+    /// Verifies queues for different providers are isolated: each provider's depth and dequeued messages
+    /// reflect only that provider's traffic.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -314,7 +325,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that weighted priority selection processes all messages across all priority levels.
+    /// Verifies that, with bulk gating disabled, repeated dequeues drain every message across all three
+    /// priorities and leave the queue empty.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -359,7 +371,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that Redis consumer groups allow multiple worker instances to process messages without duplication.
+    /// Verifies two queue instances sharing a consumer group split the messages between them (each
+    /// processing at least one) and together drain the queue.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -412,7 +425,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestQueue{T}.RequeueAsync"/> puts the message back in the queue for retry.
+    /// Verifies requeuing a dequeued message for retry returns it to the queue and makes it dequeuable
+    /// again.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -438,7 +452,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Verifies that consumer IDs are unique across multiple queue instances and follow expected format.
+    /// Verifies each queue instance gets a unique consumer id prefixed by its provider, ending in a
+    /// 32-character hex GUID, and kept within a reasonable length.
     /// </summary>
     [TestMethod]
     public void ConsumerIds_AreUniqueAndWellFormatted( ) {
@@ -790,7 +805,8 @@ public partial class RedisRequestQueueTests {
     }
 
     /// <summary>
-    /// Creates a test <see cref="QueuedLookupRequest"/> with a unique ID for the specified provider and lookup type.
+    /// Builds a <see cref="QueuedLookupRequest"/> with unique identifiers for the given provider and
+    /// lookup type.
     /// </summary>
     /// <param name="provider">The music provider for the request. Defaults to Spotify.</param>
     /// <param name="lookupType">The lookup type for the request. Defaults to IsrcLookup.</param>

@@ -10,21 +10,36 @@ using StackExchange.Redis;
 namespace BridgeBeats.Worker.Spotify;
 
 /// <summary>
-/// Spotify-specific batch queue helper that manages type-specific bulk streams
-/// for track and album ID lookups consumed by <c>SpotifyBulkProcessorService</c>.
+/// Redis Streams helper for the Spotify bulk-id lookup path: the dedicated track-id and album-id
+/// bulk streams that <see cref="SpotifyBulkProcessorService"/> drains in batches.
 /// </summary>
 /// <remarks>
-/// Manages <c>queue:spotify:bulk:track-id</c> and <c>queue:spotify:bulk:album-id</c> streams.
-/// An XAUTOCLAIM sweep at the start of each dequeue reclaims PEL entries idle longer than
-/// <see cref="AutoClaimMinIdleMs"/> ms, preventing stranded messages after a consumer crash.
+/// Single-id Spotify lookups are diverted onto dedicated bulk streams so they can be fetched in
+/// multi-id batches. This helper owns the consumer-group lifecycle for those streams, depth and
+/// age inspection (to drive flush decisions), batch dequeue (including reclaiming stalled pending
+/// entries via XAUTOCLAIM), acknowledgement, and bounded requeue. Poison entries (missing or
+/// unparseable payloads) are acknowledged and deleted rather than retried.
 /// </remarks>
 public sealed partial class SpotifyBatchQueueHelper {
 
+    /// <summary>Redis connection multiplexer used for all stream operations.</summary>
     private readonly IConnectionMultiplexer _redis;
+
+    /// <summary>Logger for this helper's structured log events.</summary>
     private readonly ILogger<SpotifyBatchQueueHelper> _logger;
+
+    /// <summary>JSON options used to serialize and deserialize queued request payloads (camelCase, compact).</summary>
     private readonly JsonSerializerOptions _jsonOptions;
 
+    /// <summary>Name of the Redis consumer group shared by the Spotify bulk streams.</summary>
     private const string ConsumerGroup = "spotify-workers";
+
+    /// <summary>
+    /// This process instance's consumer id within <see cref="ConsumerGroup"/>, derived from
+    /// <see cref="Environment.MachineName"/> and a GUID then truncated to 32 characters via
+    /// <c>[..32]</c>. The truncation discards part of the GUID, so this value is <b>not</b>
+    /// guaranteed to be unique across multiple replicas running on the same host.
+    /// </summary>
     private readonly string _consumerId;
 
     /// <summary>
@@ -36,10 +51,11 @@ public sealed partial class SpotifyBatchQueueHelper {
     private const int AutoClaimMinIdleMs = 60_000;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="SpotifyBatchQueueHelper"/> class.
+    /// Initializes the helper, deriving this process instance's consumer id.
     /// </summary>
     /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
+    /// <param name="logger">The logger for this helper.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="redis"/> or <paramref name="logger"/> is <see langword="null"/>.</exception>
     public SpotifyBatchQueueHelper(
         IConnectionMultiplexer redis,
         ILogger<SpotifyBatchQueueHelper> logger
@@ -57,9 +73,15 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Ensures consumer groups exist for the type-specific bulk streams.
-    /// Call this during worker startup.
+    /// Ensures the consumer group exists on both the bulk track-id and bulk album-id streams,
+    /// creating each stream if absent.
     /// </summary>
+    /// <param name="cancellationToken">Token used to stop between streams.</param>
+    /// <returns>A task that completes once both groups are ensured.</returns>
+    /// <remarks>
+    /// A <c>BUSYGROUP</c> server error (the group already exists) is treated as success and logged
+    /// at debug level.
+    /// </remarks>
     public async Task EnsureConsumerGroupsAsync( CancellationToken cancellationToken = default ) {
         IDatabase db = _redis.GetDatabase( );
 
@@ -80,10 +102,13 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Gets the current depth of ID-based lookup requests in the type-specific bulk streams.
-    /// Returns the XLEN of each stream — no deserialization, no stray scans.
+    /// Reads the current depth of the bulk track-id and album-id streams.
     /// </summary>
-    /// <returns>A record containing track and album bulk-stream lengths.</returns>
+    /// <param name="cancellationToken">Token used to cancel the read.</param>
+    /// <returns>
+    /// An <see cref="IdLookupDepth"/> reporting the bulk track and album stream lengths. The
+    /// non-bulk count fields mirror the bulk counts for this helper.
+    /// </returns>
     public async Task<IdLookupDepth> GetIdLookupDepthAsync( CancellationToken cancellationToken = default ) {
         cancellationToken.ThrowIfCancellationRequested( );
         IDatabase db = _redis.GetDatabase( );
@@ -100,19 +125,19 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Gets the <see cref="DateTimeOffset"/> of the oldest message in one of the type-specific
-    /// bulk streams, used by the size-OR-age flush policy in
-    /// <c>SpotifyBulkProcessorService</c>.
+    /// Returns the enqueue timestamp of the oldest entry in a bulk stream, used to decide whether
+    /// the batch linger window has elapsed.
     /// </summary>
-    /// <param name="isTracks">
-    /// <see langword="true"/> to check <c>queue:spotify:bulk:track-id</c>;
-    /// <see langword="false"/> to check <c>queue:spotify:bulk:album-id</c>.
-    /// </param>
-    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="isTracks"><see langword="true"/> to inspect the bulk track-id stream; <see langword="false"/> for the album-id stream.</param>
+    /// <param name="cancellationToken">Token used to skip the read.</param>
     /// <returns>
-    /// The <c>enqueuedAt</c> timestamp of the oldest entry, or <see langword="null"/>
-    /// if the stream is empty or the field is absent.
+    /// The oldest entry's enqueue time, or <see langword="null"/> when the stream is empty, the
+    /// <c>enqueuedAt</c> field is absent or malformed, or a Redis read error occurs.
     /// </returns>
+    /// <remarks>
+    /// A malformed <c>enqueuedAt</c> value is logged and treated as absent (returns
+    /// <see langword="null"/>) so a bad timestamp cannot wedge the flush decision.
+    /// </remarks>
     public async Task<DateTimeOffset?> GetOldestEnqueuedAtAsync( bool isTracks, CancellationToken cancellationToken = default ) {
         if (cancellationToken.IsCancellationRequested) {
             return null;
@@ -146,11 +171,11 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Dequeues a batch of track ID lookup requests.
+    /// Dequeues a batch of track-id lookup messages from the bulk track-id stream.
     /// </summary>
-    /// <param name="maxCount">Maximum number of requests to dequeue (defaults to <see cref="SpotifyConstants.MaxTracksPerBatchLookup"/>).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A list of queued messages.</returns>
+    /// <param name="maxCount">Maximum number of messages to claim; defaults to the configured per-batch track maximum.</param>
+    /// <param name="cancellationToken">Token used to stop dequeuing early.</param>
+    /// <returns>The claimed messages, which may be fewer than requested (including empty).</returns>
     public async Task<IReadOnlyList<QueuedMessage<QueuedLookupRequest>>> DequeueTrackIdBatchAsync(
         int? maxCount = null,
         CancellationToken cancellationToken = default
@@ -160,11 +185,11 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Dequeues a batch of album ID lookup requests.
+    /// Dequeues a batch of album-id lookup messages from the bulk album-id stream.
     /// </summary>
-    /// <param name="maxCount">Maximum number of requests to dequeue (defaults to <see cref="SpotifyConstants.MaxAlbumsPerBatchLookup"/>).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A list of queued messages.</returns>
+    /// <param name="maxCount">Maximum number of messages to claim; defaults to the configured per-batch album maximum.</param>
+    /// <param name="cancellationToken">Token used to stop dequeuing early.</param>
+    /// <returns>The claimed messages, which may be fewer than requested (including empty).</returns>
     public async Task<IReadOnlyList<QueuedMessage<QueuedLookupRequest>>> DequeueAlbumIdBatchAsync(
         int? maxCount = null,
         CancellationToken cancellationToken = default
@@ -174,11 +199,18 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Dequeues a batch of messages from a specific stream.
+    /// Dequeues up to <paramref name="count"/> messages from a bulk stream, first reclaiming
+    /// stalled pending entries via XAUTOCLAIM and then reading new entries for this consumer.
     /// </summary>
+    /// <param name="stream">The bulk stream key to read from.</param>
+    /// <param name="count">Maximum number of messages to return.</param>
+    /// <param name="cancellationToken">Token used to stop reading early.</param>
+    /// <returns>The decoded messages in claim order; poison entries are dropped, not returned.</returns>
     /// <remarks>
-    /// Runs an <c>XAUTOCLAIM</c> sweep before XREADGROUP so entries stranded in a dead
-    /// consumer's PEL (crash between read and ACK) are recovered automatically.
+    /// Reclaimed entries are counted against <paramref name="count"/> so a single call never
+    /// exceeds the requested batch size. Entries with missing or unparseable payloads are
+    /// acknowledged and deleted as poison. If XAUTOCLAIM is unsupported by the server, the reclaim
+    /// step is skipped and only new entries are read.
     /// </remarks>
     private async Task<IReadOnlyList<QueuedMessage<QueuedLookupRequest>>> DequeueBatchFromStreamAsync(
         string stream,
@@ -315,9 +347,13 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// ACKs and XDELs an entry that cannot be deserialized (poison message), removing it
-    /// from the PEL so it is not endlessly re-claimed by XAUTOCLAIM.
+    /// Acknowledges and deletes a single poison entry (missing or unparseable payload) so it is
+    /// never re-read.
     /// </summary>
+    /// <param name="db">The Redis database to operate on.</param>
+    /// <param name="stream">The stream the entry belongs to.</param>
+    /// <param name="id">The Redis entry id to acknowledge and delete.</param>
+    /// <returns>A task that completes once the entry is removed (Redis errors are logged and swallowed).</returns>
     private async Task AckAndDeletePoisonEntryAsync( IDatabase db, string stream, string id ) {
         try {
             _ = await db.StreamAcknowledgeAsync( stream, ConsumerGroup, id );
@@ -328,9 +364,11 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Acknowledges and removes a message from its stream.
+    /// Acknowledges and deletes a processed message from its bulk stream.
     /// </summary>
-    /// <param name="messageId">The composite message ID (stream:id format).</param>
+    /// <param name="messageId">The composite message id (<c>"{stream}:{redisId}"</c>) to acknowledge.</param>
+    /// <returns>A task that completes once the message is acknowledged and deleted.</returns>
+    /// <remarks>Acknowledgement deletes the entry (XACK + XDEL); processed messages are not retained in the stream.</remarks>
     public async Task AcknowledgeAsync( string messageId ) {
         (string stream, string id) = ParseMessageId( messageId );
 
@@ -342,26 +380,23 @@ public sealed partial class SpotifyBatchQueueHelper {
     }
 
     /// <summary>
-    /// Requeues a message to its original stream, incrementing the attempt count.
+    /// Requeues a bulk-stream message with an incremented attempt count, enforcing the retry cap.
     /// </summary>
-    /// <remarks>
-    /// When the attempt count reaches <see cref="LookupConstants.MaxQueueRetryAttempts"/>,
-    /// the message is ACKed and deleted without re-adding, and this method returns
-    /// <see cref="RequeueOutcome.CapReached"/> to signal the caller to write failed saga state.
-    /// When the entry is not found in the stream (e.g. already XDELed — duplicate in-flight
-    /// after XAUTOCLAIM re-claim), this method returns <see cref="RequeueOutcome.NotFound"/>
-    /// and the caller must leave the saga untouched (it was processed by another consumer).
-    /// The caller is responsible for writing the complete-failed saga state and
-    /// publishing the completion events for <see cref="RequeueOutcome.CapReached"/>.
-    /// </remarks>
-    /// <param name="messageId">The composite message ID (stream:id format).</param>
-    /// <param name="sagaId">The saga ID of the associated request (for logging).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="messageId">The composite message id (<c>"{stream}:{redisId}"</c>) to requeue.</param>
+    /// <param name="sagaId">The saga id associated with the message, used for diagnostic logging.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>
-    /// <see cref="RequeueOutcome.Requeued"/> if the message was re-queued for another attempt;
-    /// <see cref="RequeueOutcome.CapReached"/> if the retry cap was reached and the message was discarded;
-    /// <see cref="RequeueOutcome.NotFound"/> if the entry was absent from the stream (already XDELed).
+    /// <see cref="RequeueOutcome.Requeued"/> when the message was re-added with an incremented
+    /// attempt; <see cref="RequeueOutcome.CapReached"/> when the retry cap was reached or the
+    /// payload was unserializable (the message is discarded); or
+    /// <see cref="RequeueOutcome.NotFound"/> when the original entry no longer exists.
     /// </returns>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before work begins.</exception>
+    /// <remarks>
+    /// The original entry is always acknowledged and deleted first; on a successful requeue a fresh
+    /// entry is added with a new <c>enqueuedAt</c> timestamp and <c>AttemptCount + 1</c>. The caller
+    /// is responsible for finalizing the saga when the cap is reached.
+    /// </remarks>
     public async Task<RequeueOutcome> RequeueAsync(
         string messageId,
         string sagaId,
@@ -432,6 +467,16 @@ public sealed partial class SpotifyBatchQueueHelper {
         return RequeueOutcome.Requeued;
     }
 
+    /// <summary>
+    /// Splits a composite message id into its stream key and Redis entry id.
+    /// </summary>
+    /// <param name="compositeId">The composite id, normally <c>"{stream}:{redisId}"</c>.</param>
+    /// <returns>A tuple of the stream key and the Redis entry id.</returns>
+    /// <exception cref="ArgumentException">Thrown when the id does not match a known bulk stream prefix and has no parseable colon separator.</exception>
+    /// <remarks>
+    /// Known bulk stream prefixes are matched first (their keys themselves contain colons); the
+    /// last-colon fallback handles any other well-formed composite id.
+    /// </remarks>
     private static (string stream, string id) ParseMessageId( string compositeId ) {
         // Format: stream:id where id may contain colons (Redis stream IDs are timestamp-sequence)
         foreach (string streamPrefix in new[] { SpotifyConstants.BulkTrackIdStream, SpotifyConstants.BulkAlbumIdStream }) {
@@ -450,91 +495,132 @@ public sealed partial class SpotifyBatchQueueHelper {
 
     #region LoggerMessage Methods
 
-    /// <summary>Logs that a consumer group was created.</summary>
+    /// <summary>Logs creation of a consumer group on a bulk stream.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="group">The consumer group name.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.ConsumerGroupCreated,
         Level = LogLevel.Information,
         Message = "Created consumer group {Group} for stream {Stream}" )]
     private static partial void LogConsumerGroupCreated( ILogger logger, string group, string stream );
 
-    /// <summary>Logs that a consumer group already exists.</summary>
+    /// <summary>Logs that a consumer group already existed on a bulk stream (benign).</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="group">The consumer group name.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.ConsumerGroupExists,
         Level = LogLevel.Debug,
         Message = "Consumer group {Group} already exists for stream {Stream}" )]
     private static partial void LogConsumerGroupExists( ILogger logger, string group, string stream );
 
-    /// <summary>Logs that a request was enqueued to a bulk stream.</summary>
+    /// <summary>Logs that a request was routed onto a type-specific bulk stream.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="lookupType">The lookup type of the routed request.</param>
+    /// <param name="stream">The destination bulk stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.EnqueuedToBulkStream,
         Level = LogLevel.Debug,
         Message = "Enqueued {LookupType} request to type-specific bulk stream {Stream}" )]
     private static partial void LogEnqueuedToBulkStream( ILogger logger, string lookupType, string stream );
 
-    /// <summary>Logs that XAUTOCLAIM recovered pending entries.</summary>
+    /// <summary>Logs that pending entries were reclaimed from a stream via XAUTOCLAIM.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="count">The number of entries reclaimed.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.AutoClaimRecovered,
         Level = LogLevel.Information,
         Message = "XAUTOCLAIM recovered {Count} pending entries from {Stream}" )]
     private static partial void LogAutoClaimRecovered( ILogger logger, int count, string stream );
 
-    /// <summary>Logs that XAUTOCLAIM is not supported by the Redis server.</summary>
+    /// <summary>Logs that XAUTOCLAIM is unsupported by the server, disabling pending-entry recovery.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The Redis error returned by the server.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.AutoClaimNotSupported,
         Level = LogLevel.Warning,
         Message = "XAUTOCLAIM not supported on {Stream} — pending-entry recovery disabled (requires Redis ≥ 6.2)" )]
     private static partial void LogAutoClaimNotSupported( ILogger logger, Exception ex, string stream );
 
-    /// <summary>Logs a deserialization error.</summary>
+    /// <summary>Logs that a stream entry payload failed to deserialize and was discarded.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The deserialization exception.</param>
+    /// <param name="id">The Redis entry id.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.DeserializationError,
         Level = LogLevel.Error,
         Message = "Failed to deserialize message {Id} from {Stream}" )]
     private static partial void LogDeserializationError( ILogger logger, Exception ex, string id, string stream );
 
-    /// <summary>Logs a warning reading from a stream.</summary>
+    /// <summary>Logs a non-fatal error while reading from a bulk stream.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.StreamReadWarning,
         Level = LogLevel.Warning,
         Message = "Error reading from stream {Stream}" )]
     private static partial void LogStreamReadWarning( ILogger logger, Exception ex, string stream );
 
-    /// <summary>Logs that a message was acknowledged.</summary>
+    /// <summary>Logs that a message was acknowledged and deleted from its stream.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The Redis entry id acknowledged.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.MessageAcknowledged,
         Level = LogLevel.Debug,
         Message = "Acknowledged and deleted message {MessageId} from {Stream}" )]
     private static partial void LogMessageAcknowledged( ILogger logger, string messageId, string stream );
 
-    /// <summary>Logs that a message was not found for requeue.</summary>
+    /// <summary>Logs that a message targeted for requeue was not found.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The Redis entry id that was not found.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.MessageNotFound,
         Level = LogLevel.Warning,
         Message = "Message {MessageId} not found in {Stream} for requeue" )]
     private static partial void LogMessageNotFound( ILogger logger, string messageId, string stream );
 
-    /// <summary>Logs that a message was requeued with an updated attempt count.</summary>
+    /// <summary>Logs that a message was requeued with an incremented attempt count.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="stream">The stream key.</param>
+    /// <param name="attempt">The new attempt count after requeue.</param>
     [LoggerMessage(
         EventId = LogEventIds.MessageRequeued,
         Level = LogLevel.Debug,
         Message = "Requeued message from {Stream} (attempt {Attempt})" )]
     private static partial void LogMessageRequeued( ILogger logger, string stream, int attempt );
 
-    /// <summary>Logs that a message exceeded max retry attempts.</summary>
+    /// <summary>Logs that a message exceeded the retry cap and was discarded.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The Redis entry id discarded.</param>
+    /// <param name="maxRetries">The retry-attempt cap that was reached.</param>
+    /// <param name="sagaId">The saga id associated with the message.</param>
     [LoggerMessage(
         EventId = LogEventIds.MaxRetriesExceeded,
         Level = LogLevel.Warning,
         Message = "Message {MessageId} in bulk stream exceeded {MaxRetries} retry attempts; discarding (saga={SagaId})" )]
     private static partial void LogMaxRetriesExceeded( ILogger logger, string messageId, int maxRetries, string sagaId );
 
-    /// <summary>Logs that an unserializable payload was discarded from the bulk stream.</summary>
+    /// <summary>Logs that a message with an unserializable payload was discarded as poison.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="messageId">The Redis entry id discarded.</param>
+    /// <param name="sagaId">The saga id associated with the message.</param>
     [LoggerMessage(
         EventId = LogEventIds.PoisonPayloadDiscarded,
         Level = LogLevel.Warning,
         Message = "Message {MessageId} in bulk stream has an unserializable payload; discarding (saga={SagaId})" )]
     private static partial void LogPoisonPayloadDiscarded( ILogger logger, string messageId, string sagaId );
 
-    /// <summary>Logs that a malformed enqueuedAt field was skipped in GetOldestEnqueuedAtAsync.</summary>
+    /// <summary>Logs that a malformed <c>enqueuedAt</c> field was encountered and treated as absent.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="enqueuedAtStr">The raw, unparseable timestamp value.</param>
+    /// <param name="stream">The stream key.</param>
     [LoggerMessage(
         EventId = LogEventIds.MalformedEnqueuedAt,
         Level = LogLevel.Warning,
@@ -545,12 +631,12 @@ public sealed partial class SpotifyBatchQueueHelper {
 }
 
 /// <summary>
-/// Represents the depth of ID-based lookup requests in the Spotify bulk streams.
+/// Snapshot of the Spotify bulk-id stream depths used to drive batch flush decisions.
 /// </summary>
-/// <param name="TrackIdCount">Track ID lookups (equals <paramref name="BulkTrackIdCount"/>).</param>
-/// <param name="AlbumIdCount">Album ID lookups (equals <paramref name="BulkAlbumIdCount"/>).</param>
-/// <param name="BulkTrackIdCount">Track ID lookups in the bulk track-id stream.</param>
-/// <param name="BulkAlbumIdCount">Album ID lookups in the bulk album-id stream.</param>
+/// <param name="TrackIdCount">Number of pending track-id entries (mirrors <paramref name="BulkTrackIdCount"/>).</param>
+/// <param name="AlbumIdCount">Number of pending album-id entries (mirrors <paramref name="BulkAlbumIdCount"/>).</param>
+/// <param name="BulkTrackIdCount">Length of the bulk track-id stream.</param>
+/// <param name="BulkAlbumIdCount">Length of the bulk album-id stream.</param>
 public sealed record IdLookupDepth(
     int TrackIdCount,
     int AlbumIdCount,
@@ -559,16 +645,13 @@ public sealed record IdLookupDepth(
 );
 
 /// <summary>
-/// Outcome returned by <see cref="SpotifyBatchQueueHelper.RequeueAsync"/>.
+/// Result of a bulk-stream requeue attempt.
 /// </summary>
 public enum RequeueOutcome {
-    /// <summary>The message was re-added to the stream for another attempt.</summary>
+    /// <summary>The message was re-added to its stream with an incremented attempt count.</summary>
     Requeued,
-    /// <summary>The retry cap was reached; the message was discarded. Caller must write failed saga state.</summary>
+    /// <summary>The retry cap was reached, or the payload was unserializable; the message was discarded.</summary>
     CapReached,
-    /// <summary>
-    /// The stream entry was not found (already XDELed — duplicate in-flight after re-claim).
-    /// Caller must leave the saga untouched.
-    /// </summary>
+    /// <summary>The original entry no longer existed in the stream, so nothing was requeued.</summary>
     NotFound
 }

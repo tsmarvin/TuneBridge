@@ -7,27 +7,33 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="RedisGenreCache"/> to verify
-/// genre caching, artist genre caching, track-artist mapping, and queue operations.
+/// Unit tests for <see cref="RedisGenreCache"/> (the <c>IGenreCacheService</c> implementation). Drive
+/// the track-genre, artist-genre, track-artist-mapping, and artist-refresh-queue operations against a
+/// mocked Redis database and verify: constructor null-guards; empty-id short-circuits that skip Redis;
+/// hash-backed get/set keyed under <c>genre:</c> and <c>artist-genre:</c>; the sorted-set
+/// artist-refresh queue (idempotent enqueue with <c>When.NotExists</c>, batch dequeue, length); and the
+/// empty-input guards that avoid touching Redis.
 /// </summary>
 [TestClass]
 public class RedisGenreCacheTests {
+    /// <summary>Mocked Redis multiplexer returning <see cref="_databaseMock"/>.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mocked Redis database backing all cache operations.</summary>
     private Mock<IDatabase> _databaseMock = null!;
+    /// <summary>Mocked logger for the cache under test.</summary>
     private Mock<ILogger<RedisGenreCache>> _loggerMock = null!;
 
+    /// <summary>Representative track id used across tests.</summary>
     private const string TestTrackId = "track123";
+    /// <summary>Representative artist id used across tests.</summary>
     private const string TestArtistId = "artist456";
+    /// <summary>The provider these tests key cache entries under (<see cref="SupportedProviders.Spotify"/>).</summary>
     private const SupportedProviders TestProvider = SupportedProviders.Spotify;
 
-    /// <summary>
-    /// Gets or sets the test context for the current test.
-    /// </summary>
+    /// <summary>MSTest-injected context, used for per-test cancellation tokens.</summary>
     public TestContext TestContext { get; set; } = null!;
 
-    /// <summary>
-    /// Initializes mocks before each test.
-    /// </summary>
+    /// <summary>Builds dependency mocks and wires the database before each test.</summary>
     [TestInitialize]
     public void Initialize( ) {
         _redisMock = new Mock<IConnectionMultiplexer>( );
@@ -39,9 +45,7 @@ public class RedisGenreCacheTests {
 
     #region Constructor Tests
 
-    /// <summary>
-    /// Verifies that the constructor creates a valid instance with valid dependencies.
-    /// </summary>
+    /// <summary>The constructor builds an instance when Redis and logger are supplied.</summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -51,9 +55,7 @@ public class RedisGenreCacheTests {
         Assert.IsNotNull( cache );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when Redis is null.
-    /// </summary>
+    /// <summary>A null Redis multiplexer throws <see cref="ArgumentNullException"/> (param <c>redis</c>).</summary>
     [TestMethod]
     public void Constructor_WithNullRedis_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -62,9 +64,7 @@ public class RedisGenreCacheTests {
         Assert.AreEqual( "redis", ex.ParamName );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when logger is null.
-    /// </summary>
+    /// <summary>A null logger throws <see cref="ArgumentNullException"/> (param <c>logger</c>).</summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -77,9 +77,7 @@ public class RedisGenreCacheTests {
 
     #region GetGenresAsync Tests
 
-    /// <summary>
-    /// Verifies that GetGenresAsync returns null when the providerId is empty.
-    /// </summary>
+    /// <summary>An empty track id short-circuits and returns <c>null</c> without querying Redis.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetGenresAsync_WithEmptyProviderId_ShouldReturnNull( ) {
@@ -93,9 +91,7 @@ public class RedisGenreCacheTests {
         Assert.IsNull( result );
     }
 
-    /// <summary>
-    /// Verifies that GetGenresAsync returns null when no cache entry exists.
-    /// </summary>
+    /// <summary>A cache miss (empty hash) returns <c>null</c>.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetGenresAsync_WithNoCacheEntry_ShouldReturnNull( ) {
@@ -113,7 +109,7 @@ public class RedisGenreCacheTests {
     }
 
     /// <summary>
-    /// Verifies that GetGenresAsync returns cached genres when entry exists.
+    /// A cache hit deserializes the stored genres-JSON hash field and returns the genre list.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -143,9 +139,7 @@ public class RedisGenreCacheTests {
 
     #region SetGenresAsync Tests
 
-    /// <summary>
-    /// Verifies that SetGenresAsync does nothing when providerId is empty.
-    /// </summary>
+    /// <summary>An empty track id short-circuits and does not write to Redis.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task SetGenresAsync_WithEmptyProviderId_ShouldNotCallRedis( ) {
@@ -163,7 +157,7 @@ public class RedisGenreCacheTests {
     }
 
     /// <summary>
-    /// Verifies that SetGenresAsync caches genres correctly.
+    /// Valid genres are written to a two-field hash under the <c>genre:{provider}:{trackId}</c> key.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -190,9 +184,7 @@ public class RedisGenreCacheTests {
 
     #region GetArtistGenresAsync Tests
 
-    /// <summary>
-    /// Verifies that GetArtistGenresAsync returns null when artistId is empty.
-    /// </summary>
+    /// <summary>An empty artist id short-circuits and returns <c>null</c> without querying Redis.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetArtistGenresAsync_WithEmptyArtistId_ShouldReturnNull( ) {
@@ -207,7 +199,7 @@ public class RedisGenreCacheTests {
     }
 
     /// <summary>
-    /// Verifies that GetArtistGenresAsync returns cached genres when entry exists.
+    /// A cache hit deserializes the stored artist-genres-JSON hash field and returns the genre list.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -237,7 +229,8 @@ public class RedisGenreCacheTests {
     #region SetArtistGenresAsync Tests
 
     /// <summary>
-    /// Verifies that SetArtistGenresAsync caches artist genres correctly.
+    /// Valid artist genres are written to a two-field hash under the
+    /// <c>artist-genre:{provider}:{artistId}</c> key.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -264,9 +257,7 @@ public class RedisGenreCacheTests {
 
     #region Track Artist Mapping Tests
 
-    /// <summary>
-    /// Verifies that GetTrackArtistMappingAsync returns null when trackId is empty.
-    /// </summary>
+    /// <summary>An empty track id short-circuits and returns <c>null</c> without querying Redis.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetTrackArtistMappingAsync_WithEmptyTrackId_ShouldReturnNull( ) {
@@ -281,7 +272,8 @@ public class RedisGenreCacheTests {
     }
 
     /// <summary>
-    /// Verifies that SetTrackArtistMappingAsync does nothing when artistIds is empty.
+    /// An empty artist-id list short-circuits and does not open a Redis transaction to write the
+    /// track-artist mapping.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -303,7 +295,7 @@ public class RedisGenreCacheTests {
     #region Artist Refresh Queue Tests
 
     /// <summary>
-    /// Verifies that EnqueueArtistsForRefreshAsync filters empty artist IDs.
+    /// An empty artist-id list short-circuits and does not add to the artist-refresh sorted set.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -328,7 +320,8 @@ public class RedisGenreCacheTests {
     }
 
     /// <summary>
-    /// Verifies that EnqueueArtistsForRefreshAsync enqueues artists correctly.
+    /// Each valid artist id is added once to the <c>artist-refresh-queue:</c> sorted set with
+    /// <see cref="When.NotExists"/>, so re-enqueuing an in-flight artist is idempotent.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -353,9 +346,7 @@ public class RedisGenreCacheTests {
         );
     }
 
-    /// <summary>
-    /// Verifies that DequeueArtistsForRefreshAsync returns empty list when batchSize is zero.
-    /// </summary>
+    /// <summary>A zero batch size returns an empty list without querying Redis.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task DequeueArtistsForRefreshAsync_WithZeroBatchSize_ShouldReturnEmptyList( ) {
@@ -370,7 +361,7 @@ public class RedisGenreCacheTests {
     }
 
     /// <summary>
-    /// Verifies that DequeueArtistsForRefreshAsync returns artists from queue.
+    /// A batch dequeue pops sorted-set entries and returns their artist-id members.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -394,9 +385,7 @@ public class RedisGenreCacheTests {
         Assert.Contains( "artist2", result );
     }
 
-    /// <summary>
-    /// Verifies that GetArtistRefreshQueueLengthAsync returns the queue length.
-    /// </summary>
+    /// <summary>The queue-length query returns the artist-refresh sorted-set cardinality.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task GetArtistRefreshQueueLengthAsync_ShouldReturnQueueLength( ) {
@@ -417,6 +406,7 @@ public class RedisGenreCacheTests {
 
     #region Helper Methods
 
+    /// <summary>Builds a <see cref="RedisGenreCache"/> from the current Redis and logger mocks.</summary>
     private RedisGenreCache CreateCache( ) =>
         new( _redisMock.Object, _loggerMock.Object );
 

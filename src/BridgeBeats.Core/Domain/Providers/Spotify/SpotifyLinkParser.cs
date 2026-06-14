@@ -13,8 +13,12 @@ namespace BridgeBeats.Providers.Spotify {
     /// <remarks>
     /// The parser recognizes open.spotify.com/{type}/{id} URLs where {type} is "track",
     /// "album", or "prerelease", and {id} is a Base62-encoded identifier. Artist and
-    /// playlist URLs are not recognized by the regex and are dropped by design
-    /// (director ruling 2026-06-07); neither entity type is processed anywhere in the system.
+    /// playlist URLs are not recognized by the regex and are dropped by design;
+    /// neither entity type is processed anywhere in the system.
+    /// Short <c>spotify.link</c> URLs are resolved to their canonical <c>open.spotify.com</c> form by
+    /// following a single redirect through an SSRF-hardened HTTP handler. The URL-matching regexes here
+    /// overlap with the provider-agnostic <see cref="ProviderUrlParser"/>; this parser is the
+    /// Spotify-specific one.
     /// </remarks>
     public static partial class SpotifyLinkParser {
 
@@ -35,8 +39,9 @@ namespace BridgeBeats.Providers.Spotify {
         /// <remarks>
         /// Recognized entity types are track, album, and prerelease. Artist and playlist URLs
         /// are not matched by the regex and are dropped by design — neither entity type is
-        /// processed anywhere in the system (director ruling 2026-06-07).
+        /// processed anywhere in the system.
         /// For spotify.link URLs, the method follows the redirect to obtain the actual open.spotify.com URL.
+        /// A non-<c>spotify.link</c> host that matched the short-link shape returns a failed result.
         /// </remarks>
         public static async Task<(bool, SpotifyEntity kind, string id)> TryParseUriAsync(
             string link
@@ -84,10 +89,11 @@ namespace BridgeBeats.Providers.Spotify {
         }
 
         /// <summary>
-        /// Resolves a spotify.link short URL to the actual open.spotify.com URL by following the HTTP redirect.
+        /// Resolves a spotify.link short URL to the actual open.spotify.com URL by following the HTTP
+        /// redirect through an SSRF-hardened handler.
         /// </summary>
-        /// <param name="shortLink">The spotify.link URL to resolve.</param>
-        /// <returns>The resolved open.spotify.com URL, or null if resolution fails.</returns>
+        /// <param name="shortLink">The spotify.link URL (without scheme) to resolve.</param>
+        /// <returns>The resolved open.spotify.com URL, or null if resolution fails or the response is not a redirect.</returns>
         internal static async Task<string?> ResolveSpotifyShortLinkAsync( string shortLink ) {
             using HttpClient client = new( s_handlerFactory( ) );
             client.Timeout = TimeSpan.FromSeconds( 5 );
@@ -100,19 +106,34 @@ namespace BridgeBeats.Providers.Spotify {
                 : null;
         }
 
+        /// <summary>
+        /// Factory for the SSRF-hardened HTTP handler used when resolving short links; auto-redirect is
+        /// disabled so the redirect target can be read from the response. Replaceable via
+        /// <see cref="SetHandlerFactoryForTests"/>.
+        /// </summary>
         private static Func<HttpMessageHandler> s_handlerFactory = ( ) =>
             SsrfSocketsHttpHandlerFactory.Create(
                 connectTimeout: TimeSpan.FromSeconds( 5 ),
                 allowAutoRedirect: false );
 
+        /// <summary>Test seam that overrides the short-link resolution handler factory.</summary>
+        /// <param name="factory">The handler factory to use in place of the SSRF-hardened default.</param>
         internal static void SetHandlerFactoryForTests( Func<HttpMessageHandler> factory ) =>
             s_handlerFactory = factory;
 
+        /// <summary>Compiled regex matching a full <c>open.spotify.com</c> track, album, or prerelease link.</summary>
         private static readonly Regex s_spotifyLink = SpotifyMusicLink();
+
+        /// <summary>Builds the compiled <see cref="s_spotifyLink"/> regex.</summary>
+        /// <returns>The compiled regex.</returns>
         [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album|prerelease)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex SpotifyMusicLink( );
 
+        /// <summary>Compiled regex matching a <c>spotify.link</c> short link.</summary>
         private static readonly Regex s_spotifyShortLink = SpotifyShortLinkPattern();
+
+        /// <summary>Builds the compiled <see cref="s_spotifyShortLink"/> regex.</summary>
+        /// <returns>The compiled regex.</returns>
         [GeneratedRegex( @"^(?:https?://)?spotify\.link/[A-Za-z0-9]+", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex SpotifyShortLinkPattern( );
 
@@ -124,7 +145,7 @@ namespace BridgeBeats.Providers.Spotify {
         /// <remarks>
         /// This is a synchronous method that only handles direct open.spotify.com URLs.
         /// It does not resolve spotify.link short URLs. For full URL resolution including
-        /// short links, use <see cref="TryParseUriAsync"/>.
+        /// short links, use <see cref="TryParseUriAsync"/>. Delegates to <see cref="ProviderUrlParser.ExtractSpotifyId"/>.
         /// </remarks>
         public static string? ExtractId( string url )
             => ProviderUrlParser.ExtractSpotifyId( url );
@@ -228,16 +249,34 @@ namespace BridgeBeats.Providers.Spotify {
         public static string GetBulkArtistsUri( IEnumerable<string> artistIds )
             => BulkArtistsURI.Replace( "{ids}", string.Join( ",", artistIds ) );
 
-
+        /// <summary>Template for the ISRC track-search request URI.</summary>
         private const string TracksIsrcURI = "search?q=isrc:{isrc}&type=track";
+
+        /// <summary>Template for the UPC album-search request URI.</summary>
         private const string AlbumsUpcURI = "search?q=upc:{upc}&type=album";
+
+        /// <summary>Template for the artist-search request URI.</summary>
         private const string ArtistsSearchURI = "search?q={artist}&type=artist";
+
+        /// <summary>Template for the artist-albums request URI.</summary>
         private const string ArtistAlbumsURI = "artists/{id}/albums";
+
+        /// <summary>Template for the album-tracks request URI.</summary>
         private const string AlbumTracksURI = "albums/{id}/tracks";
+
+        /// <summary>Template for the single-album request URI.</summary>
         private const string AlbumsURI = "albums/{id}";
+
+        /// <summary>Template for the single-track request URI.</summary>
         private const string TracksURI = "tracks/{id}";
+
+        /// <summary>Template for the bulk-tracks request URI.</summary>
         private const string BulkTracksURI = "tracks?ids={ids}";
+
+        /// <summary>Template for the bulk-albums request URI.</summary>
         private const string BulkAlbumsURI = "albums?ids={ids}";
+
+        /// <summary>Template for the bulk-artists request URI.</summary>
         private const string BulkArtistsURI = "artists?ids={ids}";
 
     }

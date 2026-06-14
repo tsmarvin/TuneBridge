@@ -5,15 +5,20 @@ using Microsoft.Extensions.DependencyInjection;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="DataProtectionLookupProtector"/>.
+/// Tests <see cref="DataProtectionLookupProtector"/>, the lookup protector that wraps an
+/// <see cref="IDataProtectionProvider"/> and derives a per-key-id protector to encrypt and decrypt searchable
+/// PII. Covers protect/unprotect round-trips, null and empty-string passthrough, ciphertext differing from
+/// plaintext, key-id isolation, decrypting with the wrong key id, and the null-provider constructor guard.
 /// </summary>
 [TestClass]
 public class DataProtectionLookupProtectorTests {
 
+    /// <summary>The protector under test, backed by a real DataProtection provider built in <see cref="Setup"/>.</summary>
     private DataProtectionLookupProtector _protector = null!;
 
     /// <summary>
-    /// Initializes test resources before each test.
+    /// Builds a DataProtection provider with a fixed application name and constructs the protector under test
+    /// before each test.
     /// </summary>
     [TestInitialize]
     public void Setup( ) {
@@ -28,7 +33,7 @@ public class DataProtectionLookupProtectorTests {
     }
 
     /// <summary>
-    /// Verifies that Protect followed by Unprotect returns the original data.
+    /// Verifies protecting then unprotecting a value under the same key id returns the original plaintext.
     /// </summary>
     [TestMethod]
     public void Protect_Unprotect_RoundTrip_ReturnsOriginalData( ) {
@@ -45,7 +50,7 @@ public class DataProtectionLookupProtectorTests {
     }
 
     /// <summary>
-    /// Verifies that Protect returns null for null input.
+    /// Verifies <see cref="DataProtectionLookupProtector.Protect"/> passes a null input through as null.
     /// </summary>
     [TestMethod]
     public void Protect_ReturnsNull_ForNullInput( ) {
@@ -60,7 +65,7 @@ public class DataProtectionLookupProtectorTests {
     }
 
     /// <summary>
-    /// Verifies that Unprotect returns null for null input.
+    /// Verifies <see cref="DataProtectionLookupProtector.Unprotect"/> passes a null input through as null.
     /// </summary>
     [TestMethod]
     public void Unprotect_ReturnsNull_ForNullInput( ) {
@@ -75,7 +80,7 @@ public class DataProtectionLookupProtectorTests {
     }
 
     /// <summary>
-    /// Verifies that encrypted data differs from the original plaintext.
+    /// Verifies the protected output is non-null and differs from the plaintext input.
     /// </summary>
     [TestMethod]
     public void Protect_ProducesCiphertext_DifferentFromPlaintext( ) {
@@ -92,7 +97,8 @@ public class DataProtectionLookupProtectorTests {
     }
 
     /// <summary>
-    /// Verifies that different key IDs produce different ciphertext for the same plaintext.
+    /// Verifies protecting identical plaintext under two different key ids yields different ciphertext, confirming
+    /// each key id derives a distinct protector.
     /// </summary>
     [TestMethod]
     public void Protect_DifferentKeyIds_ProduceDifferentCiphertext( ) {
@@ -110,7 +116,8 @@ public class DataProtectionLookupProtectorTests {
     }
 
     /// <summary>
-    /// Verifies that data encrypted with one key ID cannot be decrypted with a different key ID.
+    /// Verifies unprotecting ciphertext with a different key id than it was protected under throws a
+    /// <see cref="System.Security.Cryptography.CryptographicException"/>.
     /// </summary>
     [TestMethod]
     public void Unprotect_WithWrongKeyId_ThrowsException( ) {
@@ -125,7 +132,8 @@ public class DataProtectionLookupProtectorTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws for null IDataProtectionProvider.
+    /// Verifies the constructor rejects a null <see cref="IDataProtectionProvider"/> with an
+    /// <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void Constructor_ThrowsArgumentNullException_ForNullProvider( ) {
@@ -136,7 +144,8 @@ public class DataProtectionLookupProtectorTests {
     }
 
     /// <summary>
-    /// Verifies that Protect works with empty string input.
+    /// Verifies an empty string protects and unprotects back to an empty string (the empty value is encrypted,
+    /// not treated as null passthrough).
     /// </summary>
     [TestMethod]
     public void Protect_Unprotect_RoundTrip_WorksWithEmptyString( ) {

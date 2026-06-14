@@ -4,16 +4,19 @@ using BridgeBeats.Core.Domain.Utilities;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="ProviderUrlParser"/>.
+/// Unit tests for <see cref="ProviderUrlParser"/>, the provider-agnostic URL-to-id extractor.
+/// Cover the per-provider extractors (<c>ExtractAppleMusicId</c>, <c>ExtractSpotifyId</c>,
+/// <c>ExtractTidalId</c>) and the <c>ExtractId</c> switch that dispatches on
+/// <see cref="SupportedProviders"/>. Exercise the supported URL shapes per provider, the
+/// <c>?i=</c> Apple Music song-within-album selector, case-insensitive hosts, and the
+/// null/empty/invalid/unsupported-provider paths that return <c>null</c>.
 /// </summary>
 [TestClass]
 public class ProviderUrlParserTests {
 
     #region Apple Music Tests
 
-    /// <summary>
-    /// Verifies that ExtractAppleMusicId extracts ID from standard album URL.
-    /// </summary>
+    /// <summary>An Apple Music album URL yields the trailing numeric album id.</summary>
     [TestMethod]
     public void ExtractAppleMusicId_ExtractsId_FromAlbumUrl( ) {
         // Arrange
@@ -26,9 +29,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "1234567890", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractAppleMusicId extracts ID from standard song URL.
-    /// </summary>
+    /// <summary>An Apple Music song URL yields the trailing numeric song id.</summary>
     [TestMethod]
     public void ExtractAppleMusicId_ExtractsId_FromSongUrl( ) {
         // Arrange
@@ -42,7 +43,8 @@ public class ProviderUrlParserTests {
     }
 
     /// <summary>
-    /// Verifies that ExtractAppleMusicId extracts song ID from album URL with ?i= query parameter.
+    /// For an album URL carrying the <c>?i=</c> selector, the song id from the <c>i</c> query
+    /// parameter takes precedence over the album id in the path.
     /// </summary>
     [TestMethod]
     public void ExtractAppleMusicId_ExtractsSongId_FromAlbumUrlWithQueryParameter( ) {
@@ -57,7 +59,8 @@ public class ProviderUrlParserTests {
     }
 
     /// <summary>
-    /// Verifies that ExtractAppleMusicId handles query parameters in standard URLs.
+    /// An album URL with unrelated query parameters (no <c>i</c> selector) still yields the
+    /// album id from the path.
     /// </summary>
     [TestMethod]
     public void ExtractAppleMusicId_ExtractsId_FromUrlWithQueryParameters( ) {
@@ -71,9 +74,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "1234567890", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractAppleMusicId handles mixed case domain.
-    /// </summary>
+    /// <summary>Host matching is case-insensitive, so a mixed-case domain still yields the id.</summary>
     [TestMethod]
     public void ExtractAppleMusicId_HandlesCase_MixedCaseDomain( ) {
         // Arrange
@@ -86,9 +87,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "1234567890", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractAppleMusicId returns null for invalid URL.
-    /// </summary>
+    /// <summary>A non-Apple-Music URL yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractAppleMusicId_ReturnsNull_ForInvalidUrl( ) {
         // Arrange
@@ -101,9 +100,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractAppleMusicId returns null for null input.
-    /// </summary>
+    /// <summary>A <c>null</c> input yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractAppleMusicId_ReturnsNull_ForNullInput( ) {
         // Act
@@ -113,9 +110,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractAppleMusicId returns null for empty input.
-    /// </summary>
+    /// <summary>An empty-string input yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractAppleMusicId_ReturnsNull_ForEmptyInput( ) {
         // Act
@@ -129,9 +124,7 @@ public class ProviderUrlParserTests {
 
     #region Spotify Tests
 
-    /// <summary>
-    /// Verifies that ExtractSpotifyId extracts ID from track URL.
-    /// </summary>
+    /// <summary>A Spotify track URL yields the base-62 track id.</summary>
     [TestMethod]
     public void ExtractSpotifyId_ExtractsId_FromTrackUrl( ) {
         // Arrange
@@ -144,9 +137,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "3n3Ppam7vgaVa1iaRUc9Lp", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractSpotifyId extracts ID from album URL.
-    /// </summary>
+    /// <summary>A Spotify album URL yields the base-62 album id.</summary>
     [TestMethod]
     public void ExtractSpotifyId_ExtractsId_FromAlbumUrl( ) {
         // Arrange
@@ -159,9 +150,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "6WdSsBrH5QtofaTTqgwxOV", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractSpotifyId extracts ID from prerelease URL.
-    /// </summary>
+    /// <summary>A Spotify prerelease URL yields the prerelease id.</summary>
     [TestMethod]
     public void ExtractSpotifyId_ExtractsId_FromPrereleaseUrl( ) {
         // Arrange
@@ -174,9 +163,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "1ABC2DEF3GHI4JKL5MNO6P", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractSpotifyId handles URL with query parameters.
-    /// </summary>
+    /// <summary>A track URL with a <c>?si=</c> share token still yields the track id.</summary>
     [TestMethod]
     public void ExtractSpotifyId_ExtractsId_FromUrlWithQueryParameters( ) {
         // Arrange
@@ -189,9 +176,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "3n3Ppam7vgaVa1iaRUc9Lp", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractSpotifyId handles case insensitivity.
-    /// </summary>
+    /// <summary>Host and path matching is case-insensitive, so an upper-case URL still yields the id.</summary>
     [TestMethod]
     public void ExtractSpotifyId_HandlesCase_CaseInsensitive( ) {
         // Arrange
@@ -204,9 +189,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "3n3Ppam7vgaVa1iaRUc9Lp", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractSpotifyId returns null for invalid URL.
-    /// </summary>
+    /// <summary>A non-Spotify URL yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractSpotifyId_ReturnsNull_ForInvalidUrl( ) {
         // Arrange
@@ -219,9 +202,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractSpotifyId returns null for null input.
-    /// </summary>
+    /// <summary>A <c>null</c> input yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractSpotifyId_ReturnsNull_ForNullInput( ) {
         // Act
@@ -231,9 +212,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractSpotifyId returns null for empty input.
-    /// </summary>
+    /// <summary>An empty-string input yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractSpotifyId_ReturnsNull_ForEmptyInput( ) {
         // Act
@@ -247,9 +226,7 @@ public class ProviderUrlParserTests {
 
     #region Tidal Tests
 
-    /// <summary>
-    /// Verifies that ExtractTidalId extracts ID from track URL.
-    /// </summary>
+    /// <summary>A Tidal <c>/browse/track/</c> URL yields the numeric track id.</summary>
     [TestMethod]
     public void ExtractTidalId_ExtractsId_FromTrackUrl( ) {
         // Arrange
@@ -262,9 +239,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "123456789", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractTidalId extracts ID from album URL.
-    /// </summary>
+    /// <summary>A Tidal <c>/browse/album/</c> URL yields the numeric album id.</summary>
     [TestMethod]
     public void ExtractTidalId_ExtractsId_FromAlbumUrl( ) {
         // Arrange
@@ -277,9 +252,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "987654321", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractTidalId extracts ID from listen.tidal.com URL.
-    /// </summary>
+    /// <summary>A <c>listen.tidal.com</c> track URL yields the numeric track id.</summary>
     [TestMethod]
     public void ExtractTidalId_ExtractsId_FromListenSubdomain( ) {
         // Arrange
@@ -292,9 +265,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "123456789", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractTidalId extracts ID from URL without /browse/.
-    /// </summary>
+    /// <summary>A Tidal track URL without the <c>/browse</c> segment still yields the track id.</summary>
     [TestMethod]
     public void ExtractTidalId_ExtractsId_FromUrlWithoutBrowse( ) {
         // Arrange
@@ -308,7 +279,7 @@ public class ProviderUrlParserTests {
     }
 
     /// <summary>
-    /// Verifies that ExtractTidalId returns null for artist URL (not supported).
+    /// An artist URL yields <c>null</c>: only track and album entities carry an extractable id.
     /// </summary>
     [TestMethod]
     public void ExtractTidalId_ReturnsNull_ForArtistUrl( ) {
@@ -322,9 +293,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id, "Artist URLs should not return an ID" );
     }
 
-    /// <summary>
-    /// Verifies that ExtractTidalId handles case insensitivity.
-    /// </summary>
+    /// <summary>Host and path matching is case-insensitive, so an upper-case URL still yields the id.</summary>
     [TestMethod]
     public void ExtractTidalId_HandlesCase_CaseInsensitive( ) {
         // Arrange
@@ -337,9 +306,7 @@ public class ProviderUrlParserTests {
         Assert.AreEqual( "123456789", id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractTidalId returns null for invalid URL.
-    /// </summary>
+    /// <summary>A non-Tidal URL yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractTidalId_ReturnsNull_ForInvalidUrl( ) {
         // Arrange
@@ -352,9 +319,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractTidalId returns null for null input.
-    /// </summary>
+    /// <summary>A <c>null</c> input yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractTidalId_ReturnsNull_ForNullInput( ) {
         // Act
@@ -364,9 +329,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractTidalId returns null for empty input.
-    /// </summary>
+    /// <summary>An empty-string input yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractTidalId_ReturnsNull_ForEmptyInput( ) {
         // Act
@@ -381,7 +344,8 @@ public class ProviderUrlParserTests {
     #region ExtractId (Provider Switch) Tests
 
     /// <summary>
-    /// Verifies that ExtractId routes to correct provider parser for Apple Music.
+    /// <c>ExtractId</c> with <see cref="SupportedProviders.AppleMusic"/> routes to the Apple Music
+    /// extractor and returns its id.
     /// </summary>
     [TestMethod]
     public void ExtractId_RoutesToAppleMusicParser_ForAppleMusicProvider( ) {
@@ -396,7 +360,8 @@ public class ProviderUrlParserTests {
     }
 
     /// <summary>
-    /// Verifies that ExtractId routes to correct provider parser for Spotify.
+    /// <c>ExtractId</c> with <see cref="SupportedProviders.Spotify"/> routes to the Spotify
+    /// extractor and returns its id.
     /// </summary>
     [TestMethod]
     public void ExtractId_RoutesToSpotifyParser_ForSpotifyProvider( ) {
@@ -411,7 +376,8 @@ public class ProviderUrlParserTests {
     }
 
     /// <summary>
-    /// Verifies that ExtractId routes to correct provider parser for Tidal.
+    /// <c>ExtractId</c> with <see cref="SupportedProviders.Tidal"/> routes to the Tidal extractor
+    /// and returns its id.
     /// </summary>
     [TestMethod]
     public void ExtractId_RoutesToTidalParser_ForTidalProvider( ) {
@@ -426,7 +392,7 @@ public class ProviderUrlParserTests {
     }
 
     /// <summary>
-    /// Verifies that ExtractId returns null for unsupported provider.
+    /// <c>ExtractId</c> with an out-of-range provider value yields <c>null</c> (no extractor matches).
     /// </summary>
     [TestMethod]
     public void ExtractId_ReturnsNull_ForUnsupportedProvider( ) {
@@ -440,9 +406,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractId returns null for null URL.
-    /// </summary>
+    /// <summary><c>ExtractId</c> with a <c>null</c> URL yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractId_ReturnsNull_ForNullUrl( ) {
         // Act
@@ -452,9 +416,7 @@ public class ProviderUrlParserTests {
         Assert.IsNull( id );
     }
 
-    /// <summary>
-    /// Verifies that ExtractId returns null for empty URL.
-    /// </summary>
+    /// <summary><c>ExtractId</c> with an empty URL yields <c>null</c>.</summary>
     [TestMethod]
     public void ExtractId_ReturnsNull_ForEmptyUrl( ) {
         // Act

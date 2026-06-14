@@ -4,56 +4,88 @@ using BridgeBeats.Contracts.Enums;
 namespace BridgeBeats.Contracts.Interfaces;
 
 /// <summary>
-/// The common interface for looking up music from a given provider (e.g., Apple Music, Spotify).
+/// A single provider's lookup contract: resolves one provider's view of a track or album
+/// from the various lookup strategies, and identifies which provider the implementation
+/// serves.
 /// </summary>
+/// <remarks>
+/// Implemented in <c>BridgeBeats.Core</c> by the per-provider services
+/// <c>SpotifyLookupService</c>, <c>AppleMusicLookupService</c>, and <c>TidalLookupService</c>,
+/// sharing <c>MusicLookupServiceBase</c> and <c>HttpMusicLookupService</c>
+/// (<c>Domain/Providers/Common/</c>). Every lookup method returns <see langword="null"/> when
+/// this provider has no match.
+/// </remarks>
 public partial interface IMusicLookupService {
 
     /// <summary>
-    /// The music provider that this service looks up information from.
+    /// A concrete <see langword="static"/> auto-property declaring this interface's provider
+    /// identity. It is not <see langword="static"/> <see langword="abstract"/>: no implementer
+    /// satisfies or overrides it, and reading it always returns the default (invalid) enum value
+    /// <c>0</c>. Effectively unused today; kept as a placeholder for future per-provider identity
+    /// support.
     /// </summary>
     static SupportedProviders Provider { get; }
 
     /// <summary>
-    /// Looks up track or album information by title and artist.
+    /// Resolves this provider's item by free-text title and artist.
     /// </summary>
-    /// <param name="title">The title of the track or album.</param>
-    /// <param name="artist">The artist name.</param>
-    /// <returns>Music lookup result with metadata, or null if not found.</returns>
+    /// <param name="title">The title to search for.</param>
+    /// <param name="artist">The artist to search for.</param>
+    /// <returns>
+    /// A task whose result is this provider's <see cref="MusicLookupResult"/>, or
+    /// <see langword="null"/> when this provider has no match.
+    /// </returns>
     Task<MusicLookupResult?> GetInfoAsync( string title, string artist );
 
     /// <summary>
-    /// Looks up track information by ISRC (International Standard Recording Code).
+    /// Resolves this provider's item by ISRC (International Standard Recording Code).
     /// </summary>
-    /// <param name="isrc">The ISRC code of the track.</param>
-    /// <returns>Music lookup result with metadata, or null if not found.</returns>
+    /// <param name="isrc">The ISRC to resolve.</param>
+    /// <returns>
+    /// A task whose result is this provider's <see cref="MusicLookupResult"/>, or
+    /// <see langword="null"/> when this provider has no match.
+    /// </returns>
     Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc );
 
     /// <summary>
-    /// Looks up album information by UPC (Universal Product Code).
+    /// Resolves this provider's item by UPC (Universal Product Code).
     /// </summary>
-    /// <param name="upc">The UPC code of the album.</param>
-    /// <returns>Music lookup result with metadata, or null if not found.</returns>
+    /// <param name="upc">The UPC to resolve.</param>
+    /// <returns>
+    /// A task whose result is this provider's <see cref="MusicLookupResult"/>, or
+    /// <see langword="null"/> when this provider has no match.
+    /// </returns>
     Task<MusicLookupResult?> GetInfoByUPCAsync( string upc );
 
     /// <summary>
-    /// Looks up track or album information from a provider-specific URI.
+    /// Resolves this provider's item from a provider URL, which the implementation parses.
     /// </summary>
-    /// <param name="uri">The music provider's URI (e.g., Spotify or Apple Music link).</param>
-    /// <returns>Music lookup result with metadata, or null if not found or URI is invalid.</returns>
+    /// <param name="uri">The provider URL to resolve.</param>
+    /// <returns>
+    /// A task whose result is this provider's <see cref="MusicLookupResult"/>, or
+    /// <see langword="null"/> when this provider has no match or the URL is invalid.
+    /// </returns>
     Task<MusicLookupResult?> GetInfoAsync( string uri );
 
     /// <summary>
-    /// Looks up additional information for a partial music lookup result.
+    /// Finds this provider's equivalent of an already-resolved result from another provider
+    /// (cross-provider matching), enriching a partial lookup with this provider's data.
     /// </summary>
-    /// <param name="lookup">The partial lookup result to enhance with additional data.</param>
-    /// <returns>Enhanced music lookup result with metadata, or null if not found.</returns>
+    /// <param name="lookup">An already-resolved <see cref="MusicLookupResult"/> from another provider to match against.</param>
+    /// <returns>
+    /// A task whose result is this provider's matching <see cref="MusicLookupResult"/>, or
+    /// <see langword="null"/> when this provider has no match.
+    /// </returns>
     Task<MusicLookupResult?> GetInfoAsync( MusicLookupResult lookup );
 
     /// <summary>
-    /// Looks up track or album information by provider-specific ID.
+    /// Resolves this provider's item by its own native id.
     /// </summary>
-    /// <param name="providerId">The provider-specific identifier (e.g., Apple Music catalog ID, Spotify track/album ID).</param>
-    /// <param name="isAlbum">True to look up an album, false to look up a track.</param>
-    /// <returns>Music lookup result with metadata, or null if not found.</returns>
+    /// <param name="providerId">This provider's native id.</param>
+    /// <param name="isAlbum"><see langword="true"/> when the id identifies an album; <see langword="false"/> for a track.</param>
+    /// <returns>
+    /// A task whose result is this provider's <see cref="MusicLookupResult"/>, or
+    /// <see langword="null"/> when this provider has no match.
+    /// </returns>
     Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum );
 }

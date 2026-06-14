@@ -10,10 +10,12 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for saga polling functionality using the shared Redis container.
-/// These tests verify that the polling fallback mechanism correctly discovers and
-/// processes sagas that may have been missed by Pub/Sub.
-/// Requires Docker to be running on the host machine.
+/// Integration tests for the saga-polling path of <see cref="RedisSagaStateManager"/> against a real
+/// Redis instance (the shared Testcontainers Redis). Verifies that the polling fallback mechanism
+/// correctly discovers and processes sagas that may have been missed by Pub/Sub: querying sagas that are
+/// complete but not yet finalized (honoring minimum-age and limit, excluding finalized and incomplete
+/// sagas, and cleaning expired entries from the pending index) and the pending-index lifecycle as sagas
+/// are created, finalized, and deleted. Requires Docker to be running on the host machine.
 /// </summary>
 [TestClass]
 [TestCategory( "Integration" )]
@@ -21,21 +23,23 @@ namespace BridgeBeats.Tests.Integration;
 [DoNotParallelize] // Shares Redis saga:* keys with RedisSagaStateManagerTests
 public class SagaPollingIntegrationTests {
 
+    /// <summary>The shared Redis connection used by the saga manager under test.</summary>
     private static IConnectionMultiplexer? s_redis;
 
+    /// <summary>Mock logger captured for the saga manager under test.</summary>
     private Mock<ILogger<RedisSagaStateManager>> _mockLogger = null!;
+    /// <summary>Queue settings (including job expiration) supplied to the saga manager.</summary>
     private IOptions<QueueSettings> _settings = null!;
+    /// <summary>The saga state manager under test, recreated for each test.</summary>
     private RedisSagaStateManager _sagaManager = null!;
 
-    /// <summary>
-    /// Gets or sets the test context for the current test.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes the Redis connection for all tests in the class.
+    /// Requires the shared Redis container and opens a connection to it for the test class.
     /// </summary>
-    /// <param name="_">The test context provided by the test framework (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
@@ -43,7 +47,7 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Closes and disposes the Redis connection after all tests complete.
+    /// Closes and disposes the Redis connection after the class completes.
     /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
@@ -54,7 +58,7 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Clears saga-related Redis keys and initializes the saga manager before each test.
+    /// Clears leftover <c>saga:*</c> keys and constructs a fresh saga manager before each test.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
@@ -76,8 +80,8 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> returns sagas
-    /// that are complete but have not had their final result URI set.
+    /// Verifies that a saga whose provider state is complete but which has no final result URI is
+    /// returned by the completed-but-unfinalized query.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -127,8 +131,8 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> excludes sagas
-    /// that have already had their final result URI set.
+    /// Verifies that a saga which already has a final result URI is excluded from the
+    /// completed-but-unfinalized query.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -164,8 +168,8 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> excludes sagas
-    /// that have not yet completed all provider lookups.
+    /// Verifies that a saga with an incomplete provider state is excluded from the
+    /// completed-but-unfinalized query.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -199,8 +203,8 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> respects the
-    /// minimum age parameter to avoid processing very recently created sagas.
+    /// Verifies a complete saga younger than the requested minimum age is excluded from the
+    /// completed-but-unfinalized query.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -233,8 +237,8 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> respects the
-    /// limit parameter to control the number of results returned.
+    /// Verifies the completed-but-unfinalized query returns no more than the requested limit when more
+    /// eligible sagas exist.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -277,8 +281,8 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GetCompletedButUnfinalizedAsync"/> cleans up
-    /// orphaned saga IDs from the pending index when the underlying saga data is missing.
+    /// Verifies the completed-but-unfinalized query removes pending-index entries that point at expired
+    /// (missing) saga records.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -304,8 +308,7 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.AddToPendingIndexAsync"/> adds the saga ID
-    /// to the pending index set in Redis.
+    /// Verifies adding a saga to the pending index inserts it into the Redis pending set.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -323,8 +326,7 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.RemoveFromPendingIndexAsync"/> removes the saga ID
-    /// from the pending index set in Redis.
+    /// Verifies removing a saga from the pending index deletes it from the Redis pending set.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -343,8 +345,7 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GetOrCreateAsync"/> automatically adds newly
-    /// created sagas to the pending index for polling discovery.
+    /// Verifies creating a saga via get-or-create automatically registers it in the pending index.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -369,8 +370,7 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.SetFinalResultUriAsync"/> removes the saga
-    /// from the pending index since it no longer needs polling.
+    /// Verifies setting a saga's final result URI removes it from the pending index.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -401,8 +401,7 @@ public class SagaPollingIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.DeleteAsync"/> removes the saga from the pending
-    /// index when deleting the saga state.
+    /// Verifies deleting a saga removes it from the pending index along with the saga state.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]

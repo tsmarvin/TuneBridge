@@ -3,19 +3,14 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Spotify.Models {
 
     /// <summary>
-    /// Response from GET /artists?ids={ids} - batch artist lookup.
+    /// Deserialization target for the Spotify Web API "get several artists" response
+    /// (GET /artists?ids={ids}), which wraps the returned artists in a top-level <c>artists</c> array.
+    /// Entries may be null when a requested id was not found. The endpoint accepts up to 50 artist ids per
+    /// request. Mirrors the Spotify Web API response shape.
     /// </summary>
-    /// <remarks>
-    /// Endpoint: GET /artists?ids={comma-separated-ids}
-    /// Maximum: 50 artist IDs per request
-    /// Documentation: https://developer.spotify.com/documentation/web-api/reference/get-multiple-artists
-    /// </remarks>
     public sealed class SpotifyArtistsResponse {
 
-        /// <summary>
-        /// A list of artist objects. Position corresponds to the position of the ID in the request.
-        /// If an artist is not found, null is returned at that position.
-        /// </summary>
+        /// <summary>Full artist objects in the order requested; an entry is null when the corresponding id was not found. Maps to <c>artists</c>.</summary>
         [JsonPropertyName( "artists" )]
         public List<SpotifyArtist?> Artists { get; set; } = [];
     }

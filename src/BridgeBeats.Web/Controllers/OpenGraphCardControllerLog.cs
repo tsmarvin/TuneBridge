@@ -1,12 +1,14 @@
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// LoggerMessage methods for <see cref="OpenGraphCardController"/>.
+/// Source-generated <see cref="Microsoft.Extensions.Logging.LoggerMessageAttribute"/> logging methods
+/// for <see cref="OpenGraphCardController"/>.
 /// </summary>
 public partial class OpenGraphCardController {
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to invalid operation.
+    /// Logs that resolving the ATProto URI from the cache for a card failed with an invalid-operation error.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.OpenGraphCardControllerCacheInvalidOp,
         Level = LogLevel.Warning,
@@ -14,8 +16,9 @@ public partial class OpenGraphCardController {
     private partial void LogCacheInvalidOp( Exception ex );
 
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to argument error.
+    /// Logs that resolving the ATProto URI from the cache for a card failed with an argument error.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.OpenGraphCardControllerCacheArgError,
         Level = LogLevel.Warning,
@@ -23,8 +26,9 @@ public partial class OpenGraphCardController {
     private partial void LogCacheArgError( Exception ex );
 
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to general error.
+    /// Logs that resolving the ATProto URI from the cache for a card failed.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.OpenGraphCardControllerCacheError,
         Level = LogLevel.Warning,

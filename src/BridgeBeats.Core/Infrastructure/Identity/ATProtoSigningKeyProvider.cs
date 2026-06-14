@@ -4,40 +4,46 @@ using System.Text.Json;
 namespace BridgeBeats.Core.Infrastructure.Identity;
 
 /// <summary>
-/// Provides the persistent ES256 signing key used for ATProto OAuth confidential client assertions.
-/// This key is shared across all sessions and is distinct from per-session DPoP keys.
+/// Provides the persistent P-256 ECDSA signing key used to sign ATProto OAuth confidential-client
+/// assertions. This key is shared across all sessions and is distinct from the per-session DPoP keys.
 /// </summary>
+/// <remarks>
+/// Constructed from a JWK JSON string supplied at startup (typically loaded from a configured file
+/// path). Only a single key is ever held and emitted in the public JWKS. Rotation is operational:
+/// replace the key file and restart the process. There is no in-process rotation or multi-key JWKS.
+/// The JWK contains the private parameter <c>d</c>; the public JWKS emitted by
+/// <see cref="GetPublicJwks"/> never includes that private material.
+/// </remarks>
 public sealed class ATProtoSigningKeyProvider : IDisposable {
 
     private static readonly JsonSerializerOptions s_indentedJsonOptions = new( ) { WriteIndented = true };
 
-    /// <summary>
-    /// The ECDSA signing key.
-    /// </summary>
+    /// <summary>Gets the ECDSA signing key, including its private parameters, used to sign client assertions.</summary>
     public ECDsa SigningKey { get; }
 
-    /// <summary>
-    /// The key identifier (kid) matching the published JWKS.
-    /// </summary>
+    /// <summary>Gets the key identifier (<c>kid</c>) matching the published JWKS.</summary>
     public string KeyId { get; }
 
-    /// <summary>
-    /// The base64url-encoded X coordinate of the public key.
-    /// </summary>
+    /// <summary>Gets the base64url-encoded public X coordinate of the signing key.</summary>
     public string PublicKeyX { get; }
 
-    /// <summary>
-    /// The base64url-encoded Y coordinate of the public key.
-    /// </summary>
+    /// <summary>Gets the base64url-encoded public Y coordinate of the signing key.</summary>
     public string PublicKeyY { get; }
 
     private bool _disposed;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ATProtoSigningKeyProvider"/> class
-    /// from a JWK JSON string containing an ES256 private key.
+    /// Initializes a new instance of the <see cref="ATProtoSigningKeyProvider"/> class from a JWK
+    /// JSON string containing an ES256 private key.
     /// </summary>
-    /// <param name="jwkJson">The JWK JSON string containing the private key (kty, crv, x, y, d, kid).</param>
+    /// <param name="jwkJson">
+    /// The signing key as a JWK JSON string. Must describe an EC key on curve P-256 and include the
+    /// <c>kty</c>, <c>crv</c>, <c>x</c>, <c>y</c>, <c>d</c>, and <c>kid</c> parameters.
+    /// </param>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="jwkJson"/> is null/whitespace, is not an EC P-256 key, or is missing
+    /// any required parameter.
+    /// </exception>
     public ATProtoSigningKeyProvider( string jwkJson ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( jwkJson );
 
@@ -85,9 +91,12 @@ public sealed class ATProtoSigningKeyProvider : IDisposable {
     }
 
     /// <summary>
-    /// Returns the JWKS JSON containing only the public key for publishing at the jwks_uri endpoint.
+    /// Builds the public JWKS document for publishing at the jwks_uri endpoint.
     /// </summary>
-    /// <returns>A JSON string in JWKS format (keys array with a single public key).</returns>
+    /// <returns>
+    /// An indented JSON JWKS containing the single public key (algorithm <c>ES256</c>, use <c>sig</c>).
+    /// The private parameter is not included.
+    /// </returns>
     public string GetPublicJwks( ) {
         var jwks = new {
             keys = new[] {
@@ -107,10 +116,14 @@ public sealed class ATProtoSigningKeyProvider : IDisposable {
     }
 
     /// <summary>
-    /// Generates a new ES256 signing key in JWK format suitable for persisting to a secret file.
+    /// Generates a new ES256 signing key as a JWK JSON string suitable for persisting to a secret file.
     /// Call this once during installation to create the key, then load it via the constructor.
     /// </summary>
-    /// <returns>A JWK JSON string containing the full key (including private key 'd' parameter).</returns>
+    /// <returns>
+    /// A serialized JWK for a new P-256 key with a randomly generated <c>kid</c>, including the private
+    /// parameter <c>d</c> and the <c>alg</c>/<c>use</c> hints (<c>ES256</c>/<c>sig</c>). Intended for
+    /// provisioning a new key out of band.
+    /// </returns>
     public static string GenerateNewSigningKeyJwk( ) {
         using ECDsa ecdsa = ECDsa.Create( ECCurve.NamedCurves.nistP256 );
         ECParameters parameters = ecdsa.ExportParameters( includePrivateParameters: true );
@@ -129,7 +142,9 @@ public sealed class ATProtoSigningKeyProvider : IDisposable {
         return JsonSerializer.Serialize( jwk );
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Releases the underlying <see cref="ECDsa"/> signing key.
+    /// </summary>
     public void Dispose( ) {
         if (!_disposed) {
             SigningKey.Dispose( );
@@ -138,8 +153,10 @@ public sealed class ATProtoSigningKeyProvider : IDisposable {
     }
 
     /// <summary>
-    /// Base64 URL decodes a string.
+    /// Decodes a base64url-encoded string to its raw bytes, restoring standard padding.
     /// </summary>
+    /// <param name="base64Url">The base64url-encoded input.</param>
+    /// <returns>The decoded bytes.</returns>
     private static byte[] Base64UrlDecode( string base64Url ) {
         string padded = base64Url.PadRight( base64Url.Length + ((4 - (base64Url.Length % 4)) % 4), '=' );
         string base64 = padded.Replace( '-', '+' ).Replace( '_', '/' );
@@ -147,8 +164,10 @@ public sealed class ATProtoSigningKeyProvider : IDisposable {
     }
 
     /// <summary>
-    /// Base64 URL encodes the given bytes.
+    /// Encodes bytes as a base64url string with padding removed.
     /// </summary>
+    /// <param name="bytes">The bytes to encode.</param>
+    /// <returns>The base64url-encoded string.</returns>
     private static string Base64UrlEncode( byte[] bytes ) {
         return Convert.ToBase64String( bytes )
             .TrimEnd( '=' )

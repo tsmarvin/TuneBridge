@@ -3,33 +3,36 @@ using idunno.Bluesky;
 namespace BridgeBeats.Contracts.Interfaces;
 
 /// <summary>
-/// Manages ATProto authentication sessions with shared state across service instances.
-/// Handles token acquisition, refresh, persistence to Redis, and re-authentication on failure.
+/// Supplies an authenticated Bluesky agent for talking to the AT Protocol PDS, managing
+/// the underlying session so callers do not have to re-authenticate per request.
 /// </summary>
 /// <remarks>
-/// This service centralizes session management to prevent excessive PDS API calls
-/// (refreshSession, getSession, createSession) across multiple worker instances.
-/// Credentials are persisted to Redis and restored on startup using the idunno.Bluesky
-/// session restoration pattern with <c>AtProtoCredential.Create()</c> and <c>RefreshCredentials()</c>.
+/// Implemented in <c>BridgeBeats.Core</c> by <c>RedisATProtoSessionManager</c>
+/// (<c>Infrastructure/Storage/RedisATProtoSessionManager.cs</c>), which caches the session
+/// in Redis. Centralizing session management prevents excessive PDS API calls
+/// (createSession, getSession, refreshSession) across multiple worker instances; credentials
+/// are persisted to Redis and restored on startup. The implementation is disposable even
+/// though this contract is not.
 /// </remarks>
 public interface IATProtoSessionManager {
 
     /// <summary>
-    /// Gets an authenticated BlueskyAgent ready for use.
-    /// Handles session restoration from Redis on first call, and refreshes if needed.
+    /// Returns an authenticated <see cref="BlueskyAgent"/>, restoring a cached session from
+    /// Redis on the first call and refreshing it when needed, authenticating on demand when no
+    /// usable session is available.
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token for the operation.</param>
-    /// <returns>An authenticated BlueskyAgent instance.</returns>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>A task whose result is a ready-to-use authenticated agent.</returns>
     /// <exception cref="InvalidOperationException">Thrown when authentication fails and cannot be recovered.</exception>
     Task<BlueskyAgent> GetAuthenticatedAgentAsync( CancellationToken cancellationToken = default );
 
     /// <summary>
-    /// Forces a fresh login, invalidating any cached session.
-    /// Use when the current session is known to be invalid (e.g., after repeated failures).
-    /// Clears Redis-stored credentials and performs a new login with the stored password.
+    /// Discards any cached session, clears the Redis-stored credentials, and authenticates again
+    /// from scratch with the stored password, returning a freshly authenticated agent. Use when
+    /// the current session is known to be invalid (for example, after repeated failures).
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token for the operation.</param>
-    /// <returns>An authenticated BlueskyAgent instance from the fresh login.</returns>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>A task whose result is a newly authenticated agent.</returns>
     /// <exception cref="InvalidOperationException">Thrown when re-authentication fails.</exception>
     Task<BlueskyAgent> ForceReauthenticateAsync( CancellationToken cancellationToken = default );
 

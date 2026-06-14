@@ -6,31 +6,34 @@ using StackExchange.Redis;
 namespace BridgeBeats.Core.Infrastructure.Queue;
 
 /// <summary>
-/// OpenTelemetry metrics for the BridgeBeats queue system.
+/// OpenTelemetry-compatible metric instruments for the BridgeBeats queue system and rate limiter.
 /// </summary>
 /// <remarks>
-/// All metrics prefixed with <c>bridgebeats.queue.</c>; register with <c>.AddMeter("BridgeBeats.Queue")</c>.
+/// All instruments are created on a single <see cref="System.Diagnostics.Metrics.Meter"/>
+/// named <see cref="MeterName"/> (instruments are prefixed with <c>bridgebeats.queue.</c> and
+/// <c>bridgebeats.ratelimit.</c>); register with <c>.AddMeter("BridgeBeats.Queue")</c>. Counters
+/// and histograms are recorded through the helper methods in this class; the observable gauges poll
+/// live Redis stream lengths each time the metrics system collects, and are registered once via
+/// <see cref="RegisterQueueDepthGauges(StackExchange.Redis.IConnectionMultiplexer)"/>.
 /// </remarks>
 public static class QueueMetrics {
 
     /// <summary>
-    /// The meter name for queue metrics.
+    /// Name of the meter that owns every instrument in this class.
+    /// Literal value: <c>"BridgeBeats.Queue"</c>; subscribe to this name to collect the metrics.
     /// </summary>
     public const string MeterName = "BridgeBeats.Queue";
 
     /// <summary>
-    /// The meter for queue metrics.
+    /// The shared meter (version 1.0.0) on which all queue instruments are created.
     /// </summary>
     public static readonly Meter Meter = new( MeterName, "1.0.0" );
 
     #region Counters
 
     /// <summary>
-    /// Total number of requests enqueued to provider queues.
+    /// Counts requests enqueued onto any priority lane, tagged by provider and priority.
     /// </summary>
-    /// <remarks>
-    /// Tags: provider, priority
-    /// </remarks>
     public static readonly Counter<long> EnqueuedTotal = Meter.CreateCounter<long>(
         "bridgebeats.queue.enqueued.total",
         unit: "{requests}",
@@ -38,11 +41,9 @@ public static class QueueMetrics {
     );
 
     /// <summary>
-    /// Total number of requests dequeued for processing.
+    /// Counts requests dequeued for processing, tagged by provider and the priority lane
+    /// the message was pulled from.
     /// </summary>
-    /// <remarks>
-    /// Tags: provider, priority
-    /// </remarks>
     public static readonly Counter<long> DequeuedTotal = Meter.CreateCounter<long>(
         "bridgebeats.queue.dequeued.total",
         unit: "{requests}",
@@ -50,11 +51,8 @@ public static class QueueMetrics {
     );
 
     /// <summary>
-    /// Total number of requests successfully processed and acknowledged.
+    /// Counts requests successfully processed and acknowledged (XACK + XDEL), tagged by provider.
     /// </summary>
-    /// <remarks>
-    /// Tags: provider, priority
-    /// </remarks>
     public static readonly Counter<long> AcknowledgedTotal = Meter.CreateCounter<long>(
         "bridgebeats.queue.acknowledged.total",
         unit: "{requests}",
@@ -62,11 +60,8 @@ public static class QueueMetrics {
     );
 
     /// <summary>
-    /// Total number of requests returned to the queue for retry.
+    /// Counts requests returned to the queue for retry, tagged by provider.
     /// </summary>
-    /// <remarks>
-    /// Tags: provider, priority
-    /// </remarks>
     public static readonly Counter<long> RequeuedTotal = Meter.CreateCounter<long>(
         "bridgebeats.queue.requeued.total",
         unit: "{requests}",
@@ -74,11 +69,8 @@ public static class QueueMetrics {
     );
 
     /// <summary>
-    /// Total number of rate limit events encountered.
+    /// Counts rate-limit events encountered, tagged by provider and endpoint.
     /// </summary>
-    /// <remarks>
-    /// Tags: provider, endpoint
-    /// </remarks>
     public static readonly Counter<long> RateLimitEventsTotal = Meter.CreateCounter<long>(
         "bridgebeats.ratelimit.events.total",
         unit: "{events}",
@@ -86,7 +78,7 @@ public static class QueueMetrics {
     );
 
     /// <summary>
-    /// Total number of duplicate requests prevented by deduplication.
+    /// Counts duplicate requests prevented by the single-flight deduplicator (untagged).
     /// </summary>
     public static readonly Counter<long> DeduplicatedTotal = Meter.CreateCounter<long>(
         "bridgebeats.dedup.prevented.total",
@@ -95,12 +87,10 @@ public static class QueueMetrics {
     );
 
     /// <summary>
-    /// Total number of interactive-origin lookups deferred to the background retry lane
-    /// due to a provider rate limit.
+    /// Counts interactive-origin lookups that were deferred to the background retry lane after a
+    /// provider rate limit, tagged by provider and endpoint. This is the signal that interactive
+    /// callers are being pushed onto slower processing because an endpoint is throttled.
     /// </summary>
-    /// <remarks>
-    /// Tags: provider, endpoint
-    /// </remarks>
     public static readonly Counter<long> InteractiveDeferredTotal = Meter.CreateCounter<long>(
         "bridgebeats.ratelimit.interactive_deferred.total",
         unit: "{requests}",
@@ -112,11 +102,9 @@ public static class QueueMetrics {
     #region Histograms
 
     /// <summary>
-    /// Time taken to process a queued request.
+    /// Records, in seconds, how long it took to process a queued request, tagged by provider,
+    /// lookup type, and status.
     /// </summary>
-    /// <remarks>
-    /// Tags: provider, lookup_type, status
-    /// </remarks>
     public static readonly Histogram<double> ProcessingDuration = Meter.CreateHistogram<double>(
         "bridgebeats.queue.processing.duration",
         unit: "s",
@@ -124,11 +112,9 @@ public static class QueueMetrics {
     );
 
     /// <summary>
-    /// Duration of rate limit Retry-After periods.
+    /// Records, in seconds, the Retry-After window of each rate-limit event, tagged by
+    /// provider and endpoint.
     /// </summary>
-    /// <remarks>
-    /// Tags: provider, endpoint
-    /// </remarks>
     public static readonly Histogram<double> RateLimitDuration = Meter.CreateHistogram<double>(
         "bridgebeats.ratelimit.duration",
         unit: "s",
@@ -139,17 +125,26 @@ public static class QueueMetrics {
 
     #region Observable Gauges
 
+    /// <summary>Guards against registering the observable gauges more than once.</summary>
     private static bool s_gaugesRegistered;
+
+    /// <summary>Serializes the one-time gauge registration.</summary>
     private static readonly Lock s_gaugesLock = new( );
 
     /// <summary>
-    /// Registers observable gauges for queue depth metrics.
+    /// Registers observable gauges for queue depth metrics, which poll live Redis stream lengths on
+    /// each metrics collection.
     /// </summary>
+    /// <param name="redis">The Redis connection used to read stream lengths.</param>
     /// <remarks>
-    /// Call this once during application startup after Redis is connected.
-    /// The gauges will automatically poll queue depths on each metrics collection.
+    /// Call this once during application startup after Redis is connected; the gauges automatically
+    /// poll queue depths on each metrics collection. Idempotent and thread-safe: registration
+    /// happens at most once per process even if this is called from several startup paths. Three
+    /// gauges are created: <c>bridgebeats.queue.depth</c> (one measurement per provider and priority
+    /// lane), <c>bridgebeats.queue.spotify.bulk.track.depth</c>, and
+    /// <c>bridgebeats.queue.spotify.bulk.album.depth</c> (the two dedicated Spotify bulk streams).
     /// </remarks>
-    /// <param name="redis">The Redis connection multiplexer.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="redis"/> is null.</exception>
     public static void RegisterQueueDepthGauges( IConnectionMultiplexer redis ) {
         ArgumentNullException.ThrowIfNull( redis );
 
@@ -186,8 +181,12 @@ public static class QueueMetrics {
     }
 
     /// <summary>
-    /// Gets queue depth measurements for all provider/priority combinations.
+    /// Yields one queue-depth measurement per provider and priority lane (interactive,
+    /// background, bulk) by reading the length of each <c>queue:{provider}:{priority}</c> stream.
+    /// A read failure for any single stream yields a depth of zero rather than throwing.
     /// </summary>
+    /// <param name="redis">The Redis connection used to read stream lengths.</param>
+    /// <returns>One measurement per provider/priority combination, tagged with provider and priority.</returns>
     private static IEnumerable<Measurement<long>> GetQueueDepthMeasurements( IConnectionMultiplexer redis ) {
         IDatabase db = redis.GetDatabase( );
         string[] priorities = ["interactive", "background", "bulk"];
@@ -216,8 +215,12 @@ public static class QueueMetrics {
     }
 
     /// <summary>
-    /// Returns a single depth measurement for a Spotify type-specific bulk stream.
+    /// Yields a single depth measurement for one Spotify type-specific bulk stream. A read failure
+    /// yields a depth of zero rather than throwing.
     /// </summary>
+    /// <param name="redis">The Redis connection used to read the stream length.</param>
+    /// <param name="stream">The bulk stream key to measure (track-id or album-id stream).</param>
+    /// <returns>One measurement tagged with provider "spotify" and the stream key.</returns>
     private static IEnumerable<Measurement<long>> GetSpotifyBulkStreamDepth( IConnectionMultiplexer redis, string stream ) {
         IDatabase db = redis.GetDatabase( );
         long length;
@@ -239,10 +242,10 @@ public static class QueueMetrics {
     #region Helper Methods
 
     /// <summary>
-    /// Records a queue enqueue event with standard tags.
+    /// Records a queue enqueue event: increments <see cref="EnqueuedTotal"/> with standard tags.
     /// </summary>
     /// <param name="provider">The provider the request was enqueued for.</param>
-    /// <param name="priority">The priority level of the request.</param>
+    /// <param name="priority">The priority lane the request was enqueued to.</param>
     public static void RecordEnqueue( SupportedProviders provider, QueuePriority priority ) {
         EnqueuedTotal.Add(
             1,
@@ -252,10 +255,10 @@ public static class QueueMetrics {
     }
 
     /// <summary>
-    /// Records a queue dequeue event with standard tags.
+    /// Records a queue dequeue event: increments <see cref="DequeuedTotal"/> with standard tags.
     /// </summary>
     /// <param name="provider">The provider the request was dequeued from.</param>
-    /// <param name="priority">The priority level of the request.</param>
+    /// <param name="priority">The priority lane the request was dequeued from.</param>
     public static void RecordDequeue( SupportedProviders provider, QueuePriority priority ) {
         DequeuedTotal.Add(
             1,
@@ -265,7 +268,7 @@ public static class QueueMetrics {
     }
 
     /// <summary>
-    /// Records a message acknowledgment event with standard tags.
+    /// Records a message acknowledgment event: increments <see cref="AcknowledgedTotal"/> with standard tags.
     /// </summary>
     /// <param name="provider">The provider the message was acknowledged for.</param>
     public static void RecordAcknowledge( SupportedProviders provider ) {
@@ -276,7 +279,7 @@ public static class QueueMetrics {
     }
 
     /// <summary>
-    /// Records a message requeue event with standard tags.
+    /// Records a message requeue event: increments <see cref="RequeuedTotal"/> with standard tags.
     /// </summary>
     /// <param name="provider">The provider the message was requeued for.</param>
     public static void RecordRequeue( SupportedProviders provider ) {
@@ -287,11 +290,12 @@ public static class QueueMetrics {
     }
 
     /// <summary>
-    /// Records a rate limit event with standard tags.
+    /// Records a rate-limit event: increments <see cref="RateLimitEventsTotal"/> and records the
+    /// Retry-After window on <see cref="RateLimitDuration"/>, both with standard tags.
     /// </summary>
     /// <param name="provider">The provider that encountered the rate limit.</param>
     /// <param name="endpoint">The endpoint that was rate limited.</param>
-    /// <param name="retryAfterSeconds">The Retry-After duration in seconds.</param>
+    /// <param name="retryAfterSeconds">The Retry-After duration, in seconds.</param>
     public static void RecordRateLimitEvent( SupportedProviders provider, string endpoint, double retryAfterSeconds ) {
         string providerName = provider.ToString( ).ToLowerInvariant( );
 
@@ -309,19 +313,19 @@ public static class QueueMetrics {
     }
 
     /// <summary>
-    /// Records a deduplication event.
+    /// Records a deduplication event: increments <see cref="DeduplicatedTotal"/>.
     /// </summary>
     public static void RecordDeduplicated( ) {
         DeduplicatedTotal.Add( 1 );
     }
 
     /// <summary>
-    /// Records the processing duration for a queued request.
+    /// Records the processing duration for a queued request on <see cref="ProcessingDuration"/>.
     /// </summary>
     /// <param name="provider">The provider that processed the request.</param>
     /// <param name="lookupType">The type of lookup that was performed.</param>
     /// <param name="status">The processing status (success, failure, rate_limited).</param>
-    /// <param name="durationSeconds">The processing duration in seconds.</param>
+    /// <param name="durationSeconds">The processing duration, in seconds.</param>
     public static void RecordProcessingDuration(
         SupportedProviders provider,
         LookupRequestType lookupType,
@@ -338,7 +342,7 @@ public static class QueueMetrics {
 
     /// <summary>
     /// Records an interactive-origin deferral event — an interactive lookup that was rate-limited
-    /// and requeued at Background priority.
+    /// and requeued at Background priority — by incrementing <see cref="InteractiveDeferredTotal"/>.
     /// </summary>
     /// <param name="provider">The provider that encountered the rate limit.</param>
     /// <param name="endpoint">The endpoint that was rate limited.</param>

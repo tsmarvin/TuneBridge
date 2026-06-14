@@ -4,23 +4,47 @@ using System.Text;
 namespace BridgeBeats.Core.Infrastructure.Storage.Car;
 
 /// <summary>
-/// Walks an atproto Merkle Search Tree (MST) and enumerates all records in key order.
+/// Walks the Merkle Search Tree (MST) of an atproto repository to enumerate its records in key
+/// order, given the blocks decoded by <see cref="CarV1Reader"/>.
 /// </summary>
 /// <remarks>
-/// MST node structure: {l: CID|null, e: [{p:int, k:bytes, v:CID, t:CID|null}]}
-/// In-order walk: recurse l → per entry: reconstruct key, yield (key, v), recurse t.
-/// Keys are "{collection}/{rkey}"; prefix compression via the p (prefix-len) field.
+/// The walk starts at the commit block (named by the repo root CID), reads its <c>data</c> link to
+/// find the MST root, then traverses the tree in key order. Each MST node holds an optional left
+/// subtree link (<c>l</c>) and an ordered list of entries (<c>e</c>); each entry carries a
+/// prefix-compressed key (<c>p</c> = the number of leading bytes shared with the previous key per
+/// the atproto MST spec; equal to character count for today's ASCII rkeys,
+/// <c>k</c> = the differing suffix), a value CID (<c>v</c>), and an optional right subtree link
+/// (<c>t</c>). Reconstructed keys take the form <c>{collection}/{rkey}</c>. In-order traversal
+/// recurses into <c>l</c>, then for each entry reconstructs the key, yields <c>(key, v)</c>, and
+/// recurses into <c>t</c>.
+/// The walk is hardened against malicious trees: depth is capped at 64, a visited-set rejects any
+/// node seen twice (cycle or DAG doubling), node and record counts are both capped at the block
+/// count, the first entry of a node must have <c>p=0</c>, prefix lengths must be non-negative and
+/// within the current key, and the supplied <see cref="System.Threading.CancellationToken"/> is honored.
 /// </remarks>
 internal static class MstWalker {
 
+    /// <summary>
+    /// Maximum recursion depth for the tree walk. Exceeding it throws, guarding against a cycle or a
+    /// pathologically deep tree.
+    /// </summary>
     private const int MaxWalkDepth = 64;
 
     /// <summary>
-    /// Enumerates all (key, valueCidHex) pairs in the MST rooted at the commit in <paramref name="car"/>.
-    /// Returns an empty sequence for an empty repo.
-    /// Throws <see cref="CarParseException"/> for structural violations.
+    /// Enumerates every record in the repository in MST key order. Returns an empty sequence for an
+    /// empty repo.
     /// </summary>
-    /// <returns>Sequence of (key, valueCidHex) plus the commit version (or 0 if absent).</returns>
+    /// <param name="car">The decoded CAR file whose root names the commit block.</param>
+    /// <param name="cancellationToken">A token observed during the (lazily evaluated) traversal.</param>
+    /// <returns>
+    /// A tuple of the lazy sequence of <c>(Key, ValueCidHex)</c> pairs and the commit
+    /// <c>version</c> read from the commit block (or 0 if absent).
+    /// </returns>
+    /// <exception cref="CarParseException">
+    /// Thrown when the commit block is missing, the commit lacks a <c>data</c> link, or any walk
+    /// safety bound is breached. Because the sequence is lazy, traversal-time failures surface as the
+    /// returned enumerable is iterated.
+    /// </exception>
     internal static (IEnumerable<(string Key, string ValueCidHex)> Records, int CommitVersion) EnumerateRecords(
         CarFile car,
         CancellationToken cancellationToken = default
@@ -42,6 +66,18 @@ internal static class MstWalker {
         return (WalkNode( car, mstRootHex, "", 0, visited, maxNodes, recordCount, cancellationToken ), commitVersion);
     }
 
+    /// <summary>
+    /// Reads the commit block, extracting the MST root link from its <c>data</c> field and the
+    /// repository <c>version</c>. Uses
+    /// <see cref="System.Formats.Cbor.CborConformanceMode.Lax"/>; canonical DAG-CBOR key ordering
+    /// is not enforced by this decoder.
+    /// </summary>
+    /// <param name="commitBytes">The DAG-CBOR bytes of the commit block.</param>
+    /// <returns>A tuple of the MST root node's digest (lowercase hex) and the commit version.</returns>
+    /// <exception cref="CarParseException">
+    /// Thrown when the <c>data</c> field is present but not a tag-42 CID link, when the <c>data</c>
+    /// link is absent or null (no MST root was resolved), or when the commit CBOR is malformed.
+    /// </exception>
     private static (string mstRootHex, int commitVersion) ReadCommitDataLinkAndVersion( ReadOnlyMemory<byte> commitBytes ) {
         try {
             CborReader reader = new( commitBytes, CborConformanceMode.Lax );
@@ -82,6 +118,28 @@ internal static class MstWalker {
         }
     }
 
+    /// <summary>
+    /// Recursively walks one MST node and its subtrees in key order, yielding each entry's
+    /// reconstructed key and value CID. Performs an in-order traversal: the left subtree, then for
+    /// each entry the entry itself followed by its right subtree.
+    /// </summary>
+    /// <param name="car">The decoded CAR file used to resolve child node blocks.</param>
+    /// <param name="nodeHex">The digest (lowercase hex) of the node block to walk.</param>
+    /// <param name="prevKeyInNode">
+    /// The most recently yielded key, used as the base for prefix-compression reconstruction of this
+    /// node's first entry.
+    /// </param>
+    /// <param name="depth">The current walk depth, checked against <see cref="MaxWalkDepth"/>.</param>
+    /// <param name="visited">The set of node digests already visited, used for cycle detection.</param>
+    /// <param name="maxNodes">The cap on visited nodes and yielded records (the repository block count).</param>
+    /// <param name="recordCount">A single-element array carrying the running record count across the recursion.</param>
+    /// <param name="cancellationToken">A token checked at each node entry.</param>
+    /// <returns>The lazy sequence of <c>(Key, ValueCidHex)</c> pairs contributed by this node and its subtrees.</returns>
+    /// <exception cref="CarParseException">
+    /// Thrown when depth exceeds <see cref="MaxWalkDepth"/>, the node is revisited (a cycle), the
+    /// node or record count exceeds <paramref name="maxNodes"/>, the node block is missing, the first
+    /// entry's prefix length is not zero, or an entry's prefix length exceeds the current key length.
+    /// </exception>
     private static IEnumerable<(string Key, string ValueCidHex)> WalkNode(
         CarFile car,
         string nodeHex,
@@ -109,7 +167,6 @@ internal static class MstWalker {
             throw new CarParseException(
                 $"MST walk visited {visited.Count} nodes, exceeding the block-count cap of {maxNodes}." );
         }
-
 
         if (!car.Blocks.TryGetValue( nodeHex, out ReadOnlyMemory<byte> nodeBytes )) {
             throw new CarParseException( $"MST node block {nodeHex} not found in CAR." );
@@ -167,6 +224,17 @@ internal static class MstWalker {
         }
     }
 
+    /// <summary>
+    /// Decodes a single MST node block into its left-subtree link and its ordered entry list.
+    /// Uses <see cref="System.Formats.Cbor.CborConformanceMode.Lax"/>; canonical DAG-CBOR key
+    /// ordering is not enforced by this decoder.
+    /// </summary>
+    /// <param name="nodeBytes">The DAG-CBOR bytes of the MST node.</param>
+    /// <returns>
+    /// A tuple of the left subtree's node digest (lowercase hex, or <see langword="null"/> when the
+    /// <c>l</c> field is null) and the parsed entries (empty when no <c>e</c> field is present).
+    /// </returns>
+    /// <exception cref="CarParseException">Thrown when a link has an unexpected tag, an entry is malformed, or the node CBOR is invalid.</exception>
     private static (string? leftHex, List<MstNodeEntry> entries) ParseMstNode( ReadOnlyMemory<byte> nodeBytes ) {
         try {
             CborReader reader = new( nodeBytes, CborConformanceMode.Lax );
@@ -196,6 +264,12 @@ internal static class MstWalker {
         }
     }
 
+    /// <summary>
+    /// Reads an optional subtree or value CID link: a CBOR null, or a tag-42 CID link.
+    /// </summary>
+    /// <param name="reader">The CBOR reader positioned at a null or a tag.</param>
+    /// <returns>The linked node's digest (lowercase hex), or <see langword="null"/> when the value is CBOR null.</returns>
+    /// <exception cref="CarParseException">Thrown when a non-null value is not a tag-42 CID link.</exception>
     private static string? ReadOptionalCidLink( CborReader reader ) {
         if (reader.PeekState( ) == CborReaderState.Null) {
             reader.ReadNull( );
@@ -211,6 +285,16 @@ internal static class MstWalker {
         return Cid.FromDagCborLinkBytes( linkBytes ).KeyHex;
     }
 
+    /// <summary>
+    /// Reads the <c>e</c> entry array of an MST node, decoding each entry's prefix length (<c>p</c>),
+    /// key suffix (<c>k</c>), value CID link (<c>v</c>), and optional right subtree link (<c>t</c>).
+    /// </summary>
+    /// <param name="reader">The CBOR reader positioned at the start of the entry array.</param>
+    /// <returns>The decoded entries in array order.</returns>
+    /// <exception cref="CarParseException">
+    /// Thrown when an entry has a negative prefix length, a <c>v</c> link with an unexpected tag, or
+    /// is missing its required <c>k</c> (key suffix) or <c>v</c> (value CID) field.
+    /// </exception>
     private static List<MstNodeEntry> ReadEntries( CborReader reader ) {
         _ = reader.ReadStartArray( );
         List<MstNodeEntry> entries = [];
@@ -228,7 +312,7 @@ internal static class MstWalker {
 
                 if (fieldKey == "p") {
                     prefixLen = reader.ReadInt32( );
-                    // SEC-003: a negative prefix length is structurally invalid and would
+                    // A negative prefix length is structurally invalid and would
                     // cause an ArgumentOutOfRangeException in the slice below if unchecked.
                     if (prefixLen < 0) {
                         throw new CarParseException(
@@ -268,6 +352,22 @@ internal static class MstWalker {
         return entries;
     }
 
+    /// <summary>
+    /// One decoded MST node entry: the prefix-compressed key parts, the value CID, and the optional
+    /// right subtree link.
+    /// </summary>
+    /// <param name="PrefixLen">
+    /// The <c>p</c> field: the number of leading <b>bytes</b> (per the atproto MST spec) this key
+    /// shares with the previous key. The reconstruction uses a C# string slice, so character count
+    /// and byte count are equal only for ASCII rkeys — the format used for all atproto rkeys today.
+    /// A multi-byte UTF-8 rkey character would cause the slice to mis-align; that case does not
+    /// arise in practice with the current key alphabet.
+    /// The full key is the previous key's first <paramref name="PrefixLen"/> characters followed by
+    /// <paramref name="KeySuffix"/>.
+    /// </param>
+    /// <param name="KeySuffix">The <c>k</c> field: the differing key suffix (UTF-8 decoded).</param>
+    /// <param name="ValueCidHex">The <c>v</c> field: the digest (lowercase hex) of the record value block.</param>
+    /// <param name="RightChildHex">The <c>t</c> field: the digest of the right subtree node, or <see langword="null"/> if absent.</param>
     private sealed record MstNodeEntry(
         int PrefixLen,
         string KeySuffix,

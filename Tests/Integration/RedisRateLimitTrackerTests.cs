@@ -8,28 +8,32 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for <see cref="RedisRateLimitTracker"/> using the shared Redis container.
-/// Requires Docker to be running on the host machine.
+/// Integration tests for <see cref="RedisRateLimitTracker"/> against a real Redis instance (the shared
+/// Testcontainers Redis). Verifies storing and reading per-provider, per-endpoint rate-limit state with
+/// TTL, that already-expired limits are not stored, clearing, listing all rate-limited endpoints for a
+/// provider, cross-provider isolation, and automatic expiry. Requires Docker to be running on the host
+/// machine.
 /// </summary>
 [TestClass]
 [TestCategory( "Integration" )]
 [TestCategory( "Docker" )]
 public class RedisRateLimitTrackerTests {
 
+    /// <summary>The shared Redis connection used by the tracker under test.</summary>
     private static IConnectionMultiplexer? s_redis;
 
+    /// <summary>Mock logger captured for the tracker under test.</summary>
     private Mock<ILogger<RedisRateLimitTracker>> _mockLogger = null!;
+    /// <summary>The tracker under test, recreated for each test.</summary>
     private RedisRateLimitTracker _tracker = null!;
 
-    /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes the shared Redis connection for all tests in this class.
+    /// Requires the shared Redis container and opens a connection to it for the test class.
     /// </summary>
-    /// <param name="_">The test context provided by MSTest (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
@@ -37,7 +41,7 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Cleans up the Redis connection after all tests in this class have completed.
+    /// Closes and disposes the Redis connection after the class completes.
     /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
@@ -48,7 +52,7 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Clears rate limit keys and creates a fresh tracker before each test.
+    /// Clears leftover <c>ratelimit:*</c> keys and constructs a fresh tracker before each test.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
@@ -68,7 +72,8 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Verifies that GetStateAsync returns not rate limited when no entry exists.
+    /// Verifies the state for an endpoint with no stored limit reports not rate limited with no
+    /// retry-after or time-remaining.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -87,7 +92,8 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Verifies that SetRateLimitedAsync stores rate limit with correct TTL.
+    /// Verifies setting a future rate limit stores it so the state reports rate limited with a
+    /// retry-after close to the supplied value.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -120,7 +126,8 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Verifies that SetRateLimitedAsync does not store already-expired rate limits.
+    /// Verifies setting a rate limit whose retry-after is already in the past stores nothing, so the
+    /// state reports not rate limited.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -147,7 +154,7 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Verifies that ClearAsync removes an existing rate limit.
+    /// Verifies clearing a stored rate limit removes it so the state reports not rate limited.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -186,7 +193,8 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Verifies that GetAllRateLimitedAsync returns all rate-limited endpoints for a provider.
+    /// Verifies listing all rate-limited endpoints returns only the endpoints stored for the requested
+    /// provider.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -215,7 +223,8 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Verifies that different providers have isolated rate limits.
+    /// Verifies a rate limit set for one provider's endpoint does not leak into the same endpoint path on
+    /// other providers.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -237,7 +246,8 @@ public class RedisRateLimitTrackerTests {
     }
 
     /// <summary>
-    /// Verifies that rate limits expire automatically based on TTL.
+    /// Verifies a short-lived rate limit expires on its own via Redis TTL so the state reports not rate
+    /// limited after the window elapses.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]

@@ -4,16 +4,18 @@ using System.Text.Json;
 namespace BridgeBeats.Tests;
 
 /// <summary>
-/// Provides helper methods for handling antiforgery tokens in integration tests.
+/// Test helper for issuing antiforgery-protected requests against the test web host. Fetches a CSRF
+/// token from the application's token endpoint and attaches it to POST requests so integration and
+/// end-to-end tests can exercise endpoints guarded by antiforgery validation.
 /// </summary>
 public static class AntiforgeryTestHelper {
     /// <summary>
-    /// Gets an antiforgery token from the server for use in POST requests.
+    /// Requests an antiforgery token from the application's <c>/account/antiforgery-token</c> endpoint.
     /// </summary>
-    /// <param name="client">The HTTP client to use for the request.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>The antiforgery token string.</returns>
-    /// <exception cref="Exception">Thrown if the token cannot be obtained.</exception>
+    /// <param name="client">The HTTP client connected to the test web host.</param>
+    /// <param name="cancellationToken">A token to cancel the request.</param>
+    /// <returns>The antiforgery token string returned by the endpoint.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the endpoint returns an empty token.</exception>
     public static async Task<string> GetAntiforgeryTokenAsync( HttpClient client, CancellationToken cancellationToken = default ) {
         HttpResponseMessage tokenResponse = await client.GetAsync( "/account/antiforgery-token", cancellationToken );
         _ = tokenResponse.EnsureSuccessStatusCode( );
@@ -25,14 +27,15 @@ public static class AntiforgeryTestHelper {
     }
 
     /// <summary>
-    /// Sends a POST request with the antiforgery token header.
+    /// Sends a POST request with the supplied content and attaches the antiforgery token in the
+    /// <c>X-XSRF-TOKEN</c> header so the request passes antiforgery validation.
     /// </summary>
-    /// <param name="client">The HTTP client to use for the request.</param>
-    /// <param name="requestUri">The URI to POST to.</param>
-    /// <param name="content">The content to send.</param>
-    /// <param name="antiforgeryToken">The antiforgery token to include in the header.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>The HTTP response message.</returns>
+    /// <param name="client">The HTTP client connected to the test web host.</param>
+    /// <param name="requestUri">The relative URI to POST to.</param>
+    /// <param name="content">The request body content.</param>
+    /// <param name="antiforgeryToken">The token obtained from <see cref="GetAntiforgeryTokenAsync"/>.</param>
+    /// <param name="cancellationToken">A token to cancel the request.</param>
+    /// <returns>The HTTP response from the test host.</returns>
     public static async Task<HttpResponseMessage> PostWithAntiforgeryAsync(
         HttpClient client,
         string requestUri,

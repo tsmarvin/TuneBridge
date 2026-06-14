@@ -12,23 +12,24 @@ namespace BridgeBeats.Contracts.Records;
 /// existing configuration files do not produce unknown-property warnings on deserialization.
 /// </remarks>
 public sealed record PriorityWeights {
+
     /// <summary>
-    /// Gets the weight for interactive (user-initiated) requests. Retained for configuration
+    /// The weight for interactive (user-initiated) requests. Retained for configuration
     /// backwards compatibility; no longer used for stream ordering decisions.
     /// </summary>
     [JsonPropertyName( "interactive" )]
     public int Interactive { get; init; } = 5;
 
     /// <summary>
-    /// Gets the weight for background refresh requests. Retained for configuration
-    /// backwards compatibility; no longer used for stream ordering decisions.
+    /// The weight for background refresh requests. Retained for configuration backwards
+    /// compatibility; no longer used for stream ordering decisions.
     /// </summary>
     [JsonPropertyName( "background" )]
     public int Background { get; init; } = 2;
 
     /// <summary>
-    /// Gets the weight for bulk processing requests. Retained for configuration
-    /// backwards compatibility; no longer used for stream ordering decisions.
+    /// The weight for bulk processing requests. Retained for configuration backwards
+    /// compatibility; no longer used for stream ordering decisions.
     /// </summary>
     [JsonPropertyName( "bulk" )]
     public int Bulk { get; init; } = 1;

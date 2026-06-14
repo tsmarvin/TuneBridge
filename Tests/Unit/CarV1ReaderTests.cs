@@ -7,11 +7,21 @@ using BridgeBeats.Tests.Unit.Helpers;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Tests for <see cref="CarV1Reader.Read"/>.
+/// Tests <see cref="CarV1Reader.Read"/>, the hand-written CARv1 parser that reads an ATProto repo
+/// export into a block map, with strong defenses against malformed or malicious input.
 /// </summary>
+/// <remarks>
+/// The tests cover the happy path (a valid CAR yields a <see cref="CarFile"/> with blocks), the
+/// minimal empty repository (commit + MST-root blocks), and the parser's rejection rules, each
+/// surfacing as a <see cref="CarParseException"/>: a per-block digest mismatch, a truncated section,
+/// a CAR v2 (or non-1 version) header, a CIDv0 in a section, an oversized block section, an oversized
+/// CID, and a header missing the version field. A duplicate-CID section is accepted with last-write
+/// semantics. Fixtures are built with the test helper <c>TestCarBuilder</c>.
+/// </remarks>
 [TestClass]
 public class CarV1ReaderTests {
 
+    /// <summary>Shared persisted lookup record used as block content across the fixtures.</summary>
     private static readonly MediaLinkResultRecord s_testRecord = new(
         results: [
             new ProviderResultRecord(
@@ -25,6 +35,10 @@ public class CarV1ReaderTests {
         lookedUpAt: new DateTimeOffset( 2024, 1, 1, 0, 0, 0, TimeSpan.Zero )
     );
 
+    /// <summary>
+    /// Verifies that reading a valid CAR returns a non-null <see cref="CarFile"/> with a non-empty block
+    /// map.
+    /// </summary>
     [TestMethod]
     public void Read_ValidCar_ReturnsCarFile( ) {
         byte[] carBytes = TestCarBuilder.BuildRepoCarWithRecords(
@@ -40,8 +54,8 @@ public class CarV1ReaderTests {
     }
 
     /// <summary>
-    /// An empty repo emits exactly 2 blocks: the commit block and the empty MST root node.
-    /// The test name "ZeroBlocks" was a misnomer; this test pins the empty-repo block shape.
+    /// Verifies that an empty repository CAR still parses, containing exactly the two structural blocks
+    /// (the commit and the MST root).
     /// </summary>
     [TestMethod]
     public void Read_ValidCar_EmptyRepo_HasCommitAndMstRoot_Succeeds( ) {
@@ -59,6 +73,10 @@ public class CarV1ReaderTests {
         Assert.HasCount( 2, carFile.Blocks );
     }
 
+    /// <summary>
+    /// Verifies that corrupting a block's bytes so its SHA-256 digest no longer matches its CID throws
+    /// <see cref="CarParseException"/>, confirming the content-addressing integrity check.
+    /// </summary>
     [TestMethod]
     public void Read_DigestMismatch_ThrowsCarParseException( ) {
         byte[] carBytes = TestCarBuilder.BuildRepoCarWithRecords(
@@ -76,6 +94,10 @@ public class CarV1ReaderTests {
         _ = Assert.ThrowsExactly<CarParseException>( ( ) => CarV1Reader.Read( corrupted ) );
     }
 
+    /// <summary>
+    /// Verifies that a CAR truncated mid-stream throws <see cref="CarParseException"/>, confirming the
+    /// parser bounds-checks every slice rather than reading past the buffer.
+    /// </summary>
     [TestMethod]
     public void Read_TruncatedSection_ThrowsCarParseException( ) {
         byte[] carBytes = TestCarBuilder.BuildRepoCarWithRecords(
@@ -90,6 +112,10 @@ public class CarV1ReaderTests {
         _ = Assert.ThrowsExactly<CarParseException>( ( ) => CarV1Reader.Read( truncated ) );
     }
 
+    /// <summary>
+    /// Verifies that a CAR whose header declares version 2 throws <see cref="CarParseException"/>, since
+    /// only CARv1 is supported.
+    /// </summary>
     [TestMethod]
     public void Read_Version2Header_ThrowsCarParseException( ) {
         // Build a fake CAR header with version=2
@@ -98,6 +124,12 @@ public class CarV1ReaderTests {
         _ = Assert.ThrowsExactly<CarParseException>( ( ) => CarV1Reader.Read( fakeCarBytes ) );
     }
 
+    /// <summary>
+    /// Verifies that patching a section's CID prefix to a CIDv0 form throws
+    /// <see cref="CarParseException"/>, confirming only CIDv1 (dag-cbor, sha2-256) CIDs are accepted.
+    /// The fixture uses <see cref="Varint.TryRead"/> to skip the header and section-length varints to
+    /// reach the CID byte.
+    /// </summary>
     [TestMethod]
     public void Read_CidV0InSections_ThrowsCarParseException( ) {
         // Build a valid CAR but inject a CIDv0 prefix into a section
@@ -127,8 +159,8 @@ public class CarV1ReaderTests {
     // ─── Duplicate CID: last-write-wins semantics ─────────────────────────────
 
     /// <summary>
-    /// Verifies that a CAR containing a block section emitted twice for the same CID
-    /// succeeds, with the dictionary retaining exactly one entry (last-write-wins).
+    /// Verifies that a CAR containing two sections with the same CID parses successfully and the block
+    /// map retains an entry for the duplicated CID (last write wins), rather than rejecting the repeat.
     /// Content-addressed blocks are immutable, so both writes have identical content.
     /// </summary>
     [TestMethod]
@@ -146,7 +178,8 @@ public class CarV1ReaderTests {
     // ─── >2MB block section ───────────────────────────────────────────────────
 
     /// <summary>
-    /// Verifies that a block section declaring a length > 2 MB is rejected with CarParseException.
+    /// Verifies that a section whose declared block size exceeds the parser's per-block cap throws
+    /// <see cref="CarParseException"/>, confirming the anti-DoS size limit.
     /// </summary>
     [TestMethod]
     public void Read_OversizedBlockSection_ThrowsCarParseException( ) {
@@ -158,10 +191,8 @@ public class CarV1ReaderTests {
     // ─── Hardening: oversized CID rejected ───────────────────────────────────
 
     /// <summary>
-    /// Verifies that a CAR header whose tag-42 root CID byte string is 37 bytes (one byte longer
-    /// than the required 36) is rejected with CarParseException rather than silently accepted.
-    /// Failure-first evidence: before Fix 1 (exact-length check), the old &lt; guard accepted any
-    /// span &gt;= 36 bytes, so this test would have passed without an exception being thrown.
+    /// Verifies that a CID encoded with an oversized length in the header throws
+    /// <see cref="CarParseException"/>, confirming CID lengths are bounds-checked.
     /// </summary>
     [TestMethod]
     public void Read_OversizedCidBytes_ThrowsCarParseException( ) {
@@ -173,10 +204,8 @@ public class CarV1ReaderTests {
     // ─── Hardening: missing version field rejected ────────────────────────────
 
     /// <summary>
-    /// Verifies that a CAR header whose DAG-CBOR map omits the "version" key entirely is rejected
-    /// with CarParseException even though "roots" is present and valid.
-    /// Failure-first evidence: before Fix 2 (version-presence check), a header without "version"
-    /// was accepted as v1, so this test would have completed without throwing.
+    /// Verifies that a header lacking the required <c>version</c> field throws
+    /// <see cref="CarParseException"/>, since the parser cannot confirm it is reading a CARv1.
     /// </summary>
     [TestMethod]
     public void Read_HeaderMissingVersion_ThrowsCarParseException( ) {
@@ -185,6 +214,12 @@ public class CarV1ReaderTests {
         _ = Assert.ThrowsExactly<CarParseException>( ( ) => CarV1Reader.Read( carBytes ) );
     }
 
+    /// <summary>
+    /// Builds a minimal CAR whose CBOR header declares the supplied version (with an empty roots array),
+    /// for the version-rejection test.
+    /// </summary>
+    /// <param name="version">The CAR version to encode in the header.</param>
+    /// <returns>The encoded CAR bytes.</returns>
     private static byte[] BuildCarWithVersion( int version ) {
         using System.IO.MemoryStream ms = new( );
 

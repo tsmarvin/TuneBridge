@@ -10,8 +10,11 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for <see cref="RedisSagaStateManager"/> using the shared Redis container.
-/// Requires Docker to be running on the host machine.
+/// Integration tests for <see cref="RedisSagaStateManager"/> against a real Redis instance (the shared
+/// Testcontainers Redis). Verifies saga creation and idempotent get-or-create, per-provider state
+/// updates, partial and final result URIs, completion semantics, origin-priority first-writer-wins,
+/// the secondaries-queued guard, provider-state initialization that preserves existing state, deletion,
+/// and deterministic saga-id generation. Requires Docker to be running on the host machine.
 /// </summary>
 [TestClass]
 [TestCategory( "Integration" )]
@@ -19,21 +22,23 @@ namespace BridgeBeats.Tests.Integration;
 [DoNotParallelize] // Shares Redis saga:* keys with SagaPollingIntegrationTests
 public class RedisSagaStateManagerTests {
 
+    /// <summary>The shared Redis connection used by the saga manager under test.</summary>
     private static IConnectionMultiplexer? s_redis;
 
+    /// <summary>Mock logger captured for the saga manager under test.</summary>
     private Mock<ILogger<RedisSagaStateManager>> _mockLogger = null!;
+    /// <summary>Queue settings (including job expiration) supplied to the saga manager.</summary>
     private IOptions<QueueSettings> _settings = null!;
+    /// <summary>The saga state manager under test, recreated for each test.</summary>
     private RedisSagaStateManager _sagaManager = null!;
 
-    /// <summary>
-    /// Gets the test context for the current test.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes the Redis connection for all tests in the class.
+    /// Requires the shared Redis container and opens a connection to it for the test class.
     /// </summary>
-    /// <param name="_">The test context provided by the test framework (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
@@ -41,7 +46,7 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Closes and disposes the Redis connection after all tests complete.
+    /// Closes and disposes the Redis connection after the class completes.
     /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
@@ -52,7 +57,7 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Clears saga-related Redis keys and initializes the saga manager before each test.
+    /// Clears leftover <c>saga:*</c> keys and constructs a fresh saga manager before each test.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
@@ -74,8 +79,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.GetOrCreateAsync"/> creates a new saga
-    /// with the correct initial state when the saga does not exist.
+    /// Verifies get-or-create returns a new saga populated with the supplied key, type, and value, with
+    /// empty provider states and no result URIs.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -105,8 +110,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.GetOrCreateAsync"/> returns the existing saga
-    /// when called with a saga ID that already exists.
+    /// Verifies get-or-create for an existing saga id returns the original saga and ignores the
+    /// differing key, type, and value passed on the second call.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -139,7 +144,7 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.GetAsync"/> returns null when the saga does not exist.
+    /// Verifies fetching a saga that does not exist returns null.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -152,8 +157,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.UpdateProviderStateAsync"/> stores the provider
-    /// lookup state in Redis and can be retrieved.
+    /// Verifies updating a provider's state persists it so a subsequent fetch returns the stored
+    /// completion, success, and result JSON.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -195,8 +200,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.UpdateProviderStateAsync"/> can store
-    /// multiple provider states for the same saga.
+    /// Verifies updating two providers' states stores both, preserving their distinct success and error
+    /// values.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -246,8 +251,7 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.SetPartialResultUriAsync"/> stores the partial
-    /// result URI without affecting the final result URI.
+    /// Verifies setting the partial result URI stores it without setting the final result URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -276,8 +280,7 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.SetFinalResultUriAsync"/> stores the final
-    /// result URI in the saga state.
+    /// Verifies setting the final result URI stores it on the saga.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -305,8 +308,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.DeleteAsync"/> removes both the saga state
-    /// and all associated provider states from Redis.
+    /// Verifies deleting a saga returns true and removes the saga and its provider states so a
+    /// subsequent fetch returns null.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -342,8 +345,7 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.DeleteAsync"/> returns false when attempting
-    /// to delete a saga that does not exist.
+    /// Verifies deleting a saga that does not exist returns false.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -356,8 +358,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GenerateSagaId"/> creates deterministic,
-    /// case-insensitive IDs from lookup keys.
+    /// Verifies saga-id generation is deterministic and case-insensitive on the lookup key, differs for
+    /// different keys, and produces a 32-character lowercase hex id.
     /// </summary>
     [TestMethod]
     public void GenerateSagaId_CreatesDeterministicId( ) {
@@ -387,8 +389,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="LookupSagaState.IsComplete"/> returns true only when all providers
-    /// have completed their lookups.
+    /// Verifies a saga reports incomplete while any provider is incomplete and complete once all
+    /// providers have completed.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -426,8 +428,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.GetOrCreateAsync"/> persists the origin
-    /// priority on creation and that the first recorded priority wins on resume.
+    /// Verifies the origin priority recorded by the first writer is persisted and not overwritten by a
+    /// later resume with a different priority.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -465,9 +467,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that a saga created without an origin priority (e.g. by the orchestrator)
-    /// records the first explicitly provided origin priority on resume, and that sagas
-    /// without the field default to Background.
+    /// Verifies a saga created without an explicit origin priority defaults to Background, and a later
+    /// resume that supplies a priority records it.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -504,8 +505,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.TryMarkSecondariesQueuedAsync"/> returns
-    /// true exactly once per saga so racing coordinator handlers cannot both queue secondaries.
+    /// Verifies the secondaries-queued guard succeeds for the first caller and fails for subsequent
+    /// callers.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -532,9 +533,8 @@ public class RedisSagaStateManagerTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisSagaStateManager.InitializeProviderStatesAsync"/> never
-    /// regresses an already-recorded provider state back to pending, while still creating
-    /// pending states for providers that have no state yet.
+    /// Verifies initializing provider states adds entries for any missing providers while preserving the
+    /// already-completed state of existing ones.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]

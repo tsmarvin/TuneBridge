@@ -13,34 +13,45 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="QueueProcessorBackgroundService"/> to verify
-/// proper queue consumption, rate limit handling, saga state updates, and error handling.
+/// Unit tests for <see cref="QueueProcessorBackgroundService"/>, the worker-side queue consumer
+/// (one instance per provider). Drive the dequeue-process-ack loop against mocked queue, rate-limit
+/// tracker, saga manager, lookup service, and Redis subscriber dependencies, and verify:
+/// constructor null-guards; endpoint rate-limit pre-check and delayed requeue; <c>LookupRequestType</c>
+/// routing onto the right <see cref="IMusicLookupService"/> method; saga-state update, ack, and
+/// <c>saga:completed</c> publication on success; <see cref="RetryAfterExceededException"/> handling
+/// (mark partial, merge rate-limit info, publish sentinel, re-enqueue at Background); the
+/// interactive-to-background deferral log; and generic-exception retry-then-DLQ semantics.
 /// </summary>
 [TestClass]
 public class QueueProcessorBackgroundServiceTests {
+    /// <summary>Mocked Redis multiplexer; returns <see cref="_subscriberMock"/> for pub/sub.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mocked Redis subscriber used to verify completion-event publication.</summary>
     private Mock<ISubscriber> _subscriberMock = null!;
+    /// <summary>Mocked request queue (dequeue, ack, requeue, enqueue, DLQ).</summary>
     private Mock<IRequestQueue<QueuedLookupRequest>> _queueMock = null!;
+    /// <summary>Mocked rate-limit tracker driving the endpoint pre-check.</summary>
     private Mock<IRateLimitTracker> _rateLimitTrackerMock = null!;
+    /// <summary>Mocked saga-state manager (get/create, provider-state update, rate-limit info).</summary>
     private Mock<ISagaStateManager> _sagaManagerMock = null!;
+    /// <summary>Mocked per-provider lookup service whose method calls the routing tests assert.</summary>
     private Mock<IMusicLookupService> _lookupServiceMock = null!;
+    /// <summary>Mocked logger used to assert the interactive-deferral log event.</summary>
     private Mock<ILogger<QueueProcessorBackgroundService>> _loggerMock = null!;
 
+    /// <summary>The provider this service instance is bound to for all tests (<see cref="SupportedProviders.Spotify"/>).</summary>
     private const SupportedProviders TestProvider = SupportedProviders.Spotify;
 
-    /// <summary>
-    /// Gets or sets the test context for the current test.
-    /// </summary>
+    /// <summary>MSTest-injected context, used here for per-test cancellation tokens.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>Shared camelCase serializer options matching the saga result-JSON wire format.</summary>
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
 
-    /// <summary>
-    /// Initializes mocks before each test.
-    /// </summary>
+    /// <summary>Builds fresh dependency mocks and wires the subscriber before each test.</summary>
     [TestInitialize]
     public void Initialize( ) {
         _redisMock = new Mock<IConnectionMultiplexer>( );
@@ -56,9 +67,7 @@ public class QueueProcessorBackgroundServiceTests {
 
     #region Constructor Tests
 
-    /// <summary>
-    /// Verifies that the constructor creates a valid instance with valid dependencies.
-    /// </summary>
+    /// <summary>The constructor builds an instance when all dependencies are supplied.</summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -68,9 +77,7 @@ public class QueueProcessorBackgroundServiceTests {
         Assert.IsNotNull( service );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when Redis is null.
-    /// </summary>
+    /// <summary>A null Redis multiplexer throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullRedis_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -87,9 +94,7 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the queue is null.
-    /// </summary>
+    /// <summary>A null queue throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullQueue_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -106,9 +111,7 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the rate limit tracker is null.
-    /// </summary>
+    /// <summary>A null rate-limit tracker throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullRateLimitTracker_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -125,9 +128,7 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the saga manager is null.
-    /// </summary>
+    /// <summary>A null saga-state manager throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullSagaManager_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -144,9 +145,7 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the lookup service is null.
-    /// </summary>
+    /// <summary>A null lookup service throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullLookupService_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -163,9 +162,7 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws <see cref="ArgumentNullException"/> when the logger is null.
-    /// </summary>
+    /// <summary>A null logger throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -187,7 +184,8 @@ public class QueueProcessorBackgroundServiceTests {
     #region Message Processing Tests
 
     /// <summary>
-    /// Verifies that the lookup service is called when the endpoint is not rate limited.
+    /// When the endpoint is not rate-limited, processing a dequeued message invokes the matching
+    /// lookup-service method (here <c>GetInfoByISRCAsync</c>) exactly once.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -221,8 +219,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the request's origin priority is threaded through to saga creation so the
-    /// coordinator can later enqueue secondary lookups at the origin's priority.
+    /// A request carrying <see cref="QueuePriority.Bulk"/> origin priority forwards that priority to
+    /// <c>GetOrCreateAsync</c> so the saga records its origin lane.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -264,7 +262,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that messages are requeued with delay when the endpoint is rate limited.
+    /// When the endpoint pre-check reports the provider rate-limited, the message is requeued with
+    /// the remaining delay and the lookup service is never called.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -301,7 +300,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that saga state is updated after a successful lookup.
+    /// A successful lookup writes a complete, successful provider state into the saga via
+    /// <c>UpdateProviderStateAsync</c>.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -341,9 +341,7 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
-    /// <summary>
-    /// Verifies that messages are acknowledged after a successful lookup.
-    /// </summary>
+    /// <summary>A successful lookup acknowledges the originating message exactly once.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ProcessMessage_WithSuccessfulLookup_ShouldAcknowledgeMessage( ) {
@@ -375,7 +373,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that a completion event is published when the saga completes.
+    /// When the lookup completes the whole saga, the service publishes the saga id on the
+    /// <c>saga:completed</c> channel.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -416,7 +415,7 @@ public class QueueProcessorBackgroundServiceTests {
     #region Lookup Type Routing Tests
 
     /// <summary>
-    /// Verifies that URI lookups call GetInfoAsync with the correct URI.
+    /// A <see cref="LookupRequestType.UriLookup"/> request routes to <c>GetInfoAsync(url)</c>.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -448,7 +447,7 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that UPC lookups call GetInfoByUPCAsync with the correct UPC.
+    /// A <see cref="LookupRequestType.UpcLookup"/> request routes to <c>GetInfoByUPCAsync</c>.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -480,7 +479,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that song ID lookups call GetInfoByIDAsync with the correct ID.
+    /// A <see cref="LookupRequestType.SongIdLookup"/> request routes to <c>GetInfoByIDAsync(id, false)</c>
+    /// (<c>isAlbum: false</c>).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -512,7 +512,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that AlbumIdLookup calls GetInfoByIDAsync with isAlbum set to true.
+    /// A <see cref="LookupRequestType.AlbumIdLookup"/> request routes to <c>GetInfoByIDAsync(id, true)</c>
+    /// (<c>isAlbum: true</c>).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -544,7 +545,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that SongLookup calls GetInfoAsync with the title and artist from the request.
+    /// A <see cref="LookupRequestType.SongLookup"/> request routes to <c>GetInfoAsync(title, artist)</c>,
+    /// drawing the title and artist from the request rather than its lookup value.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -582,7 +584,8 @@ public class QueueProcessorBackgroundServiceTests {
     #region Rate Limit Exception Handling Tests
 
     /// <summary>
-    /// Verifies that rate limit exceptions are recorded in the rate limit tracker.
+    /// A <see cref="RetryAfterExceededException"/> from the lookup sets a rate-limit window in the
+    /// tracker for this provider.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -626,7 +629,9 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that rate-limited messages are acknowledged and re-enqueued with incremented attempt count.
+    /// A <see cref="RetryAfterExceededException"/> acknowledges the original message and re-enqueues
+    /// the request at <see cref="QueuePriority.Background"/> with an incremented attempt count and the
+    /// rate-limited endpoint recorded.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -678,7 +683,7 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that rate limit exceptions cause the saga to be marked as partial.
+    /// A <see cref="RetryAfterExceededException"/> marks the saga partial via <c>SetIsPartialAsync</c>.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -717,7 +722,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that rate limit information is recorded in the saga state.
+    /// A <see cref="RetryAfterExceededException"/> records a single <see cref="ProviderRateLimitInfo"/>
+    /// (this provider, with an endpoint) into the saga via <c>SetRateLimitInfoAsync</c>.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -764,9 +770,9 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that rate limit info recorded by other providers is merged with (not overwritten by)
-    /// this provider's entry, so the orchestrator's all-providers-rate-limited escape hatch can
-    /// still match when multiple providers are rate-limited.
+    /// When the saga already holds rate-limit info for another provider, a new
+    /// <see cref="RetryAfterExceededException"/> merges this provider's info with the existing entry
+    /// rather than replacing it, so <c>SetRateLimitInfoAsync</c> receives both providers.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -830,7 +836,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that rate limit exceptions trigger lookup completion publication for partial result handling.
+    /// A <see cref="RetryAfterExceededException"/> publishes a lookup-completion wakeup (the
+    /// rate-limited sentinel) on a <c>complete:</c> channel so synchronous waiters can return a partial.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -878,14 +885,9 @@ public class QueueProcessorBackgroundServiceTests {
     #region Interactive Origin Rate-Limit Deferral Tests
 
     /// <summary>
-    /// Verifies that an interactive-origin request that hits a rate limit is still acknowledged
-    /// and requeued at Background priority — the observability gate (OriginPriority == Interactive)
-    /// must not change the routing behavior.
-    /// Also verifies the LogInteractiveDeferredToBackground Warning (EventId 3018) fires exactly once,
-    /// proving the interactive-deferral branch ran.
-    /// Failure-first: if the production gate's LogInteractiveDeferredToBackground call were removed,
-    /// the Times.Once assertion on EventId 3018 would fail; if the gate short-circuits AcknowledgeAsync
-    /// or changes the requeue priority, the Acknowledge or Enqueue verification would fail.
+    /// An interactive-origin request that hits a rate limit is acknowledged, re-enqueued at
+    /// <see cref="QueuePriority.Background"/> with an incremented attempt count, and logs the
+    /// interactive-deferred-to-background warning (EventId 3018) exactly once.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -955,12 +957,9 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that a background-origin request that hits a rate limit is also requeued at Background
-    /// and that the OriginPriority branch (interactive gate) is NOT taken.
-    /// Failure-first: if the gate fired unconditionally, the Times.Never assertion on EventId 3018 would
-    /// fail; if routing diverged, the Acknowledge or Enqueue verification would fail.
-    /// The IsEnabled setup is present so that any mis-fired log would be observable rather than silently
-    /// swallowed — ensuring the Times.Never check is meaningful and not vacuously true.
+    /// A background-origin request that hits a rate limit is acknowledged and re-enqueued at
+    /// <see cref="QueuePriority.Background"/>, but does <em>not</em> log the interactive-deferred
+    /// warning (EventId 3018), since it did not originate as interactive.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1035,7 +1034,8 @@ public class QueueProcessorBackgroundServiceTests {
     #region General Exception Handling Tests
 
     /// <summary>
-    /// Verifies that general exceptions update the saga with error state when below max retries.
+    /// A non-rate-limit exception below the retry ceiling marks the provider state complete-and-failed
+    /// with an error message via <c>UpdateProviderStateAsync</c>.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1080,7 +1080,7 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that messages are acknowledged after handling errors below max retries.
+    /// A non-rate-limit exception below the retry ceiling acknowledges the message (no requeue, no DLQ).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1116,7 +1116,7 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that messages are moved to DLQ when max retries is reached.
+    /// A non-rate-limit exception at the max retry count moves the message to the dead-letter queue.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1152,7 +1152,8 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that messages are not acknowledged when moving to DLQ.
+    /// A non-rate-limit exception at the max retry count does not acknowledge the message (the DLQ
+    /// move owns its lifecycle instead).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1192,7 +1193,8 @@ public class QueueProcessorBackgroundServiceTests {
     #region No Message Handling Tests
 
     /// <summary>
-    /// Verifies that the service continues polling when no messages are available.
+    /// When the queue returns no messages, the service keeps polling (the dequeue call is made
+    /// repeatedly rather than the loop stopping).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1224,9 +1226,9 @@ public class QueueProcessorBackgroundServiceTests {
     #region Helper Methods
 
     /// <summary>
-    /// Creates a new <see cref="QueueProcessorBackgroundService"/> instance with the configured mocks.
+    /// Builds a <see cref="QueueProcessorBackgroundService"/> bound to <see cref="TestProvider"/> from
+    /// the current dependency mocks.
     /// </summary>
-    /// <returns>A new <see cref="QueueProcessorBackgroundService"/> instance.</returns>
     private QueueProcessorBackgroundService CreateService( ) =>
         new(
             _redisMock.Object,
@@ -1239,11 +1241,9 @@ public class QueueProcessorBackgroundServiceTests {
         );
 
     /// <summary>
-    /// Creates a test <see cref="QueuedLookupRequest"/> with the specified lookup type and value.
+    /// Builds a <see cref="QueuedLookupRequest"/> for <see cref="TestProvider"/> with fresh request
+    /// and saga ids, the given lookup type, and lookup value.
     /// </summary>
-    /// <param name="lookupType">The type of lookup request.</param>
-    /// <param name="lookupValue">The value to look up.</param>
-    /// <returns>A new <see cref="QueuedLookupRequest"/> instance.</returns>
     private static QueuedLookupRequest CreateRequest( LookupRequestType lookupType, string lookupValue ) =>
         new( ) {
             RequestId = $"req-{Guid.NewGuid( ):N}",
@@ -1255,17 +1255,13 @@ public class QueueProcessorBackgroundServiceTests {
         };
 
     /// <summary>
-    /// Creates a test <see cref="QueuedMessage{T}"/> wrapping the specified request.
+    /// Wraps a request in a <see cref="QueuedMessage{T}"/> with a fresh message id and the current
+    /// enqueue time.
     /// </summary>
-    /// <param name="request">The request to wrap in a message.</param>
-    /// <returns>A new <see cref="QueuedMessage{T}"/> instance.</returns>
     private static QueuedMessage<QueuedLookupRequest> CreateMessage( QueuedLookupRequest request ) =>
         new( $"msg-{Guid.NewGuid( ):N}", request, DateTimeOffset.UtcNow );
 
-    /// <summary>
-    /// Creates a test <see cref="MusicLookupResult"/> with sample data.
-    /// </summary>
-    /// <returns>A new <see cref="MusicLookupResult"/> instance.</returns>
+    /// <summary>Builds a representative successful <see cref="MusicLookupResult"/> for lookup stubs.</summary>
     private static MusicLookupResult CreateLookupResult( ) => new( ) {
         ExternalId = "USRC12345678",
         Artist = "Test Artist",
@@ -1276,9 +1272,7 @@ public class QueueProcessorBackgroundServiceTests {
         MarketRegion = "us"
     };
 
-    /// <summary>
-    /// Configures the rate limit tracker mock to return a non-rate-limited state.
-    /// </summary>
+    /// <summary>Stubs the rate-limit tracker to report the provider/endpoint as not rate-limited.</summary>
     private void SetupNotRateLimited( ) {
         _ = _rateLimitTrackerMock.Setup( r => r.GetStateAsync(
                 It.IsAny<SupportedProviders>( ),
@@ -1289,9 +1283,9 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Configures the rate limit tracker mock to return a rate-limited state with the specified remaining time.
+    /// Stubs the rate-limit tracker to report the provider/endpoint as rate-limited, with the given
+    /// time remaining and a corresponding retry-after instant.
     /// </summary>
-    /// <param name="timeRemaining">The time remaining until the rate limit expires.</param>
     private void SetupRateLimited( TimeSpan timeRemaining ) {
         DateTimeOffset retryAfter = DateTimeOffset.UtcNow.Add( timeRemaining );
         _ = _rateLimitTrackerMock.Setup( r => r.GetStateAsync(
@@ -1302,9 +1296,7 @@ public class QueueProcessorBackgroundServiceTests {
             .ReturnsAsync( new RateLimitState( true, retryAfter, timeRemaining ) );
     }
 
-    /// <summary>
-    /// Configures the lookup service mock to return a successful result for all lookup methods.
-    /// </summary>
+    /// <summary>Stubs every lookup-service method to return a successful result.</summary>
     private void SetupLookupSuccess( ) {
         MusicLookupResult result = CreateLookupResult( );
 
@@ -1322,9 +1314,9 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Configures the saga manager mock to return an incomplete saga with only one provider complete.
+    /// Stubs the saga manager to return a saga where only Spotify is complete, so the saga is not
+    /// yet whole (no <c>saga:completed</c> publication is expected).
     /// </summary>
-    /// <param name="sagaId">The saga ID to configure.</param>
     private void SetupSagaNotComplete( string sagaId ) {
         LookupSagaState saga = new( ) {
             SagaId = sagaId,
@@ -1348,9 +1340,9 @@ public class QueueProcessorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Configures the saga manager mock to return a complete saga with all providers finished.
+    /// Stubs the saga manager to return a saga where all three providers are complete and successful,
+    /// so the saga is whole (a <c>saga:completed</c> publication is expected).
     /// </summary>
-    /// <param name="sagaId">The saga ID to configure.</param>
     private void SetupSagaComplete( string sagaId ) {
         LookupSagaState saga = new( ) {
             SagaId = sagaId,

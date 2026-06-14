@@ -8,19 +8,29 @@ using Microsoft.AspNetCore.Mvc;
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// Controller for managing user playlists.
-/// Provides views for authenticated users to view and manage their playlists.
+/// Manages the authenticated user's own playlists, rooted at <c>playlists</c>. Lists the user's playlists,
+/// deletes a playlist the user owns, and serves the Apple Music playlists page. Requires an authenticated
+/// session.
 /// </summary>
+/// <param name="playlistService">Optional playlist service used to list, delete, and supply the public domain for the user's playlists; when disabled, actions report unavailability.</param>
+/// <param name="logger">Optional logger for load and delete errors.</param>
 [Authorize]
 [Route( "playlists" )]
 public partial class PlaylistsController( IPlaylistService? playlistService, ILogger<PlaylistsController>? logger = null ) : Controller {
 
+    /// <summary>Optional playlist service used to list, delete, and supply the public domain for the user's playlists.</summary>
     private readonly IPlaylistService? _playlistService = playlistService;
+    /// <summary>Optional logger for load and delete errors.</summary>
     private readonly ILogger<PlaylistsController>? _logger = logger;
 
     /// <summary>
-    /// Displays the user's playlists.
+    /// Lists the authenticated user's playlists, projecting each into a summary with its item count and URL.
     /// </summary>
+    /// <returns>
+    /// HTTP GET <c>playlists</c>. The <c>Index</c> view with the user's playlists on success, or carrying an
+    /// error message when the service is unavailable or loading fails; <c>401 Unauthorized</c> when the user
+    /// id cannot be resolved.
+    /// </returns>
     [HttpGet]
     public async Task<IActionResult> Index( ) {
         if (_playlistService?.IsEnabled != true) {
@@ -48,7 +58,6 @@ public partial class PlaylistsController( IPlaylistService? playlistService, ILo
                 } )]
             };
 
-
             return View( "Index", viewModel );
         } catch (Exception ex) {
             LogLoadError( ex, userId );
@@ -59,9 +68,15 @@ public partial class PlaylistsController( IPlaylistService? playlistService, ILo
     }
 
     /// <summary>
-    /// Deletes a playlist owned by the current user.
+    /// Deletes a playlist owned by the authenticated user.
     /// </summary>
-    /// <param name="id">The playlist ID to delete.</param>
+    /// <param name="id">The playlist id from the route.</param>
+    /// <returns>
+    /// HTTP POST <c>playlists/{id}/delete</c>. <c>200 OK</c> on success; <c>404 Not Found</c> when the
+    /// playlist does not exist or is not owned by the user; <c>400 Bad Request</c> when the service is
+    /// unavailable; <c>401 Unauthorized</c> when the user id cannot be resolved; <c>500</c> on an unexpected
+    /// error. Requires a valid anti-forgery token.
+    /// </returns>
     [HttpPost( "{id}/delete" )]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete( string id ) {
@@ -86,8 +101,9 @@ public partial class PlaylistsController( IPlaylistService? playlistService, ILo
     }
 
     /// <summary>
-    /// Displays the Apple Music integration page as a sub-page of playlists.
+    /// Renders the Apple Music playlists page.
     /// </summary>
+    /// <returns>The <c>AppleMusic</c> view (HTTP GET <c>playlists/applemusic</c>).</returns>
     [HttpGet( "applemusic" )]
     public IActionResult AppleMusic( ) {
         return View( "AppleMusic" );

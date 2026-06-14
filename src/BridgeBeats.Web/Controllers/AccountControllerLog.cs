@@ -1,12 +1,14 @@
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// LoggerMessage methods for <see cref="AccountController"/>.
+/// Source-generated <see cref="Microsoft.Extensions.Logging.LoggerMessageAttribute"/> logging methods
+/// for <see cref="AccountController"/>.
 /// </summary>
 public partial class AccountController {
     /// <summary>
-    /// Logs successful user registration.
+    /// Logs that a user registered successfully.
     /// </summary>
+    /// <param name="userId">The id of the newly registered user.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerRegistered,
         Level = LogLevel.Information,
@@ -14,8 +16,9 @@ public partial class AccountController {
     private partial void LogUserRegistered( string userId );
 
     /// <summary>
-    /// Logs successful user login.
+    /// Logs that a user signed in successfully.
     /// </summary>
+    /// <param name="userId">The id of the user who signed in.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerLoggedIn,
         Level = LogLevel.Information,
@@ -23,8 +26,9 @@ public partial class AccountController {
     private partial void LogUserLoggedIn( string userId );
 
     /// <summary>
-    /// Logs API key regeneration.
+    /// Logs that a user regenerated their API key.
     /// </summary>
+    /// <param name="userId">The id of the user whose API key was regenerated.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerApiKeyRegenerated,
         Level = LogLevel.Information,
@@ -32,8 +36,9 @@ public partial class AccountController {
     private partial void LogApiKeyRegenerated( string userId );
 
     /// <summary>
-    /// Logs personal data download.
+    /// Logs that a user exported their personal data.
     /// </summary>
+    /// <param name="userId">The id of the user who downloaded their data.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerDataDownloaded,
         Level = LogLevel.Information,
@@ -41,8 +46,9 @@ public partial class AccountController {
     private partial void LogDataDownloaded( string userId );
 
     /// <summary>
-    /// Logs account deletion failure.
+    /// Logs that an account deletion attempt failed.
     /// </summary>
+    /// <param name="userId">The id of the user whose deletion failed.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerDeleteFailed,
         Level = LogLevel.Error,
@@ -50,8 +56,9 @@ public partial class AccountController {
     private partial void LogDeleteFailed( string userId );
 
     /// <summary>
-    /// Logs account deletion success.
+    /// Logs that a user account was deleted.
     /// </summary>
+    /// <param name="userId">The id of the deleted user.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerDeleted,
         Level = LogLevel.Information,
@@ -59,8 +66,10 @@ public partial class AccountController {
     private partial void LogAccountDeleted( string userId );
 
     /// <summary>
-    /// Logs ATProto OAuth start.
+    /// Logs that ATProto OAuth authorization was started for a handle.
     /// </summary>
+    /// <param name="handle">The Bluesky handle that began authorization.</param>
+    /// <param name="authUrl">The host of the authorization URL the user is being redirected to.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerAtProtoOAuthStarted,
         Level = LogLevel.Information,
@@ -68,8 +77,10 @@ public partial class AccountController {
     private partial void LogAtProtoOAuthStarted( string handle, string authUrl );
 
     /// <summary>
-    /// Logs ATProto OAuth start failure.
+    /// Logs that starting ATProto OAuth authorization failed for a handle.
     /// </summary>
+    /// <param name="ex">The exception that caused the failure.</param>
+    /// <param name="handle">The Bluesky handle that failed to start authorization.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerAtProtoOAuthStartFailed,
         Level = LogLevel.Error,
@@ -77,8 +88,10 @@ public partial class AccountController {
     private partial void LogAtProtoOAuthStartFailed( Exception ex, string handle );
 
     /// <summary>
-    /// Logs ATProto OAuth callback error.
+    /// Logs an error code returned by the provider on the ATProto OAuth callback.
     /// </summary>
+    /// <param name="error">The OAuth error code.</param>
+    /// <param name="description">The optional human-readable error description.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerAtProtoOAuthError,
         Level = LogLevel.Warning,
@@ -86,8 +99,9 @@ public partial class AccountController {
     private partial void LogAtProtoOAuthError( string error, string? description );
 
     /// <summary>
-    /// Logs ATProto user creation failure.
+    /// Logs that creating a new user for an ATProto identity failed.
     /// </summary>
+    /// <param name="errors">The concatenated identity error descriptions.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerAtProtoUserCreateFailed,
         Level = LogLevel.Error,
@@ -95,8 +109,10 @@ public partial class AccountController {
     private partial void LogAtProtoUserCreateFailed( string errors );
 
     /// <summary>
-    /// Logs ATProto new user creation success.
+    /// Logs that a new user was created for an ATProto identity.
     /// </summary>
+    /// <param name="did">The ATProto DID the account was created for.</param>
+    /// <param name="handle">The associated Bluesky handle.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerAtProtoUserCreated,
         Level = LogLevel.Information,
@@ -104,8 +120,10 @@ public partial class AccountController {
     private partial void LogAtProtoUserCreated( string did, string handle );
 
     /// <summary>
-    /// Logs ATProto token update for existing user.
+    /// Logs that stored tokens were refreshed for an existing ATProto user.
     /// </summary>
+    /// <param name="did">The ATProto DID whose tokens were updated.</param>
+    /// <param name="handle">The associated Bluesky handle.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerAtProtoTokensUpdated,
         Level = LogLevel.Information,
@@ -113,8 +131,9 @@ public partial class AccountController {
     private partial void LogAtProtoTokensUpdated( string did, string handle );
 
     /// <summary>
-    /// Logs ATProto user login success.
+    /// Logs that an ATProto user signed in successfully.
     /// </summary>
+    /// <param name="userId">The id of the signed-in user.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerAtProtoLoggedIn,
         Level = LogLevel.Information,
@@ -122,8 +141,9 @@ public partial class AccountController {
     private partial void LogAtProtoLoggedIn( string userId );
 
     /// <summary>
-    /// Logs ATProto OAuth callback failure.
+    /// Logs that completing the ATProto OAuth callback failed.
     /// </summary>
+    /// <param name="ex">The exception that caused the failure.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AccountControllerAtProtoCallbackFailed,
         Level = LogLevel.Error,

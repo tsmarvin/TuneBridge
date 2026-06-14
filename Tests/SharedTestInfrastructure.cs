@@ -3,29 +3,36 @@ using Testcontainers.Redis;
 namespace BridgeBeats.Tests;
 
 /// <summary>
-/// Manages a shared Redis container for all tests in the assembly.
-/// The container is started once per test run and shared across all test classes.
-/// Uses lazy initialization to ensure the container is ready before any test runs.
+/// Assembly-wide test fixture that starts a single Redis container (via Testcontainers) once per test
+/// run and shares its connection string across every integration test. Initialization is lazy and
+/// thread-safe; when Docker is unavailable the container is skipped and Redis-dependent tests are made
+/// inconclusive rather than failed.
 /// </summary>
 [TestClass]
 public static class SharedTestInfrastructure {
+    /// <summary>The shared Redis Testcontainer, or <c>null</c> when Docker is unavailable.</summary>
     private static RedisContainer? s_redisContainer;
+    /// <summary>Guards lazy, thread-safe initialization of the shared container.</summary>
     private static readonly Lock s_lock = new( );
+    /// <summary>Tracks whether initialization has already run.</summary>
     private static bool s_initialized;
+    /// <summary>Holds the Docker error message when container startup fails, used in skip messages.</summary>
     private static string? s_dockerError;
 
     /// <summary>
-    /// Gets the Redis connection string for tests.
+    /// The connection string for the shared Redis container, or an empty string when Docker is
+    /// unavailable.
     /// </summary>
     public static string RedisConnectionString { get; private set; } = string.Empty;
 
     /// <summary>
-    /// Indicates whether Docker is available and the Redis container started successfully.
+    /// Indicates whether the shared Redis container started successfully and is available for tests.
     /// </summary>
     public static bool IsRedisAvailable { get; private set; }
 
     /// <summary>
-    /// Ensures the Redis container is started. This is idempotent and thread-safe.
+    /// Lazily starts the shared Redis container exactly once, recording the connection string on
+    /// success or the Docker error on failure. Safe to call from multiple test classes concurrently.
     /// </summary>
     private static void EnsureInitialized( ) {
         if (s_initialized) {
@@ -56,9 +63,9 @@ public static class SharedTestInfrastructure {
     }
 
     /// <summary>
-    /// Assembly-level initialization that ensures the Redis test infrastructure is started.
+    /// MSTest assembly-initialize hook that starts the shared Redis container before any tests run.
     /// </summary>
-    /// <param name="_">The test context provided by the test framework (unused).</param>
+    /// <param name="_">The MSTest assembly-level test context (unused).</param>
     [AssemblyInitialize]
     public static void AssemblyInitialize( TestContext _ ) {
         // Trigger initialization early during assembly setup
@@ -66,7 +73,7 @@ public static class SharedTestInfrastructure {
     }
 
     /// <summary>
-    /// Assembly-level cleanup that stops and disposes the Redis test container.
+    /// MSTest assembly-cleanup hook that stops and disposes the shared Redis container after the run.
     /// </summary>
     [AssemblyCleanup]
     public static async Task AssemblyCleanup( ) {
@@ -77,8 +84,8 @@ public static class SharedTestInfrastructure {
     }
 
     /// <summary>
-    /// Ensures Redis is available. Call this at the start of tests that require Redis.
-    /// This will trigger container startup if not already done.
+    /// Ensures the shared Redis container is running and marks the calling test inconclusive (with
+    /// guidance to start Docker Desktop) when it is not. Call from any test that depends on Redis.
     /// </summary>
     public static void RequireRedis( ) {
         EnsureInitialized( );

@@ -8,48 +8,44 @@ using Microsoft.AspNetCore.Mvc;
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// REST API endpoints for cross-platform music lookup and link translation. These endpoints enable
-/// clients to convert music links between services (Spotify ↔ Apple Music) or search for tracks/albums
-/// by metadata. Requires API key or internal service key authentication.
+/// Web API controller for programmatic music lookups, rooted at <c>music/lookup</c>. Resolves media links
+/// across providers by URL, ISRC, UPC, or title/artist. Authenticated via API key or internal-service
+/// scheme; the two URL endpoints additionally allow anonymous access.
 /// </summary>
-/// <param name="svc">Injected service that handles provider queries and result aggregation.</param>
+/// <param name="svc">The media-link service that performs the cross-provider lookups.</param>
 [ApiController]
 [Authorize( AuthenticationSchemes = ApiKeyDefaults.AuthenticationScheme + "," + InternalServiceDefaults.AuthenticationScheme )]
 [IgnoreAntiforgeryToken]
 [Route( "music/lookup" )]
 public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
 
+    /// <summary>The media-link service that performs the cross-provider lookups.</summary>
     private readonly IMediaLinkService _svc = svc;
 
-    /// <summary>Request containing one or more music URLs to parse and look up across platforms.</summary>
-    /// <param name="Uri">Space-separated or newline-separated URLs from supported services (Spotify, Apple Music).</param>
+    /// <summary>Request payload for a URL lookup.</summary>
+    /// <param name="Uri">Free text that may contain one or more provider URLs (Spotify, Apple Music); every <c>https://</c> link found is extracted and resolved.</param>
     public record UrlReq( string Uri );
 
-    /// <summary>Request containing an ISRC code for exact track lookup.</summary>
-    /// <param name="Isrc">12-character ISRC (International Standard Recording Code), e.g., "USRC17607839".</param>
+    /// <summary>Request payload for an ISRC lookup.</summary>
+    /// <param name="Isrc">The 12-character International Standard Recording Code (e.g. "USRC17607839") to resolve.</param>
     public record IsrcReq( string Isrc );
 
-    /// <summary>Request containing a UPC code for exact album lookup.</summary>
-    /// <param name="Upc">UPC barcode number (12-13 digits), e.g., "00602537518357".</param>
+    /// <summary>Request payload for a UPC lookup.</summary>
+    /// <param name="Upc">The Universal Product Code barcode number (typically 12-13 digits, e.g. "00602537518357") to resolve.</param>
     public record UpcReq( string Upc );
 
-    /// <summary>Request containing track/album search criteria.</summary>
-    /// <param name="Title">Track or album title. Supports partial matches and common variations.</param>
-    /// <param name="Artist">Primary artist name. Should match the main credited artist for best results.</param>
+    /// <summary>Request payload for a title/artist lookup.</summary>
+    /// <param name="Title">The track or album title to resolve.</param>
+    /// <param name="Artist">The artist name to resolve.</param>
     public record TitleReq( string Title, string Artist );
 
     /// <summary>
-    /// Batch endpoint: Parses multiple music URLs from text and returns all results in a single response.
-    /// Useful for processing Discord/Slack messages or web pages containing multiple music links.
-    /// Results are deduplicated if multiple URLs point to the same content.
+    /// Resolves every provider URL found in the request text and returns all results as a buffered list.
+    /// Results are deduplicated on external IDs (ISRC for tracks, UPC for albums), so multiple URLs pointing
+    /// to the same content are merged.
     /// </summary>
-    /// <param name="req">Request body with text containing music URLs to extract and process.</param>
-    /// <returns>
-    /// HTTP 200 with JSON array of <see cref="MediaLinkResult"/> objects. Each result contains URLs
-    /// from all providers where the track/album was found. Returns empty array if no valid URLs found.
-    /// </returns>
-    /// <response code="200">Successfully parsed and looked up all URLs.</response>
-    /// <response code="400">Invalid request body or malformed URLs.</response>
+    /// <param name="req">The request containing the URL text, bound from the JSON request body.</param>
+    /// <returns>HTTP POST <c>music/lookup/urlList</c>. <c>200 OK</c> with the list of results. Allows anonymous access.</returns>
     [AllowAnonymous]
     [HttpPost( "urlList" )]
     public async Task<IActionResult> ByUrlList( [FromBody] UrlReq req ) {
@@ -62,15 +58,10 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     }
 
     /// <summary>
-    /// Streaming endpoint: Parses music URLs and yields results progressively as they're discovered.
-    /// Better for real-time applications or when processing large amounts of content.
+    /// Resolves every provider URL found in the request text and streams results as they are produced.
     /// </summary>
-    /// <param name="req">Request body with text containing music URLs to extract and process.</param>
-    /// <returns>
-    /// Async enumerable of <see cref="MediaLinkResult"/> objects. Each result is yielded
-    /// as soon as it's available, enabling progressive UI updates. Stream completes when all URLs
-    /// have been processed.
-    /// </returns>
+    /// <param name="req">The request containing the URL text, bound from the JSON request body.</param>
+    /// <returns>HTTP POST <c>music/lookup/url</c>. An asynchronous stream of media-link results. Allows anonymous access.</returns>
     [AllowAnonymous]
     [HttpPost( "url" )]
     public async IAsyncEnumerable<MediaLinkResult> ByUrl( [FromBody] UrlReq req ) {
@@ -80,18 +71,13 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     }
 
     /// <summary>
-    /// Performs an exact track lookup using ISRC (International Standard Recording Code). This is the
-    /// most reliable method for finding tracks across platforms as ISRCs are globally standardized and
-    /// consistent. Recommended over title/artist search when the ISRC is known.
+    /// Resolves a recording by ISRC, the most reliable cross-platform identifier when known.
     /// </summary>
-    /// <param name="req">Request containing the 12-character ISRC code (hyphens optional).</param>
+    /// <param name="req">The request containing the ISRC, bound from the JSON request body.</param>
     /// <returns>
-    /// HTTP 200 with <see cref="MediaLinkResult"/> containing provider URLs if the track was found,
-    /// or HTTP 200 with an empty object and message if the ISRC doesn't exist in any provider's catalog.
+    /// HTTP POST <c>music/lookup/isrc</c>. <c>200 OK</c> with the result, or a result carrying a
+    /// "No results found for ISRC." message when nothing matches. Requires API-key or internal-service auth.
     /// </returns>
-    /// <response code="200">Lookup completed.</response>
-    /// <response code="400">Invalid ISRC format in request body.</response>
-    /// <response code="401">Unauthorized - API key required.</response>
     [HttpPost( "isrc" )]
     public async Task<IActionResult> ByIsrc( [FromBody] IsrcReq req ) {
         MediaLinkResult? result = await _svc.GetInfoByISRCAsync( req.Isrc );
@@ -99,18 +85,13 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     }
 
     /// <summary>
-    /// Performs an exact album lookup using UPC (Universal Product Code). Particularly useful for
-    /// distinguishing between different editions of the same album (standard vs deluxe, regional variants).
-    /// More reliable than title search for albums with complex naming or special characters.
+    /// Resolves a release by UPC, useful for distinguishing editions of the same album.
     /// </summary>
-    /// <param name="req">Request containing the UPC barcode number (typically 12-13 digits).</param>
+    /// <param name="req">The request containing the UPC, bound from the JSON request body.</param>
     /// <returns>
-    /// HTTP 200 with <see cref="MediaLinkResult"/> containing provider URLs if the album was found,
-    /// or HTTP 200 with an empty object and message if the UPC doesn't exist in any provider's catalog.
+    /// HTTP POST <c>music/lookup/upc</c>. <c>200 OK</c> with the result, or a result carrying a
+    /// "No results found for UPC." message when nothing matches. Requires API-key or internal-service auth.
     /// </returns>
-    /// <response code="200">Lookup completed.</response>
-    /// <response code="400">Invalid UPC format in request body.</response>
-    /// <response code="401">Unauthorized - API key required.</response>
     [HttpPost( "upc" )]
     public async Task<IActionResult> ByUpc( [FromBody] UpcReq req ) {
         MediaLinkResult? result = await _svc.GetInfoByUPCAsync( req.Upc );
@@ -118,17 +99,13 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     }
 
     /// <summary>
-    /// Searches for tracks or albums by title and artist name across all configured providers.
-    /// May return no results if the search is too broad or the content isn't available on configured platforms.
+    /// Resolves a track or album by title and artist across all configured providers.
     /// </summary>
-    /// <param name="req">Request containing the title and artist to search for.</param>
+    /// <param name="req">The request containing the title and artist, bound from the JSON request body.</param>
     /// <returns>
-    /// HTTP200 with <see cref="MediaLinkResult"/> containing provider URLs if matches were found,
-    /// or HTTP200 with an empty object and message if no matches were found on any platform.
+    /// HTTP POST <c>music/lookup/title</c>. <c>200 OK</c> with the result, or a result carrying a
+    /// "No results found for title/artist." message when nothing matches. Requires API-key or internal-service auth.
     /// </returns>
-    /// <response code="200">Search completed.</response>
-    /// <response code="400">Missing or invalid title/artist in request body.</response>
-    /// <response code="401">Unauthorized - API key required.</response>
     [HttpPost( "title" )]
     public async Task<IActionResult> ByTitle( [FromBody] TitleReq req ) {
         MediaLinkResult? result = await _svc.GetInfoAsync( req.Title, req.Artist );

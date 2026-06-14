@@ -5,13 +5,15 @@ using BridgeBeats.Core.Domain.Extensions;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="ServiceExtensions"/> validating OpenGraph metadata generation.
+/// Tests the <c>ToOpenGraphMetadata</c> extension, which builds the OpenGraph meta-tag dictionary from a
+/// <see cref="MediaLinkResult"/>. Covers labeling the primary result's external id as ISRC for tracks and UPC for
+/// albums (and omitting it when absent), the per-provider <c>theme-color</c> chosen from the primary provider, and
+/// that provider links/URLs are kept out of the description.
 /// </summary>
 [TestClass]
 public class OpenGraphExtensionsTests {
-
     /// <summary>
-    /// Verifies that OpenGraph metadata includes ISRC in the description for tracks.
+    /// Verifies a track's external id is labeled <c>ISRC:</c> in the description, alongside the artist.
     /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithTrackAndISRC_IncludesISRCInDescription( ) {
@@ -43,7 +45,7 @@ public class OpenGraphExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that OpenGraph metadata includes UPC in the description for albums.
+    /// Verifies an album's external id is labeled <c>UPC:</c> in the description.
     /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithAlbumAndUPC_IncludesUPCInDescription( ) {
@@ -74,7 +76,7 @@ public class OpenGraphExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that OpenGraph metadata uses Apple Music's red theme color when Apple Music is primary.
+    /// Verifies an Apple Music primary result yields the Apple Music red <c>theme-color</c> (<c>#D60017</c>).
     /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithAppleMusicPrimary_HasRedThemeColor( ) {
@@ -105,7 +107,7 @@ public class OpenGraphExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that OpenGraph metadata uses Spotify's green theme color when Spotify is primary.
+    /// Verifies a Spotify primary result yields the Spotify green <c>theme-color</c> (<c>#1ED760</c>).
     /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithSpotifyPrimary_HasGreenThemeColor( ) {
@@ -136,7 +138,8 @@ public class OpenGraphExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that OpenGraph metadata does not include ISRC or UPC when no external ID is available.
+    /// Verifies that when the primary result has no external id, the description omits both <c>ISRC:</c> and
+    /// <c>UPC:</c> but still includes the artist.
     /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithoutExternalId_DoesNotIncludeISRCOrUPC( ) {
@@ -169,7 +172,8 @@ public class OpenGraphExtensionsTests {
     }
 
     /// <summary>
-    /// Verifies that OpenGraph metadata does not include provider links or URLs in the description.
+    /// Verifies the description never lists provider links: with multiple providers present it contains no
+    /// "Available on:" section and no URLs.
     /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_DoesNotIncludeProviderLinksInDescription( ) {

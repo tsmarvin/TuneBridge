@@ -12,8 +12,10 @@ using Moq;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Parity test: verifies that CAR-based enumeration yields the same AT-URI set and
-/// LookedUpAt values as a one-off listRecords loop against the production PDS.
+/// Live integration test that verifies the CAR-based record enumeration of the AT Protocol storage
+/// service yields the same set of AT-URIs (and matching lookup timestamps) as paging the PDS
+/// <c>com.atproto.repo.listRecords</c> XRPC endpoint directly. Requires a real PDS and is ignored unless
+/// run manually with the PDS URI and user DID supplied via environment variables.
 /// </summary>
 /// <remarks>
 /// This test requires live PDS access and is intentionally excluded from automated runs.
@@ -26,15 +28,21 @@ namespace BridgeBeats.Tests.Integration;
 [TestCategory( "Integration" )]
 public class CarVsListRecordsParityTests {
 
+    /// <summary>Name of the environment variable holding the test PDS URI.</summary>
     private const string PdsUriEnvVar = "BRIDGEBEATS_TEST_PDS_URI";
+    /// <summary>Name of the environment variable holding the test user DID.</summary>
     private const string UserDidEnvVar = "BRIDGEBEATS_TEST_USER_DID";
+    /// <summary>The lexicon collection NSID whose records are compared.</summary>
     private const string CollectionNsid = "link.bridgebeats.lookup";
 
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Validates that CAR-based enumeration produces the same AT-URI set as paginated listRecords.
+    /// Enumerates the collection via the CAR-based storage service and via direct paged
+    /// <c>listRecords</c> calls, then asserts the two AT-URI sets are identical and their per-record
+    /// lookup timestamps agree within one second. Marked inconclusive when the required environment
+    /// variables are absent.
     /// </summary>
     [TestMethod]
     [Ignore( "Live PDS test — run manually with: dotnet test --filter TestCategory=Integration" )]

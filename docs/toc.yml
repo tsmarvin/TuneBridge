@@ -2,18 +2,18 @@
   href: index.md
 - name: Quick Start
   href: QUICKSTART.md
-- name: Configuration
-  href: CONFIGURATION.md
-- name: Local Development
-  href: LOCAL_DEVELOPMENT.md
 - name: API Reference
   href: API.md
+- name: Configuration
+  href: CONFIGURATION.md
+- name: Caching and Storage
+  href: CACHING.md
+- name: Local Development
+  href: LOCAL_DEVELOPMENT.md
 - name: Deployment
   href: DEPLOYMENT.md
 - name: Testing
   href: TESTING.md
-- name: Caching
-  href: CACHING.md
 - name: Spotify Batch and Routing
   href: SPOTIFY_BATCH_AND_ROUTING.md
 - name: Discord Bot

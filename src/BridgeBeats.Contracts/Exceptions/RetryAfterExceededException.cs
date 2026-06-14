@@ -1,44 +1,48 @@
 using BridgeBeats.Contracts.Enums;
 
 namespace BridgeBeats.Contracts.Exceptions {
+
     /// <summary>
-    /// Exception thrown when a music provider returns HTTP 429 with a Retry-After header
-    /// that exceeds the configured maximum threshold. This allows fail-fast behavior
-    /// instead of waiting for extended periods.
+    /// Thrown when a provider's <c>Retry-After</c> value exceeds the configured retry threshold,
+    /// meaning the rate-limit wait is too long to be worth retrying. Carries the offending
+    /// <c>Retry-After</c> value, the threshold it breached, and the request context.
     /// </summary>
     /// <remarks>
-    /// This exception is designed to capture request context for future re-queue functionality.
-    /// The exception is excluded from the resilience handler's retry logic to ensure immediate propagation.
+    /// The captured request context drives rate-limit handling and requeue of the affected work. The
+    /// resilience handler is configured not to retry this exception, so it propagates immediately
+    /// rather than waiting out the rate limit.
     /// </remarks>
     public class RetryAfterExceededException : Exception {
+
         /// <summary>
-        /// The Retry-After value from the response header, in seconds.
+        /// The provider's requested <c>Retry-After</c> wait duration that triggered this exception.
         /// </summary>
         public TimeSpan RetryAfterValue { get; }
 
         /// <summary>
-        /// The configured maximum threshold that was exceeded, in seconds.
+        /// The maximum retry wait the caller is willing to tolerate. When
+        /// <see cref="RetryAfterValue"/> exceeds this, the exception is raised.
         /// </summary>
         public TimeSpan Threshold { get; }
 
         /// <summary>
-        /// The request URI that triggered the rate limit response.
+        /// The request URI that was rate-limited, if known; otherwise <see langword="null"/>.
         /// </summary>
         public Uri? RequestUri { get; }
 
         /// <summary>
-        /// The music provider that returned the rate limit response.
-        /// Extracted from the request URI host when available.
+        /// The provider that issued the rate limit, if known; otherwise <see langword="null"/>.
+        /// Typically inferred from the request URI host via <see cref="DetermineProviderFromUri"/>.
         /// </summary>
         public SupportedProviders? Provider { get; }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="RetryAfterExceededException"/> class.
+        /// Initializes a new instance with the rate-limit context, building a descriptive message.
         /// </summary>
-        /// <param name="retryAfterValue">The Retry-After value from the response header.</param>
-        /// <param name="threshold">The configured maximum threshold.</param>
-        /// <param name="requestUri">The request URI that triggered the rate limit.</param>
-        /// <param name="provider">The music provider that returned the rate limit.</param>
+        /// <param name="retryAfterValue">The provider's requested <c>Retry-After</c> wait.</param>
+        /// <param name="threshold">The maximum retry wait the caller will tolerate.</param>
+        /// <param name="requestUri">The rate-limited request URI, or <see langword="null"/> if unknown.</param>
+        /// <param name="provider">The provider that issued the limit, or <see langword="null"/> if unknown.</param>
         public RetryAfterExceededException(
             TimeSpan retryAfterValue,
             TimeSpan threshold,
@@ -52,13 +56,14 @@ namespace BridgeBeats.Contracts.Exceptions {
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="RetryAfterExceededException"/> class with an inner exception.
+        /// Initializes a new instance with the rate-limit context and an inner exception that
+        /// caused or accompanied the rate limit.
         /// </summary>
-        /// <param name="retryAfterValue">The Retry-After value from the response header.</param>
-        /// <param name="threshold">The configured maximum threshold.</param>
-        /// <param name="requestUri">The request URI that triggered the rate limit.</param>
-        /// <param name="provider">The music provider that returned the rate limit.</param>
-        /// <param name="innerException">The inner exception.</param>
+        /// <param name="retryAfterValue">The provider's requested <c>Retry-After</c> wait.</param>
+        /// <param name="threshold">The maximum retry wait the caller will tolerate.</param>
+        /// <param name="requestUri">The rate-limited request URI, or <see langword="null"/> if unknown.</param>
+        /// <param name="provider">The provider that issued the limit, or <see langword="null"/> if unknown.</param>
+        /// <param name="innerException">The exception that is the cause of this exception.</param>
         public RetryAfterExceededException(
             TimeSpan retryAfterValue,
             TimeSpan threshold,
@@ -85,10 +90,14 @@ namespace BridgeBeats.Contracts.Exceptions {
         }
 
         /// <summary>
-        /// Determines the music provider from a request URI based on known API host patterns.
+        /// Infers the <see cref="SupportedProviders"/> from a request URI by matching a substring of
+        /// its host (<c>apple</c>, <c>spotify</c>, or <c>tidal</c>).
         /// </summary>
-        /// <param name="requestUri">The request URI to analyze.</param>
-        /// <returns>The identified provider, or null if not recognized.</returns>
+        /// <param name="requestUri">The request URI to inspect.</param>
+        /// <returns>
+        /// The matching provider, or <see langword="null"/> if <paramref name="requestUri"/> is
+        /// <see langword="null"/> or its host matches no known provider.
+        /// </returns>
         public static SupportedProviders? DetermineProviderFromUri( Uri? requestUri ) {
             if (requestUri == null) {
                 return null;

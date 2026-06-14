@@ -17,11 +17,6 @@
       {
         "files": [ "**.{md,yml}" ],
         "src": "."
-      },
-      {
-        "files": [ "**.md" ],
-        "src": "..",
-        "exclude": [ "_site/**", "docs/**", "MigrationPlan/**" ]
       }
     ],
     "resource": [

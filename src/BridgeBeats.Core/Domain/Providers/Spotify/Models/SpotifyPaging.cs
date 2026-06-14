@@ -3,53 +3,39 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Spotify.Models {
 
     /// <summary>
-    /// A paginated response wrapper used by Spotify's list endpoints.
+    /// Deserialization target mirroring the Spotify Web API <c>paging object</c> — the generic wrapper
+    /// around any paged collection (album tracks, an artist's albums, each facet of a search response,
+    /// and so on). The authoritative meaning of each field is the Spotify Web API object model;
+    /// <c>[JsonPropertyName]</c> attributes map each property to its wire field.
     /// </summary>
-    /// <typeparam name="T">The type of items in the page.</typeparam>
-    /// <remarks>
-    /// Documentation: https://developer.spotify.com/documentation/web-api
-    /// </remarks>
+    /// <typeparam name="T">Element type of the paged collection, for example <see cref="SpotifyTrack"/> or <see cref="SpotifyAlbum"/>.</typeparam>
     public sealed class SpotifyPaging<T> {
 
-        /// <summary>
-        /// A link to the Web API endpoint returning the full result of the request.
-        /// </summary>
+        /// <summary>Spotify Web API endpoint URL that returned this page. Maps to <c>href</c>.</summary>
         [JsonPropertyName( "href" )]
         public string Href { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The maximum number of items in the response.
-        /// </summary>
+        /// <summary>Maximum number of items in the response, as requested for this page. Maps to <c>limit</c>.</summary>
         [JsonPropertyName( "limit" )]
         public int Limit { get; set; }
 
-        /// <summary>
-        /// URL to the next page of items (null if none).
-        /// </summary>
+        /// <summary>URL to the next page of items, or null when this is the last page. Maps to <c>next</c>.</summary>
         [JsonPropertyName( "next" )]
         public string? Next { get; set; }
 
-        /// <summary>
-        /// The offset of the items returned.
-        /// </summary>
+        /// <summary>Zero-based offset of the first item in this page. Maps to <c>offset</c>.</summary>
         [JsonPropertyName( "offset" )]
         public int Offset { get; set; }
 
-        /// <summary>
-        /// URL to the previous page of items (null if none).
-        /// </summary>
+        /// <summary>URL to the previous page of items, or null when this is the first page. Maps to <c>previous</c>.</summary>
         [JsonPropertyName( "previous" )]
         public string? Previous { get; set; }
 
-        /// <summary>
-        /// The total number of items available to return.
-        /// </summary>
+        /// <summary>Total number of items available across all pages. Maps to <c>total</c>.</summary>
         [JsonPropertyName( "total" )]
         public int Total { get; set; }
 
-        /// <summary>
-        /// The requested content.
-        /// </summary>
+        /// <summary>Items contained in this page. Maps to <c>items</c>.</summary>
         [JsonPropertyName( "items" )]
         public List<T> Items { get; set; } = [];
     }

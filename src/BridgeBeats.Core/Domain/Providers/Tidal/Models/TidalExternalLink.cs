@@ -3,16 +3,17 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Tidal.Models {
 
     /// <summary>
-    /// External link object containing a URL to an external resource.
+    /// DTO mirroring an entry in a Tidal resource's <c>externalLinks</c> array.
     /// </summary>
     /// <remarks>
-    /// Used in the 'externalLinks' array of track and album attributes.
-    /// Provides URLs to play the resource on Tidal's web player.
+    /// Carries the public-facing Tidal URL for a track or album. Used to populate the
+    /// resolved result's link. The shape mirrors Tidal's wire format and is a
+    /// deserialization target only.
     /// </remarks>
     public sealed class TidalExternalLink {
 
         /// <summary>
-        /// The URL to the external resource.
+        /// Gets or sets the link target, mapped from the Tidal <c>href</c> member.
         /// </summary>
         [JsonPropertyName( "href" )]
         public string Href { get; set; } = string.Empty;

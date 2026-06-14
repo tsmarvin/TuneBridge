@@ -7,13 +7,16 @@ using Serilog.Core;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for logging configuration validation.
-/// Tests Serilog file logging and OpenTelemetry configuration.
+/// Tests the Serilog and OpenTelemetry logging configuration: file sink creation and rotation/retention,
+/// reading the OTLP endpoint from configuration, combining file and OTLP sinks, console logging, and the
+/// health-check noise filter that excludes successful <c>/health</c> requests and the MVC/routing log noise they
+/// produce while still logging failed health checks and non-health traffic.
 /// </summary>
 [TestClass]
 public partial class LoggingConfigurationTests {
     /// <summary>
-    /// Verifies that Serilog can be configured with a default file path and creates a logger successfully.
+    /// Verifies a logger configured with a file sink at a configured path creates the log directory and writes
+    /// without error.
     /// </summary>
     [TestMethod]
     public void ConfigureSerilog_WithDefaultFilePath_ShouldCreateLogger( ) {
@@ -59,7 +62,8 @@ public partial class LoggingConfigurationTests {
     }
 
     /// <summary>
-    /// Verifies that Serilog file rotation respects the configured retention policy.
+    /// Verifies a logger configured with daily rolling, a size limit, and a retained-file count produces at least
+    /// one log file in the configured directory.
     /// </summary>
     [TestMethod]
     public void ConfigureSerilog_WithFileRotation_ShouldRespectRetentionPolicy( ) {
@@ -109,7 +113,7 @@ public partial class LoggingConfigurationTests {
     }
 
     /// <summary>
-    /// Verifies that OpenTelemetry configuration with a valid endpoint does not throw.
+    /// Verifies a configured OTLP endpoint is read back as a non-empty, absolute HTTP URI.
     /// </summary>
     [TestMethod]
     public void OpenTelemetryConfiguration_WithValidEndpoint_ShouldNotThrow( ) {
@@ -131,7 +135,7 @@ public partial class LoggingConfigurationTests {
     }
 
     /// <summary>
-    /// Verifies that OpenTelemetry configuration handles empty endpoints gracefully.
+    /// Verifies an empty OTLP endpoint is read back as empty/whitespace, the signal the host uses to skip OTLP export.
     /// </summary>
     [TestMethod]
     public void OpenTelemetryConfiguration_WithEmptyEndpoint_ShouldHandleGracefully( ) {
@@ -153,7 +157,8 @@ public partial class LoggingConfigurationTests {
     }
 
     /// <summary>
-    /// Verifies that logging configuration supports both file and OpenTelemetry sinks simultaneously.
+    /// Verifies a configuration carrying both a log directory and an OTLP endpoint exposes both values and supports
+    /// building a working file logger alongside OTLP export.
     /// </summary>
     [TestMethod]
     public void LoggingConfiguration_ShouldSupportBothFileAndOpenTelemetry( ) {
@@ -206,7 +211,10 @@ public partial class LoggingConfigurationTests {
     }
 
     /// <summary>
-    /// Verifies that the health check logging filter excludes successful health check requests while logging failures.
+    /// Verifies the health-check noise filter: a successful Information-level <c>/health</c> request and the MVC
+    /// controller-action and routing logs it generates are excluded, while a failed (500) health check, non-health
+    /// endpoints, and non-health controller actions are still logged. Asserts <c>/health</c> appears exactly once
+    /// (the failure).
     /// </summary>
     [TestMethod]
     public void HealthCheckLoggingFilter_ShouldExcludeSuccessfulHealthChecks( ) {
@@ -336,7 +344,7 @@ public partial class LoggingConfigurationTests {
     }
 
     /// <summary>
-    /// Verifies that Serilog can be configured with console logging output.
+    /// Verifies a logger writing to both console and file sinks records the message to the file.
     /// </summary>
     [TestMethod]
     public void ConfigureSerilog_ShouldConfigureConsoleLogging( ) {
@@ -368,6 +376,11 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Source-generated regex matching the literal <c>/health</c>, used to count how many times the health endpoint
+    /// appears in captured log output.
+    /// </summary>
+    /// <returns>A compiled <see cref="Regex"/> matching <c>/health</c>.</returns>
     [GeneratedRegex( "/health" )]
     private static partial Regex s_HealthEndpoint( );
 }

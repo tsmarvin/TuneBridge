@@ -1,12 +1,14 @@
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// LoggerMessage methods for <see cref="AppleMusicController"/>.
+/// Source-generated <see cref="Microsoft.Extensions.Logging.LoggerMessageAttribute"/> logging methods
+/// for <see cref="AppleMusicController"/>.
 /// </summary>
 public partial class AppleMusicController {
     /// <summary>
-    /// Logs failure to store Apple Music token.
+    /// Logs that storing the Apple Music token for a user failed.
     /// </summary>
+    /// <param name="userId">The id of the user whose token could not be stored.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerStoreTokenFailed,
         Level = LogLevel.Error,
@@ -14,8 +16,9 @@ public partial class AppleMusicController {
     private partial void LogStoreTokenFailed( string userId );
 
     /// <summary>
-    /// Logs successful Apple Music token storage.
+    /// Logs that the Apple Music token was stored for a user.
     /// </summary>
+    /// <param name="userId">The id of the user whose token was stored.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerTokenStored,
         Level = LogLevel.Information,
@@ -23,8 +26,10 @@ public partial class AppleMusicController {
     private partial void LogTokenStored( string userId );
 
     /// <summary>
-    /// Logs failure to retrieve playlists.
+    /// Logs that the Apple Music API returned an error status while retrieving a user's playlists.
     /// </summary>
+    /// <param name="userId">The id of the user whose playlists were requested.</param>
+    /// <param name="statusCode">The HTTP status code returned by the Apple Music API.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerGetPlaylistsFailed,
         Level = LogLevel.Error,
@@ -32,8 +37,10 @@ public partial class AppleMusicController {
     private partial void LogGetPlaylistsFailed( string userId, int statusCode );
 
     /// <summary>
-    /// Logs error retrieving playlists.
+    /// Logs an unexpected error while retrieving a user's Apple Music playlists.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="userId">The id of the user whose playlists were requested.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerGetPlaylistsError,
         Level = LogLevel.Error,
@@ -41,8 +48,9 @@ public partial class AppleMusicController {
     private partial void LogGetPlaylistsError( Exception ex, string userId );
 
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to invalid operation.
+    /// Logs that resolving the ATProto URI from the cache failed with an invalid-operation error and is being skipped.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerCacheInvalidOp,
         Level = LogLevel.Warning,
@@ -50,8 +58,9 @@ public partial class AppleMusicController {
     private partial void LogCacheInvalidOp( Exception ex );
 
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to argument error.
+    /// Logs that resolving the ATProto URI from the cache failed with an argument error and is being skipped.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerCacheArgError,
         Level = LogLevel.Warning,
@@ -59,8 +68,9 @@ public partial class AppleMusicController {
     private partial void LogCacheArgError( Exception ex );
 
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to general error.
+    /// Logs that resolving the ATProto URI from the cache failed and is being skipped.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerCacheError,
         Level = LogLevel.Warning,
@@ -68,8 +78,10 @@ public partial class AppleMusicController {
     private partial void LogCacheError( Exception ex );
 
     /// <summary>
-    /// Logs failure to retrieve playlist tracks.
+    /// Logs that the Apple Music API returned an error status while retrieving a playlist's tracks.
     /// </summary>
+    /// <param name="userId">The id of the user whose playlist tracks were requested.</param>
+    /// <param name="statusCode">The HTTP status code returned by the Apple Music API.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerGetTracksFailed,
         Level = LogLevel.Error,
@@ -77,8 +89,9 @@ public partial class AppleMusicController {
     private partial void LogGetTracksFailed( string userId, int statusCode );
 
     /// <summary>
-    /// Logs playlist over 1000 tracks warning.
+    /// Logs that a playlist exceeded the 1000-track processing cap and was truncated.
     /// </summary>
+    /// <param name="playlistId">The id of the oversized playlist.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerPlaylistTooLarge,
         Level = LogLevel.Warning,
@@ -86,8 +99,10 @@ public partial class AppleMusicController {
     private partial void LogPlaylistTooLarge( string playlistId );
 
     /// <summary>
-    /// Logs error processing playlist.
+    /// Logs an unexpected error while processing a playlist for a user.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="userId">The id of the user whose playlist was being processed.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerProcessPlaylistError,
         Level = LogLevel.Error,
@@ -95,8 +110,10 @@ public partial class AppleMusicController {
     private partial void LogProcessPlaylistError( Exception ex, string userId );
 
     /// <summary>
-    /// Logs error processing song in stream.
+    /// Logs an error while processing an individual song during result streaming.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="songId">The (sanitized) song id that failed to process.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.AppleMusicControllerProcessSongError,
         Level = LogLevel.Error,

@@ -5,26 +5,50 @@ using Microsoft.EntityFrameworkCore;
 namespace BridgeBeats.Core.Infrastructure.Identity;
 
 /// <summary>
-/// Database context for ASP.NET Identity with custom ApplicationUser.
+/// Entity Framework Core database context for the application, extending the ASP.NET Core
+/// Identity context with playlist and ATProto OAuth-state entities.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="ApplicationDbContext"/> class.
-/// </remarks>
-/// <param name="options">The database context configuration options.</param>
+/// <param name="options">The options used to configure the context.</param>
 public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> options )
     : IdentityDbContext<ApplicationUser>( options ) {
 
     /// <summary>
-    /// Playlists created by users or anonymously.
+    /// Gets or sets the set of stored playlist entries, created by users or anonymously.
     /// </summary>
     public DbSet<PlaylistEntry> Playlists { get; set; }
 
     /// <summary>
-    /// Temporary storage for ATProto OAuth state during authentication flow.
+    /// Gets or sets the set of transient ATProto OAuth state rows held during the authentication flow.
     /// </summary>
     public DbSet<AtProtoOAuthState> AtProtoOAuthStates { get; set; }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Configures the entity model, including indexes and column constraints.
+    /// </summary>
+    /// <remarks>
+    /// Notable index nuances:
+    /// <list type="bullet">
+    /// <item>
+    /// <description>
+    /// <see cref="ApplicationUser.ApiKeyHash"/> has a unique index that is not filtered for NULL,
+    /// which differs from the DID index below.
+    /// </description>
+    /// </item>
+    /// <item>
+    /// <description>
+    /// <see cref="ApplicationUser.AtProtoDid"/> has a unique index filtered to non-null values,
+    /// allowing many users without a DID but at most one per DID.
+    /// </description>
+    /// </item>
+    /// <item>
+    /// <description>
+    /// <c>NormalizedEmail</c> has a unique index named <c>EmailIndex</c>. This database constraint
+    /// enforces email uniqueness even though Identity's own <c>RequireUniqueEmail</c> option is false.
+    /// </description>
+    /// </item>
+    /// </list>
+    /// </remarks>
+    /// <param name="builder">The model builder used to construct the schema.</param>
     protected override void OnModelCreating( ModelBuilder builder ) {
         base.OnModelCreating( builder );
 

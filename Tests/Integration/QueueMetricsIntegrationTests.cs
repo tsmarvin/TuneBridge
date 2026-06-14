@@ -5,8 +5,11 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for <see cref="QueueMetrics"/> observable gauge functionality.
-/// Requires Docker to be running on the host machine for Redis Testcontainer.
+/// Integration tests for <see cref="QueueMetrics"/> observable gauges against a real Redis instance
+/// (the shared Testcontainers Redis). Uses a <see cref="System.Diagnostics.Metrics.MeterListener"/> to
+/// capture the queue-depth gauge and verifies it reports zero for empty streams, the correct depth for
+/// populated streams, per-provider depths, and the full set of provider/priority combinations.
+/// Requires Docker to be running on the host machine for the Redis Testcontainer.
 /// </summary>
 [TestClass]
 [TestCategory( "Integration" )]
@@ -14,12 +17,13 @@ namespace BridgeBeats.Tests.Integration;
 [DoNotParallelize]
 public class QueueMetricsIntegrationTests {
 
+    /// <summary>The shared Redis connection used by the gauges and the test setup.</summary>
     private static IConnectionMultiplexer? s_redis;
 
     /// <summary>
-    /// Initializes shared Redis connection for all tests in this class.
+    /// Requires the shared Redis container and opens a connection to it for the test class.
     /// </summary>
-    /// <param name="_">The test context provided by MSTest (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
@@ -27,7 +31,7 @@ public class QueueMetricsIntegrationTests {
     }
 
     /// <summary>
-    /// Cleans up the Redis connection after all tests in this class have completed.
+    /// Closes and disposes the Redis connection after the class completes.
     /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
@@ -38,7 +42,7 @@ public class QueueMetricsIntegrationTests {
     }
 
     /// <summary>
-    /// Clears queue-related keys before each test to ensure test isolation.
+    /// Clears any leftover <c>queue:*</c> keys from Redis before each test for isolation.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
@@ -53,7 +57,8 @@ public class QueueMetricsIntegrationTests {
     #region Observable Gauge Tests
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RegisterQueueDepthGauges"/> throws <see cref="ArgumentNullException"/> when passed a null Redis connection.
+    /// Verifies registering the queue-depth gauges with a null Redis connection throws
+    /// <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void RegisterQueueDepthGauges_ThrowsOnNullRedis( ) {
@@ -64,7 +69,7 @@ public class QueueMetricsIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="QueueMetrics.RegisterQueueDepthGauges"/> does not throw when passed a valid Redis connection.
+    /// Verifies registering the queue-depth gauges with a valid Redis connection succeeds.
     /// </summary>
     [TestMethod]
     public void RegisterQueueDepthGauges_DoesNotThrow( ) {
@@ -76,7 +81,8 @@ public class QueueMetricsIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that the queue depth gauge reports zero for empty or non-existent Redis streams.
+    /// Verifies the queue-depth gauge reports a depth of zero for every provider/priority when all
+    /// streams are empty.
     /// </summary>
     [TestMethod]
     public async Task QueueDepthGauge_ReportsZeroForEmptyStreams( ) {
@@ -125,7 +131,8 @@ public class QueueMetricsIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that the queue depth gauge reports the correct depth for a populated Redis stream.
+    /// Adds five messages to one stream and verifies the gauge reports a depth of five for that
+    /// provider/priority.
     /// </summary>
     [TestMethod]
     public async Task QueueDepthGauge_ReportsCorrectDepthForPopulatedStream( ) {
@@ -175,7 +182,8 @@ public class QueueMetricsIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that the queue depth gauge correctly reports depths for multiple providers and priorities.
+    /// Populates streams for several provider/priority combinations and verifies the gauge reports the
+    /// correct depth for each.
     /// </summary>
     [TestMethod]
     public async Task QueueDepthGauge_ReportsMultipleProviderDepths( ) {
@@ -231,7 +239,8 @@ public class QueueMetricsIntegrationTests {
     }
 
     /// <summary>
-    /// Verifies that the queue depth gauge includes measurements for all provider and priority combinations.
+    /// Verifies the gauge emits a measurement for all nine provider/priority combinations (three
+    /// providers by three priorities).
     /// </summary>
     [TestMethod]
     public void QueueDepthGauge_IncludesAllProviderPriorityCombinations( ) {

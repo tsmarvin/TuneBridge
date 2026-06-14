@@ -3,8 +3,9 @@ using BridgeBeats.Contracts.DTOs;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="LookupStatistics"/> and related DTOs to verify
-/// property initialization and default values.
+/// Tests the statistics projection DTOs <see cref="LookupStatistics"/> and <see cref="RecentLookupEntry"/>:
+/// their default values, object-initializer assignment, and the <c>WithBootstrapStatus</c> copy that swaps in a
+/// new cache-bootstrap status while carrying every other property forward.
 /// </summary>
 [TestClass]
 public class LookupStatisticsTests {
@@ -12,8 +13,8 @@ public class LookupStatisticsTests {
     #region LookupStatistics Tests
 
     /// <summary>
-    /// Verifies that <see cref="LookupStatistics"/> initializes with correct default values
-    /// including zero counts and empty collections.
+    /// Verifies a default <see cref="LookupStatistics"/> has zeroed counts, empty (non-null) collections, and null
+    /// earliest/latest timestamps.
     /// </summary>
     [TestMethod]
     public void LookupStatistics_DefaultValues_ShouldBeInitialized( ) {
@@ -33,8 +34,8 @@ public class LookupStatisticsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="LookupStatistics"/> correctly sets all properties
-    /// when using object initializer syntax.
+    /// Verifies an object initializer sets every <see cref="LookupStatistics"/> property, including the provider-count
+    /// dictionary, recent entries, and the earliest/latest/generated timestamps.
     /// </summary>
     [TestMethod]
     public void LookupStatistics_WithInitializer_ShouldSetAllProperties( ) {
@@ -73,11 +74,9 @@ public class LookupStatisticsTests {
     #endregion
 
     /// <summary>
-    /// Reflection-based round-trip guard: every init-only property on <see cref="LookupStatistics"/>
-    /// is carried forward by <see cref="LookupStatistics.WithBootstrapStatus"/> unchanged
-    /// (except <see cref="LookupStatistics.CacheBootstrapStatus"/> which is replaced).
-    /// If a new property is added to <see cref="LookupStatistics"/> without updating
-    /// <see cref="LookupStatistics.WithBootstrapStatus"/>, this test fails.
+    /// Verifies <see cref="LookupStatistics.WithBootstrapStatus"/> returns a copy carrying every property forward
+    /// unchanged except <c>CacheBootstrapStatus</c>, which becomes the supplied new status instance. Uses reflection
+    /// to compare all public properties so a newly added property cannot silently be dropped.
     /// </summary>
     [TestMethod]
     public void WithBootstrapStatus_CarriesForwardAllProperties_ReflectionRoundTrip( ) {
@@ -123,8 +122,8 @@ public class LookupStatisticsTests {
     #region RecentLookupEntry Tests
 
     /// <summary>
-    /// Verifies that <see cref="RecentLookupEntry"/> initializes with correct default values
-    /// including empty strings for required properties and null for optional properties.
+    /// Verifies a default <see cref="RecentLookupEntry"/> has empty strings for AT-URI/artist/title, <c>IsAlbum</c>
+    /// false, and null timestamp and card id.
     /// </summary>
     [TestMethod]
     public void RecentLookupEntry_DefaultValues_ShouldBeInitialized( ) {
@@ -141,8 +140,7 @@ public class LookupStatisticsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RecentLookupEntry"/> correctly sets all properties
-    /// when using object initializer syntax.
+    /// Verifies an object initializer sets every <see cref="RecentLookupEntry"/> property.
     /// </summary>
     [TestMethod]
     public void RecentLookupEntry_WithInitializer_ShouldSetAllProperties( ) {
@@ -169,7 +167,7 @@ public class LookupStatisticsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RecentLookupEntry.IsAlbum"/> set to false correctly indicates a track.
+    /// Verifies <c>IsAlbum = false</c> marks the entry as a track.
     /// </summary>
     [TestMethod]
     public void RecentLookupEntry_IsAlbumFalse_ShouldIndicateTrack( ) {
@@ -181,7 +179,7 @@ public class LookupStatisticsTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RecentLookupEntry.IsAlbum"/> set to true correctly indicates an album.
+    /// Verifies <c>IsAlbum = true</c> marks the entry as an album.
     /// </summary>
     [TestMethod]
     public void RecentLookupEntry_IsAlbumTrue_ShouldIndicateAlbum( ) {

@@ -9,29 +9,52 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="CacheBootstrapBackgroundService"/> to verify bootstrap execution,
-/// periodic scheduling, and error handling.
+/// Tests <see cref="CacheBootstrapBackgroundService"/>, which rebuilds the Redis lookup index from the
+/// source-of-truth PDS by streaming every stored record and re-registering its input-link pointers,
+/// while publishing a status document to Redis.
 /// </summary>
+/// <remarks>
+/// The tests drive the hosted service through <c>StartAsync</c> with mocked storage, cache, and Redis
+/// dependencies, then cancel once the expected work has been observed. They cover construction, the
+/// bootstrap pass (each record re-registered via <see cref="IMediaLinkCacheRepository.AddInputLinksAsync"/>),
+/// resilience to per-record and whole-pass failures, graceful cancellation, the parameters passed to
+/// <see cref="IATProtoStorageService.ListAllRecordsAsync"/>, settings storage, and the shape of the
+/// status document written to <see cref="CacheBootstrapStatus.RedisKey"/> (including preservation of a
+/// prior completed run's fields while a new run is in progress or has failed).
+/// </remarks>
 [TestClass]
 public class CacheBootstrapBackgroundServiceTests {
 
+    /// <summary>Mock PDS storage service that streams the records to re-index.</summary>
     private Mock<IATProtoStorageService> _atProtoStorageMock = null!;
+
+    /// <summary>Mock cache repository whose <c>AddInputLinksAsync</c> calls record the re-indexing.</summary>
     private Mock<IMediaLinkCacheRepository> _cacheRepositoryMock = null!;
+
+    /// <summary>Mock Redis connection multiplexer handing out the mocked database.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+
+    /// <summary>Mock Redis database used to observe status-document reads and writes.</summary>
     private Mock<IDatabase> _redisDatabaseMock = null!;
+
+    /// <summary>Mock logger injected into the service.</summary>
     private Mock<ILogger<CacheBootstrapBackgroundService>> _loggerMock = null!;
+
+    /// <summary>Settings (PDS URI, user DID, bootstrap interval) the service runs with.</summary>
     private CacheBootstrapSettings _settings = null!;
 
-    /// <summary>
-    /// Gets or sets the test context for the current test.
-    /// </summary>
+    /// <summary>MSTest-injected context, used to flow the test's cancellation token into awaits.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>Test PDS URI passed to the service.</summary>
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
+
+    /// <summary>Test user DID passed to the service.</summary>
     private const string TestUserDid = "did:plc:testuser123";
 
     /// <summary>
-    /// Initializes test dependencies before each test method.
+    /// Constructs the mocks and default settings before each test, wiring the Redis mock so the status
+    /// document reads as absent and writes succeed unless a test overrides them.
     /// </summary>
     [TestInitialize]
     public void Initialize( ) {
@@ -64,9 +87,7 @@ public class CacheBootstrapBackgroundServiceTests {
 
     #region Constructor Tests
 
-    /// <summary>
-    /// Verifies that the constructor creates a valid instance when provided with valid dependencies.
-    /// </summary>
+    /// <summary>Verifies that the service constructs successfully with valid dependencies.</summary>
     [TestMethod]
     public void Constructor_WithValidDependencies_ShouldCreateInstance( ) {
         // Act
@@ -81,9 +102,8 @@ public class CacheBootstrapBackgroundServiceTests {
     #region ExecuteAsync Tests
 
     /// <summary>
-    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> bootstraps the cache by loading
-    /// records from ATProto storage and populating the cache repository on startup.
-    /// Converted from Task.Delay(100) to TCS-signaling to eliminate flake risk on slow CI.
+    /// Verifies that on startup the service streams every PDS record and re-registers each one through
+    /// <see cref="IMediaLinkCacheRepository.AddInputLinksAsync"/> exactly once (here three records).
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -126,9 +146,8 @@ public class CacheBootstrapBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> completes successfully when
-    /// the ATProto storage contains no records to bootstrap.
-    /// Converted from Task.Delay(100) to TCS-signaling to eliminate flake risk on slow CI.
+    /// Verifies that when the PDS returns no records the pass completes without re-registering anything,
+    /// so an empty repository is handled cleanly.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -158,9 +177,8 @@ public class CacheBootstrapBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> continues processing remaining
-    /// records when individual record caching fails, ensuring fault tolerance.
-    /// Converted from Task.Delay(100) to TCS-signaling to eliminate flake risk on slow CI.
+    /// Verifies that when re-registering one record throws, the service still attempts the remaining
+    /// records, so a single bad record does not abort the whole bootstrap pass.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -212,8 +230,8 @@ public class CacheBootstrapBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> stops gracefully when
-    /// the cancellation token is cancelled.
+    /// Verifies that cancelling the host token lets the service stop without throwing, confirming
+    /// cooperative shutdown.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -232,9 +250,9 @@ public class CacheBootstrapBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="CacheBootstrapBackgroundService"/> passes the correct PDS URI
-    /// and user DID from settings when listing records from ATProto storage.
-    /// Converted from Task.Delay(100) to TCS-signaling to eliminate flake risk on slow CI.
+    /// Verifies that the service calls
+    /// <see cref="IATProtoStorageService.ListAllRecordsAsync"/> with the configured PDS URI and user DID
+    /// from settings, so the bootstrap reads the intended repository.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -268,8 +286,8 @@ public class CacheBootstrapBackgroundServiceTests {
     #region Settings Tests
 
     /// <summary>
-    /// Verifies that <see cref="CacheBootstrapSettings"/> correctly stores all configuration values
-    /// including PDS URI, user DID, and bootstrap interval.
+    /// Verifies that <see cref="CacheBootstrapSettings"/> exposes the PDS URI, user DID, and bootstrap
+    /// interval supplied to its constructor.
     /// </summary>
     [TestMethod]
     public void CacheBootstrapSettings_ShouldStoreValues( ) {
@@ -291,10 +309,8 @@ public class CacheBootstrapBackgroundServiceTests {
 
     #region Helper Methods
 
-    /// <summary>
-    /// Creates a <see cref="CacheBootstrapBackgroundService"/> instance with the mocked dependencies.
-    /// </summary>
-    /// <returns>A configured <see cref="CacheBootstrapBackgroundService"/> instance.</returns>
+    /// <summary>Builds the service under test from the configured mocks and settings.</summary>
+    /// <returns>A new <see cref="CacheBootstrapBackgroundService"/> instance.</returns>
     private CacheBootstrapBackgroundService CreateService( ) {
         return new CacheBootstrapBackgroundService(
             _atProtoStorageMock.Object,
@@ -305,19 +321,15 @@ public class CacheBootstrapBackgroundServiceTests {
         );
     }
 
-    /// <summary>
-    /// Configures the ATProto storage mock to return an empty list of records.
-    /// </summary>
+    /// <summary>Configures the storage mock to return an empty record stream.</summary>
     private void SetupEmptyRecordList( ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
     }
 
-    /// <summary>
-    /// Configures the ATProto storage mock to return the specified list of records.
-    /// </summary>
-    /// <param name="records">The records to return from the mock.</param>
+    /// <summary>Configures the storage mock to return the supplied records as an async stream.</summary>
+    /// <param name="records">The records the bootstrap pass should enumerate.</param>
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
@@ -325,10 +337,11 @@ public class CacheBootstrapBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Creates a test record with the specified AT URI for testing.
+    /// Builds a test record pairing an AT-URI with a <see cref="MediaLinkResult"/> carrying a single
+    /// Spotify provider result, for seeding the bootstrap stream.
     /// </summary>
-    /// <param name="atUri">The ATProto URI for the record.</param>
-    /// <returns>A tuple containing the AT URI and the <see cref="MediaLinkResult"/>.</returns>
+    /// <param name="atUri">The AT-URI to associate with the record.</param>
+    /// <returns>The AT-URI and its media-link result.</returns>
     private static (string AtUri, MediaLinkResult Result) CreateTestRecord( string atUri ) {
         MediaLinkResult result = new( ) {
             LookedUpAt = DateTime.UtcNow
@@ -348,9 +361,9 @@ public class CacheBootstrapBackgroundServiceTests {
     #region Status Write Tests
 
     /// <summary>
-    /// Verifies that a completed run writes a full status object with all fields populated.
-    /// Uses a deterministic TaskCompletionSource rather than a fixed-time delay to avoid
-    /// flaky behavior on slow CI.
+    /// Verifies that when a bootstrap pass completes the status document written to Redis has
+    /// <c>IsRunning</c> false and populated <c>LastRunTime</c>, <c>LastSuccessCount</c>, and
+    /// <c>NextScheduledRun</c> fields.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -405,9 +418,9 @@ public class CacheBootstrapBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the start-of-run status write preserves completed-run fields
-    /// from a previous run rather than clearing them.
-    /// Uses a deterministic TaskCompletionSource to avoid flaky fixed-time delays.
+    /// Verifies that the status document written when a new pass starts (<c>IsRunning</c> true) carries
+    /// over the previous completed run's fields (such as <c>LastSuccessCount</c> and
+    /// <c>LastDurationSeconds</c>), so the in-progress status still reports the last known results.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -471,9 +484,9 @@ public class CacheBootstrapBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that a fatal error during ListAllRecordsAsync preserves the prior completed-run
-    /// fields in Redis rather than clobbering them with zero counts.
-    /// Uses a deterministic TaskCompletionSource to avoid flaky fixed-time delays.
+    /// Verifies that when the record stream throws mid-pass, the final status document still reports
+    /// <c>IsRunning</c> false and preserves the prior completed run's fields (success count, last-run
+    /// time, duration, next scheduled run), so a failed pass does not erase the last good status.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]

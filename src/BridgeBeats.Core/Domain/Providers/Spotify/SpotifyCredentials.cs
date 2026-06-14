@@ -19,7 +19,9 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
     /// <remarks>
     /// Credentials are obtained by creating an app in the Spotify Developer Dashboard:
     /// https://developer.spotify.com/dashboard/applications
-    /// The encoded credentials are used in the Authorization header when requesting OAuth tokens.
+    /// The supplied client id and secret are combined and base64-encoded once at construction; the raw
+    /// secret is not retained as a separate field. The encoded value is consumed by
+    /// <see cref="SpotifyTokenHandler"/> as the Basic-auth credential when requesting OAuth tokens.
     /// </remarks>
     public sealed class SpotifyCredentials(
         string clientId,

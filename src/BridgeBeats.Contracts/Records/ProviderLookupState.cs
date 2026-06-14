@@ -4,14 +4,16 @@ using BridgeBeats.Contracts.Enums;
 namespace BridgeBeats.Contracts.Records;
 
 /// <summary>
-/// The lookup state for a single provider within a saga.
+/// The state of a single provider's leg within a lookup saga. Completion and success are
+/// independent: a leg can be complete and failed at once (complete, not successful, with an
+/// error message). Part of <see cref="LookupSagaState.ProviderStates"/>.
 /// </summary>
-/// <param name="Provider">The music provider.</param>
-/// <param name="IsComplete">Whether the lookup has completed (success or failure).</param>
-/// <param name="IsSuccess">Whether the lookup completed successfully.</param>
-/// <param name="ResultJson">The serialized result, if successful.</param>
-/// <param name="CompletedAt">When the lookup completed.</param>
-/// <param name="ErrorMessage">Error message if the lookup failed.</param>
+/// <param name="Provider">The provider this leg tracks.</param>
+/// <param name="IsComplete"><see langword="true"/> when the leg has finished, whether it succeeded or failed.</param>
+/// <param name="IsSuccess"><see langword="true"/> when the leg produced a usable result. Independent of <paramref name="IsComplete"/>.</param>
+/// <param name="ResultJson">The serialized provider result when the leg succeeded; otherwise <see langword="null"/>.</param>
+/// <param name="CompletedAt">The absolute instant the leg completed, when known; otherwise <see langword="null"/>.</param>
+/// <param name="ErrorMessage">The failure detail when the leg failed; otherwise <see langword="null"/>.</param>
 public sealed record ProviderLookupState(
 
     [property: JsonPropertyName( "provider" )]

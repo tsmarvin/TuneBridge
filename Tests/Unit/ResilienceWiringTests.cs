@@ -10,30 +10,22 @@ using Moq;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Part C resilience wiring tests — verifies that the ATProtoSyncHttpClient participates in the
-/// global resilience pipeline and carries a 130s transport timeout, and that
-/// ATProtoStorageService.FetchAllViaCarAsync correctly discriminates between
-/// HttpClient-timeout OCE and cooperative shutdown OCE.
+/// Unit tests for the HTTP resilience wiring around <see cref="ATProtoStorageService"/>. Verify that
+/// the named <c>atproto-sync</c> client inherits the standard resilience pipeline and the 130-second
+/// transport timeout; that the Aspire service defaults register a 120-second default attempt timeout
+/// (with the derived 240-second circuit-breaker sampling window and a 10-minute total request
+/// timeout); and that <c>FetchAllViaCarAsync</c> (driving <c>ListAllRecordsAsync</c>) distinguishes a
+/// transport-timeout <see cref="OperationCanceledException"/> (logged as CAR-download-failed,
+/// EventId 1083, and rethrown) from a caller-token cooperative shutdown (rethrown without logging the
+/// failure event).
 /// </summary>
 [TestClass]
 public class ResilienceWiringTests {
 
-    // -------------------------------------------------------------------------
-    // C-wiring — ATProtoSyncHttpClient inherits global pipeline and carries 130s transport timeout
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// C-wiring — the atproto-sync named client participates in the global resilience
-    /// pipeline that AddServiceDefaults installs and carries a 130s transport backstop.
-    /// Failure-first: the sentinel pipeline is registered on the named client BEFORE AddATProtoStorage
-    /// is called; the assertion goes red if AddATProtoStorage strips or overrides it. If the transport
-    /// backstop regresses, the second assert fails.
-    /// Note: ConfigureHttpClientDefaults pipeline configuration does not propagate to
-    /// IOptionsMonitor named options (the options subsystem is a parallel registration path), so the
-    /// sentinel is registered directly on the named client — the only surface IOptionsMonitor reflects.
-    /// The test remains discriminating: it verifies AddATProtoStorage does not tamper with a
-    /// pre-existing pipeline registration. Sentinel value (42s) is distinct from both the type
-    /// default (10s) and the production default (120s).
+    /// The <c>atproto-sync</c> named client carries the standard resilience pipeline (here asserted via
+    /// a configured 42-second attempt timeout) and its <see cref="HttpClient.Timeout"/> is the
+    /// 130-second transport backstop.
     /// </summary>
     [TestMethod]
     public void ATProtoSyncHttpClient_InheritsGlobalPipelineAndTransportTimeout( ) {
@@ -73,22 +65,11 @@ public class ResilienceWiringTests {
             "atproto-sync HttpClient.Timeout must be the 130s transport backstop." );
     }
 
-    // -------------------------------------------------------------------------
-    // Global-defaults pin
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Global-default guard — pins DefaultAttemptTimeoutSeconds=120 in AspireServiceExtensions.
-    /// This is the root-cause regression guard: the vetoed bug was a global 10s AttemptTimeout.
-    /// Real-path attempt: ConfigureHttpClientDefaults pipeline configuration does not propagate to
-    /// IOptionsMonitor named options (observed: IOptionsMonitor.Get returns the 10s type default
-    /// regardless of the ConfigureHttpClientDefaults delegate value), so a full AddServiceDefaults
-    /// host-build assertion is not viable. Constant-pin: a named-client ServiceCollection probe
-    /// installs the pipeline using DefaultAttemptTimeoutSeconds and asserts the resolved options
-    /// equal the expected 120s literal. Reverting the constant from 120 to another value makes
-    /// the runtime options diverge from 120 and the assertion fails. Direct const-equality assertions
-    /// are rejected by MSTEST0032 (always-true), so the pin is achieved through runtime resolution.
-    /// Both AddServiceDefaults overloads read exclusively from this constant — the constant IS the gate.
+    /// The Aspire service defaults register a 120-second default attempt timeout
+    /// (<see cref="AspireServiceExtensions.DefaultAttemptTimeoutSeconds"/>), a 240-second
+    /// circuit-breaker sampling window (twice the attempt timeout), and a 10-minute total request
+    /// timeout.
     /// </summary>
     [TestMethod]
     public void AddServiceDefaults_RegistersGlobalResilienceDefaults( ) {
@@ -119,19 +100,11 @@ public class ResilienceWiringTests {
             "TotalRequestTimeout must remain 10 minutes." );
     }
 
-    // -------------------------------------------------------------------------
-    // C-timeout — FetchAllViaCarAsync timeout (caller token not signaled) → logs + rethrows
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// C-timeout — When the HTTP download throws an OperationCanceledException and the caller's
-    /// token is NOT signaled, FetchAllViaCarAsync logs the failure and rethrows so consumers'
-    /// catch(Exception) degradation paths can handle it.
-    /// Failure-first: before the fix, the OCE was swallowed by the outer catch-when filter
-    /// (the download section did not discriminate caller token state).
-    /// Discriminator pin: we verify that the CAR-download-failed log event (Error, EventId 1083)
-    /// fires — it is emitted in the HttpClient-timeout branch but NOT in the
-    /// cooperative-shutdown branch, so its presence proves the right branch ran.
+    /// When the CAR download is cancelled by an HttpClient timeout (an
+    /// <see cref="OperationCanceledException"/> not tied to the caller token),
+    /// <c>FetchAllViaCarAsync</c> logs the CAR-download-failed event (Error, EventId 1083), rethrows,
+    /// and leaves the caller's token unsignaled.
     /// </summary>
     [TestMethod]
     public async Task FetchAllViaCarAsync_TimeoutOce_LogsAndRethrows( ) {
@@ -187,13 +160,9 @@ public class ResilienceWiringTests {
     }
 
     /// <summary>
-    /// C-cancel — When the caller's token IS signaled, FetchAllViaCarAsync rethrows for cooperative shutdown
-    /// without logging as a download failure.
-    /// Failure-first: the existing OperationCanceledException rethrow path was correct, but this test
-    /// pins the behavior explicitly so a future regression is caught.
-    /// Discriminator pin (negative control): we verify the CAR-download-failed log event (Error,
-    /// EventId 1083) does NOT fire — confirming the cooperative-shutdown branch ran
-    /// rather than the HttpClient-timeout branch which logs before rethrowing.
+    /// When the caller's cancellation token is signaled (cooperative shutdown),
+    /// <c>FetchAllViaCarAsync</c> rethrows the <see cref="OperationCanceledException"/> but does
+    /// <em>not</em> log the CAR-download-failed event (EventId 1083), since shutdown is not a failure.
     /// </summary>
     [TestMethod]
     public async Task FetchAllViaCarAsync_CallerTokenSignaled_RethrowsForShutdown( ) {
@@ -242,14 +211,12 @@ public class ResilienceWiringTests {
             "CAR-download-failed event (Error, EventId 1083) must NOT fire on cooperative-shutdown OCE" );
     }
 
-    // -------------------------------------------------------------------------
-    // Fake handlers
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Throws OperationCanceledException without signaling any external token (simulates HttpClient timeout).
+    /// Test handler that simulates an HttpClient transport timeout by returning a task cancelled on an
+    /// internal token unrelated to the caller's token.
     /// </summary>
     private sealed class TimeoutThrowingHandler : HttpMessageHandler {
+        /// <summary>Returns a task cancelled on a fresh internal token to mimic a transport timeout.</summary>
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
@@ -262,9 +229,11 @@ public class ResilienceWiringTests {
     }
 
     /// <summary>
-    /// Throws OperationCanceledException with the specified already-cancelled token (simulates cooperative shutdown).
+    /// Test handler that simulates a cooperative shutdown by returning a task cancelled on the caller's
+    /// already-signaled token.
     /// </summary>
     private sealed class CancelledThrowingHandler( CancellationToken cancelledToken ) : HttpMessageHandler {
+        /// <summary>Returns a task cancelled on the supplied caller token to mimic cooperative shutdown.</summary>
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken

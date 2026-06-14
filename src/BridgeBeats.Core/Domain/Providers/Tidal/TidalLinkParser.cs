@@ -5,41 +5,36 @@ using BridgeBeats.Core.Domain.Utilities;
 namespace BridgeBeats.Providers.Tidal {
 
     /// <summary>
-    /// Utility class for parsing Tidal URLs and constructing Tidal API request URIs.
-    /// Extracts entity types (track, album, artist) and IDs from tidal.com URLs,
-    /// then maps them to the corresponding API v1 endpoints for metadata retrieval.
+    /// Parses Tidal share/listen URLs and builds Tidal API request URIs from templates.
     /// </summary>
     /// <remarks>
-    /// Tidal uses a consistent URL structure: tidal.com/browse/{type}/{id} where {type} is
-    /// "track", "album", or "artist", and {id} is a numeric identifier.
-    /// This parser validates the URL structure and extracts both components for API calls.
+    /// Provides the URL-to-entity parsing used when a lookup starts from a Tidal link,
+    /// plus the set of relative request-URI builders the Tidal API client uses for
+    /// search, ISRC/UPC filtering, relationship traversal, and by-id fetches. The URL
+    /// match pattern is compiled from a source-generated regular expression. A
+    /// provider-agnostic id extractor also exists in
+    /// <see cref="BridgeBeats.Core.Domain.Utilities.ProviderUrlParser"/>; the two carry
+    /// the same Tidal track/album pattern.
     /// </remarks>
     public static partial class TidalLinkParser {
 
         /// <summary>
-        /// Parses a Tidal web URL to extract the entity type and Tidal ID. Validates URL structure
-        /// and determines whether the link points to a track, album, or artist.
+        /// Attempts to parse a Tidal track or album URL into its entity kind and id.
         /// </summary>
-        /// <param name="link">
-        /// Tidal URL in the format "https://tidal.com/browse/{type}/{id}" or "https://listen.tidal.com/{type}/{id}".
-        /// Must follow the tidal.com or listen.tidal.com pattern. Query parameters are ignored.
-        /// </param>
+        /// <param name="link">The candidate Tidal URL.</param>
         /// <param name="kind">
-        /// Output: The entity type extracted from the URL, mapped to <see cref="TidalEntity"/> enum.
-        /// Set to <see cref="TidalEntity.Unknown"/> if the URL doesn't match known patterns.
+        /// When this method returns, the parsed entity kind, or
+        /// <see cref="TidalEntity.Unknown"/> when the URL does not match.
         /// </param>
         /// <param name="id">
-        /// Output: The Tidal ID (numeric string).
-        /// This ID can be used directly in Tidal API v1 endpoints. Empty string if parsing fails.
+        /// When this method returns, the parsed numeric entity id, or an empty string
+        /// when the URL does not match.
         /// </param>
         /// <returns>
-        /// True if the URL was successfully parsed and recognized as a supported Tidal entity type.
-        /// False if the URL is malformed, doesn't match Tidal patterns, or refers to an unsupported entity.
+        /// <see langword="true"/> when the URL parses to a track or album with a
+        /// non-empty id; otherwise <see langword="false"/>. The match pattern accepts
+        /// track and album links only, so artist links yield <see langword="false"/>.
         /// </returns>
-        /// <remarks>
-        /// Only track and album URLs are currently utilized for music lookup. Artist URLs
-        /// are parsed but may not be fully supported by all downstream operations.
-        /// </remarks>
         public static bool TryParseUri(
             string link,
             out TidalEntity kind,
@@ -68,105 +63,130 @@ namespace BridgeBeats.Providers.Tidal {
             return (kind == TidalEntity.Track || kind == TidalEntity.Album) && !string.IsNullOrEmpty( id );
         }
 
+        /// <summary>
+        /// Compiled regular expression matching Tidal track and album URLs, capturing
+        /// the entity type and numeric id.
+        /// </summary>
         private static readonly Regex s_tidalLink = TidalMusicLink();
+
+        /// <summary>
+        /// Source-generated factory for the Tidal track/album URL regular expression.
+        /// </summary>
+        /// <returns>
+        /// A compiled, case-insensitive regex with named <c>type</c> and <c>id</c>
+        /// capture groups.
+        /// </returns>
         [GeneratedRegex( @"(?:(?:listen\.)?tidal\.com/)(?:browse/)?(?<type>track|album)/(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex TidalMusicLink( );
 
         /// <summary>
-        /// Extracts the Tidal ID (track or album) from a URL.
+        /// Extracts the Tidal entity id from a URL using the shared provider-agnostic
+        /// URL parser.
         /// </summary>
-        /// <param name="url">The Tidal URL to parse.</param>
-        /// <returns>The extracted ID, or null if the URL is invalid or cannot be parsed.</returns>
-        /// <remarks>
-        /// Handles both tidal.com and listen.tidal.com URLs. Returns the numeric ID
-        /// for tracks and albums only. Artist IDs are not returned.
-        /// </remarks>
+        /// <param name="url">The Tidal URL to extract an id from.</param>
+        /// <returns>
+        /// The extracted id, or <see langword="null"/> when none is found. Delegates to
+        /// <see cref="BridgeBeats.Core.Domain.Utilities.ProviderUrlParser.ExtractTidalId(string)"/>.
+        /// </returns>
         public static string? ExtractId( string url )
             => ProviderUrlParser.ExtractTidalId( url );
 
         /// <summary>
-        /// Constructs an API URI for searching artists by name.
+        /// Builds the relative Tidal API URI that searches for an artist by name.
         /// </summary>
-        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
-        /// <param name="artist">The artist name to search for.</param>
-        /// <returns>The API URI for artist search.</returns>
+        /// <param name="storefront">The Tidal country code (storefront) to scope the search to.</param>
+        /// <param name="artist">The artist name to search for; URL-encoded into the path.</param>
+        /// <returns>A relative request URI for the artist search endpoint.</returns>
         public static string GetArtistSearchUri( string storefront, string artist )
             => ArtistSearchURI
                 .Replace( "{storefront}", storefront )
                 .Replace( "{artist}", Uri.EscapeDataString( artist ) );
 
         /// <summary>
-        /// Constructs an API URI for searching artists track titles by name.
+        /// Builds the relative Tidal API URI for an artist's tracks relationship.
         /// </summary>
-        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
-        /// <param name="artistId">The artist to get tracks for.</param>
-        /// <returns>The API URI for artist tracks to search.</returns>
+        /// <param name="storefront">The Tidal country code (storefront) to scope the request to.</param>
+        /// <param name="artistId">The artist id whose tracks are requested.</param>
+        /// <returns>A relative request URI for the artist-tracks relationship endpoint.</returns>
         public static string GetArtistTracksUri( string storefront, string artistId )
             => ArtistTrackRelationshipsUri
                 .Replace( "{storefront}", storefront )
                 .Replace( "{artistId}", artistId );
 
         /// <summary>
-        /// Constructs an API URI for searching artists album titles by name.
+        /// Builds the relative Tidal API URI for an artist's albums relationship.
         /// </summary>
-        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
-        /// <param name="artistId">The artist to get albums for.</param>
-        /// <returns>The API URI for artist albums to search.</returns>
+        /// <param name="storefront">The Tidal country code (storefront) to scope the request to.</param>
+        /// <param name="artistId">The artist id whose albums are requested.</param>
+        /// <returns>A relative request URI for the artist-albums relationship endpoint.</returns>
         public static string GetArtistAlbumsUri( string storefront, string artistId )
             => ArtistAlbumRelationshipsUri
                 .Replace( "{storefront}", storefront )
                 .Replace( "{artistId}", artistId );
 
         /// <summary>
-        /// Constructs an API URI for looking up a track by ISRC.
+        /// Builds the relative Tidal API URI that filters tracks by ISRC.
         /// </summary>
-        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
-        /// <param name="isrc">The ISRC code.</param>
-        /// <returns>The API URI for ISRC lookup.</returns>
+        /// <param name="storefront">The Tidal country code (storefront) to scope the request to.</param>
+        /// <param name="isrc">The ISRC to filter tracks by.</param>
+        /// <returns>A relative request URI for the ISRC-filtered tracks endpoint.</returns>
         public static string GetTracksIsrcURI( string storefront, string isrc )
             => TracksIsrcURI
                 .Replace( "{storefront}", storefront )
                 .Replace( "{isrc}", isrc );
 
         /// <summary>
-        /// Constructs an API URI for looking up an album by UPC.
+        /// Builds the relative Tidal API URI that filters albums by UPC (barcode id).
         /// </summary>
-        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
-        /// <param name="upc">The UPC code.</param>
-        /// <returns>The API URI for UPC lookup.</returns>
+        /// <param name="storefront">The Tidal country code (storefront) to scope the request to.</param>
+        /// <param name="upc">The UPC/barcode id to filter albums by.</param>
+        /// <returns>A relative request URI for the UPC-filtered albums endpoint.</returns>
         public static string GetAlbumUpcURI( string storefront, string upc )
             => AlbumsUpcURI
                 .Replace( "{storefront}", storefront )
                 .Replace( "{upc}", upc );
 
         /// <summary>
-        /// Constructs an API URI for looking up an album by its Tidal Id.
+        /// Builds the relative Tidal API URI that fetches an album by id.
         /// </summary>
-        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
-        /// <param name="albumId">The tidal album id to search for.</param>
-        /// <returns>The API URI for album lookup by id.</returns>
+        /// <param name="storefront">The Tidal country code (storefront) to scope the request to.</param>
+        /// <param name="albumId">The album id to fetch.</param>
+        /// <returns>A relative request URI for the album-by-id endpoint.</returns>
         public static string GetAlbumIdURI( string storefront, string albumId )
             => AlbumIdUri
                 .Replace( "{storefront}", storefront )
                 .Replace( "{albumId}", albumId );
 
         /// <summary>
-        /// Constructs an API URI for looking up a track by its Tidal Id.
+        /// Builds the relative Tidal API URI that fetches a track by id.
         /// </summary>
-        /// <param name="storefront">The market/storefront code (e.g., "US", "GB").</param>
-        /// <param name="trackId">The tidal track id to search for.</param>
-        /// <returns>The API URI for track lookup by id.</returns>
+        /// <param name="storefront">The Tidal country code (storefront) to scope the request to.</param>
+        /// <param name="trackId">The track id to fetch.</param>
+        /// <returns>A relative request URI for the track-by-id endpoint.</returns>
         public static string GetTrackIdURI( string storefront, string trackId )
             => TrackIdUri
                 .Replace( "{storefront}", storefront )
                 .Replace( "{trackId}", trackId );
 
+        /// <summary>Template for the ISRC-filtered tracks request, side-loading albums and artists.</summary>
         private const string TracksIsrcURI = "tracks?filter%5Bisrc%5D={isrc}&countryCode={storefront}&include=albums&include=artists";
+
+        /// <summary>Template for the UPC-filtered albums request, side-loading artists and cover art.</summary>
         private const string AlbumsUpcURI = "albums?filter%5BbarcodeId%5D={upc}&countryCode={storefront}&include=artists&include=coverArt";
+
+        /// <summary>Template for the artist search request, side-loading matching artist resources.</summary>
         private const string ArtistSearchURI = "searchResults/{artist}?countryCode={storefront}&explicitFilter=include&include=artists";
+
+        /// <summary>Template for the artist-albums relationship request, side-loading album resources.</summary>
         private const string ArtistAlbumRelationshipsUri = "artists/{artistId}/relationships/albums?countryCode={storefront}&include=albums";
+
+        /// <summary>Template for the artist-tracks relationship request, fingerprint-collapsed and side-loading track resources.</summary>
         private const string ArtistTrackRelationshipsUri = "artists/{artistId}/relationships/tracks?countryCode={storefront}&collapseBy=FINGERPRINT&include=tracks";
+
+        /// <summary>Template for the track-by-id request, side-loading albums and artists.</summary>
         private const string TrackIdUri = "tracks/{trackId}?countryCode={storefront}&include=albums&include=artists";
+
+        /// <summary>Template for the album-by-id request, side-loading artists and cover art.</summary>
         private const string AlbumIdUri = "albums/{albumId}?countryCode={storefront}&include=artists&include=coverArt";
 
     }

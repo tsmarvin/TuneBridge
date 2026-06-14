@@ -3,13 +3,16 @@ using BridgeBeats.Core.Infrastructure.Utilities;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="HashUtility"/>.
+/// Tests <see cref="HashUtility"/>, which produces deterministic lowercase base32 SHA-256 hashes used as cache
+/// keys. Covers <c>ComputeSha256Base32</c> (determinism, collision avoidance, lowercase output, fixed 52-character
+/// length, null/empty/unicode handling) and <c>HashUrl</c> (host-case and whitespace normalization before hashing,
+/// and its argument guards).
 /// </summary>
 [TestClass]
 public class HashUtilityTests {
 
     /// <summary>
-    /// Verifies that ComputeSha256Base32 returns consistent hashes for the same input.
+    /// Verifies <see cref="HashUtility.ComputeSha256Base32"/> returns the same hash for the same input (deterministic).
     /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ReturnsConsistentHash_ForSameInput( ) {
@@ -25,7 +28,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that ComputeSha256Base32 returns different hashes for different inputs.
+    /// Verifies different inputs produce different hashes.
     /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ReturnsDifferentHash_ForDifferentInput( ) {
@@ -42,7 +45,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that ComputeSha256Base32 returns lowercase output.
+    /// Verifies the base32 hash is emitted in lowercase.
     /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ReturnsLowercase( ) {
@@ -57,7 +60,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that ComputeSha256Base32 returns exactly 52 characters.
+    /// Verifies the hash is the full base32 encoding of a 256-bit digest (52 characters).
     /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ReturnsFullHashLength( ) {
@@ -73,7 +76,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that ComputeSha256Base32 throws <see cref="ArgumentNullException"/> for null input.
+    /// Verifies a null input is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_ThrowsArgumentNullException_ForNullInput( ) {
@@ -82,7 +85,9 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that HashUrl normalizes domain to lowercase for consistent hashing.
+    /// Verifies <see cref="HashUtility.HashUrl"/> normalizes the URL's host case before hashing (via
+    /// <see cref="BridgeBeats.Core.Domain.Providers.Common.LinkNormalizer"/>), so URLs differing only in
+    /// domain case hash equally. Path and ID case are preserved, not normalized.
     /// </summary>
     [TestMethod]
     public void HashUrl_NormalizesUrl_ToLowercase( ) {
@@ -99,7 +104,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that HashUrl trims whitespace before hashing.
+    /// Verifies <see cref="HashUtility.HashUrl"/> trims surrounding whitespace before hashing.
     /// </summary>
     [TestMethod]
     public void HashUrl_TrimsWhitespace( ) {
@@ -116,7 +121,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that HashUrl throws <see cref="ArgumentNullException"/> for null URL.
+    /// Verifies a null URL is rejected with an <see cref="ArgumentNullException"/>.
     /// </summary>
     [TestMethod]
     public void HashUrl_ThrowsArgumentNullException_ForNullUrl( ) {
@@ -125,7 +130,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that HashUrl throws <see cref="ArgumentException"/> for empty URL.
+    /// Verifies an empty URL is rejected with an <see cref="ArgumentException"/>.
     /// </summary>
     [TestMethod]
     public void HashUrl_ThrowsArgumentException_ForEmptyUrl( ) {
@@ -134,7 +139,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that HashUrl throws <see cref="ArgumentException"/> for whitespace-only URL.
+    /// Verifies a whitespace-only URL is rejected with an <see cref="ArgumentException"/> (it normalizes to empty).
     /// </summary>
     [TestMethod]
     public void HashUrl_ThrowsArgumentException_ForWhitespaceUrl( ) {
@@ -143,7 +148,8 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that ComputeSha256Base32 handles empty strings correctly.
+    /// Verifies an empty string hashes to a valid 52-character result (empty input is allowed, unlike for
+    /// <see cref="HashUtility.HashUrl"/>).
     /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_HandlesEmptyString( ) {
@@ -159,7 +165,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that ComputeSha256Base32 handles Unicode characters correctly.
+    /// Verifies multi-byte unicode input hashes to a valid 52-character result.
     /// </summary>
     [TestMethod]
     public void ComputeSha256Base32_HandlesUnicode( ) {
@@ -175,7 +181,7 @@ public class HashUtilityTests {
     }
 
     /// <summary>
-    /// Verifies that HashUrl handles very long URLs correctly.
+    /// Verifies a very long URL hashes to a fixed 52-character result (output length is independent of input length).
     /// </summary>
     [TestMethod]
     public void HashUrl_HandlesLongUrls( ) {

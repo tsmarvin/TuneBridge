@@ -5,36 +5,37 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers {
     /// <summary>
-    /// Controller for well-known endpoints required by the ATProto OAuth specification.
-    /// Serves dynamic client metadata and public JWKS for confidential client authentication.
+    /// Serves the application's <c>.well-known</c> ATProto OAuth documents: the client metadata that
+    /// identifies BridgeBeats as an OAuth client to ATProto authorization servers, and the JWKS containing
+    /// the public signing key when private-key client authentication is configured. All endpoints allow
+    /// anonymous access and are cacheable.
     /// </summary>
-    /// <remarks>
-    /// These endpoints must be publicly accessible and match the client_id URL.
-    /// The client-metadata.json endpoint is used by authorization servers to discover client capabilities.
-    /// The jwks.json endpoint publishes the public signing key for verifying client assertion JWTs.
-    /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="WellKnownController"/> class.
-    /// </remarks>
-    /// <param name="configuration">Application configuration for reading Domain.</param>
-    /// <param name="signingKeyProvider">Optional signing key provider for JWKS endpoint.</param>
+    /// <param name="configuration">Application configuration, used to read and normalize the configured public domain.</param>
+    /// <param name="signingKeyProvider">Optional provider of the ATProto signing key; when present, the client uses private-key JWT authentication and exposes a JWKS, otherwise it declares no token-endpoint authentication.</param>
     [AllowAnonymous]
     public class WellKnownController(
         IConfiguration configuration,
         ATProtoSigningKeyProvider? signingKeyProvider = null
     ) : Controller {
 
+        /// <summary>The normalized public domain (for example <c>https://example.com</c>) used to build absolute URIs in the well-known documents; <see langword="null"/> when not configured.</summary>
         private readonly string? _domain = AppSettings.NormalizeDomain(
             configuration.GetSection( "BridgeBeats" ).GetValue<string>( "Domain" )
         );
+        /// <summary>The optional ATProto signing-key provider; when present the client advertises private-key JWT authentication and a JWKS endpoint.</summary>
         private readonly ATProtoSigningKeyProvider? _signingKeyProvider = signingKeyProvider;
 
         /// <summary>
-        /// Returns the ATProto OAuth client metadata document.
-        /// This replaces the static .well-known/client-metadata.json file so that
-        /// all URLs are derived dynamically from the configured Domain.
+        /// Serves the ATProto OAuth client-metadata document that describes BridgeBeats to authorization
+        /// servers: client id and name, redirect URIs, grant and response types, requested scope, and the
+        /// token-endpoint authentication method (private-key JWT with a JWKS reference when a signing key is
+        /// configured, otherwise none). All URLs are derived dynamically from the configured Domain, replacing
+        /// a static client-metadata.json file.
         /// </summary>
-        /// <returns>JSON client metadata document.</returns>
+        /// <returns>
+        /// HTTP GET <c>.well-known/client-metadata.json</c>. <c>200 OK</c> with the metadata as JSON when the
+        /// domain is configured; <c>404 Not Found</c> when no domain is configured. Cacheable for one hour.
+        /// </returns>
         [HttpGet( ".well-known/client-metadata.json" )]
         [ResponseCache( Duration = 3600, Location = ResponseCacheLocation.Any )]
         public IActionResult ClientMetadata( ) {
@@ -71,11 +72,14 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Returns the JSON Web Key Set (JWKS) containing the public signing key.
-        /// Authorization servers use this to verify client assertion JWTs.
-        /// Only the public key is exposed (no private key 'd' parameter).
+        /// Serves the JSON Web Key Set containing the public half of the ATProto signing key, allowing
+        /// authorization servers to verify the client's private-key JWT authentication. Only the public key
+        /// is exposed (no private key 'd' parameter).
         /// </summary>
-        /// <returns>JWKS JSON document.</returns>
+        /// <returns>
+        /// HTTP GET <c>.well-known/jwks.json</c>. <c>200 OK</c> with the JWKS as JSON when a signing key is
+        /// configured; <c>404 Not Found</c> otherwise. Cacheable for one hour.
+        /// </returns>
         [HttpGet( ".well-known/jwks.json" )]
         [ResponseCache( Duration = 3600, Location = ResponseCacheLocation.Any )]
         public IActionResult Jwks( ) {

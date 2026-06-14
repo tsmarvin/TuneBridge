@@ -1,21 +1,25 @@
 namespace BridgeBeats.Core.Domain.Providers.Common {
 
     /// <summary>
-    /// Provides consistent link normalization across the application.
+    /// Canonicalizes a provider link into a stable form suitable for use as a cache key.
     /// </summary>
+    /// <remarks>
+    /// Normalization strips the scheme and a leading <c>www.</c>, lowercases the host, drops the
+    /// fragment, removes all query parameters except <c>i</c> (Apple Music's track-within-album
+    /// selector), and trims a trailing slash. Two links that point at the same entity but differ
+    /// only in scheme, casing, tracking parameters, or trailing slash normalize to the same string.
+    /// </remarks>
     public static class LinkNormalizer {
 
         /// <summary>
-        /// Normalizes a link by removing protocol, www prefix, trailing slashes, and tracking query parameters
-        /// for consistent comparison while preserving case-sensitive IDs and semantic query parameters.
+        /// Normalizes a link to its canonical, cache-stable form.
         /// </summary>
-        /// <param name="link">The link to normalize.</param>
-        /// <returns>The normalized link without protocol, www prefix, tracking params, or trailing slashes.
-        /// Domain is lowercased, but path/ID portions preserve original case.</returns>
-        /// <remarks>
-        /// Removes all query parameters except Apple Music's ?i= which identifies specific tracks within albums.
-        /// IDs are case-sensitive and must be preserved for correct matching.
-        /// </remarks>
+        /// <param name="link">The raw link to normalize.</param>
+        /// <returns>
+        /// The normalized link, or <see cref="string.Empty"/> when <paramref name="link"/> is
+        /// <see langword="null"/>, empty, or whitespace. Only the host portion is lowercased; the
+        /// path and ID portions preserve their original case, since provider IDs are case-sensitive.
+        /// </returns>
         public static string Normalize( string link ) {
             if (string.IsNullOrWhiteSpace( link )) {
                 return string.Empty;
@@ -75,11 +79,14 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
         }
 
         /// <summary>
-        /// Filters out all query parameters except Apple Music's ?i= parameter.
-        /// The ?i= parameter identifies specific tracks within albums and must be preserved.
+        /// Drops tracking and incidental query parameters, preserving only the <c>i</c> parameter
+        /// (Apple Music's track-within-album selector).
         /// </summary>
-        /// <param name="queryString">Query string including the leading '?'</param>
-        /// <returns>Filtered query string with only ?i= parameter if present, or empty if not</returns>
+        /// <param name="queryString">The query portion of a path, including the leading <c>?</c>.</param>
+        /// <returns>
+        /// A query string containing only the preserved parameters (prefixed with <c>?</c>), or
+        /// <see cref="string.Empty"/> when nothing is preserved or the input is not a query string.
+        /// </returns>
         private static string FilterTrackingParameters( string queryString ) {
             if (string.IsNullOrEmpty( queryString ) || !queryString.StartsWith( '?' )) {
                 return string.Empty;

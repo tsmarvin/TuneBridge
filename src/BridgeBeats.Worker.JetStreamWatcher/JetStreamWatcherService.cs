@@ -19,25 +19,30 @@ using idunno.Bluesky.RichText;
 namespace BridgeBeats.Worker.JetStreamWatcher;
 
 /// <summary>
-/// Background service that monitors the Bluesky Jetstream for music links
-/// and submits them to provider queues for processing at bulk priority.
+/// Background consumer of the Bluesky Jetstream (the ATProto firehose). It subscribes to the
+/// <c>app.bsky.feed.post</c> and <c>app.bsky.feed.repost</c> collections and, for each newly created
+/// record, extracts candidate music links from post facets, embedded external cards, and the
+/// subjects of quote posts and reposts (hydrating those via the Bluesky API). Each recognized
+/// Spotify, Tidal, or Apple Music link is turned into a <see cref="QueuedLookupRequest"/> with
+/// <see cref="QueuePriority.Bulk"/> origin priority and enqueued through the
+/// <see cref="IProviderQueueResolver{T}"/>, so firehose-discovered links use the lowest-priority lane
+/// and never starve interactive traffic. This worker is producer-only: it feeds the queue and never
+/// consumes results. The connection is self-healing, reconnecting after a short backoff on failure.
 /// </summary>
-/// <remarks>
-/// This service is fire-and-forget: it extracts music links from Bluesky posts,
-/// validates them against known provider patterns, and enqueues them for processing
-/// without waiting for results. Deduplication is handled by the queue infrastructure.
-/// </remarks>
-/// <param name="logger">The logger instance.</param>
-/// <param name="queueResolver">The provider queue resolver for submitting lookup requests.</param>
+/// <param name="logger">The logger for connection lifecycle and processing diagnostics.</param>
+/// <param name="queueResolver">Resolves the per-provider queue a discovered link is enqueued to.</param>
 public sealed partial class JetStreamWatcherService(
     ILogger<JetStreamWatcherService> logger,
     IProviderQueueResolver<QueuedLookupRequest> queueResolver
 ) : BackgroundService {
 
     /// <summary>
-    /// The main execution loop that connects to Jetstream and processes incoming events.
+    /// Runs the watcher until cancellation. Wraps the Jetstream connection in an outer reconnect
+    /// loop: connection errors are logged and retried after a five-second backoff, while a
+    /// cancellation requested during shutdown ends the loop cleanly.
     /// </summary>
-    /// <param name="stoppingToken">The cancellation token for graceful shutdown.</param>
+    /// <param name="stoppingToken">Signals host shutdown.</param>
+    /// <returns>A task that completes when the watcher stops.</returns>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
         Console.OutputEncoding = Encoding.UTF8;
         LogWatcherStarting( logger );
@@ -60,8 +65,13 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Establishes and maintains a connection to the Jetstream.
+    /// Establishes one Jetstream connection and processes records until cancellation or disconnect.
+    /// Subscribes to the post and repost collections, dispatches each created record to the post or
+    /// repost handler, then polls connection state every 500 ms and closes cleanly when the loop
+    /// ends. Known benign parser errors are suppressed (see <see cref="IsExpectedParsingError"/>).
     /// </summary>
+    /// <param name="stoppingToken">Signals host shutdown.</param>
+    /// <returns>A task that completes when the connection closes.</returns>
     private async Task RunJetstreamConnectionAsync( CancellationToken stoppingToken ) {
         // Create Bluesky agent for fetching posts (no authentication required for public posts)
         using BlueskyAgent blueskyAgent = new( );
@@ -109,8 +119,12 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Determines if an exception is an expected parsing error that shouldn't be logged.
+    /// Identifies record-parsing exceptions that are expected and benign for firehose traffic (empty
+    /// strings, null values, and empty image or feature collections), so they can be swallowed
+    /// silently instead of logged.
     /// </summary>
+    /// <param name="ex">The exception raised while processing a record.</param>
+    /// <returns><see langword="true"/> when the exception is a known, ignorable parsing error.</returns>
     private static bool IsExpectedParsingError( Exception ex ) {
         return ex.Message.StartsWith( "The value cannot be an empty string", StringComparison.Ordinal ) ||
                ex.Message.StartsWith( "Value cannot be null.", StringComparison.Ordinal ) ||
@@ -119,8 +133,14 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Processes a post record, extracting links from facets, embedded content, and quote posts.
+    /// Processes a created <c>app.bsky.feed.post</c> record: deserializes it, extracts links from its
+    /// rich-text facets, and inspects its embedded record for an external card or a quoted post
+    /// (including the quote-with-media variant), enqueuing any music links found.
     /// </summary>
+    /// <param name="record">The raw post record from the commit event.</param>
+    /// <param name="blueskyAgent">The agent used to hydrate quoted posts.</param>
+    /// <param name="cancellationToken">Signals host shutdown.</param>
+    /// <returns>A task that completes when the post has been processed.</returns>
     private async Task ProcessPostAsync(
         JsonDocument record,
         BlueskyAgent blueskyAgent,
@@ -155,8 +175,14 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Processes a repost record by fetching the original post and extracting links.
+    /// Processes a created <c>app.bsky.feed.repost</c> record: reads the reposted subject URI,
+    /// hydrates the original post via the Bluesky API, and enqueues any music links found in its
+    /// facets or embedded external card.
     /// </summary>
+    /// <param name="record">The raw repost record from the commit event.</param>
+    /// <param name="blueskyAgent">The agent used to fetch the reposted post.</param>
+    /// <param name="cancellationToken">Signals host shutdown.</param>
+    /// <returns>A task that completes when the repost has been processed.</returns>
     private async Task ProcessRepostAsync(
         JsonDocument record,
         BlueskyAgent blueskyAgent,
@@ -190,8 +216,13 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Processes a quote post by fetching the quoted post and extracting links.
+    /// Processes the post quoted by an embedded record: hydrates the quoted post via the Bluesky API
+    /// and enqueues any music links found in its facets or embedded external card.
     /// </summary>
+    /// <param name="embeddedRecord">The embedded record pointing at the quoted post.</param>
+    /// <param name="blueskyAgent">The agent used to fetch the quoted post.</param>
+    /// <param name="cancellationToken">Signals host shutdown.</param>
+    /// <returns>A task that completes when the quoted post has been processed.</returns>
     private async Task ProcessQuotePostAsync(
         EmbeddedRecord embeddedRecord,
         BlueskyAgent blueskyAgent,
@@ -218,8 +249,12 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Extracts HTTPS links from post facets.
+    /// Scans a post's rich-text facets and enqueues each HTTPS link feature found. Does nothing when
+    /// the facet collection is <see langword="null"/>.
     /// </summary>
+    /// <param name="facets">The post's facets, or <see langword="null"/> when it has none.</param>
+    /// <param name="cancellationToken">Signals host shutdown.</param>
+    /// <returns>A task that completes when all facets have been scanned.</returns>
     private async Task ExtractLinksFromFacetsAsync(
         ICollection<Facet>? facets,
         CancellationToken cancellationToken
@@ -242,8 +277,12 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Processes an embedded external link card.
+    /// Enqueues the link from an embedded external card (the link-preview card on a post) when its
+    /// URI is an HTTPS link.
     /// </summary>
+    /// <param name="embeddedExternal">The embedded external card.</param>
+    /// <param name="cancellationToken">Signals host shutdown.</param>
+    /// <returns>A task that completes when the card has been processed.</returns>
     private async Task ProcessEmbeddedExternalAsync(
         EmbeddedExternal embeddedExternal,
         CancellationToken cancellationToken
@@ -255,10 +294,16 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Validates a link against known music provider patterns and enqueues it for processing.
+    /// Normalizes a candidate link, identifies its provider and lookup type, derives the lookup key
+    /// and deterministic saga id (via <see cref="LookupKeyBuilder"/> and
+    /// <see cref="ISagaStateManager.GenerateSagaId"/>), and enqueues a
+    /// <see cref="QueuedLookupRequest"/> with <see cref="QueuePriority.Bulk"/> origin priority to the
+    /// resolved provider queue. Links that match no provider are ignored. Enqueue failures are logged
+    /// and swallowed so one bad link does not interrupt the firehose.
     /// </summary>
-    /// <param name="link">The URL to process.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="link">The raw candidate link discovered in a post.</param>
+    /// <param name="cancellationToken">Signals host shutdown.</param>
+    /// <returns>A task that completes once the link has been enqueued or skipped.</returns>
     private async Task EnqueueMusicLinkAsync( string link, CancellationToken cancellationToken ) {
         // Normalize link by removing query parameters (except Apple Music song IDs)
         string normalizedLink = NormalizeMusicLink( link );
@@ -308,8 +353,11 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Normalizes a music link by stripping unnecessary query parameters.
+    /// Strips tracking query parameters from a link by truncating at the first ampersand. Apple Music
+    /// links are returned unchanged because their query string is significant to identification.
     /// </summary>
+    /// <param name="link">The raw link to normalize.</param>
+    /// <returns>The normalized link.</returns>
     private static string NormalizeMusicLink( string link ) {
         // For most links, remove everything after &
         // Exception: Apple Music links need to preserve ?i= for song IDs within albums
@@ -324,12 +372,18 @@ public sealed partial class JetStreamWatcherService(
     }
 
     /// <summary>
-    /// Identifies the music provider for a link and determines the lookup type and value.
+    /// Identifies which provider a link belongs to and how it should be looked up. The checks run in
+    /// a deliberate order: <c>spotify.link</c> short links are matched first (before the generic
+    /// Spotify parser, which cannot resolve them), then Spotify track/album ids, then Tidal, then
+    /// Apple Music. Spotify track and album links resolve to id lookups
+    /// (<see cref="LookupRequestType.SongIdLookup"/> / <see cref="LookupRequestType.AlbumIdLookup"/>);
+    /// all other matches resolve to a <see cref="LookupRequestType.UriLookup"/>.
     /// </summary>
+    /// <param name="link">The normalized candidate link.</param>
     /// <returns>
-    /// A tuple of (provider, lookupType, isAlbum, lookupValue) where lookupValue is the
-    /// Spotify ID for SongIdLookup/AlbumIdLookup, or the normalized URL for UriLookup.
-    /// Returns (null, default, false, link) if not a recognized music link.
+    /// A tuple of the matched <see cref="SupportedProviders"/> (or <see langword="null"/> when no
+    /// provider matched), the <see cref="LookupRequestType"/> to use, whether the item is an album,
+    /// and the lookup value (an id for id lookups, otherwise the normalized URL).
     /// </returns>
     internal static async Task<(SupportedProviders? provider, LookupRequestType lookupType, bool isAlbum, string lookupValue)> IdentifyProviderAsync(
         string link
@@ -385,20 +439,24 @@ public sealed partial class JetStreamWatcherService(
     #region LoggerMessage Methods
 
     /// <summary>Logs that the watcher service is starting.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.WatcherStarting,
         Level = LogLevel.Information,
         Message = "BridgeBeats Jetstream Watcher starting..." )]
     private static partial void LogWatcherStarting( ILogger logger );
 
-    /// <summary>Logs description of what is being watched.</summary>
+    /// <summary>Logs that the watcher has begun scanning for music links.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.WatchingForLinks,
         Level = LogLevel.Information,
         Message = "Watching for music links in Bluesky posts, reposts, and quote posts." )]
     private static partial void LogWatchingForLinks( ILogger logger );
 
-    /// <summary>Logs error in Jetstream connection.</summary>
+    /// <summary>Logs a Jetstream connection error that will trigger a reconnect.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The connection exception.</param>
     [LoggerMessage(
         EventId = LogEventIds.ConnectionError,
         Level = LogLevel.Error,
@@ -406,34 +464,42 @@ public sealed partial class JetStreamWatcherService(
     private static partial void LogConnectionError( ILogger logger, Exception ex );
 
     /// <summary>Logs that the watcher has stopped.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.WatcherStopped,
         Level = LogLevel.Information,
         Message = "JetStream Watcher stopped." )]
     private static partial void LogWatcherStopped( ILogger logger );
 
-    /// <summary>Logs error processing a Jetstream record.</summary>
+    /// <summary>Logs an unexpected error while processing a single Jetstream record.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The processing exception.</param>
     [LoggerMessage(
         EventId = LogEventIds.RecordProcessingError,
         Level = LogLevel.Debug,
         Message = "Error processing Jetstream record" )]
     private static partial void LogRecordProcessingError( ILogger logger, Exception ex );
 
-    /// <summary>Logs that connection to Jetstream was established.</summary>
+    /// <summary>Logs that the watcher has connected to the Jetstream firehose.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.Connected,
         Level = LogLevel.Information,
         Message = "Connected to Jetstream." )]
     private static partial void LogConnected( ILogger logger );
 
-    /// <summary>Logs that connection to Jetstream was closed.</summary>
+    /// <summary>Logs that the watcher has disconnected from the Jetstream firehose.</summary>
+    /// <param name="logger">The logger to write to.</param>
     [LoggerMessage(
         EventId = LogEventIds.Disconnected,
         Level = LogLevel.Information,
         Message = "Disconnected from Jetstream." )]
     private static partial void LogDisconnected( ILogger logger );
 
-    /// <summary>Logs failure to enqueue a music link.</summary>
+    /// <summary>Logs a failure to enqueue a discovered music link.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The enqueue exception.</param>
+    /// <param name="link">The link that could not be enqueued.</param>
     [LoggerMessage(
         EventId = LogEventIds.EnqueueError,
         Level = LogLevel.Debug,

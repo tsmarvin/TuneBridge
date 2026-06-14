@@ -9,14 +9,34 @@ using Serilog;
 namespace BridgeBeats.Worker.Spotify;
 
 /// <summary>
-/// Entry point for the Spotify worker service.
+/// Entry point and composition root for the Spotify provider worker process.
 /// </summary>
+/// <remarks>
+/// Unlike the Apple Music and Tidal workers, the Spotify worker is asymmetric: it runs the
+/// shared per-message queue processor <em>and</em> two additional hosted services that exist
+/// only here, because Spotify's API supports multi-id batch fetches:
+/// <list type="bullet">
+///   <item>the shared queue-processing background service (via
+///   <c>AddQueueProcessor&lt;SpotifyLookupService&gt;</c>) for per-message lookups;</item>
+///   <item><see cref="SpotifyBulkProcessorService"/>, which drains single-id track/album
+///   lookups that were diverted to dedicated bulk streams and resolves them in batches; and</item>
+///   <item><see cref="SpotifyArtistGenreService"/>, a long-cadence background refresh of
+///   artist-to-genre data.</item>
+/// </list>
+/// The worker also maps the synchronous WorkerApi lookup endpoints (via
+/// <c>MapProviderLookupEndpoints&lt;SpotifyLookupService&gt;</c>) and connects to the shared
+/// Redis backbone.
+/// </remarks>
 public static class Program {
 
     /// <summary>
-    /// The main entry point for the Spotify worker application.
+    /// Builds, configures, and runs the Spotify worker web application.
     /// </summary>
-    /// <param name="args">Command line arguments.</param>
+    /// <param name="args">Command-line arguments passed through to the host builder.</param>
+    /// <remarks>
+    /// Serilog is flushed in the <c>finally</c> block so buffered log entries are written
+    /// even when the host shuts down or faults.
+    /// </remarks>
     public static void Main( string[] args ) {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -34,9 +54,26 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the services for the Spotify worker application.
+    /// Registers the Spotify worker's services, including the genre cache, batch settings, the
+    /// bulk-stream queue helper, and the two Spotify-only hosted services on top of the shared
+    /// queue processor.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
+    /// <param name="builder">The web application builder whose service collection is populated.</param>
+    /// <remarks>
+    /// Beyond the wiring shared with the other provider workers (file logging, service defaults,
+    /// Redis client, provider services, JSON options, and the shared queue processor), this
+    /// method also registers:
+    /// <list type="bullet">
+    ///   <item>the genre cache (<c>AddGenreCache</c>) used by artist-genre resolution;</item>
+    ///   <item><see cref="SpotifyBatchSettings"/> bound from configuration section
+    ///   <see cref="SpotifyBatchSettings.SectionKey"/>;</item>
+    ///   <item><see cref="SpotifyBatchQueueHelper"/> as a singleton, plus
+    ///   <see cref="SpotifyBulkProcessorService"/> as a hosted service; and</item>
+    ///   <item><see cref="SpotifyArtistGenreService"/> as a hosted service.</item>
+    /// </list>
+    /// Credentials are validated up front via <see cref="ValidateConfiguration"/>; a missing
+    /// credential aborts startup before any service is registered.
+    /// </remarks>
     private static void ConfigureServices( WebApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "Spotify" );
@@ -77,11 +114,17 @@ public static class Program {
     }
 
     /// <summary>
-    /// Validates the required configuration for the Spotify worker.
+    /// Reads and validates the Spotify credentials and resilience settings from configuration.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
-    /// <returns>A tuple containing the validated credentials and configuration values.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
+    /// <param name="builder">The web application builder whose configuration is read.</param>
+    /// <returns>
+    /// A tuple of the Spotify client id, client secret, and the maximum honored
+    /// <c>Retry-After</c> value in seconds (defaulting to 120 when unset).
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when either <c>BridgeBeats:SpotifyClientId</c> or <c>BridgeBeats:SpotifyClientSecret</c>
+    /// is missing or blank.
+    /// </exception>
     private static (string ClientId, string ClientSecret, int MaxRetryAfterSeconds) ValidateConfiguration(
         WebApplicationBuilder builder
     ) {
@@ -97,9 +140,15 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the endpoints for the Spotify worker application.
+    /// Maps the worker's HTTP endpoints: the Aspire default health/metrics endpoints and the
+    /// WorkerApi provider-lookup routes (<c>POST /lookup/{url,isrc,upc,id,metadata,from-result}</c>).
     /// </summary>
-    /// <param name="app">The web application.</param>
+    /// <param name="app">The built web application to map endpoints onto.</param>
+    /// <remarks>
+    /// The mapped lookup endpoints follow the WorkerApi convention of returning HTTP 200 even
+    /// on failure, carrying the outcome in the response envelope; callers inspect the
+    /// success flag and error message rather than the status code.
+    /// </remarks>
     private static void ConfigureEndpoints( WebApplication app ) {
         // Map Aspire health check endpoints
         _ = app.MapDefaultEndpoints( );

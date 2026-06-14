@@ -5,13 +5,18 @@ using BridgeBeats.Core.Infrastructure.Storage;
 namespace BridgeBeats.Tests.Unit {
 
     /// <summary>
-    /// Unit tests for <see cref="RecordKeyGenerator"/> validating record key and card ID generation.
+    /// Unit tests for <see cref="RecordKeyGenerator"/>, the deterministic ATProto record-key (rkey)
+    /// and card-id generator. Verify the external-id rkey forms (<c>track:{id}</c> / <c>album:{id}</c>),
+    /// the metadata fallback (<c>metadata:{hash}</c>) when no external id exists, special-character
+    /// sanitization, the direct-id overload and its empty-id guard, and the card-id derivation:
+    /// determinism, distinctness across rkeys, URL-safe lowercase output bounded by the max length,
+    /// metadata normalization (case/whitespace insensitive), and the empty-input/invalid-length guards.
     /// </summary>
     [TestClass]
     public class RecordKeyGeneratorTests {
 
         /// <summary>
-        /// Verifies that a track with an ISRC generates a record key with the "track:" prefix.
+        /// A result whose track carries an ISRC external id produces the rkey <c>track:{externalId}</c>.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_WithTrackISRC_ReturnsTrackRkey( ) {
@@ -34,7 +39,7 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that an album with a UPC generates a record key with the "album:" prefix.
+        /// A result whose album carries a UPC external id produces the rkey <c>album:{externalId}</c>.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_WithAlbumUPC_ReturnsAlbumRkey( ) {
@@ -57,7 +62,7 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that a result without an external ID generates a metadata-based record key.
+        /// A result with no external id falls back to a metadata-hash rkey prefixed <c>metadata:</c>.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_WithNoExternalId_ReturnsMetadataBasedRkey( ) {
@@ -80,7 +85,8 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that special characters in external IDs are sanitized from the record key.
+        /// An external id with characters outside <c>[A-Za-z0-9-]</c> is sanitized, dropping the
+        /// disallowed characters from the rkey.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_WithExternalIdContainingSpecialChars_SanitizesRkey( ) {
@@ -103,7 +109,8 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that the direct GenerateRkey method returns the correct format for tracks.
+        /// The direct <c>GenerateRkey(externalId, isAlbum)</c> overload produces <c>track:{id}</c>
+        /// when <c>isAlbum</c> is false.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_DirectMethod_ReturnsCorrectFormat( ) {
@@ -115,7 +122,8 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that the direct GenerateRkey method returns the "album:" prefix for albums.
+        /// The direct <c>GenerateRkey(externalId, isAlbum)</c> overload produces <c>album:{id}</c>
+        /// when <c>isAlbum</c> is true.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_DirectMethod_WithAlbum_ReturnsAlbumPrefix( ) {
@@ -127,7 +135,7 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that the direct GenerateRkey method throws an exception for empty IDs.
+        /// The direct <c>GenerateRkey</c> overload throws <see cref="ArgumentException"/> for an empty id.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_DirectMethod_WithEmptyId_ThrowsException( ) {
@@ -136,7 +144,7 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that the same record key always generates the same card ID (deterministic).
+        /// <c>GenerateCardId</c> is deterministic: the same rkey yields the same card id.
         /// </summary>
         [TestMethod]
         public void GenerateCardId_WithSameRkey_ReturnsSameId( ) {
@@ -151,9 +159,7 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( id1, id2, "Card IDs should be deterministic" );
         }
 
-        /// <summary>
-        /// Verifies that different record keys generate different card IDs.
-        /// </summary>
+        /// <summary>Different rkeys yield different card ids.</summary>
         [TestMethod]
         public void GenerateCardId_WithDifferentRkeys_ReturnsDifferentIds( ) {
             // Act
@@ -165,7 +171,8 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that generated card IDs are URL-safe (lowercase, alphanumeric with dashes only).
+        /// A generated card id is URL-safe: at most 32 characters, lowercase, and limited to letters,
+        /// digits, and hyphen.
         /// </summary>
         [TestMethod]
         public void GenerateCardId_ReturnsUrlSafeString( ) {
@@ -181,9 +188,7 @@ namespace BridgeBeats.Tests.Unit {
             Assert.IsTrue( cardId.All( c => !char.IsUpper( c ) ), "Card ID should be lowercase" );
         }
 
-        /// <summary>
-        /// Verifies that GenerateCardId throws an exception for empty record keys.
-        /// </summary>
+        /// <summary><c>GenerateCardId</c> throws <see cref="ArgumentException"/> for an empty rkey.</summary>
         [TestMethod]
         public void GenerateCardId_WithEmptyRkey_ThrowsException( ) {
             // Act & Assert
@@ -191,7 +196,7 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that GenerateCardId throws an exception for invalid max length values.
+        /// <c>GenerateCardId</c> throws <see cref="ArgumentException"/> for an invalid (negative) max length.
         /// </summary>
         [TestMethod]
         public void GenerateCardId_WithInvalidMaxLength_ThrowsException( ) {
@@ -200,7 +205,8 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that the same metadata generates the same record key across different providers.
+        /// Two results with the same metadata (no external id) produce the same metadata-hash rkey,
+        /// regardless of which provider supplied them.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_WithSameMetadata_ReturnsSameRkey( ) {
@@ -232,7 +238,8 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that GenerateRkey throws an exception when both title and artist are empty.
+        /// A result with no external id and both title and artist empty throws
+        /// <see cref="ArgumentException"/> whose message names the empty title and artist.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_WithEmptyTitleAndArtist_ThrowsException( ) {
@@ -252,7 +259,8 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that metadata normalization makes case and whitespace irrelevant for record key generation.
+        /// Metadata normalization makes case and surrounding whitespace irrelevant: differently cased
+        /// and padded title/artist values produce the same metadata-hash rkey.
         /// </summary>
         [TestMethod]
         public void GenerateRkey_WithNormalizedMetadata_ReturnsSameRkey( ) {
@@ -284,7 +292,7 @@ namespace BridgeBeats.Tests.Unit {
         }
 
         /// <summary>
-        /// Verifies that GenerateCardId produces properly padded Base32 output.
+        /// <c>GenerateCardId</c> with a generous max length still returns a non-empty card id.
         /// </summary>
         [TestMethod]
         public void GenerateCardId_IncludesPadding( ) {
@@ -295,8 +303,6 @@ namespace BridgeBeats.Tests.Unit {
             string cardId = RecordKeyGenerator.GenerateCardId( rkey, maxLength: 100 ); // Use longer length to see padding
 
             // Assert
-            // Base32 output should be padded to multiple of 8
-            // Since we're using SHA256 (32 bytes), base32 encoding produces (32*8/5) = 51.2 chars, rounded up with padding
             Assert.IsFalse( string.IsNullOrEmpty( cardId ) );
         }
     }

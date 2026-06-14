@@ -9,16 +9,32 @@ using Polly.Timeout;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="BridgeBeatsApiClient.GetInfoAsync"/> covering transport fault handling
-/// (Part A tests A1–A7).
+/// Tests <see cref="BridgeBeatsApiClient"/>, the Discord worker's HTTP client for the BridgeBeats Web
+/// API, focusing on how <see cref="BridgeBeatsApiClient.GetInfoAsync"/> streams results and degrades
+/// when the call fails.
 /// </summary>
+/// <remarks>
+/// The client returns an <see cref="IAsyncEnumerable{T}"/> of <see cref="MediaLinkResult"/>. The
+/// resilience contract under test: transport timeouts and cancellations
+/// (<see cref="TimeoutRejectedException"/>, <see cref="OperationCanceledException"/>,
+/// <see cref="TaskCanceledException"/>) yield nothing and log a warning; an
+/// <see cref="HttpRequestException"/> yields nothing and logs an error; malformed JSON yields nothing
+/// without throwing; and a healthy-but-empty response yields nothing and logs no error. Each test
+/// drives the client through an in-memory <see cref="HttpMessageHandler"/> double.
+/// </remarks>
 [TestClass]
 public class BridgeBeatsApiClientTests {
 
     // -------------------------------------------------------------------------
-    // A1–A7: GetInfoAsync transport fault handling via fake HttpMessageHandlers
+    // GetInfoAsync transport fault handling via fake HttpMessageHandlers
     // -------------------------------------------------------------------------
 
+    /// <summary>
+    /// Builds a <see cref="BridgeBeatsApiClient"/> over the supplied message handler with a discarding
+    /// logger and an empty internal service key, for tests that do not inspect logging.
+    /// </summary>
+    /// <param name="innerHandler">The message handler backing the client's HTTP calls.</param>
+    /// <returns>A configured client under test.</returns>
     private static BridgeBeatsApiClient CreateClient( HttpMessageHandler innerHandler ) {
         HttpClient httpClient = new( innerHandler ) {
             BaseAddress = new Uri( "http://test-host" )
@@ -27,6 +43,13 @@ public class BridgeBeatsApiClientTests {
         return new BridgeBeatsApiClient( httpClient, logger.Object, string.Empty );
     }
 
+    /// <summary>
+    /// Builds a <see cref="BridgeBeatsApiClient"/> over the supplied message handler with a verifiable
+    /// mock logger (with all levels enabled) so a test can assert which log level was emitted.
+    /// </summary>
+    /// <param name="innerHandler">The message handler backing the client's HTTP calls.</param>
+    /// <param name="loggerMock">Receives the mock logger for later verification.</param>
+    /// <returns>A configured client under test.</returns>
     private static BridgeBeatsApiClient CreateClientWithMockLogger(
         HttpMessageHandler innerHandler,
         out Mock<ILogger<BridgeBeatsApiClient>> loggerMock
@@ -41,8 +64,8 @@ public class BridgeBeatsApiClientTests {
     }
 
     /// <summary>
-    /// A1 — Happy path: yields one result per element returned by the API.
-    /// Failure-first: with unimplemented deserialization, yields 0 elements.
+    /// Verifies that, given a 200 response carrying a one-element result array, the client streams a
+    /// single <see cref="MediaLinkResult"/>.
     /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_HappyPath_YieldsResults( ) {
@@ -60,8 +83,8 @@ public class BridgeBeatsApiClientTests {
     }
 
     /// <summary>
-    /// A2 — TimeoutRejectedException: logs warning and yields nothing; does not throw.
-    /// Failure-first: before catch broadening, TimeoutRejectedException propagated unhandled.
+    /// Verifies that a Polly <see cref="TimeoutRejectedException"/> from the transport is swallowed: the
+    /// client yields no results and logs a warning rather than throwing.
     /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_TimeoutRejectedException_YieldsNothingNoThrow( ) {
@@ -80,8 +103,8 @@ public class BridgeBeatsApiClientTests {
     }
 
     /// <summary>
-    /// A3 — OperationCanceledException: logs warning and yields nothing; does not throw.
-    /// Failure-first: before catch broadening, OCE propagated unhandled.
+    /// Verifies that an <see cref="OperationCanceledException"/> from the transport is swallowed: the
+    /// client yields no results and logs a warning rather than throwing.
     /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_OperationCanceledException_YieldsNothingNoThrow( ) {
@@ -100,8 +123,8 @@ public class BridgeBeatsApiClientTests {
     }
 
     /// <summary>
-    /// A4 — TaskCanceledException (IS-A OperationCanceledException): logs warning and yields nothing; does not throw.
-    /// Failure-first: before catch broadening, TCE propagated unhandled.
+    /// Verifies that a <see cref="TaskCanceledException"/> from the transport is swallowed: the client
+    /// yields no results and logs a warning rather than throwing.
     /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_TaskCanceledException_YieldsNothingNoThrow( ) {
@@ -120,7 +143,9 @@ public class BridgeBeatsApiClientTests {
     }
 
     /// <summary>
-    /// A5 — HttpRequestException regression: logs error and yields nothing; does not throw.
+    /// Verifies that an <see cref="HttpRequestException"/> (a transport failure) is swallowed: the
+    /// client yields no results and logs an error, distinguishing a real failure from a benign
+    /// cancellation.
     /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_HttpRequestException_YieldsNothingNoThrow( ) {
@@ -139,7 +164,8 @@ public class BridgeBeatsApiClientTests {
     }
 
     /// <summary>
-    /// A6 — JsonException regression (malformed JSON): logs and yields nothing; does not throw.
+    /// Verifies that a 200 response with an unparseable body yields no results without throwing, so a
+    /// malformed payload degrades gracefully.
     /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_MalformedJson_YieldsNothingNoThrow( ) {
@@ -154,8 +180,8 @@ public class BridgeBeatsApiClientTests {
     }
 
     /// <summary>
-    /// A7 — Empty array: yields nothing AND logs no error (positive control: healthy-empty is not a fault).
-    /// Failure-first: a buggy impl treating [] as error would emit an Error log; this test would fail.
+    /// Verifies that a healthy 200 response with an empty array yields no results and logs no error,
+    /// confirming "no matches" is a normal outcome rather than a failure.
     /// </summary>
     [TestMethod]
     public async Task GetInfoAsync_EmptyArray_YieldsNothingAndLogsNoError( ) {
@@ -177,6 +203,10 @@ public class BridgeBeatsApiClientTests {
     // Helpers
     // -------------------------------------------------------------------------
 
+    /// <summary>Drains an async sequence into a list so a test can assert on its contents.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
+    /// <param name="source">The async sequence to materialize.</param>
+    /// <returns>A list containing every element yielded by <paramref name="source"/>.</returns>
     private static async Task<List<T>> CollectAsync<T>( IAsyncEnumerable<T> source ) {
         List<T> list = [];
         await foreach (T item in source) {
@@ -185,6 +215,8 @@ public class BridgeBeatsApiClientTests {
         return list;
     }
 
+    /// <summary>Asserts that the logger recorded at least one <see cref="LogLevel.Warning"/> entry.</summary>
+    /// <param name="loggerMock">The mock logger to verify.</param>
     private static void VerifyWarningLogged( Mock<ILogger<BridgeBeatsApiClient>> loggerMock ) {
         loggerMock.Verify(
             l => l.Log(
@@ -197,6 +229,8 @@ public class BridgeBeatsApiClientTests {
             "Expected a Warning-level log for timeout/cancellation" );
     }
 
+    /// <summary>Asserts that the logger recorded at least one <see cref="LogLevel.Error"/> entry.</summary>
+    /// <param name="loggerMock">The mock logger to verify.</param>
     private static void VerifyErrorLogged( Mock<ILogger<BridgeBeatsApiClient>> loggerMock ) {
         loggerMock.Verify(
             l => l.Log(
@@ -209,6 +243,8 @@ public class BridgeBeatsApiClientTests {
             "Expected an Error-level log for the HTTP transport failure" );
     }
 
+    /// <summary>Asserts that the logger recorded no <see cref="LogLevel.Error"/> entries.</summary>
+    /// <param name="loggerMock">The mock logger to verify.</param>
     private static void VerifyNoErrorLogged( Mock<ILogger<BridgeBeatsApiClient>> loggerMock ) {
         loggerMock.Verify(
             l => l.Log(
@@ -225,16 +261,33 @@ public class BridgeBeatsApiClientTests {
     // Fake handlers
     // -------------------------------------------------------------------------
 
-    /// <summary>Throws a specified exception on every request.</summary>
+    /// <summary>
+    /// Test message handler that throws the configured exception on every send, simulating a transport
+    /// failure or cancellation.
+    /// </summary>
+    /// <param name="exception">The exception thrown from each send.</param>
     private sealed class ThrowingDelegatingHandler( Exception exception ) : HttpMessageHandler {
+        /// <summary>Throws the configured exception instead of sending the request.</summary>
+        /// <param name="request">The outgoing request (unused).</param>
+        /// <param name="cancellationToken">A cancellation token (unused).</param>
+        /// <returns>This method never returns; it always throws.</returns>
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
         ) => throw exception;
     }
 
-    /// <summary>Returns a fixed HTTP status code and body.</summary>
+    /// <summary>
+    /// Test message handler that returns a fixed status code and JSON body for every request, letting a
+    /// test feed the client a canned response.
+    /// </summary>
+    /// <param name="status">The HTTP status code to return.</param>
+    /// <param name="body">The response body returned as <c>application/json</c>.</param>
     private sealed class StaticResponseHandler( HttpStatusCode status, string body ) : HttpMessageHandler {
+        /// <summary>Returns the configured status and body for the request.</summary>
+        /// <param name="request">The outgoing request (unused).</param>
+        /// <param name="cancellationToken">A cancellation token (unused).</param>
+        /// <returns>A response carrying the configured status and JSON body.</returns>
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken

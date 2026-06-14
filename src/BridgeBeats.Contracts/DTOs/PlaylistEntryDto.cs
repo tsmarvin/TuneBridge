@@ -1,60 +1,63 @@
 namespace BridgeBeats.Contracts.DTOs;
 
 /// <summary>
-/// Data transfer object representing a playlist of music cards (tracks or albums).
-/// Each playlist contains up to 20 card IDs (rkeys) that can be resolved to MediaLinkResults.
+/// Database projection of a stored playlist of music cards (tracks or albums), returned by the
+/// playlist service. A mutable transfer object with settable properties; the card id and rkey lists
+/// are carried as comma-delimited strings rather than collections, and a playlist holds up to 20
+/// cards.
 /// </summary>
 /// <remarks>
-/// This DTO abstracts the persistence layer entity (PlaylistEntry) to keep Contracts
-/// free of Entity Framework dependencies. Infrastructure implementations should map
-/// between this DTO and their EF entities.
+/// This DTO abstracts the persistence-layer entity (<c>PlaylistEntry</c>) so that Contracts stays
+/// free of Entity Framework dependencies; infrastructure code maps between this DTO and its EF
+/// entity.
 /// </remarks>
 public sealed class PlaylistEntryDto {
 
     /// <summary>
-    /// The unique identifier for the playlist.
-    /// Generated deterministically based on the ordered card IDs.
+    /// The playlist's identifier, generated deterministically from the ordered card IDs. Defaults to
+    /// an empty string until populated.
     /// </summary>
     public string PlaylistId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional user ID if the playlist was created by a logged-in user.
-    /// Null for anonymous playlists.
+    /// The owning user's identifier, or <see langword="null"/> for an anonymous playlist with no
+    /// owner.
     /// </summary>
     public string? UserId { get; set; }
 
     /// <summary>
-    /// Optional user-defined title for the playlist.
+    /// The user-defined playlist title, or <see langword="null"/> when unset.
     /// </summary>
     public string? Title { get; set; }
 
     /// <summary>
-    /// Optional user-defined description for the playlist.
+    /// The user-defined playlist description, or <see langword="null"/> when unset.
     /// </summary>
     public string? Description { get; set; }
 
     /// <summary>
-    /// Comma-separated list of card IDs (rkeys) in the playlist.
-    /// Maximum 20 items. Order is preserved.
+    /// The playlist's card identifiers (rkeys) as a single comma-delimited string, paired
+    /// positionally with <see cref="CardRkeys"/>. Order is preserved; up to 20 items. Defaults to an
+    /// empty string.
     /// </summary>
     public string CardIds { get; set; } = string.Empty;
 
     /// <summary>
-    /// Comma-separated list of original rkey values corresponding to CardIds.
-    /// Used to regenerate card content quickly for old playlists.
-    /// Maximum 20 items. Order is preserved and matches CardIds order.
+    /// The playlist's original card record keys as a single comma-delimited string, paired
+    /// positionally with <see cref="CardIds"/>. Used to regenerate card content for old playlists.
+    /// Order is preserved and matches <see cref="CardIds"/>; up to 20 items. Defaults to an empty
+    /// string.
     /// </summary>
     public string CardRkeys { get; set; } = string.Empty;
 
     /// <summary>
-    /// The timestamp when this playlist was created.
+    /// When the playlist was created.
     /// </summary>
     public DateTime CreatedAt { get; set; }
 
     /// <summary>
-    /// The timestamp when this playlist expires (nullable).
-    /// Null = never expires (for logged-in users)
-    /// 2 weeks from creation for anonymous users
+    /// When the playlist expires, or <see langword="null"/> when it never expires. Logged-in users'
+    /// playlists never expire; anonymous playlists expire 14 days after creation.
     /// </summary>
     public DateTime? ExpiresAt { get; set; }
 }

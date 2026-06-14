@@ -8,28 +8,33 @@ using Microsoft.Extensions.DependencyInjection;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for music lookup services (Apple Music, Spotify, and Tidal).
-/// These tests require valid API credentials in appsettings.json or user secrets.
-/// Tests use direct provider mode (not queue-based) for fast API validation.
+/// Integration tests for the <see cref="IMediaLinkService"/> resolution pipeline, resolving the real
+/// service from the application's DI container via <see cref="CustomWebApplicationFactory"/> against the
+/// shared Redis container. Verifies service registration and live lookups by ISRC, UPC, title, and
+/// provider URL across Apple Music, Spotify, and Tidal, including cross-provider matching by ISRC and the
+/// no-result path for an invalid ISRC. Rate-limited calls are made inconclusive via
+/// <see cref="RateLimitTestHelper"/> rather than failed. These tests require valid API credentials in
+/// appsettings.json or user secrets and use direct provider mode (not queue-based) for fast API validation.
 /// </summary>
 [TestClass]
 [DoNotParallelize] // Prevent parallel execution to avoid overwhelming external APIs with rate limits
 [TestCategory( "Integration" )] // Mark as integration tests
 public class MusicLookupServiceTests {
 
+    /// <summary>The application service provider resolved from the test host.</summary>
     private static IServiceProvider s_serviceProvider = null!;
 
+    /// <summary>The test web application factory that supplies the service provider.</summary>
     private static CustomWebApplicationFactory? s_factory;
 
-    /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes shared services and test infrastructure for all tests in this class.
+    /// Builds the test host with worker services disabled and external integrations blanked, captures
+    /// its service provider, and migrates the identity database.
     /// </summary>
-    /// <param name="_">The test context provided by MSTest (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -68,7 +73,7 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the <see cref="IMediaLinkService"/> is properly registered in the DI container when valid secrets are configured.
+    /// Verifies the <see cref="IMediaLinkService"/> is registered and resolvable from the container.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - service registration should be instant
@@ -81,7 +86,8 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Verifies that looking up a well-known ISRC (Bohemian Rhapsody) returns valid results from music providers.
+    /// Looks up a known track by ISRC and verifies a non-album result with a title and artist
+    /// (inconclusive when the providers are rate limited).
     /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
@@ -116,7 +122,8 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Verifies that looking up a well-known UPC (A Night at the Opera by Queen) returns valid album results.
+    /// Looks up a known album by UPC and verifies an album result with a title and artist (inconclusive
+    /// when the providers are rate limited).
     /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
@@ -151,7 +158,8 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Verifies that searching by title and artist (Bohemian Rhapsody by Queen) returns matching results.
+    /// Looks up a known track by title and artist and verifies the returned title contains the expected
+    /// text (inconclusive when the providers are rate limited).
     /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
@@ -186,7 +194,8 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Verifies that looking up an Apple Music album URL returns valid results.
+    /// Resolves an Apple Music album URL through the streaming lookup and verifies the first result has a
+    /// title and artist (inconclusive when rate limited).
     /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
@@ -221,7 +230,8 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Verifies that looking up a Spotify album URL returns valid results.
+    /// Resolves a Spotify album URL through the streaming lookup and verifies the first result has a
+    /// title and artist (inconclusive when rate limited).
     /// </summary>
     [TestMethod]
     [TestCategory( "Spotify" )]
@@ -256,7 +266,7 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Verifies that looking up an invalid ISRC returns null or empty results gracefully.
+    /// Verifies that looking up an invalid ISRC yields a null result or an empty result set.
     /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]
@@ -282,7 +292,8 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Verifies that looking up a Tidal track URL returns valid results.
+    /// Resolves a Tidal track URL through the streaming lookup and verifies the first result has a title
+    /// and artist (inconclusive when rate limited).
     /// </summary>
     [TestMethod]
     [TestCategory( "Tidal" )]
@@ -317,11 +328,11 @@ public class MusicLookupServiceTests {
     }
 
     /// <summary>
-    /// Tests that Spotify can find a track from Apple Music using ISRC cross-platform matching.
-    /// This test validates the scenario where an Apple Music track link should be found on Spotify.
+    /// Resolves an Apple Music track URL, confirms the Apple Music result and its ISRC, then verifies the
+    /// service finds the same track on Spotify by that ISRC (cross-provider matching; the Spotify leg is
+    /// inconclusive when rate limited).
     /// Apple Music URL: https://music.apple.com/us/album/chiron/1695231829?i=1695231831
-    /// Expected ISRC: US25X1087647
-    /// Track: "Chiron" by Shades (Alix Perez and Eprom)
+    /// Expected ISRC: US25X1087647. Track: "Chiron" by Shades (Alix Perez and Eprom).
     /// </summary>
     [TestMethod]
     [TestCategory( "AppleMusic" )]

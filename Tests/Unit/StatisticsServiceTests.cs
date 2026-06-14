@@ -11,18 +11,37 @@ using StackExchange.Redis;
 
 namespace BridgeBeats.Tests.Unit;
 
+/// <summary>
+/// Unit tests for <see cref="StatisticsService"/>, which computes lookup statistics by enumerating
+/// AT Protocol records and caches the result. Covers the cached-read path (null before any refresh,
+/// populated after), the read-only <c>GetStatisticsAsync</c> contract that never triggers
+/// computation, refresh triggering and the single-flight guard via <c>IsRefreshing</c>, cache
+/// freshness (skip when fresh, recompute on force), record counting and album/track classification,
+/// and the live bootstrap-status read from Redis including its null and exception-swallowing paths.
+/// </summary>
 [TestClass]
 public class StatisticsServiceTests {
 
+    /// <summary>Mock storage service that supplies the record stream the service aggregates.</summary>
     private Mock<IATProtoStorageService> _atProtoStorageMock = null!;
+    /// <summary>Mock Redis multiplexer providing the database used for bootstrap-status reads.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mock Redis database backing bootstrap-status string reads.</summary>
     private Mock<IDatabase> _redisDatabaseMock = null!;
+    /// <summary>Mock logger for the service.</summary>
     private Mock<ILogger<StatisticsService>> _loggerMock = null!;
+    /// <summary>Statistics settings (PDS URI, user DID, refresh interval, cache TTL) under test.</summary>
     private StatisticsSettings _settings = null!;
 
+    /// <summary>Test PDS URI the service enumerates records from.</summary>
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
+    /// <summary>Test user DID whose repository is enumerated.</summary>
     private const string TestUserDid = "did:plc:testuser123";
 
+    /// <summary>
+    /// Creates fresh mocks before each test, defaults Redis bootstrap-status reads to null, and
+    /// configures settings with a six-hour refresh interval and a thirty-second cache TTL.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _atProtoStorageMock = new Mock<IATProtoStorageService>( );
@@ -39,6 +58,10 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <c>GetCachedStatistics</c> returns null before any refresh has populated the
+    /// cache.
+    /// </summary>
     [TestMethod]
     public void GetCachedStatistics_WhenNoCachedData_ReturnsNull( ) {
         StatisticsService service = CreateService( );
@@ -48,6 +71,10 @@ public class StatisticsServiceTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that after a refresh over an empty record set, <c>GetCachedStatistics</c> returns a
+    /// non-null result reporting zero total records.
+    /// </summary>
     [TestMethod]
     public async Task GetCachedStatistics_AfterRefresh_ReturnsCachedData( ) {
         SetupEmptyRecordList( );
@@ -60,6 +87,11 @@ public class StatisticsServiceTests {
         Assert.AreEqual( 0, result.TotalRecords );
     }
 
+    /// <summary>
+    /// Verifies that <c>GetStatisticsAsync</c> with no cache returns empty statistics (zero records,
+    /// <see cref="DateTimeOffset.MinValue"/> timestamp) without enumerating any records, confirming
+    /// it is a pure read that never triggers computation.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_WhenNoCache_ReturnsEmptyStatsWithoutComputation( ) {
         StatisticsService service = CreateService( );
@@ -74,6 +106,11 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that once a refresh has populated the cache, <c>GetStatisticsAsync</c> returns the
+    /// cached data and does not re-enumerate records: the record source is hit only once (from the
+    /// refresh), never again from the read.
+    /// </summary>
     [TestMethod]
     public async Task GetStatisticsAsync_ReturnsCachedData_NeverTriggersComputation( ) {
         SetupRecordList( [
@@ -91,6 +128,10 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that <c>TriggerRefresh</c> returns true when no refresh is currently running,
+    /// indicating it started one.
+    /// </summary>
     [TestMethod]
     public void TriggerRefresh_WhenNotRefreshing_StartsRefresh( ) {
         StatisticsService service = CreateService( );
@@ -100,6 +141,11 @@ public class StatisticsServiceTests {
         Assert.IsTrue( result );
     }
 
+    /// <summary>
+    /// Verifies the single-flight guard: while a refresh is in progress (held open by a gated record
+    /// stream), <c>TriggerRefresh</c> returns false rather than starting a second concurrent
+    /// refresh.
+    /// </summary>
     [TestMethod]
     public async Task TriggerRefresh_WhenAlreadyRefreshing_ReturnsFalse( ) {
         TaskCompletionSource<bool> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -119,6 +165,10 @@ public class StatisticsServiceTests {
         _ = await refreshTask;
     }
 
+    /// <summary>
+    /// Verifies that <c>IsRefreshing</c> is false once a refresh has completed, confirming the flag
+    /// is cleared on completion.
+    /// </summary>
     [TestMethod]
     public async Task IsRefreshing_AfterRefresh_ReturnsFalse( ) {
         SetupEmptyRecordList( );
@@ -129,6 +179,10 @@ public class StatisticsServiceTests {
         Assert.IsFalse( service.IsRefreshing );
     }
 
+    /// <summary>
+    /// Verifies that a second refresh within the cache-fresh window skips recomputation: two
+    /// back-to-back refresh calls enumerate the record source only once.
+    /// </summary>
     [TestMethod]
     public async Task RefreshStatisticsAsync_SkipsComputeWhenCacheFresh( ) {
         SetupEmptyRecordList( );
@@ -143,6 +197,10 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that a forced refresh bypasses the fresh-cache guard: a normal refresh followed by a
+    /// forced one enumerates the record source twice.
+    /// </summary>
     [TestMethod]
     public async Task RefreshStatisticsAsync_ForceRefresh_BypassesFreshCache( ) {
         SetupEmptyRecordList( );
@@ -157,6 +215,10 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that a refresh over one track record and one album record updates the cache with the
+    /// correct totals: two records overall, classified as one album and one track.
+    /// </summary>
     [TestMethod]
     public async Task RefreshStatisticsAsync_UpdatesCachedStats( ) {
         SetupRecordList( [
@@ -174,6 +236,10 @@ public class StatisticsServiceTests {
         Assert.AreEqual( 1, cached.TrackCount );
     }
 
+    /// <summary>
+    /// Builds a service wired to the storage, Redis, settings, and logger fixtures.
+    /// </summary>
+    /// <returns>A service under test.</returns>
     private StatisticsService CreateService( ) {
         return new StatisticsService(
             _atProtoStorageMock.Object,
@@ -183,23 +249,44 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Configures the storage mock to return an empty record stream, so a refresh produces
+    /// zero-count statistics.
+    /// </summary>
     private void SetupEmptyRecordList( ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
     }
 
+    /// <summary>
+    /// Configures the storage mock to return the supplied records as the enumerable stream a refresh
+    /// aggregates.
+    /// </summary>
+    /// <param name="records">The AT-URI / result pairs to surface during enumeration.</param>
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
             .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( records.ToAsyncEnumerable( ) );
     }
 
+    /// <summary>
+    /// An async record stream that blocks until <paramref name="releaseTask"/> completes, then
+    /// yields nothing. Used to hold a refresh open while the single-flight guard is exercised.
+    /// </summary>
+    /// <param name="releaseTask">The task whose completion releases the stream.</param>
+    /// <returns>An empty stream that completes only after the release task.</returns>
     private static async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> BlockingSequence( Task releaseTask ) {
         await releaseTask;
         yield break;
     }
 
+    /// <summary>
+    /// Polls <paramref name="condition"/> until it holds or <paramref name="timeout"/> elapses,
+    /// failing the test on timeout. Used to await asynchronous refresh state transitions.
+    /// </summary>
+    /// <param name="condition">The predicate to wait for.</param>
+    /// <param name="timeout">The maximum time to wait before failing.</param>
     private static async Task WaitUntilAsync( Func<bool> condition, TimeSpan timeout ) {
         DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline) {
@@ -213,6 +300,15 @@ public class StatisticsServiceTests {
         Assert.Fail( "Condition not met before timeout." );
     }
 
+    /// <summary>
+    /// Builds a track record (a single Spotify result with <c>IsAlbum</c> false) wrapped with the
+    /// given AT URI and lookup timestamp, for refresh aggregation tests.
+    /// </summary>
+    /// <param name="atUri">The record's AT URI.</param>
+    /// <param name="artist">The artist name.</param>
+    /// <param name="title">The track title.</param>
+    /// <param name="lookedUpAt">The lookup timestamp recorded on the result.</param>
+    /// <returns>An AT-URI / result pair representing a track.</returns>
     private static (string AtUri, MediaLinkResult Result) CreateTrackRecord(
         string atUri,
         string artist,
@@ -232,6 +328,15 @@ public class StatisticsServiceTests {
         return (atUri, result);
     }
 
+    /// <summary>
+    /// Builds an album record (a single Spotify result with <c>IsAlbum</c> true) wrapped with the
+    /// given AT URI and lookup timestamp, for refresh aggregation tests.
+    /// </summary>
+    /// <param name="atUri">The record's AT URI.</param>
+    /// <param name="artist">The artist name.</param>
+    /// <param name="title">The album title.</param>
+    /// <param name="lookedUpAt">The lookup timestamp recorded on the result.</param>
+    /// <returns>An AT-URI / result pair representing an album.</returns>
     private static (string AtUri, MediaLinkResult Result) CreateAlbumRecord(
         string atUri,
         string artist,
@@ -251,6 +356,11 @@ public class StatisticsServiceTests {
         return (atUri, result);
     }
 
+    /// <summary>
+    /// Verifies that when Redis holds a serialized bootstrap status at the well-known key,
+    /// <c>GetLiveBootstrapStatusAsync</c> deserializes and returns it (running flag, success count,
+    /// duration), and does so without enumerating any records.
+    /// </summary>
     [TestMethod]
     public async Task GetLiveBootstrapStatusAsync_WhenRedisHasStatus_ReturnsDeserializedStatus( ) {
         // Arrange: pre-load a completed status into the Redis mock
@@ -285,6 +395,10 @@ public class StatisticsServiceTests {
         );
     }
 
+    /// <summary>
+    /// Verifies that when Redis has no bootstrap status stored, <c>GetLiveBootstrapStatusAsync</c>
+    /// returns null.
+    /// </summary>
     [TestMethod]
     public async Task GetLiveBootstrapStatusAsync_WhenRedisReturnsNull_ReturnsNull( ) {
         // Default mock already returns RedisValue.Null
@@ -295,6 +409,11 @@ public class StatisticsServiceTests {
         Assert.IsNull( result );
     }
 
+    /// <summary>
+    /// Verifies that when the Redis read throws (for example, a connection failure),
+    /// <c>GetLiveBootstrapStatusAsync</c> swallows the exception and returns null rather than
+    /// propagating, so a Redis outage degrades gracefully.
+    /// </summary>
     [TestMethod]
     public async Task GetLiveBootstrapStatusAsync_WhenRedisThrows_ReturnsNullWithoutThrowing( ) {
         _ = _redisDatabaseMock

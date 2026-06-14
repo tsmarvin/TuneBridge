@@ -1,163 +1,180 @@
 namespace BridgeBeats.Worker.Spotify.Logging;
 
 /// <summary>
-/// EventIds for Spotify worker (5250-5499).
-/// Extends <see cref="Core.Infrastructure.Logging.LogEventIds"/> with Spotify worker-specific EventIds.
+/// Stable log event identifiers for the Spotify worker's structured log messages, in the 5250-5499
+/// range. The range continues from the shared
+/// <see cref="Core.Infrastructure.Logging.LogEventIds"/> defined for the rest of the system.
 /// </summary>
+/// <remarks>
+/// Ids are grouped by subsystem: the 5250 range covers <see cref="SpotifyArtistGenreService"/>,
+/// the 5300 range covers <see cref="SpotifyBatchQueueHelper"/> (bulk-stream queue operations),
+/// and the 5350 range covers <see cref="SpotifyBulkProcessorService"/> (batch processing). The
+/// numeric values are part of the log contract; changing them breaks downstream log queries and
+/// alerting.
+/// </remarks>
 public static class LogEventIds {
     // SpotifyArtistGenreService (5250-5299)
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogServiceStarting"/>.</summary>
+
+    /// <summary>Artist-genre background service has started.</summary>
     public const int ArtistGenreServiceStarting = 5250;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogStartingScheduledRefresh"/>.</summary>
+    /// <summary>A scheduled (every-seven-days) artist-genre refresh run is beginning.</summary>
     public const int StartingScheduledRefresh = 5251;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogCompletedScheduledRefresh"/>.</summary>
+    /// <summary>A scheduled artist-genre refresh run has finished.</summary>
     public const int CompletedScheduledRefresh = 5252;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogProcessorLoopError"/>.</summary>
+    /// <summary>An unhandled error occurred in the artist-genre processor loop.</summary>
     public const int ArtistProcessorLoopError = 5253;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogServiceStopping"/>.</summary>
+    /// <summary>Artist-genre background service is stopping.</summary>
     public const int ArtistGenreServiceStopping = 5254;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogQueueLength"/>.</summary>
+    /// <summary>Reports the current depth of the artist-refresh queue.</summary>
     public const int ArtistQueueLength = 5255;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogQueueEmpty"/>.</summary>
+    /// <summary>The artist-refresh queue drained empty, ending the refresh run.</summary>
     public const int ArtistQueueEmpty = 5256;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogBatchProcessed"/>.</summary>
+    /// <summary>A batch of artists was processed during a refresh run.</summary>
     public const int ArtistBatchProcessed = 5257;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogRefreshComplete"/>.</summary>
+    /// <summary>An artist-genre refresh run completed, with totals.</summary>
     public const int ArtistRefreshComplete = 5258;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogArtistNotFound"/>.</summary>
+    /// <summary>A requested artist id was not found by the lookup service.</summary>
     public const int ArtistNotFound = 5259;
 
-    /// <summary>EventId for <see cref="SpotifyArtistGenreService.LogBatchError"/>.</summary>
+    /// <summary>An error occurred while processing a batch of artists.</summary>
     public const int ArtistBatchError = 5260;
 
     // SpotifyBatchQueueHelper (5300-5349)
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogConsumerGroupCreated"/>.</summary>
+
+    /// <summary>A Redis consumer group was created for a bulk stream.</summary>
     public const int ConsumerGroupCreated = 5300;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogConsumerGroupExists"/>.</summary>
+    /// <summary>A Redis consumer group already existed for a bulk stream (benign).</summary>
     public const int ConsumerGroupExists = 5301;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogEnqueuedToBulkStream"/>.</summary>
+    /// <summary>A request was routed onto a type-specific bulk stream.</summary>
     public const int EnqueuedToBulkStream = 5302;
 
-    /// <summary>EventId for a collection-warning log event (reserved, no longer used by <c>SpotifyBatchQueueHelper</c>).</summary>
+    /// <summary>
+    /// Reserved id for a collection-warning log event; no longer used by
+    /// <see cref="SpotifyBatchQueueHelper"/>.
+    /// </summary>
     public const int CollectionWarning = 5303;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogDeserializationError"/>.</summary>
+    /// <summary>A stream entry payload failed to deserialize and was discarded as poison.</summary>
     public const int DeserializationError = 5304;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogStreamReadWarning"/>.</summary>
+    /// <summary>A non-fatal error occurred while reading from a bulk stream.</summary>
     public const int StreamReadWarning = 5305;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogMessageAcknowledged"/>.</summary>
+    /// <summary>A bulk-stream message was acknowledged and deleted.</summary>
     public const int MessageAcknowledged = 5306;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogMessageNotFound"/>.</summary>
+    /// <summary>A message targeted for requeue was not found in its stream.</summary>
     public const int MessageNotFound = 5307;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogMessageRequeued"/>.</summary>
+    /// <summary>A bulk-stream message was requeued with an incremented attempt count.</summary>
     public const int MessageRequeued = 5308;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogAutoClaimRecovered"/>.</summary>
+    /// <summary>Pending bulk-stream entries were reclaimed via XAUTOCLAIM.</summary>
     public const int AutoClaimRecovered = 5309;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogAutoClaimNotSupported"/>.</summary>
+    /// <summary>XAUTOCLAIM is unsupported by the Redis server; pending-entry recovery is disabled.</summary>
     public const int AutoClaimNotSupported = 5310;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogMaxRetriesExceeded"/>.</summary>
+    /// <summary>A message exceeded the maximum retry attempts and was discarded.</summary>
     public const int MaxRetriesExceeded = 5311;
 
-    /// <summary>EventId 5312 (formerly LogSagaUpdateError — retired when saga writes moved to service layer).</summary>
+    /// <summary>
+    /// Retired id 5312 (formerly <c>LogSagaUpdateError</c>); no longer emitted after saga writes
+    /// moved to the service layer.
+    /// </summary>
     public const int SagaUpdateError = 5312;
 
     // SpotifyBulkProcessorService (5350-5399)
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogServiceStarting"/>.</summary>
+
+    /// <summary>Bulk processor background service has started.</summary>
     public const int BulkProcessorStarting = 5350;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogProcessorLoopError"/>.</summary>
+    /// <summary>An unhandled error occurred in the bulk processor loop.</summary>
     public const int BulkProcessorLoopError = 5351;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogServiceStopping"/>.</summary>
+    /// <summary>Bulk processor background service is stopping.</summary>
     public const int BulkProcessorStopping = 5352;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogRateLimited"/>.</summary>
+    /// <summary>A bulk endpoint is currently rate-limited, so its batch was deferred.</summary>
     public const int BulkRateLimited = 5353;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogProcessingBulkTracks"/>.</summary>
+    /// <summary>The processor is starting a bulk track-id flush.</summary>
     public const int ProcessingBulkTracks = 5354;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogNoTrackLookups"/>.</summary>
+    /// <summary>No track-id lookups were available to process.</summary>
     public const int NoTrackLookups = 5355;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogProcessingTrackCount"/>.</summary>
+    /// <summary>Reports the number of track-id lookups in the current batch.</summary>
     public const int ProcessingTrackCount = 5356;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogTrackLookupsSuccess"/>.</summary>
+    /// <summary>A batch of track-id lookups was processed successfully.</summary>
     public const int TrackLookupsSuccess = 5357;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogTrackLookupsError"/>.</summary>
+    /// <summary>An error occurred while processing bulk track-id lookups.</summary>
     public const int TrackLookupsError = 5358;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogProcessingBulkAlbums"/>.</summary>
+    /// <summary>The processor is starting a bulk album-id flush.</summary>
     public const int ProcessingBulkAlbums = 5359;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogNoAlbumLookups"/>.</summary>
+    /// <summary>No album-id lookups were available to process.</summary>
     public const int NoAlbumLookups = 5360;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogProcessingAlbumCount"/>.</summary>
+    /// <summary>Reports the number of album-id lookups in the current batch.</summary>
     public const int ProcessingAlbumCount = 5361;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogAlbumLookupsSuccess"/>.</summary>
+    /// <summary>A batch of album-id lookups was processed successfully.</summary>
     public const int AlbumLookupsSuccess = 5362;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogAlbumLookupsError"/>.</summary>
+    /// <summary>An error occurred while processing bulk album-id lookups.</summary>
     public const int AlbumLookupsError = 5363;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogBulkResultProcessed"/>.</summary>
+    /// <summary>A single bulk result was applied to its saga.</summary>
     public const int BulkResultProcessed = 5364;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogBulkResultError"/>.</summary>
+    /// <summary>An error occurred while applying a single bulk result to its saga.</summary>
     public const int BulkResultError = 5365;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogRateLimitEncountered"/>.</summary>
+    /// <summary>A rate limit was encountered while calling a bulk endpoint.</summary>
     public const int RateLimitEncountered = 5366;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogRequeueError"/>.</summary>
+    /// <summary>An error occurred while requeuing a bulk-stream message.</summary>
     public const int RequeueError = 5367;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogSagaComplete"/>.</summary>
+    /// <summary>A saga became complete; a completion event is being published.</summary>
     public const int SagaComplete = 5368;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogSagaCompletionCheckError"/>.</summary>
+    /// <summary>An error occurred while checking or publishing saga completion.</summary>
     public const int SagaCompletionCheckError = 5369;
 
-    /// <summary>EventId for <see cref="SpotifyBulkProcessorService.LogPublishCompletionError"/>.</summary>
+    /// <summary>An error occurred while publishing a per-lookup completion event.</summary>
     public const int PublishCompletionError = 5370;
 
-    /// <summary>EventId for SpotifyBulkProcessorService rate-limit-parity saga-partial event.</summary>
+    /// <summary>A saga was marked partial because a bulk endpoint was rate-limited.</summary>
     public const int BulkSagaMarkedPartial = 5371;
 
-    /// <summary>EventId for SpotifyBulkProcessorService dispatch empty-dict requeue-all.</summary>
+    /// <summary>The whole current batch is being requeued (for example after a rate limit).</summary>
     public const int BulkDispatchRequeuingAll = 5372;
 
-    /// <summary>EventId for SpotifyBulkProcessorService dispatch absent-key single requeue.</summary>
+    /// <summary>A single message is being requeued (for example an absent key in the batch result).</summary>
     public const int BulkDispatchRequeuingOne = 5373;
 
-    /// <summary>EventId for SpotifyBulkProcessorService rate-limit sentinel publish error.</summary>
+    /// <summary>An error occurred while publishing the rate-limit sentinel for a saga.</summary>
     public const int BulkPublishRateLimitSentinelError = 5374;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogPoisonPayloadDiscarded"/> — unserializable payload discarded in RequeueAsync.</summary>
+    /// <summary>A message with an unserializable payload was discarded as poison.</summary>
     public const int PoisonPayloadDiscarded = 5375;
 
-    /// <summary>EventId for <see cref="SpotifyBatchQueueHelper.LogMalformedEnqueuedAt"/> — malformed enqueuedAt field skipped in GetOldestEnqueuedAtAsync.</summary>
+    /// <summary>A stream entry carried a malformed <c>enqueuedAt</c> field; it was treated as absent.</summary>
     public const int MalformedEnqueuedAt = 5376;
 }

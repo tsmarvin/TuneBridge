@@ -3,42 +3,53 @@ using BridgeBeats.Contracts.DTOs;
 namespace BridgeBeats.Contracts.Interfaces;
 
 /// <summary>
-/// Service for storing and retrieving MediaLinkResult records on ATProto PDS.
+/// Persists and retrieves cross-provider lookup results as records in the AT Protocol PDS,
+/// and enumerates all stored results for a user.
 /// </summary>
+/// <remarks>
+/// Implemented in <c>BridgeBeats.Core</c> by <c>ATProtoStorageService</c>
+/// (<c>Infrastructure/Storage/ATProtoStorageService.cs</c>). Record identities are AT-URIs
+/// (<c>at://…</c>); the in-memory shape stored here is <see cref="MediaLinkResult"/>, whose
+/// at-rest twin is the <c>MediaLinkResultRecord</c> PDS record.
+/// </remarks>
 public interface IATProtoStorageService {
 
     /// <summary>
-    /// Stores a MediaLinkResult as a custom lexicon record on ATProto PDS.
-    /// Uses a deterministic rkey based on the externalId (ISRC/UPC) and media type.
-    /// If a record with the same rkey exists, it will be updated (upsert).
+    /// Stores a media-link result as a PDS record and returns the AT-URI of the created record.
+    /// The record key is derived deterministically from the result, so storing the same result
+    /// again updates the existing record (upsert) rather than creating a duplicate.
     /// </summary>
-    /// <param name="result">The MediaLinkResult to store.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>The AT-URI of the created or updated record.</returns>
-    /// <exception cref="InvalidOperationException">Thrown if no externalId is found in the result.</exception>
+    /// <param name="result">The in-memory <see cref="MediaLinkResult"/> to persist.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>A task whose result is the AT-URI (<c>at://…</c>) of the stored record.</returns>
     Task<string> StoreMediaLinkResultAsync( MediaLinkResult result, CancellationToken cancellationToken = default );
 
     /// <summary>
-    /// Retrieves a MediaLinkResult from ATProto PDS by its AT-URI.
+    /// Retrieves a previously stored media-link result by its record AT-URI.
     /// </summary>
-    /// <param name="recordUri">The AT-URI of the record.</param>
-    /// <returns>The MediaLinkResult, or null if not found.</returns>
+    /// <param name="recordUri">The AT-URI (<c>at://…</c>) of the record to read.</param>
+    /// <returns>
+    /// A task whose result is the stored <see cref="MediaLinkResult"/>, or <see langword="null"/>
+    /// when no record exists at the given AT-URI.
+    /// </returns>
     Task<MediaLinkResult?> GetMediaLinkResultAsync( string recordUri );
 
     /// <summary>
-    /// Lists all MediaLinkResult records from the ATProto PDS collection.
-    /// Issues a single HTTP GET to <c>com.atproto.sync.getRepo</c> and parses the resulting
-    /// CAR v1 file locally — one request per call instead of ⌈N/100⌉ paginated listRecords calls.
+    /// Streams every stored media-link record for a given PDS and user, pairing each record's
+    /// AT-URI with its deserialized result. Issues a single HTTP GET to
+    /// <c>com.atproto.sync.getRepo</c> and parses the resulting CAR file locally rather than
+    /// making paginated <c>listRecords</c> calls.
     /// </summary>
-    /// <param name="pdsUri">The PDS URI to query (e.g., "https://pds.bridgebeats.link").</param>
-    /// <param name="userDid">The DID of the account whose collection to query.</param>
-    /// <param name="cancellationToken">Cancellation token for the operation.</param>
-    /// <returns>An async enumerable of tuples containing the AT-URI and MediaLinkResult for each record.</returns>
+    /// <param name="pdsUri">The base URI of the PDS to read from.</param>
+    /// <param name="userDid">The DID of the user whose records are enumerated.</param>
+    /// <param name="cancellationToken">Token used to stop enumeration.</param>
+    /// <returns>
+    /// An asynchronous sequence of tuples, each carrying a record's AT-URI and its
+    /// <see cref="MediaLinkResult"/>. Used by statistics aggregation.
+    /// </returns>
     /// <remarks>
-    /// Throws on download failure (<see cref="System.Net.Http.HttpRequestException"/>) or CAR/MST
-    /// structural errors. Callers outside Core can only catch broadly because the internal
-    /// <c>CarParseException</c> type is not visible across the assembly boundary.
-    /// Per-record deserialization failures are skipped with a warning log rather than aborting the batch.
+    /// Throws on download failure or CAR structural errors; per-record deserialization failures
+    /// are skipped with a warning log rather than aborting the enumeration.
     /// </remarks>
     IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ListAllRecordsAsync(
         Uri pdsUri,

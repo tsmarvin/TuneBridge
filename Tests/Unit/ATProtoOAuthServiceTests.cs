@@ -10,24 +10,53 @@ using Moq;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for ATProtoOAuthService to verify OAuth token exchange and DPoP proof creation.
-/// Tests the OAuth flow, token validation, DPoP JWT generation, and error handling.
+/// Tests <see cref="ATProtoOAuthService"/>, covering constructor argument validation, the token-expiry
+/// safety-margin logic of <see cref="ATProtoOAuthService.IsTokenValid"/>, and the structure of the
+/// DPoP proof JWTs the service builds (exercised through reflection on the private
+/// <c>CreateDPoPProof</c> method).
 /// </summary>
+/// <remarks>
+/// Network-dependent flows (the full OAuth exchange) are out of scope here; the HTTP handler is mocked.
+/// The DPoP-proof tests assert the JOSE shape required by the ATProto OAuth spec: ES256 signing, an
+/// embedded P-256 public JWK in the header, the <c>htm</c>/<c>htu</c>/<c>jti</c>/<c>iat</c>/<c>nbf</c>
+/// claims, an <c>ath</c> claim bound to the access token when one is present, and a server-supplied
+/// <c>nonce</c> claim when one is provided.
+/// </remarks>
 [TestClass]
 public class ATProtoOAuthServiceTests {
+    /// <summary>Mock factory for the EF Core context the service uses to persist OAuth state.</summary>
     private Mock<IDbContextFactory<ApplicationDbContext>> _mockDbContextFactory = null!;
+
+    /// <summary>Mock logger injected into the service.</summary>
     private Mock<ILogger<ATProtoOAuthService>> _mockLogger = null!;
+
+    /// <summary>Mock HTTP message handler backing the named OAuth client so no real network call occurs.</summary>
     private Mock<HttpMessageHandler> _mockHttpMessageHandler = null!;
+
+    /// <summary>Mock HTTP client factory that hands out the mocked <c>"ATProtoOAuth"</c> client.</summary>
     private Mock<IHttpClientFactory> _mockHttpClientFactory = null!;
+
+    /// <summary>Mock personal-data protector standing in for the library-provided protect/unprotect path.</summary>
     private Mock<IPersonalDataProtector> _mockPersonalDataProtector = null!;
+
+    /// <summary>HTTP client wrapping the mocked handler, supplied to the service under test.</summary>
     private HttpClient _httpClient = null!;
+
+    /// <summary>Test client id, shaped as the required client-metadata URL the service validates.</summary>
     private const string TestClientId = "https://example.com/.well-known/client-metadata.json";
+
+    /// <summary>Base domain corresponding to <see cref="TestClientId"/>.</summary>
     private const string TestDomain = "https://example.com";
+
+    /// <summary>Placeholder DID used as the token subject in test responses.</summary>
     private const string TestDid = "did:plc:test123456789";
+
+    /// <summary>Placeholder Bluesky handle used in tests.</summary>
     private const string TestHandle = "test.bsky.social";
 
     /// <summary>
-    /// Initializes test resources before each test.
+    /// Constructs the mocks and the HTTP client before each test, wiring the client factory to return
+    /// the mocked <c>"ATProtoOAuth"</c> client so the service never reaches the network.
     /// </summary>
     [TestInitialize]
     public void Initialize( ) {
@@ -44,16 +73,15 @@ public class ATProtoOAuthServiceTests {
             .Returns( _httpClient );
     }
 
-    /// <summary>
-    /// Cleans up test resources after each test.
-    /// </summary>
+    /// <summary>Disposes the HTTP client created for the test.</summary>
     [TestCleanup]
     public void Cleanup( ) {
         _httpClient?.Dispose( );
     }
 
     /// <summary>
-    /// Verifies that the constructor creates a valid instance with valid parameters.
+    /// Verifies that constructing the service with all valid arguments succeeds and yields a non-null
+    /// instance.
     /// </summary>
     [TestMethod]
     public void Constructor_WithValidParameters_ShouldCreateInstance( ) {
@@ -70,9 +98,7 @@ public class ATProtoOAuthServiceTests {
         Assert.IsNotNull( service );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws ArgumentNullException for null dbContextFactory.
-    /// </summary>
+    /// <summary>Verifies that a null DB context factory argument throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullDbContextFactory_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -80,9 +106,7 @@ public class ATProtoOAuthServiceTests {
             new ATProtoOAuthService( null!, _mockLogger.Object, TestClientId, _mockHttpClientFactory.Object, _mockPersonalDataProtector.Object ) );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws ArgumentNullException for null logger.
-    /// </summary>
+    /// <summary>Verifies that a null logger argument throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -90,9 +114,7 @@ public class ATProtoOAuthServiceTests {
             new ATProtoOAuthService( _mockDbContextFactory.Object, null!, TestClientId, _mockHttpClientFactory.Object, _mockPersonalDataProtector.Object ) );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws ArgumentNullException for null clientId.
-    /// </summary>
+    /// <summary>Verifies that a null client id argument throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullClientId_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -100,9 +122,7 @@ public class ATProtoOAuthServiceTests {
             new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, null!, _mockHttpClientFactory.Object, _mockPersonalDataProtector.Object ) );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws ArgumentNullException for null httpClientFactory.
-    /// </summary>
+    /// <summary>Verifies that a null HTTP client factory argument throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullHttpClient_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -110,9 +130,7 @@ public class ATProtoOAuthServiceTests {
             new ATProtoOAuthService( _mockDbContextFactory.Object, _mockLogger.Object, TestClientId, null!, _mockPersonalDataProtector.Object ) );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws ArgumentNullException for null personalDataProtector.
-    /// </summary>
+    /// <summary>Verifies that a null personal-data protector argument throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullPersonalDataProtector_ShouldThrowArgumentNullException( ) {
         // Act & Assert
@@ -121,7 +139,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws ArgumentException for invalid clientId format.
+    /// Verifies that a client id that is a well-formed URL but not the required client-metadata path
+    /// throws <see cref="ArgumentException"/>, so a misconfigured client id fails at construction.
     /// </summary>
     [TestMethod]
     public void Constructor_WithInvalidClientIdFormat_ShouldThrowArgumentException( ) {
@@ -134,7 +153,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that IsTokenValid returns false for expired tokens.
+    /// Verifies that <see cref="ATProtoOAuthService.IsTokenValid"/> returns <see langword="false"/> for
+    /// an expiry in the past.
     /// </summary>
     [TestMethod]
     public void IsTokenValid_WithExpiredToken_ShouldReturnFalse( ) {
@@ -156,7 +176,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that IsTokenValid returns false for tokens expiring within safety margin.
+    /// Verifies that an expiry only 15 seconds in the future is treated as invalid, confirming the
+    /// service applies a safety margin (roughly 30 seconds) and refuses tokens about to expire.
     /// </summary>
     [TestMethod]
     public void IsTokenValid_WithTokenExpiringWithinSafetyMargin_ShouldReturnFalse( ) {
@@ -178,7 +199,7 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that IsTokenValid returns true for valid tokens.
+    /// Verifies that an expiry comfortably in the future (one hour) is treated as valid.
     /// </summary>
     [TestMethod]
     public void IsTokenValid_WithValidToken_ShouldReturnTrue( ) {
@@ -200,7 +221,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that IsTokenValid returns false for null token expiration.
+    /// Verifies that a null expiration is treated as invalid, so a token with no known expiry is never
+    /// considered usable.
     /// </summary>
     [TestMethod]
     public void IsTokenValid_WithNullExpiration_ShouldReturnFalse( ) {
@@ -221,8 +243,11 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Helper method to create a valid DPoP key in JWK format for testing.
+    /// Generates a fresh P-256 ECDSA key and serializes it as a base64url-encoded EC JWK string
+    /// (including the private <c>d</c> parameter and a random <c>kid</c>) for use as the DPoP key in
+    /// proof-construction tests.
     /// </summary>
+    /// <returns>The JWK serialized as JSON.</returns>
     private static string CreateTestDPoPKey( ) {
         using ECDsa ecdsa = ECDsa.Create( ECCurve.NamedCurves.nistP256 );
         ECParameters parameters = ecdsa.ExportParameters( includePrivateParameters: true );
@@ -245,8 +270,12 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Helper method to create a test token response JSON.
+    /// Builds a serialized OAuth token-endpoint response body (access/refresh tokens, <c>expires_in</c>,
+    /// DPoP token type, scopes, and subject) for use in tests that simulate a token exchange.
     /// </summary>
+    /// <param name="did">The subject DID to embed as <c>sub</c>.</param>
+    /// <param name="expiresIn">The token lifetime in seconds; defaults to 3600.</param>
+    /// <returns>The response serialized as JSON.</returns>
     private static string CreateTestTokenResponse( string did, int expiresIn = 3600 ) {
         var response = new {
             access_token = "test_access_token_" + Guid.NewGuid( ).ToString( "N" ),
@@ -261,8 +290,14 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Helper method to decode a DPoP JWT and verify its structure.
+    /// Asserts that a DPoP proof JWT has the expected JOSE shape: a <c>dpop+jwt</c> (or <c>JWT</c>)
+    /// <c>typ</c>, an <c>ES256</c> algorithm, an embedded EC/P-256 public JWK in the header carrying
+    /// <c>x</c> and <c>y</c>, matching <c>htm</c>/<c>htu</c> claims, and present <c>jti</c>/<c>iat</c>/
+    /// <c>nbf</c> claims with <c>nbf</c> at or before <c>iat</c>.
     /// </summary>
+    /// <param name="dpopProof">The compact DPoP proof JWT to validate.</param>
+    /// <param name="expectedHttpMethod">The HTTP method expected in the <c>htm</c> claim.</param>
+    /// <param name="expectedUrl">The request URL expected in the <c>htu</c> claim.</param>
     private static void VerifyDPoPProof( string dpopProof, string expectedHttpMethod, string expectedUrl ) {
         // Decode the JWT
         JwtSecurityTokenHandler handler = new( );
@@ -307,8 +342,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that DPoP proof creation includes all required claims per RFC 9449.
-    /// This test uses reflection to access the private CreateDPoPProof method.
+    /// Verifies that the private <c>CreateDPoPProof</c> method, invoked via reflection with a method and
+    /// URL, produces a proof JWT that passes the full structural check in <see cref="VerifyDPoPProof"/>.
     /// </summary>
     [TestMethod]
     public void CreateDPoPProof_ShouldIncludeRequiredClaims( ) {
@@ -333,7 +368,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that DPoP proof includes access token hash when provided.
+    /// Verifies that when an access token is passed to <c>CreateDPoPProof</c>, the resulting proof
+    /// includes an <c>ath</c> (access-token hash) claim binding the proof to that token.
     /// </summary>
     [TestMethod]
     public void CreateDPoPProof_WithAccessToken_ShouldIncludeAthClaim( ) {
@@ -364,7 +400,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that nbf claim is set to account for clock skew.
+    /// Verifies that the proof's <c>nbf</c> claim is set roughly five seconds before <c>iat</c>,
+    /// confirming the clock-skew tolerance built into proof construction.
     /// </summary>
     [TestMethod]
     public void CreateDPoPProof_ShouldSetNbfForClockSkew( ) {
@@ -399,7 +436,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that DPoP proof includes nonce when provided (per RFC 9449).
+    /// Verifies that when a server-supplied nonce is passed to <c>CreateDPoPProof</c>, the resulting
+    /// proof carries a <c>nonce</c> claim equal to that value.
     /// </summary>
     [TestMethod]
     public void CreateDPoPProof_WithNonce_ShouldIncludeNonceClaim( ) {
@@ -431,7 +469,8 @@ public class ATProtoOAuthServiceTests {
     }
 
     /// <summary>
-    /// Verifies that DPoP proof includes both ath and nonce when both are provided.
+    /// Verifies that passing both an access token and a nonce yields a proof carrying both the <c>ath</c>
+    /// and the matching <c>nonce</c> claims together.
     /// </summary>
     [TestMethod]
     public void CreateDPoPProof_WithAccessTokenAndNonce_ShouldIncludeBothClaims( ) {

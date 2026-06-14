@@ -17,20 +17,19 @@ using Microsoft.AspNetCore.Mvc.ViewFeatures;
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// Controller for Apple Music user authentication and playlist management.
-/// Provides endpoints for storing user tokens and listing playlists.
+/// Drives Apple Music integration for authenticated users: serving the Apple Music page, issuing the
+/// MusicKit developer token, storing the per-user Music-User-Token, listing and processing the user's
+/// Apple Music library playlists, looking up media links by Apple Music id, and streaming rendered result
+/// cards. Actions are rooted under the <c>applemusic/</c> route prefix and require an authenticated session.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="AppleMusicController"/> class.
-/// </remarks>
-/// <param name="userManager">User manager for ASP.NET Identity.</param>
-/// <param name="httpClientFactory">HTTP client factory for making API requests.</param>
-/// <param name="logger">Logger for diagnostic information.</param>
-/// <param name="mediaLinkService">The media link service used to lookup other track references.</param>
-/// <param name="viewEngine">View engine for rendering partial views to strings.</param>
-/// <param name="jwtHandler">JWT handler for generating Apple Music developer tokens.</param>
-/// <param name="cardService">Optional OpenGraph card service.</param>
-/// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
+/// <param name="userManager">Identity user manager used to resolve the current user and persist Apple Music token state.</param>
+/// <param name="httpClientFactory">Factory for the named <c>musickit-api</c> HTTP client used to call the Apple Music API.</param>
+/// <param name="logger">Logger for Apple Music token and playlist-processing events.</param>
+/// <param name="mediaLinkService">Service that resolves media links across providers from an Apple Music id.</param>
+/// <param name="viewEngine">Composite view engine used to render result-card partials to HTML strings for streaming.</param>
+/// <param name="jwtHandler">Optional Apple Music JWT handler that produces the developer token; when null, Apple Music is not configured.</param>
+/// <param name="cardService">Optional Open Graph card service used to store lookup results and produce shareable card URLs.</param>
+/// <param name="cacheRepository">Optional cache repository used to resolve the ATProto URI for a result.</param>
 [Authorize]
 public partial class AppleMusicController(
     UserManager<ApplicationUser> userManager,
@@ -44,18 +43,20 @@ public partial class AppleMusicController(
 ) : Controller {
 
     /// <summary>
-    /// Displays the Apple Music authentication page.
+    /// Renders the Apple Music page.
     /// </summary>
+    /// <returns>The default Apple Music view (HTTP GET <c>applemusic</c>).</returns>
     [HttpGet]
     [Route( "applemusic" )]
     public IActionResult Index( ) => View( );
 
     /// <summary>
-    /// Gets a developer token for MusicKit JS authentication.
+    /// Returns the Apple Music MusicKit developer token that browser clients use to initialize MusicKit.
     /// </summary>
-    /// <returns>Developer token.</returns>
-    /// <response code="200">Developer token retrieved successfully.</response>
-    /// <response code="503">Apple Music service not available.</response>
+    /// <returns>
+    /// HTTP GET <c>applemusic/developer-token</c>. <c>200 OK</c> with the token in JSON when Apple Music is
+    /// configured; <c>503 Service Unavailable</c> when the JWT handler is not configured.
+    /// </returns>
     [HttpGet]
     [Route( "applemusic/developer-token" )]
     public IActionResult GetDeveloperToken( ) {
@@ -68,13 +69,15 @@ public partial class AppleMusicController(
     }
 
     /// <summary>
-    /// Stores the Apple Music user token for the authenticated user.
+    /// Stores the authenticated user's Apple Music Music-User-Token and its expiration so later requests can
+    /// act on the user's library.
     /// </summary>
-    /// <param name="request">Token details including the user token and expiration.</param>
-    /// <returns>Success confirmation.</returns>
-    /// <response code="200">Token stored successfully.</response>
-    /// <response code="400">Invalid request.</response>
-    /// <response code="401">User not authenticated.</response>
+    /// <param name="request">The token payload (the Music-User-Token and its lifetime in milliseconds) bound from the JSON request body.</param>
+    /// <returns>
+    /// HTTP POST <c>applemusic/store-token</c>. <c>200 OK</c> on success; <c>400 Bad Request</c> when the
+    /// model is invalid or the update fails; <c>401 Unauthorized</c> if no user is resolved. Requires a valid
+    /// anti-forgery token.
+    /// </returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route( "applemusic/store-token" )]
@@ -104,12 +107,14 @@ public partial class AppleMusicController(
     }
 
     /// <summary>
-    /// Gets the list of playlists for the authenticated user.
+    /// Retrieves the authenticated user's Apple Music library playlists, returning each playlist's id and
+    /// name. Requires a stored, unexpired Music-User-Token.
     /// </summary>
-    /// <returns>List of playlists with name and ID.</returns>
-    /// <response code="200">Playlists retrieved successfully.</response>
-    /// <response code="401">User not authenticated or token expired.</response>
-    /// <response code="500">Failed to retrieve playlists.</response>
+    /// <returns>
+    /// HTTP GET <c>applemusic/playlists</c>. <c>200 OK</c> with the list of playlists on success;
+    /// <c>401 Unauthorized</c> when the user is not authenticated or the token is missing or expired; the
+    /// upstream status code when the Apple Music API call fails; <c>500</c> on an unexpected error.
+    /// </returns>
     [HttpGet]
     [Route( "applemusic/playlists" )]
     public async Task<IActionResult> GetPlaylists( ) {
@@ -172,10 +177,14 @@ public partial class AppleMusicController(
     }
 
     /// <summary>
-    /// Retrieves song information from Apple Music by song IDs.
+    /// Resolves media-link results for a batch of Apple Music song ids, returning the results that were found.
     /// </summary>
-    /// <param name="songIds">Array of Apple Music song IDs to retrieve.</param>
-    /// <returns>List of MediaLinkResult objects for the requested songs.</returns>
+    /// <param name="songIds">The Apple Music catalog song ids to look up, bound from the JSON request body.</param>
+    /// <returns>
+    /// HTTP POST <c>applemusic/getsongsbyid</c>. <c>200 OK</c> with the resolved results; <c>401 Unauthorized</c>
+    /// if no user is resolved; <c>503 Service Unavailable</c> when Apple Music is not configured. Requires a
+    /// valid anti-forgery token.
+    /// </returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route( "applemusic/getsongsbyid" )]
@@ -200,11 +209,11 @@ public partial class AppleMusicController(
     }
 
     /// <summary>
-    /// Attempts to retrieve the ATProto URI for a MediaLinkResult from the cache.
-    /// Tries multiple lookup strategies: input link, external ID (ISRC/UPC), and metadata.
+    /// Attempts to resolve the ATProto record URI for a result from the cache, swallowing cache errors so a
+    /// missing URI does not break the response.
     /// </summary>
-    /// <param name="result">The MediaLinkResult to find in cache.</param>
-    /// <returns>The ATProto URI if found in cache, otherwise null.</returns>
+    /// <param name="result">The media-link result whose ATProto URI is being resolved.</param>
+    /// <returns>The ATProto URI when available; otherwise <see langword="null"/>.</returns>
     private async Task<string?> GetATProtoUriFromCache( MediaLinkResult result ) {
         try {
             return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, cacheRepository );
@@ -220,9 +229,13 @@ public partial class AppleMusicController(
     }
 
     /// <summary>
-    /// Gets the current authentication status for Apple Music.
+    /// Reports the authenticated user's Apple Music token status: whether a token is stored, whether it is
+    /// expired, and its expiration time.
     /// </summary>
-    /// <returns>Authentication status including whether token exists and is valid.</returns>
+    /// <returns>
+    /// HTTP GET <c>applemusic/status</c>. <c>200 OK</c> with the token status; <c>401 Unauthorized</c> if no
+    /// user is resolved.
+    /// </returns>
     [HttpGet]
     [Route( "applemusic/status" )]
     public async Task<IActionResult> GetStatus( ) {
@@ -242,15 +255,17 @@ public partial class AppleMusicController(
     }
 
     /// <summary>
-    /// Processes a playlist by fetching its tracks and converting them via URLList endpoint.
-    /// Only processes playlists with less than 100 tracks.
+    /// Reads an Apple Music library playlist's tracks, following pagination and collecting catalog track ids
+    /// up to a cap of 1000 tracks. Returns the collected ids and flags whether the playlist was truncated or
+    /// is large enough to warrant client-side handling.
     /// </summary>
-    /// <param name="request">Request containing the playlist ID to process.</param>
-    /// <returns>Processing result with track URLs or error message.</returns>
-    /// <response code="200">Playlist processed successfully or rejected due to size.</response>
-    /// <response code="400">Invalid request.</response>
-    /// <response code="401">User not authenticated or token expired.</response>
-    /// <response code="500">Failed to process playlist.</response>
+    /// <param name="request">The request containing the Apple Music playlist id, bound from the JSON request body.</param>
+    /// <returns>
+    /// HTTP POST <c>applemusic/process-playlist</c>. <c>200 OK</c> with the track count, track ids, and
+    /// truncation flags; <c>401 Unauthorized</c> when the user is not authenticated or the token is missing
+    /// or expired; the upstream status code when an Apple Music call fails; <c>400 Bad Request</c> on invalid
+    /// model state; <c>500</c> on an unexpected error. Requires a valid anti-forgery token.
+    /// </returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route( "applemusic/process-playlist" )]
@@ -355,14 +370,16 @@ public partial class AppleMusicController(
     }
 
     /// <summary>
-    /// Streams the results of a playlist processing as HTML, rendering each result with OpenGraph data.
-    /// Designed for use with large playlists where results are streamed to the client as they are processed.
+    /// Streams rendered result-card HTML for a batch of Apple Music song ids, writing each card to the
+    /// response as it is resolved and flushing incrementally. Rate-limit messages are surfaced inline, and a
+    /// trailing marker element reports processed, error, and rate-limited counts.
     /// </summary>
-    /// <param name="songIds">Array of Apple Music song IDs for the playlist.</param>
-    /// <response code="200">Results streamed successfully.</response>
-    /// <response code="400">Invalid request.</response>
-    /// <response code="401">User not authenticated or token expired.</response>
-    /// <response code="500">Failed to process request.</response>
+    /// <param name="songIds">The Apple Music catalog song ids to look up and render, bound from the JSON request body.</param>
+    /// <returns>
+    /// HTTP POST <c>applemusic/playlist-results-stream</c>. Writes a chunked <c>text/html</c> stream directly
+    /// to the response; sets status <c>401</c> when unauthenticated or <c>503</c> when Apple Music is not
+    /// configured before writing an error fragment. Requires a valid anti-forgery token.
+    /// </returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route( "applemusic/playlist-results-stream" )]
@@ -456,11 +473,21 @@ public partial class AppleMusicController(
         }
     }
 
-    /// <summary>Returns Apple Music integration partial view content without layout.</summary>
+    /// <summary>
+    /// Returns the Apple Music content partial for in-page rendering.
+    /// </summary>
+    /// <returns>The <c>_AppleMusicContent</c> partial view (HTTP GET <c>applemusic/content</c>).</returns>
     [HttpGet]
     [Route( "applemusic/content" )]
     public IActionResult ContentPartial( ) => PartialView( "_AppleMusicContent" );
 
+    /// <summary>
+    /// Renders a view to an HTML string using the supplied model, for streaming partial results to the client.
+    /// </summary>
+    /// <param name="viewName">The name of the view to render.</param>
+    /// <param name="model">The model to bind to the view.</param>
+    /// <returns>The rendered view as an HTML string.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the named view cannot be found.</exception>
     private async Task<string> RenderViewToStringAsync( string viewName, object model ) {
         ViewData.Model = model;
         using StringWriter sw = new();

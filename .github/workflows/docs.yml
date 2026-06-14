@@ -31,7 +31,24 @@ jobs:
         run: dotnet tool install -g docfx
 
       - name: Copy README to docs index
+        # The README is the documentation site home page. It is copied into
+        # docs/ as a build artifact (docs/index.md is gitignored) so the source
+        # README is never modified.
         run: cp README.md docs/index.md
+
+      - name: Rewrite README links for the docs site
+        # Operates only on the generated copy (docs/index.md), never the source
+        # README, so repo-relative links keep working for GitHub browsing.
+        #  - docs/<guide>.md -> <guide>.md  (guides render flat in the site;
+        #    docfx rewrites .md -> .html and preserves #anchors)
+        #  - .github/* and LICENSE -> absolute GitHub URLs (these are repo-meta
+        #    files that are not rendered into the site)
+        run: |
+          sed -i \
+            -e 's|](docs/|](|g' \
+            -e 's|](.github/|](https://github.com/tsmarvin/BridgeBeats/blob/develop/.github/|g' \
+            -e 's|](LICENSE)|](https://github.com/tsmarvin/BridgeBeats/blob/develop/LICENSE)|g' \
+            docs/index.md
 
       - name: Build documentation
         run: docfx docs/docfx.json

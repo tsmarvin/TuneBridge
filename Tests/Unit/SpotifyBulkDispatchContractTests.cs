@@ -18,49 +18,61 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit and integration-level tests for the Spotify bulk dispatch contract:
-/// the three result-routing branches (empty dict, absent key, null value),
-/// the retry-cap increment and drop logic, rate-limit parity (SetIsPartialAsync
-/// per saga), LookupKeyBuilder canonical-format alignment, and ShouldFlush predicate.
+/// Unit tests pinning the dispatch contract of <see cref="SpotifyBulkProcessorService"/> and its
+/// <see cref="SpotifyBatchQueueHelper"/>. Covers the saga-write discipline (a request-level failure,
+/// represented by an empty result dictionary or an absent key, requeues without writing saga state,
+/// whereas a genuine not-found — key present with a null value — writes an <c>IsSuccess=false</c>
+/// state and acknowledges without requeue), the retry-cap semantics of <c>RequeueAsync</c> and the
+/// complete-failed completion publishes at the cap, poison-entry handling (empty or null-JSON
+/// payloads are acknowledged and deleted), the <c>XAUTOCLAIM</c> reclaim path, rate-limit handling
+/// (mark partial, merge rate-limit info, publish the sentinel), the canonical <c>LookupKeyBuilder</c>
+/// key formats and cross-producer saga-id alignment, the exponential cooldown computation, and the
+/// album path's parity with the track path.
 /// </summary>
-/// <remarks>
-/// <para>
-/// Test architecture: <see cref="SpotifyBulkProcessorService"/> is driven via its
-/// <c>ExecuteAsync</c> loop. Mock Redis operations control what
-/// <see cref="SpotifyBatchQueueHelper"/> reads from the streams; a mock
-/// <see cref="ISpotifyBulkLookupService"/> controls what the Spotify API returns.
-/// </para>
-/// <para>
-/// Failure-first discipline: each test describes the pre-fix code path that made
-/// the test fail, then verifies the corrected behavior.
-/// </para>
-/// </remarks>
 [TestClass]
 public class SpotifyBulkDispatchContractTests {
 
+    /// <summary>Mock Redis multiplexer supplying the database and subscriber.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mock Redis database backing all stream operations.</summary>
     private Mock<IDatabase> _dbMock = null!;
+    /// <summary>Mock Redis subscriber used to assert completion and sentinel publishes.</summary>
     private Mock<ISubscriber> _subscriberMock = null!;
+    /// <summary>Mock rate-limit tracker the service consults and updates.</summary>
     private Mock<IRateLimitTracker> _rateLimitTrackerMock = null!;
+    /// <summary>Mock saga state manager used to assert saga create/update behavior.</summary>
     private Mock<ISagaStateManager> _sagaManagerMock = null!;
+    /// <summary>Mock bulk lookup service supplying batch track/album results.</summary>
     private Mock<ISpotifyBulkLookupService> _lookupServiceMock = null!;
+    /// <summary>Mock logger for the batch queue helper.</summary>
     private Mock<ILogger<SpotifyBatchQueueHelper>> _helperLoggerMock = null!;
+    /// <summary>Mock logger for the bulk processor service.</summary>
     private Mock<ILogger<SpotifyBulkProcessorService>> _serviceLoggerMock = null!;
 
+    /// <summary>Serialization options (camel-case, non-indented) used to build and read stream payloads.</summary>
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
 
+    /// <summary>Redis stream key for bulk Spotify track-id lookups.</summary>
     private const string TrackStream = SpotifyConstants.BulkTrackIdStream;
+    /// <summary>Redis stream key for bulk Spotify album-id lookups.</summary>
     private const string AlbumStream = SpotifyConstants.BulkAlbumIdStream;
+    /// <summary>Sample Spotify track id used throughout the tests.</summary>
     private const string TestTrackId = "3n3Ppam7vgaVa1iaRUc9Lp";
+    /// <summary>Fixed saga id the mocks return for the sample track.</summary>
     private const string TestSagaId = "aabbccddeeff00112233445566778899";
 
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>MSTest-injected context; its cancellation token bounds the async operations under test.</summary>
     public TestContext TestContext { get; set; } = null!;
 
-    /// <summary>Initializes mocks before each test.</summary>
+    /// <summary>
+    /// Creates fresh mocks before each test and wires their defaults: Redis database and subscriber
+    /// resolution, a not-rate-limited tracker, a track stream sized at the batch maximum with a
+    /// single sample entry, stream group/ack/range/add operations, and saga manager methods that
+    /// return a saga for the sample track and complete successfully.
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _redisMock = new Mock<IConnectionMultiplexer>( );
@@ -228,16 +240,10 @@ public class SpotifyBulkDispatchContractTests {
             .Returns( Task.CompletedTask );
     }
 
-    // -------------------------------------------------------------------------
-    // B1 — Dispatch contract (3 branches)
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// B1 branch 1: empty dict from GetTracksByIdsAsync indicates request failure.
-    /// ALL messages in the batch must be requeued without writing any saga state.
-    /// Failure-first: before B1, empty dict was treated as "all tracks not found"
-    /// and the code would write not-found saga states for every message before
-    /// attempting to ACK — leaving orphaned saga entries in Redis with no actual API call.
+    /// Verifies that when the lookup service returns an empty dictionary (a whole-request failure),
+    /// every message is acknowledged and requeued but no saga state is written: a request failure
+    /// must not be recorded as a per-track outcome.
     /// </summary>
     [TestMethod]
     public async Task ProcessBulkTracks_WhenLookupServiceReturnsEmptyDict_ShouldRequeueAllWithoutSagaWrite( ) {
@@ -283,11 +289,9 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// B1 branch 2: non-empty dict with a key absent means the Spotify API returned a
-    /// partial response (parse failure for that ID). The affected message must be requeued
-    /// individually; no saga write for the absent-key entry.
-    /// Failure-first: before B1, absent key fell into the null-value branch which called
-    /// UpdateProviderStateAsync with IsSuccess=false, incorrectly marking it as permanently not-found.
+    /// Verifies that when the result dictionary is present but the requested track's key is absent
+    /// (an inconclusive result), the message is acknowledged and requeued without writing saga
+    /// state: only a key-present null value counts as a genuine not-found.
     /// </summary>
     [TestMethod]
     public async Task ProcessBulkTracks_WhenLookupServiceReturnsAbsentKey_ShouldRequeueOneWithoutSagaWrite( ) {
@@ -322,11 +326,9 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// B1 branch 3: key present with null value means genuine not-found from Spotify.
-    /// The message must follow the ProcessBulkResultAsync path: saga write (IsSuccess=false),
-    /// then ACK (XACK+XDEL with no XADD — not requeued).
-    /// Failure-first: before B1, this was indistinguishable from the empty-dict branch,
-    /// so the message would be silently requeued instead of being written to saga.
+    /// Verifies the genuine not-found contract: when the requested track's key is present with a
+    /// null value, the service writes a complete <c>IsSuccess=false</c> provider state, acknowledges
+    /// the message once, and does not requeue it.
     /// </summary>
     [TestMethod]
     public async Task ProcessBulkTracks_WhenKeyPresentWithNullValue_ShouldWriteNotFoundSagaState( ) {
@@ -376,13 +378,8 @@ public class SpotifyBulkDispatchContractTests {
             "Genuine not-found must not be requeued" );
     }
 
-    // -------------------------------------------------------------------------
-    // M7a — ShouldFlush predicate (boundary cases not covered in SpotifyBulkFlushPolicyTests)
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that count above (not just at) the threshold also triggers a size flush.
-    /// The common case where the stream has grown beyond the threshold before the flush loop fires.
+    /// Verifies that <c>ShouldFlush</c> returns true when the count exceeds the size threshold.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_WhenCountExceedsThreshold_ShouldReturnTrue( ) {
@@ -396,8 +393,8 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// Verifies that count below threshold with oldestAge exactly at linger triggers flush.
-    /// The boundary condition: age >= linger, not strictly >.
+    /// Verifies that <c>ShouldFlush</c> returns true when the oldest entry's age equals the linger,
+    /// confirming the inclusive (<c>&gt;=</c>) age boundary.
     /// </summary>
     [TestMethod]
     public void ShouldFlush_WhenAgeEqualsLinger_ShouldReturnTrue( ) {
@@ -410,15 +407,10 @@ public class SpotifyBulkDispatchContractTests {
         Assert.IsTrue( result, "age == linger must trigger flush (>= boundary)" );
     }
 
-    // -------------------------------------------------------------------------
-    // Retry cap tests (SpotifyBatchQueueHelper.RequeueAsync)
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that RequeueAsync increments AttemptCount on each requeue.
-    /// The re-serialized payload written back to the stream must have AttemptCount + 1.
-    /// Failure-first: before the retry-cap fix, RequeueAsync ACKed and re-added the
-    /// message but never incremented AttemptCount, so a failing message could cycle forever.
+    /// Verifies that requeuing a message with attempt count zero re-adds it with the attempt count
+    /// incremented to one: the outcome is <c>Requeued</c>, the stream is added to once, and the
+    /// re-serialized payload carries <c>AttemptCount = 1</c>.
     /// </summary>
     [TestMethod]
     public async Task RequeueAsync_WhenAttemptCountIsZero_ShouldRequeueWithAttemptCountOne( ) {
@@ -480,10 +472,9 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// Verifies that RequeueAsync drops a message when AttemptCount has reached MaxRetryAttempts (5).
-    /// The message must be ACKed and deleted (to remove it from the PEL) but NOT re-added.
-    /// Failure-first: before the retry-cap fix, the message would be re-added indefinitely.
-    /// The cap prevents a poison-message stream from occupying the bulk pipeline forever.
+    /// Verifies that requeuing a message already at the retry cap returns <c>CapReached</c>,
+    /// acknowledges the message to clear it from the pending list, and does not re-add it to the
+    /// stream (complete-failed semantics).
     /// </summary>
     [TestMethod]
     public async Task RequeueAsync_WhenAttemptCountAtCap_ShouldAckAndNotRequeue( ) {
@@ -531,25 +522,11 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// Verifies that when a message at the retry cap enters the absent-key dispatch path,
-    /// the service writes a complete-failed provider state and publishes both the
-    /// saga-completed and the lookup-completion events via <c>RequeueSingleAsync</c>.
+    /// Verifies the end-to-end cap path: when a dequeued message is already at the max retry count
+    /// and the lookup remains inconclusive, the service writes an <c>IsSuccess=false</c> provider
+    /// state with a "Bulk lookup failed after" message and publishes both the <c>saga:completed</c>
+    /// and the per-lookup-key <c>complete:</c> notifications.
     /// </summary>
-    /// <remarks>
-    /// Discriminating path: the lookup service returns a non-empty dict that does NOT
-    /// contain <c>TestTrackId</c> (absent-key / partial-parse-failure branch). The service
-    /// calls <c>RequeueSingleAsync</c> for the absent-key message; the helper sees
-    /// <c>AttemptCount == MaxQueueRetryAttempts</c> and returns <c>false</c> (cap hit);
-    /// <c>RequeueSingleAsync</c> must then call <c>UpdateProviderStateAsync</c> with
-    /// <c>IsSuccess=false</c> and an error message containing "Bulk lookup failed after",
-    /// then publish to <c>saga:completed</c> and to <c>complete:{lookupKey}</c>.
-    /// <para>
-    /// Failure-first: if the publish calls are removed from <c>RequeueSingleAsync</c> the
-    /// two channel-specific <c>PublishAsync</c> assertions fail — they cannot be satisfied
-    /// by the normal-path publishes because no normal-path dispatch runs here (the result
-    /// dict has no entry for <c>TestTrackId</c>).
-    /// </para>
-    /// </remarks>
     [TestMethod]
     public async Task ProcessBulkTracks_WhenAttemptCountAtCap_ShouldWriteCompleteFailedStateAndPublishCompletion( ) {
         // Arrange — message at retry cap (AttemptCount = MaxQueueRetryAttempts)
@@ -647,17 +624,10 @@ public class SpotifyBulkDispatchContractTests {
             "complete:{lookupKey} must be published when the retry cap is reached (F2)" );
     }
 
-    // -------------------------------------------------------------------------
-    // Rate-limit parity: HandleBulkRateLimitAsync per-saga partial marking
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that HandleBulkRateLimitAsync calls SetIsPartialAsync for each message
-    /// when the bulk endpoint returns a 429 (RetryAfterExceededException).
-    /// Failure-first: before the rate-limit parity fix, HandleBulkRateLimitAsync only
-    /// called SetRateLimitedAsync at the tracker level but never per-saga, leaving
-    /// interactive callers waiting indefinitely for a completion event that was never
-    /// published.
+    /// Verifies the rate-limit handling contract: each affected saga is marked partial, the
+    /// rate-limit info is merged into the saga with a Spotify provider entry, and a rate-limited
+    /// sentinel is published so interactive callers are not left hanging.
     /// </summary>
     [TestMethod]
     public async Task HandleBulkRateLimit_WhenCalled_ShouldMarkSagasPartialAndPublishSentinel( ) {
@@ -714,17 +684,9 @@ public class SpotifyBulkDispatchContractTests {
             "Rate-limited sentinel must be published so interactive callers are not left hanging" );
     }
 
-    // -------------------------------------------------------------------------
-    // LookupKeyBuilder canonical format alignment
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that LookupKeyBuilder.TypedKey produces the canonical format
-    /// <c>{LookupType}:{Provider}:{normalizedId}</c> that all four producers must agree on.
-    /// Failure-first: before the format-alignment fix, QueueProcessorBackgroundService used
-    /// <c>"{request.LookupType}:{request.LookupValue}"</c> (missing the provider segment),
-    /// and JetStreamWatcherService used the same wrong format; the resulting saga IDs
-    /// could never align between a JetStream-originated request and a bulk-processor result.
+    /// Verifies that <c>TypedKey</c> produces the canonical <c>{LookupType}:{Provider}:{id}</c>
+    /// format.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_TypedKey_ShouldMatchCanonicalFormat( ) {
@@ -741,8 +703,8 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// Verifies that LookupKeyBuilder.UrlKey produces the canonical format
-    /// <c>UriLookup:{HashUrl(url)}</c> for URL-based lookups.
+    /// Verifies that <c>UrlKey</c> produces a key prefixed with <c>UriLookup:</c> and is
+    /// deterministic for the same URL.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_UrlKey_ShouldMatchCanonicalFormat( ) {
@@ -760,13 +722,9 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// Verifies cross-producer alignment: JetStreamWatcher and SpotifyBulkProcessorService
-    /// must generate the same saga ID for the same track ID so they share state.
-    /// The saga ID is derived from the lookup key via <see cref="ISagaStateManager.GenerateSagaId"/>.
-    /// Failure-first: before the format-alignment fix, the two producers used different
-    /// key formats, so their GenerateSagaId outputs never matched — each thought the other's
-    /// request was a different saga, producing duplicate entries and no cross-producer state
-    /// sharing.
+    /// Verifies cross-producer saga-id alignment: the JetStream watcher, bulk processor, and queue
+    /// processor each build the same typed key for the same track, so <c>GenerateSagaId</c> yields
+    /// one identical saga id across all three.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_JetStreamAndBulkProcessor_ShouldProduceSameSagaIdForSameTrackId( ) {
@@ -798,16 +756,10 @@ public class SpotifyBulkDispatchContractTests {
             "SpotifyBulkProcessorService and QueueProcessorBackgroundService must produce the same saga ID for the same track" );
     }
 
-    // -------------------------------------------------------------------------
-    // Poison entries (missing payload) must be ACK+XDELed, not skipped
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that an XREADGROUP entry with an empty payload field is ACK+XDELed rather than
-    /// silently skipped. Skipping leaves it in the PEL and XAUTOCLAIM re-claims it every
-    /// AutoClaimMinIdleMs, causing an eternal log-flood loop.
-    /// Failure-first: before the poison-entry fix, <c>string.IsNullOrEmpty(payload)</c> hit a
-    /// bare <c>continue</c>; this test would fail because StreamAcknowledgeAsync was never called.
+    /// Verifies that a stream entry with no payload field is treated as poison: it is discarded (not
+    /// returned), acknowledged to remove it from the pending list, and deleted so it cannot
+    /// re-appear via <c>XAUTOCLAIM</c>.
     /// </summary>
     [TestMethod]
     public async Task DequeueBatch_WhenXReadGroupEntryHasEmptyPayload_ShouldAckAndDeletePoisonEntry( ) {
@@ -857,15 +809,9 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// Verifies that an XREADGROUP entry whose payload field is the literal JSON string
-    /// <c>"null"</c> is ACK+XDELed rather than silently skipped. Unlike a missing or empty
-    /// payload field, <c>"null"</c> deserializes without throwing but produces a null
-    /// <see cref="QueuedLookupRequest"/> object — the <c>request is null</c> guard at
-    /// SpotifyBatchQueueHelper.cs:229 and 286 catches this case and routes it through
-    /// <c>AckAndDeletePoisonEntryAsync</c>.
-    /// Failure-first: reverting the <c>request is null</c> branch to a bare <c>continue</c>
-    /// causes <c>StreamAcknowledgeAsync</c> to never be called; this test fails at the XACK
-    /// assertion with Times.Never instead of Times.Once.
+    /// Verifies that a stream entry whose payload field is the literal JSON <c>null</c> is likewise
+    /// treated as poison: discarded, acknowledged, and deleted so it cannot re-appear via
+    /// <c>XAUTOCLAIM</c>.
     /// </summary>
     [TestMethod]
     public async Task DequeueBatch_WhenXReadGroupEntryHasNullJsonPayload_ShouldAckAndDeletePoisonEntry( ) {
@@ -915,18 +861,9 @@ public class SpotifyBulkDispatchContractTests {
             "Null-JSON-payload poison entry must be XDELed so it cannot re-appear via XAUTOCLAIM" );
     }
 
-    // -------------------------------------------------------------------------
-    // RequeueAsync not-found branch: leave saga untouched
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that when the stream entry is missing (already XDELed — duplicate in-flight
-    /// after XAUTOCLAIM re-claim), <c>RequeueAsync</c> returns <see cref="RequeueOutcome.NotFound"/>
-    /// and <c>RequeueSingleAsync</c> in <c>SpotifyBulkProcessorService</c> does NOT write saga state.
-    /// Failure-first: before the not-found branch fix, <c>not-found</c> returned <c>false</c>
-    /// (same as cap-reached), causing <c>RequeueSingleAsync</c> to write a complete-failed saga
-    /// state for a message already successfully processed by another consumer — corrupting the
-    /// saga outcome.
+    /// Verifies that requeuing a composite id whose entry no longer exists returns <c>NotFound</c>
+    /// and issues neither an acknowledge nor a re-add, leaving the saga untouched.
     /// </summary>
     [TestMethod]
     public async Task RequeueAsync_WhenEntryNotFound_ShouldReturnNotFoundWithoutSagaWrite( ) {
@@ -974,13 +911,8 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// Verifies that when <c>RequeueAsync</c> returns <c>NotFound</c>, the service does NOT
-    /// call <c>UpdateProviderStateAsync</c> — the saga must be left untouched because the
-    /// entry was already processed by another consumer (duplicate in-flight).
-    /// Failure-first: before the not-found branch fix, the not-found case returned false
-    /// (same as CapReached), so <c>RequeueSingleAsync</c> would call
-    /// <c>UpdateProviderStateAsync</c> with <c>IsSuccess=false</c>, overwriting a potentially
-    /// successful result already written by the other consumer.
+    /// Verifies that when a requeue resolves to <c>NotFound</c> during track processing, the service
+    /// writes no saga state: a vanished entry must not be recorded as an outcome.
     /// </summary>
     [TestMethod]
     public async Task ProcessBulkTracks_WhenRequeueReturnsNotFound_ShouldNotWriteSagaState( ) {
@@ -1013,10 +945,6 @@ public class SpotifyBulkDispatchContractTests {
             Times.Never,
             "NotFound requeue outcome must not trigger saga state write" );
     }
-
-    // -------------------------------------------------------------------------
-    // ComputeCooldownSeconds overflow protection and clamping
-    // -------------------------------------------------------------------------
 
     /// <summary>
     /// Verifies that <c>ComputeCooldownSeconds</c> returns a positive value for all tested
@@ -1051,10 +979,11 @@ public class SpotifyBulkDispatchContractTests {
             "n=6 (exponent=5, first clamped value) must return exactly MaxSeconds" );
     }
 
-    // -------------------------------------------------------------------------
-    // Factory and helpers
-    // -------------------------------------------------------------------------
-
+    /// <summary>
+    /// Builds a bulk processor service wired to the mocks and a batch settings instance with a
+    /// 500&#160;ms linger.
+    /// </summary>
+    /// <returns>A service under test.</returns>
     private SpotifyBulkProcessorService CreateService( ) {
         SpotifyBatchQueueHelper helper = CreateHelper( );
         IOptions<SpotifyBatchSettings> options = Microsoft.Extensions.Options.Options.Create(
@@ -1071,9 +1000,20 @@ public class SpotifyBulkDispatchContractTests {
         );
     }
 
+    /// <summary>
+    /// Builds a batch queue helper wired to Redis and the helper logger.
+    /// </summary>
+    /// <returns>A helper under test.</returns>
     private SpotifyBatchQueueHelper CreateHelper( ) =>
         new( _redisMock.Object, _helperLoggerMock.Object );
 
+    /// <summary>
+    /// Builds a Spotify song-id <c>QueuedLookupRequest</c> for the given track id and attempt count,
+    /// carrying the fixed test saga id and bulk origin priority.
+    /// </summary>
+    /// <param name="trackId">The track id to look up.</param>
+    /// <param name="attemptCount">The retry attempt count; defaults to zero.</param>
+    /// <returns>A track lookup request.</returns>
     private static QueuedLookupRequest CreateRequest( string trackId, int attemptCount = 0 ) =>
         new( ) {
             RequestId = Guid.NewGuid( ).ToString( "N" ),
@@ -1086,11 +1026,22 @@ public class SpotifyBulkDispatchContractTests {
             AttemptCount = attemptCount
         };
 
+    /// <summary>
+    /// Builds a stream entry for the given track id by wrapping a freshly created request.
+    /// </summary>
+    /// <param name="trackId">The track id to embed.</param>
+    /// <returns>A stream entry carrying the track request payload.</returns>
     private StreamEntry BuildStreamEntry( string trackId ) {
         QueuedLookupRequest request = CreateRequest( trackId );
         return BuildStreamEntryFromRequest( request );
     }
 
+    /// <summary>
+    /// Builds a stream entry whose <c>payload</c> field is the serialized request and whose
+    /// <c>enqueuedAt</c> field is the current time.
+    /// </summary>
+    /// <param name="request">The request to embed as the entry payload.</param>
+    /// <returns>A stream entry carrying the serialized request and an enqueue timestamp.</returns>
     private StreamEntry BuildStreamEntryFromRequest( QueuedLookupRequest request ) {
         string payload = JsonSerializer.Serialize( request, s_jsonOptions );
         NameValueEntry[] values = [
@@ -1100,17 +1051,10 @@ public class SpotifyBulkDispatchContractTests {
         return new StreamEntry( (RedisValue)"1234567890-0", values );
     }
 
-    // -------------------------------------------------------------------------
-    // XAUTOCLAIM claimed entries must flow into the returned batch
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that a stranded entry recovered by XAUTOCLAIM is included in the returned
-    /// message list when XREADGROUP returns empty (the common crash-recovery scenario).
-    /// Failure-first: before the XAUTOCLAIM-inclusion fix, <c>DequeueBatchFromStreamAsync</c>
-    /// logged claimed entries but discarded them; only ">" new entries from XREADGROUP were
-    /// returned. A stranded entry would be re-claimed every <c>AutoClaimMinIdleMs</c> but
-    /// never completed, causing the age-trigger flush to fire every 500ms with empty dequeues.
+    /// Verifies that an entry reclaimed via <c>XAUTOCLAIM</c> (a stranded message from a dead
+    /// consumer) is included in the dequeued batch, with its payload and preserved attempt count
+    /// surfaced to the caller.
     /// </summary>
     [TestMethod]
     public async Task DequeueTrackIdBatch_WhenAutoClaimReturnsEntry_ShouldIncludeClaimedEntryInBatch( ) {
@@ -1161,12 +1105,9 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     /// <summary>
-    /// Verifies that the count budget is respected when both XAUTOCLAIM and XREADGROUP
-    /// have entries: claimed entries reduce the XREADGROUP count, and the combined total
-    /// does not exceed the requested batch size.
-    /// Failure-first: before the XAUTOCLAIM-inclusion fix, claimed entries were discarded
-    /// and the XREADGROUP call always received the full count, allowing the combined total
-    /// to exceed the budget.
+    /// Verifies that when reclaimed entries already fill the requested count budget,
+    /// <c>XREADGROUP</c> is skipped entirely: a budget of one satisfied by a single claimed entry
+    /// means no fresh read is issued.
     /// </summary>
     [TestMethod]
     public async Task DequeueTrackIdBatch_WhenAutoClaimFillsBudget_ShouldSkipXReadGroup( ) {
@@ -1213,18 +1154,10 @@ public class SpotifyBulkDispatchContractTests {
             "XREADGROUP must not be called when the count budget is already filled by claimed entries" );
     }
 
-    // -------------------------------------------------------------------------
-    // V2 dedup: completed saga with FinalResultUri set skips republish
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that <c>CheckAndPublishSagaCompletionAsync</c> skips the completion publish
-    /// when the saga already has a <c>FinalResultUri</c> set (dedup guard).
-    /// With deterministic saga IDs, a re-shared URL hitting a lingering completed saga is
-    /// the common case in V2; without this guard every re-share would re-publish, causing
-    /// duplicate coordinator writes.
-    /// Failure-first: before the FinalResultUri dedup guard was added, ProcessBulkResultAsync
-    /// would publish on every call regardless of whether the saga was already finalized.
+    /// Verifies idempotent completion: when the saga already carries a final result URI, the service
+    /// does not re-publish <c>saga:completed</c>, avoiding duplicate completion notifications for an
+    /// already-finalized saga.
     /// </summary>
     [TestMethod]
     public async Task ProcessBulkTracks_WhenSagaAlreadyHasFinalResultUri_ShouldSkipCompletionPublish( ) {
@@ -1267,17 +1200,10 @@ public class SpotifyBulkDispatchContractTests {
             "saga:completed must not be published when the saga already has a FinalResultUri" );
     }
 
-    // -------------------------------------------------------------------------
-    // Album path wiring — mirrors the track-path empty-dict-requeue test
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Verifies that <c>ProcessBulkAlbumLookupsAsync</c> requeues all messages without writing
-    /// saga state when <c>GetAlbumsByIdsAsync</c> returns an empty dictionary (request failure).
-    /// The album path duplicates the track-path branch logic; this test provides direct wiring
-    /// coverage analogous to the track-path <c>ProcessBulkTracks_WhenLookupServiceReturnsEmptyDict</c> test.
-    /// Failure-first: a regression that wired the album-path empty-dict case to the present-key
-    /// branch (calling UpdateProviderStateAsync) would be caught by the Times.Never assertion.
+    /// Verifies album-path parity with the track path: when the album lookup returns an empty
+    /// dictionary (a request failure), album messages are acknowledged and requeued to the album
+    /// stream without writing saga state.
     /// </summary>
     [TestMethod]
     public async Task ProcessBulkAlbums_WhenLookupServiceReturnsEmptyDict_ShouldRequeueAllWithoutSagaWrite( ) {

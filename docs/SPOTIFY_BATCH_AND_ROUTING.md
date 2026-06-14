@@ -1,229 +1,291 @@
-# Spotify batch lookups and interactive routing
+# Spotify bulk-batch and queue routing
 
-This document explains how BridgeBeats batches Spotify ID lookups, how it keeps
-interactive requests off the batch path, when a batch flushes, and how the saga
-time-to-live is reconciled with the flush horizon. It is a design explanation,
-not a configuration reference; for the settings themselves see
-[Configuration Guide](CONFIGURATION.md).
+This is a developer-facing explanation of how BridgeBeats batches single-id Spotify
+lookups and orders work across the priority queue. It covers the design and the
+reasoning behind the constants, not a step-by-step task. Type and member names below
+are links by name into the source; line numbers are deliberately omitted because they
+go stale.
 
-The behavior described here is what the code does on the current branch. File
-and line references point to the source so the document can be re-verified when
-the code changes.
+## Overview
 
-## Why batching exists
+Spotify's Web API lets a caller fetch many ids in one request: up to 50 tracks per
+`GET /tracks?ids=...` call and up to 20 albums per `GET /albums?ids=...` call. Issuing
+one HTTP round-trip per id wastes that capacity and burns rate-limit budget faster than
+necessary. The batch path exists to amortize those round-trips: single-id track and
+album lookups that do not need an immediate answer are diverted onto dedicated Redis
+streams, accumulated, and then resolved in multi-id batch calls.
 
-Spotify's web API offers per-entity endpoints (`GET /tracks/{id}`,
-`GET /albums/{id}`) and bulk endpoints that take up to 50 track IDs or 20 album
-IDs in one call (`GET /tracks?ids=`, `GET /albums?ids=`). High-volume,
-non-interactive traffic — the AT Protocol firehose watcher and the cache refresh
-job — produces large numbers of ID lookups that do not need a low-latency
-answer. Aggregating those into bulk calls collapses thousands of single requests
-into a much smaller number of batch requests.
+The moving parts:
 
-Interactive traffic has the opposite need: a user waiting on a Discord reply or
-a web lookup wants an answer in seconds, not whenever a batch happens to fill.
-The system therefore routes the two kinds of traffic down different paths.
+- `SpotifyBulkQueueDecorator` (in `BridgeBeats.Core.Infrastructure.Queue`) wraps the
+  Spotify request queue and re-routes non-interactive `SongIdLookup` and `AlbumIdLookup`
+  enqueues onto type-specific bulk streams.
+- `SpotifyBatchQueueHelper` owns the consumer-group lifecycle, depth and age inspection,
+  batch dequeue, acknowledgement, and bounded requeue for those bulk streams.
+- `SpotifyBulkProcessorService` is the background service that decides when to flush each
+  stream, calls the bulk API, and applies each result to its saga.
+- `RedisRequestQueue<T>` is the generic per-provider queue. It does not handle the
+  type-specific bulk streams; it governs how the interactive, background, and bulk lanes
+  of the generic queue are ordered during dequeue.
+- `JetStreamWatcherService` is one producer that feeds the bulk lane: it discovers music
+  links on the Bluesky firehose and enqueues them at bulk priority.
 
-## The lookup types that drive routing
+The single-id-to-bulk diversion applies only to Spotify, because only the Spotify path
+has a decorator and a bulk processor wired up for it.
 
-A queued lookup carries a `LookupRequestType`. Three values matter here:
+## Queue lanes and dequeue ordering
 
-- `SongIdLookup` — a request to resolve a Spotify track by its ID.
-- `AlbumIdLookup` — a request to resolve a Spotify album by its ID.
-- `UriLookup` — a request to resolve a link by URL.
+Each provider's generic queue (`RedisRequestQueue<T>`) has four Redis streams, keyed by
+the lower-cased provider name:
 
-The AT Protocol firehose watcher classifies each incoming link. For a Spotify
-track or album URL it extracts the Spotify ID and emits `SongIdLookup` or
-`AlbumIdLookup` with the ID as the lookup value
-(`JetStreamWatcherService.IdentifyProviderAsync`,
-`src/BridgeBeats.Worker.JetStreamWatcher/JetStreamWatcherService.cs:345-359`).
-Spotify short links (`spotify.link`) stay `UriLookup` because the ID is not yet
-known (`:340-343`). Spotify prerelease links also stay `UriLookup` — the batch
-API does not accept them. Artist and playlist links are not recognized by the
-parser and are dropped.
+- `queue:{provider}:interactive` — highest priority; a user is waiting.
+- `queue:{provider}:background` — work that can wait.
+- `queue:{provider}:bulk` — lowest priority; the generic bulk lane.
+- `queue:{provider}:dlq` — the dead-letter queue (read by range, no consumer group).
 
-Every producer that derives a lookup key — and therefore a saga ID — uses
-`LookupKeyBuilder` so that keys for the same entity are byte-for-byte identical
-across components
-(`src/BridgeBeats.Core/Infrastructure/Utilities/LookupKeyBuilder.cs`). Typed ID
-lookups use the shape `{lookupType}:{provider}:{normalizedId}` (`TypedKey`,
-`:28-30`); URL lookups use `UriLookup:{hash}` (`UrlKey`, `:39-41`). Identical
-keys are what let a firehose-origin lookup and an interactive lookup for the same
-track share one saga.
+Ordering is deterministic, not weighted-random. `QueueSettings.Weights`
+(`PriorityWeights`) is retained for backward-compatible configuration but no longer drives
+selection; the field's own remarks say so. The order for a given dequeue is produced by
+`GetStreamDequeueOrder`, a pure method that takes the current dequeue counter and the
+current queue depth.
 
-## Routing: interactive versus bulk
+### Interactive-first
 
-Routing happens in `SpotifyBulkQueueDecorator`, which wraps the Spotify request
-queue (`src/BridgeBeats.Core/Infrastructure/Queue/SpotifyBulkQueueDecorator.cs`).
-The decorator inspects each enqueue:
+On a normal (non-aging) call, the order is interactive, then background, then bulk. The
+dequeue visits streams in that order and returns the first message it finds, so as long as
+interactive work exists it is always served first.
 
-- A `SongIdLookup` or `AlbumIdLookup` enqueued at a **non-interactive** priority
-  is written directly to the type-specific bulk stream —
-  `queue:spotify:bulk:track-id` for tracks, `queue:spotify:bulk:album-id` for
-  albums — bypassing the generic priority queue (`EnqueueAsync`, `:60-89`).
-- The same lookup type enqueued at `QueuePriority.Interactive` is **not**
-  intercepted. It passes through to the inner queue and is served on the
-  interactive lane as a single-item lookup (`:91-93`). This preserves the
-  interactive latency budget; an interactive caller never waits on a batch.
-- Every other lookup type is forwarded to the inner queue unchanged, regardless
-  of priority.
+### The aging escape hatch
 
-The discriminator is the `priority` argument, checked as
-`priority != QueuePriority.Interactive` (`:65-66`). Routing is keyed on priority,
-not on the producer's identity. The firehose watcher enqueues at
-`QueuePriority.Bulk` (`JetStreamWatcherService.cs:294,304`), so its Spotify
-track and album lookups land in the bulk streams.
+Strict interactive-first ordering would let a steady stream of interactive work starve the
+background and bulk lanes forever. To prevent that, every Nth dequeue is an "aging slot"
+that demotes interactive and promotes a lower tier to the head of the order. N is
+`QueueSettings.InteractiveAgingInterval`, default 8. A call is an aging slot when
+`dequeueCounter % agingInterval == 0`.
 
-The stream names are defined once as constants (`BulkTrackIdStream`,
-`BulkAlbumIdStream`, `src/BridgeBeats.Contracts/Constants/SpotifyConstants.cs:67,73`).
-Sharing the constant across the producer (the decorator) and the consumer (the
-bulk processor) prevents the silent failure where the two disagree on a stream
-name and no message is ever delivered.
+The aging slots alternate which lower tier leads, so neither background nor bulk starves:
 
-### Invariant: interactive lookups never ride the bulk stream
+- Odd-numbered aging slots: background leads (`background, interactive, bulk`).
+- Even-numbered aging slots: bulk leads (`bulk, interactive, background`).
 
-Because routing is by priority and not by call site, the system depends on no
-interactive caller enqueuing a Spotify `SongIdLookup` or `AlbumIdLookup` at a
-non-interactive priority. Today no interactive path does so. The decorator's
-pass-through for `QueuePriority.Interactive` is the explicit guard: even a
-typed ID lookup, if it arrives interactive, stays on the interactive lane.
+The slot index is `dequeueCounter / agingInterval`, and its parity selects which tier
+leads. A configured interval of 1 or less is treated as misconfiguration — at N=1 every
+single dequeue would demote interactive — so the queue logs a warning and falls back to
+the default of 8 (`RedisRequestQueue<T>` validates this in its constructor; `QueueSettings`
+documents the same fallback).
 
-## Flushing a batch: size or age
+### Bulk gating
 
-The bulk processor polls the type-specific streams and decides when to flush
-(`SpotifyBulkProcessorService`,
-`src/BridgeBeats.Worker.Spotify/SpotifyBulkProcessorService.cs`). The decision is
-a pure predicate, `ShouldFlush` (`:131-136`):
+Bulk is only worth serving once enough has accumulated to batch. `GetStreamDequeueOrder`
+gates the bulk lane: bulk is included in the order only when its depth reaches the
+per-provider minimum threshold. Below the threshold, bulk is dropped from the order
+entirely (and on an even aging slot, background leads instead, since there is no eligible
+bulk to alternate with).
 
-```
-flush when count >= threshold
-   OR  (count > 0 AND oldestAge >= linger)
-```
+The threshold comes from `QueueSettings.GetMinBulkThreshold`, which returns the
+per-provider override from `ProviderMinBulkThresholds` or falls back to
+`DefaultMinBulkQueueThreshold`, default 5. Setting the effective threshold to 0 or 1
+disables gating, so bulk is always eligible.
 
-Two triggers, evaluated as an OR:
+Note the two distinct meanings of "bulk" here. This gating governs the generic
+`queue:{provider}:bulk` lane inside `RedisRequestQueue<T>`. The Spotify type-specific
+bulk streams described next are separate, and the bulk processor applies its own
+size-or-age flush rather than this dequeue-order gating.
 
-- **Size (primary).** A track batch flushes as soon as the stream holds 50
-  entries; an album batch at 20 (`MaxTracksPerBatchLookup` = 50,
-  `MaxAlbumsPerBatchLookup` = 20, `SpotifyConstants.cs:16,25`). When the count
-  meets the threshold the age is not even read (`ShouldFlush` returns at
-  `:132-134`).
-- **Age (backstop).** A stream that never fills still drains. Once the oldest
-  pending entry reaches the linger age, a below-threshold stream flushes
-  (`:135`). The age is read only when the count is below the threshold
-  (`ShouldProcessBulkTracksAsync:172-178`, `ShouldProcessBulkAlbumsAsync:212-218`).
+## Bulk batching
 
-The linger default is 24 hours (`SpotifyBatchSettings.DefaultLingerMs` =
-`86_400_000` ms, `src/BridgeBeats.Worker.Spotify/SpotifyBatchSettings.cs:26`).
-The age trigger is a staleness valve, not a latency bound: a low-volume,
-non-interactive stream may hold an entry for up to a day before the backstop
-fires, which is acceptable because nothing interactive waits on these streams.
-Operators can shorten the backstop per environment with
-`BridgeBeats:Spotify:Batch:LingerMs`; values at or below zero fall back to the
-24-hour default (`SpotifyBatchSettings.cs:50-53`).
+`SpotifyBulkProcessorService` runs a loop on a 500 ms check interval. Each cycle it asks
+whether the track-id stream and the album-id stream should flush, and processes whichever
+qualify. The flush decision is a pure predicate, `ShouldFlush`, so it can be tested in
+isolation.
 
-The processor polls every 500 ms (`s_checkInterval`,
-`SpotifyBulkProcessorService.cs:48`). Each cycle reads the stream length and,
-only when the stream is non-empty and below threshold, the oldest entry's
-timestamp. The age is computed from the `enqueuedAt` field written when the
-entry was added (`SpotifyBulkQueueDecorator.cs:77`), so it measures true
-wall-clock age and survives a worker restart.
+### Size-or-age flush
 
-A request-failure cooldown sits in front of the flush check. After a bulk call
-returns an empty result — the convention for a network or auth failure — the
-processor suppresses further flushes for that stream with an exponential backoff
-(5 s, doubling, capped at 60 s) so a transient Spotify outage does not burn
-through retry attempts (`ArmRequestFailureCooldown:550-558`,
-`ComputeCooldownSeconds:570-573`). Track and album cooldowns are independent.
+`ShouldFlush(count, oldestAge, threshold, linger)` returns true when either condition
+holds:
 
-## Saga time-to-live reconciliation
+- Size: `count >= threshold`. For tracks the threshold is
+  `SpotifyConstants.MaxTracksPerBatchLookup` (50); for albums it is
+  `SpotifyConstants.MaxAlbumsPerBatchLookup` (20). These match the Spotify Web API page
+  limits, so a full batch is exactly one maximal API call.
+- Age: there is at least one queued item and the oldest item's age has reached the linger
+  window. The processor only computes the oldest-item age when the stream is below its size
+  threshold, because at or above the threshold the size condition already fires.
 
-A firehose-origin bulk lookup is fire-and-forget: it precomputes a saga ID and
-enqueues without creating the saga. The saga is materialized later, when the
-bulk processor handles the entry (`ProcessBulkResultAsync` calls
-`GetOrCreateAsync`, `SpotifyBulkProcessorService.cs:392-400`). With a 24-hour
-age backstop, an entry can sit in the bulk stream for up to a day before that
-happens.
+Size is the primary trigger. A stream that fills to 50 tracks (or 20 albums) flushes
+immediately; the age path is the backstop for low-volume streams that never reach the
+size threshold. The oldest enqueue time is read from the stream's first entry —
+Redis streams are time-ordered, so the first entry is the oldest
+(`SpotifyBatchQueueHelper.GetOldestEnqueuedAtAsync`). A malformed `enqueuedAt` field is
+logged and treated as absent so a bad timestamp cannot wedge the age decision.
 
-This collides with saga retention. Every saga key and provider-state key is
-written with a TTL of `QueueSettings.JobExpirationMinutes` minutes
-(`RedisSagaStateManager.cs:70,221,251` and following). If a saga were created
-before a bulk entry was enqueued — for example, an interactive lookup that
-shares a deduplicated key with a firehose lookup — and the TTL were shorter than
-the flush horizon, the saga and its accumulated cross-provider state would
-expire before the batch wrote its result. Cross-provider assembly would silently
-degrade to Spotify-only for that record.
+A flush is also suppressed when the relevant bulk endpoint is rate-limited or the stream
+is in request-failure cooldown (see Reliability).
 
-The reconciliation is to set the saga TTL above the longest possible bulk wait.
-`JobExpirationMinutes` defaults to 2880 minutes (48 hours,
-`src/BridgeBeats.Contracts/Records/QueueSettings.cs:27`) — twice the 24-hour
-linger backstop, leaving visible margin. A saga therefore outlives any bulk
-entry waiting on the age backstop. The trade-off is Redis retention: every
-saga, not only the bulk-origin ones, lives for 48 hours. That cost was accepted
-in favor of the simpler invariant "a saga always outlives its slowest flush."
+### The linger default and saga-TTL reconciliation
 
-The constraint is one-directional and must hold if either value is retuned:
-`JobExpirationMinutes` (in minutes) must stay greater than `LingerMs` (in
-milliseconds) converted to minutes. At the defaults, 2880 min > 1440 min.
+The linger window is `SpotifyBatchSettings.LingerMs`, config key
+`BridgeBeats:Spotify:Batch:LingerMs`, bound from the section
+`BridgeBeats:Spotify:Batch`. Its default, `SpotifyBatchSettings.DefaultLingerMs`, is
+`86_400_000` ms — 24 hours. A non-positive configured value is clamped back to that
+default, so batching's age backstop cannot be disabled by misconfiguration.
 
-## How a result reaches its saga
+A 24-hour age backstop is much larger than a latency bound would be, and that is
+intentional. Because size is the real flush trigger, the linger is not there to bound how
+long a request waits; it is a staleness drain for streams that never fill. Setting it that
+high effectively turns off time-based flushing for normally-trafficked streams while still
+guaranteeing a low-volume stream eventually drains.
 
-When a batch flushes, the processor calls the bulk API, then maps each returned
-result back to the queued message(s) that asked for that ID
-(`ProcessBulkTrackLookupsAsync:230-300`, `ProcessBulkAlbumLookupsAsync:305-370`).
-For each message it ensures the saga exists, writes the Spotify provider state
-(found or not-found), publishes completion, and acknowledges the message
-(`ProcessBulkResultAsync:380-431`). Because the saga ID is deterministic from the
-lookup key, a bulk result lands on the same saga an interactive caller would
-have created, so a user lookup in flight for the same track sees the bulk
-result.
+The size of that default is constrained from below by saga expiry. `QueueSettings.JobExpirationMinutes`
+is the number of minutes before an incomplete job or saga expires; its default is `2880`
+(48 hours). The relationship the `JobExpirationMinutes` comment references: a saga can be
+created when a request is enqueued and then sit in a bulk stream until the next flush. If
+the saga's time-to-live were shorter than the linger, the saga could be evicted before the
+flush ever writes its result. `JobExpirationMinutes` must therefore exceed the linger
+backstop. The 48-hour default is 2× the 24-hour linger, which keeps visible margin between
+"latest a batch can flush" and "earliest the saga can expire."
 
-Failure handling preserves the requeue contract:
+If you raise `LingerMs` past `JobExpirationMinutes`, you reintroduce that eviction race;
+keep the saga TTL comfortably above the linger.
 
-- An empty result dictionary means the whole request failed; every message is
-  requeued and the cooldown is armed (`:264-269`, `:336-341`).
-- A non-empty dictionary missing one ID means a partial parse failure for that
-  ID; only that message is requeued (`:281-285`, `:353-356`).
-- A `RetryAfterExceededException` (a 429) records the rate-limit state, marks
-  each affected saga partial, publishes the rate-limited sentinel so any waiter
-  unblocks, and requeues (`HandleBulkRateLimitAsync:441-481`).
+## Routing
 
-A rate-limit guard also sits ahead of every flush: if the bulk track or album
-endpoint is currently rate-limited, the processor skips the flush rather than
-issuing a call that will fail (`ShouldProcessBulkTracksAsync:146-159`,
-`ShouldProcessBulkAlbumsAsync:187-200`).
+### How typed id lookups reach the bulk streams
 
-## Interactive rate-limit deferral signal
+`SpotifyBulkQueueDecorator` decorates the Spotify `IRequestQueue<QueuedLookupRequest>`.
+Its `EnqueueAsync` re-routes a request to a type-specific bulk stream only when both
+conditions hold:
 
-Interactive lookups travel the generic worker path, not the bulk path. When an
-interactive lookup is rate-limited there, the worker requeues it at background
-priority so it retries off the interactive lane, and emits two signals
-(`QueueProcessorBackgroundService.cs:262-265`):
+- the lookup type is `SongIdLookup` or `AlbumIdLookup`, and
+- the priority is not `Interactive`.
 
-- A warning log, EventId **3018** (`InteractiveDeferredToBackground`,
-  `src/BridgeBeats.Core/Infrastructure/Logging/LogEventIds.cs:1209`; declared at
-  `LogLevel.Warning`, `QueueProcessorBackgroundService.cs:477-486`), tagged with
-  the saga ID, lookup type, endpoint, and retry-after time.
-- A counter metric, `bridgebeats.ratelimit.interactive_deferred.total`
-  (`QueueMetrics.InteractiveDeferredTotal`,
-  `src/BridgeBeats.Core/Infrastructure/Queue/QueueMetrics.cs:104-108`), tagged
-  with provider and endpoint (`RecordInteractiveDeferral:345-353`).
+When routed, `SongIdLookup` goes to `SpotifyConstants.BulkTrackIdStream`
+(`queue:spotify:bulk:track-id`) and `AlbumIdLookup` goes to
+`SpotifyConstants.BulkAlbumIdStream` (`queue:spotify:bulk:album-id`). The request is
+serialized and written directly with `XADD`, carrying the `payload` and `enqueuedAt`
+fields, and an enqueue metric is recorded at bulk priority so dashboards can tell
+bulk-stream enqueues apart from generic ones.
 
-The trigger is the requeued request's `OriginPriority == QueuePriority.Interactive`
-at the moment of a rate limit. The signal is provider-agnostic: it fires for any
-provider whose interactive lookup is deferred, not only Spotify. A rising count
-means interactive users are increasingly absorbing rate-limit delay, which is
-the operational symptom to watch.
+Everything else passes through to the inner queue unchanged: interactive `SongIdLookup`
+and `AlbumIdLookup` (so an interactive caller is served on the interactive lane with a
+single-item call, preserving its latency budget), and every other lookup type at any
+priority. All non-enqueue operations on the decorator delegate straight to the inner
+queue.
 
-## Quick reference
+Using the shared stream-name constants on both the producer and consumer side matters:
+the constant's own remarks call out that a producer and consumer disagreeing on the stream
+name is a silent failure where no messages are ever delivered.
 
-| Concern | Where |
-|---|---|
-| Firehose link typing | `JetStreamWatcherService.IdentifyProviderAsync` (`src/BridgeBeats.Worker.JetStreamWatcher/JetStreamWatcherService.cs:334-359`) |
-| Routing decorator | `SpotifyBulkQueueDecorator.EnqueueAsync` (`src/BridgeBeats.Core/Infrastructure/Queue/SpotifyBulkQueueDecorator.cs:60-94`) |
-| Flush predicate | `SpotifyBulkProcessorService.ShouldFlush` (`src/BridgeBeats.Worker.Spotify/SpotifyBulkProcessorService.cs:131-136`) |
-| Linger backstop default | `SpotifyBatchSettings.DefaultLingerMs` (`src/BridgeBeats.Worker.Spotify/SpotifyBatchSettings.cs:26`) |
-| Batch size caps | `SpotifyConstants` (`src/BridgeBeats.Contracts/Constants/SpotifyConstants.cs:16,25`) |
-| Bulk stream names | `SpotifyConstants` (`src/BridgeBeats.Contracts/Constants/SpotifyConstants.cs:67,73`) |
-| Saga TTL | `QueueSettings.JobExpirationMinutes` (`src/BridgeBeats.Contracts/Records/QueueSettings.cs:27`); applied in `RedisSagaStateManager` |
-| Lookup key shape | `LookupKeyBuilder` (`src/BridgeBeats.Core/Infrastructure/Utilities/LookupKeyBuilder.cs`) |
-| Interactive deferral signal | EventId 3018 + `bridgebeats.ratelimit.interactive_deferred.total` |
+### How firehose links land in the bulk lane
+
+`JetStreamWatcherService` consumes the Bluesky Jetstream firehose, subscribing to the
+`app.bsky.feed.post` and `app.bsky.feed.repost` collections. For each newly created record
+it extracts candidate links from post facets, embedded external link cards, and the
+subjects of quote posts and reposts (hydrating those through the Bluesky API). The watcher
+is producer-only: it feeds the queue and never consumes results.
+
+For each candidate link, `IdentifyProviderAsync` decides the provider and lookup type. The
+checks run in a deliberate order — `spotify.link` short links first, then Spotify
+track/album ids, then Tidal, then Apple Music. A Spotify track link becomes a
+`SongIdLookup` and a Spotify album link becomes an `AlbumIdLookup`, both carrying the
+resolved Spotify id as the lookup value. (Spotify prerelease links stay as `UriLookup` for
+the generic worker; artist and playlist links are not recognized and are dropped.)
+
+Every link the watcher enqueues is built as a `QueuedLookupRequest` with
+`OriginPriority` set to `QueuePriority.Bulk` and enqueued at bulk priority through the
+resolved provider queue. For Spotify track and album ids, that bulk-priority enqueue is
+exactly the case `SpotifyBulkQueueDecorator` intercepts, so firehose-discovered Spotify
+track/album links flow into the type-specific bulk streams rather than the generic
+`queue:spotify:bulk` lane. Bulk origin priority is persisted into the saga so any
+secondary lookups the coordinator spawns also stay out of the interactive lane. Enqueue
+failures are logged and swallowed so one bad link does not interrupt the firehose.
+
+## Reliability
+
+The bulk path keeps work moving across crashes, bad data, and transient provider failures.
+
+### Stale-entry recovery with XAUTOCLAIM
+
+`SpotifyBatchQueueHelper` dequeues in two steps. First it runs an `XAUTOCLAIM` sweep to
+reclaim pending entries that have been idle longer than `AutoClaimMinIdleMs` (60 seconds),
+deserializing and appending them to the result; then it reads new entries with
+`XREADGROUP`. Reclaimed entries count against the requested batch size, so a single
+dequeue never returns more than asked. The 60-second idle threshold is chosen to be long
+enough that a slow-but-alive processing cycle is never reclaimed, yet short enough that a
+crashed consumer does not block the stream for more than a minute. There is exactly one
+consumer service reading these streams, which is what makes reclaiming another consumer's
+pending entries safe after the idle window.
+
+`XAUTOCLAIM` requires Redis 6.2 or newer. If the server is older, the reclaim step throws,
+is logged, and is skipped — the dequeue still reads new entries, only pending-entry
+recovery is unavailable.
+
+### Poison-entry handling
+
+An entry with a missing payload, a payload that deserializes to a literal JSON null, or a
+payload that cannot be deserialized is poison: retrying it can never succeed and would just
+loop forever under repeated `XAUTOCLAIM` re-claims. Such entries are acknowledged and
+deleted (`XACK` + `XDEL`) on both the reclaim and the new-read paths rather than retried,
+so they leave the pending list permanently.
+
+### Requeue cap and finalization
+
+Requeue is bounded by `LookupConstants.MaxQueueRetryAttempts` (5), the same cap the generic
+queue processor enforces. `SpotifyBatchQueueHelper.RequeueAsync` always acknowledges and
+deletes the original entry first, then:
+
+- if the current attempt count is below the cap, it re-adds a fresh entry with a new
+  `enqueuedAt` and `AttemptCount + 1` and returns `Requeued`;
+- if the cap is reached, or the payload cannot be deserialized to read its attempt count,
+  it discards the message and returns `CapReached`;
+- if the original entry no longer exists (already deleted, for example after an
+  `XAUTOCLAIM` re-claim by a duplicate in flight), it returns `NotFound`.
+
+The processor reacts to the outcome. On `CapReached` it writes a failed Spotify provider
+state ("Bulk lookup failed after 5 attempts") and publishes saga-level and per-lookup
+completion so the saga coordinator and any interactive waiter unblock instead of hanging.
+On `NotFound` it leaves the saga untouched, since another consumer handled the entry.
+
+### Failure shapes in the bulk dispatch
+
+The processor distinguishes three failure shapes when resolving a batch:
+
+- A rate limit (`RetryAfterExceededException`) records the endpoint rate limit, marks each
+  affected saga partial, merges a rate-limit info entry for Spotify into the saga, publishes
+  the `RATE_LIMITED` sentinel (`LookupConstants.RateLimitedSentinel`) so synchronous waiters
+  are not left hanging on a 429, and requeues the whole batch.
+- An empty result dictionary is treated as a request-level failure (network or auth error).
+  No saga state is written; the whole batch is requeued and the stream's request-failure
+  cooldown is armed.
+- An absent key inside a non-empty result is a per-id partial: only that one message is
+  requeued. A key that is present with a null value is a genuine not-found and is written as
+  a not-found provider state, not requeued.
+
+### Exponential cooldown after request failures
+
+After an empty-dict request failure, the processor arms a per-stream cooldown so it does
+not re-flush and burn retries faster than Spotify can recover. The base is
+`SpotifyBatchSettings.RequestFailureCooldownSeconds` (config key
+`BridgeBeats:Spotify:Batch:RequestFailureCooldownSeconds`, default 5; non-positive values
+are clamped back to the default). `ComputeCooldownSeconds` doubles the base once per prior
+consecutive failure, clamping the exponent at 5 to avoid overflow, and caps the result at
+`SpotifyBatchSettings.MaxRequestFailureCooldownSeconds` (60). The track-id and album-id
+streams each keep their own cooldown and consecutive-failure counter, so a failure on one
+endpoint does not suppress flushes on the other. A successful batch dispatch resets that
+stream's counter and clears its cooldown.
+
+## Genre resolution
+
+`SpotifyArtistGenreService` keeps the artist-to-genre cache fresh on a slow, rolling
+schedule, separate from the per-request bulk path. It waits 30 seconds after startup, then
+wakes on a 5-minute check interval. A full refresh runs only when 7 days have elapsed since
+the last full run (`s_scheduleInterval` is `TimeSpan.FromDays(7)`).
+
+A full run drains the per-provider artist-refresh queue (a Redis sorted set) in batches of
+`SpotifyConstants.MaxArtistsPerBatchLookup` (50, the Spotify page limit for artists),
+looks up each batch's genres, and writes them back to the cache. It pauses 100 ms between
+batches to be gentle on Spotify's rate limits, and stops when the queue drains empty. An
+artist that is not found is left uncached so it can be retried on a later run; an empty
+genre list is a valid result and is cached. Errors in a single batch are logged and the run
+continues with the next batch; errors in the loop are logged and retried after a one-minute
+delay rather than crashing the host.

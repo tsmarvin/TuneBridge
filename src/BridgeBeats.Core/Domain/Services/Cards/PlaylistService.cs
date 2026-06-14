@@ -9,21 +9,52 @@ using Microsoft.EntityFrameworkCore;
 namespace BridgeBeats.Core.Domain.Services.Cards {
 
     /// <summary>
-    /// Database-backed implementation of the playlist service.
+    /// Persists user and anonymous playlists of cards to the EF Core
+    /// <see cref="ApplicationDbContext.Playlists"/> table. Playlist ids are deterministic (derived
+    /// from the card ids), so re-creating a playlist with the same cards updates the existing row.
+    /// Anonymous playlists expire after 14 days; assigning a user id on creation claims the
+    /// playlist and clears its expiry.
     /// </summary>
+    /// <param name="domain">
+    /// The public domain used to build playlist URLs. When null/empty the service is disabled
+    /// (see <see cref="IsEnabled"/>).
+    /// </param>
+    /// <param name="contextFactory">Factory used to create a fresh <see cref="ApplicationDbContext"/> per operation.</param>
     public class PlaylistService( string domain, IDbContextFactory<ApplicationDbContext> contextFactory ) : IPlaylistService {
 
-        /// <inheritdoc/>
+        /// <summary>Gets a value indicating whether the service is enabled, that is, whether a public domain is configured.</summary>
         public bool IsEnabled => !string.IsNullOrWhiteSpace( domain );
 
-        /// <inheritdoc/>
+        /// <summary>Gets the public domain used to build playlist URLs.</summary>
         public string Domain => domain;
 
+        /// <summary>Factory used to create a short-lived database context for each operation.</summary>
         private readonly IDbContextFactory<ApplicationDbContext> _contextFactory = contextFactory;
+        /// <summary>The maximum number of cards a single playlist may contain.</summary>
         private const int MaxPlaylistSize = 20;
+        /// <summary>The lifetime of an anonymous (unclaimed) playlist before it becomes eligible for cleanup. 14 days.</summary>
         private static readonly TimeSpan s_anonymousExpiration = TimeSpan.FromDays( 14 ); // 2 weeks for anonymous
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Creates a playlist, or updates the existing one when a playlist with the same
+        /// deterministic id already exists. The id is derived from the ordered card ids, so the same
+        /// set of cards always maps to the same playlist. When an existing anonymous playlist is
+        /// claimed by passing a <paramref name="userId"/>, its expiry is cleared.
+        /// </summary>
+        /// <param name="cardIds">The ordered card ids that make up the playlist. Must be non-empty and at most <see cref="MaxPlaylistSize"/> entries.</param>
+        /// <param name="cardRkeys">The ATProto record keys for the cards; must have the same count as <paramref name="cardIds"/>.</param>
+        /// <param name="title">Optional playlist title; applied only when non-empty.</param>
+        /// <param name="description">Optional playlist description; applied only when non-empty.</param>
+        /// <param name="userId">
+        /// Optional owning user id. When supplied for a new or unclaimed playlist, the playlist is
+        /// owned by that user and never expires; when omitted, the playlist is anonymous and expires
+        /// after 14 days.
+        /// </param>
+        /// <returns>The public <c>https://{domain}/playlist/{playlistId}</c> URL for the playlist.</returns>
+        /// <exception cref="ArgumentException">
+        /// Thrown when <paramref name="cardIds"/> is null or empty, exceeds <see cref="MaxPlaylistSize"/>,
+        /// or when <paramref name="cardRkeys"/> is null or its count does not match <paramref name="cardIds"/>.
+        /// </exception>
         public async Task<string> CreatePlaylistAsync( List<string> cardIds, List<string> cardRkeys, string? title = null, string? description = null, string? userId = null ) {
             if (cardIds == null || cardIds.Count == 0) {
                 throw new ArgumentException( "Card IDs list cannot be null or empty", nameof( cardIds ) );
@@ -86,7 +117,12 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             return $"https://{domain.TrimEnd( '/' )}/playlist/{playlistId}";
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Retrieves a playlist by id. If the playlist has passed its expiry it is deleted and
+        /// <see langword="null"/> is returned (expired playlists are treated as gone).
+        /// </summary>
+        /// <param name="playlistId">The deterministic playlist id.</param>
+        /// <returns>The playlist as a DTO, or <see langword="null"/> when not found or expired.</returns>
         public async Task<PlaylistEntryDto?> GetPlaylistAsync( string playlistId ) {
             using ApplicationDbContext context = await _contextFactory.CreateDbContextAsync( );
 
@@ -107,7 +143,9 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             return ToDto( playlist );
         }
 
-        /// <inheritdoc/>
+        /// <summary>Retrieves all playlists owned by a user, newest first.</summary>
+        /// <param name="userId">The owning user id.</param>
+        /// <returns>The user's playlists as DTOs, ordered by creation time descending.</returns>
         public async Task<List<PlaylistEntryDto>> GetUserPlaylistsAsync( string userId ) {
             using ApplicationDbContext context = await _contextFactory.CreateDbContextAsync( );
 
@@ -119,7 +157,12 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             return entries.ConvertAll( ToDto );
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Removes every playlist whose expiry has passed. Called periodically by
+        /// <see cref="PlaylistCleanupService"/>. Only anonymous (unclaimed) playlists carry an
+        /// expiry, so claimed playlists are never removed here.
+        /// </summary>
+        /// <returns>A task that completes when expired playlists have been deleted.</returns>
         public async Task CleanExpiredPlaylistsAsync( ) {
             using ApplicationDbContext context = await _contextFactory.CreateDbContextAsync( );
 
@@ -134,7 +177,12 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             }
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Exports all of a user's playlists, for data-portability and account-export purposes.
+        /// Returns the same data as <see cref="GetUserPlaylistsAsync"/>.
+        /// </summary>
+        /// <param name="userId">The user whose data is exported.</param>
+        /// <returns>The user's playlists as DTOs, ordered by creation time descending.</returns>
         public async Task<List<PlaylistEntryDto>> ExportUserDataAsync( string userId ) {
             using ApplicationDbContext context = await _contextFactory.CreateDbContextAsync( );
 
@@ -146,7 +194,13 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             return entries.ConvertAll( ToDto );
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Deletes a playlist owned by the given user. The user id is part of the match, so a user
+        /// can only delete their own playlists.
+        /// </summary>
+        /// <param name="playlistId">The deterministic playlist id.</param>
+        /// <param name="userId">The owning user id; must match the playlist's owner.</param>
+        /// <returns><see langword="true"/> if a matching playlist was deleted; otherwise <see langword="false"/>.</returns>
         public async Task<bool> DeletePlaylistAsync( string playlistId, string userId ) {
             using ApplicationDbContext context = await _contextFactory.CreateDbContextAsync( );
 
@@ -162,11 +216,9 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             return true;
         }
 
-        /// <summary>
-        /// Converts a PlaylistEntry entity to a PlaylistEntryDto.
-        /// </summary>
-        /// <param name="entry">The EF entity to convert.</param>
-        /// <returns>The DTO representation.</returns>
+        /// <summary>Maps a persisted <see cref="PlaylistEntry"/> row to its transport DTO.</summary>
+        /// <param name="entry">The persisted playlist row.</param>
+        /// <returns>A <see cref="PlaylistEntryDto"/> mirroring the row's fields.</returns>
         private static PlaylistEntryDto ToDto( PlaylistEntry entry ) => new( ) {
             PlaylistId = entry.PlaylistId,
             UserId = entry.UserId,
@@ -179,11 +231,12 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
         };
 
         /// <summary>
-        /// Generates a deterministic playlist ID based on the ordered card IDs.
-        /// Uses SHA-256 hash of the concatenated card IDs and converts to base32 for URL safety.
+        /// Builds the deterministic playlist id from the ordered card ids: the ids are joined,
+        /// hashed with SHA-256, base32-encoded, lowercased, and truncated to at most 32 characters.
+        /// The same set of cards in the same order always yields the same id.
         /// </summary>
-        /// <param name="cardIds">Ordered list of card IDs.</param>
-        /// <returns>A deterministic, URL-safe playlist ID.</returns>
+        /// <param name="cardIds">The ordered card ids.</param>
+        /// <returns>A stable, lowercase, base32 playlist id of up to 32 characters.</returns>
         private static string GeneratePlaylistId( List<string> cardIds ) {
             // Create deterministic string from ordered card IDs
             string concatenated = string.Join( "|", cardIds );
@@ -197,8 +250,11 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
         }
 
         /// <summary>
-        /// Converts a byte array to a base32 string using RFC 4648 alphabet.
+        /// Encodes a byte array as an RFC 4648 base32 string (alphabet <c>A-Z2-7</c>), without
+        /// padding. Returns an empty string for null or empty input.
         /// </summary>
+        /// <param name="input">The bytes to encode.</param>
+        /// <returns>The base32 representation, with any trailing <c>=</c> padding removed.</returns>
         private static string ToBase32( byte[] input ) {
             if (input == null || input.Length == 0) {
                 return string.Empty;

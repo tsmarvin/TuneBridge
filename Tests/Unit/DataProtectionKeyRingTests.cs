@@ -3,15 +3,18 @@ using BridgeBeats.Core.Infrastructure.Identity;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="DataProtectionKeyRing"/>.
+/// Tests <see cref="DataProtectionKeyRing"/>, the single-version lookup-protector key ring. Verifies the
+/// current key id is <c>"v1"</c>, that the key set contains exactly that one id, and that the indexer echoes
+/// any requested key id unchanged (no key material is held here, only the active version name).
 /// </summary>
 [TestClass]
 public class DataProtectionKeyRingTests {
 
+    /// <summary>The key ring under test, recreated before each test.</summary>
     private DataProtectionKeyRing _keyRing = null!;
 
     /// <summary>
-    /// Initializes test resources before each test.
+    /// Creates a fresh <see cref="DataProtectionKeyRing"/> before each test.
     /// </summary>
     [TestInitialize]
     public void Setup( ) {
@@ -19,7 +22,7 @@ public class DataProtectionKeyRingTests {
     }
 
     /// <summary>
-    /// Verifies that CurrentKeyId returns "v1".
+    /// Verifies <see cref="DataProtectionKeyRing.CurrentKeyId"/> is the single active version <c>"v1"</c>.
     /// </summary>
     [TestMethod]
     public void CurrentKeyId_ReturnsV1( ) {
@@ -31,7 +34,7 @@ public class DataProtectionKeyRingTests {
     }
 
     /// <summary>
-    /// Verifies that GetAllKeyIds contains the current key ID.
+    /// Verifies the set returned by <see cref="DataProtectionKeyRing.GetAllKeyIds"/> contains the current key id.
     /// </summary>
     [TestMethod]
     public void GetAllKeyIds_ContainsCurrentKeyId( ) {
@@ -44,7 +47,7 @@ public class DataProtectionKeyRingTests {
     }
 
     /// <summary>
-    /// Verifies that GetAllKeyIds returns exactly one key (no stale keys in initial state).
+    /// Verifies <see cref="DataProtectionKeyRing.GetAllKeyIds"/> returns exactly one key id (no rotation versions).
     /// </summary>
     [TestMethod]
     public void GetAllKeyIds_ReturnsSingleKey( ) {
@@ -56,7 +59,7 @@ public class DataProtectionKeyRingTests {
     }
 
     /// <summary>
-    /// Verifies that the indexer returns the same key ID passed in.
+    /// Verifies the indexer returns the current key id <c>"v1"</c> unchanged when queried with <c>"v1"</c>.
     /// </summary>
     [TestMethod]
     public void Indexer_ReturnsPassedKeyId( ) {
@@ -68,7 +71,7 @@ public class DataProtectionKeyRingTests {
     }
 
     /// <summary>
-    /// Verifies that the indexer works with arbitrary key IDs (for future key rotation).
+    /// Verifies the indexer echoes back any requested key id unchanged, even one outside the known set (<c>"v2"</c>).
     /// </summary>
     [TestMethod]
     public void Indexer_ReturnsArbitraryKeyId( ) {

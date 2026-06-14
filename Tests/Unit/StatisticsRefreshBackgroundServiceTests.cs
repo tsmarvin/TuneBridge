@@ -11,26 +11,43 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="StatisticsRefreshBackgroundService"/> verifying the PeriodicTimer
-/// hot-loop regression is fixed: a manual trigger must not leave an orphaned WaitForNextTickAsync
-/// waiter that causes InvalidOperationException on the next iteration.
+/// Unit tests for <see cref="StatisticsRefreshBackgroundService"/>, the hosted service that drives
+/// periodic and manually triggered statistics refreshes against a real
+/// <see cref="StatisticsService"/>. Verifies that periodic ticks plus manual triggers produce at
+/// least the expected number of refreshes with no logged errors, that two consecutive manual
+/// triggers are handled cleanly, and that when refreshes throw, a fixed-delay backoff caps the error
+/// rate while the service loop keeps running (its execute task stays alive and unfaulted).
 /// </summary>
 [TestClass]
 public class StatisticsRefreshBackgroundServiceTests {
 
+    /// <summary>Mock storage service backing the statistics service the background loop refreshes.</summary>
     private Mock<IATProtoStorageService> _atProtoStorageMock = null!;
+    /// <summary>Mock Redis multiplexer providing the database used for bootstrap-status reads.</summary>
     private Mock<IConnectionMultiplexer> _redisMock = null!;
+    /// <summary>Mock Redis database backing bootstrap-status reads.</summary>
     private Mock<IDatabase> _redisDatabaseMock = null!;
+    /// <summary>
+    /// Statistics settings using a short (100 ms) refresh interval and zero cache TTL so periodic
+    /// ticks and forced recomputation happen quickly within test time budgets.
+    /// </summary>
     private StatisticsSettings _settings = null!;
 
+    /// <summary>Test PDS URI the statistics service enumerates records from.</summary>
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
+    /// <summary>Test user DID whose repository is enumerated.</summary>
     private const string TestUserDid = "did:plc:testuser_bgservice";
 
     /// <summary>
-    /// Gets or sets the test context for cooperative cancellation support.
+    /// MSTest-injected context; its cancellation token bounds the in-test delays so a hung loop does
+    /// not outlive the test.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>
+    /// Creates fresh mocks before each test, defaults Redis and record enumeration to empty, and
+    /// configures fast-tick settings (100 ms interval, zero TTL).
+    /// </summary>
     [TestInitialize]
     public void Initialize( ) {
         _atProtoStorageMock = new Mock<IATProtoStorageService>( );
@@ -55,18 +72,9 @@ public class StatisticsRefreshBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Regression test: a manual TriggerRefresh followed by periodic ticks must produce at least
-    /// four refreshes and zero LogRefreshError invocations. Requiring >= 4 (startup + manual + two
-    /// periodic ticks) verifies the timer waiter is re-armed and keeps firing after a manual trigger —
-    /// the property the hoist/re-arm fix must preserve. On the pre-fix code shape, the second
-    /// WaitForNextTickAsync call inside the loop throws InvalidOperationException immediately after
-    /// the channel task wins WhenAny.
-    ///
-    /// Failure-first evidence: verified on the original StatisticsRefreshBackgroundService.cs (tasks
-    /// created inside the while loop). The service threw InvalidOperationException within milliseconds
-    /// of TriggerRefresh being called — refreshCount did reach 2 (startup + trigger) but errorCount
-    /// rose continuously. The discriminating assertion is errorCount == 0: on the pre-fix code, it
-    /// fails immediately with errorCount > 0.
+    /// Verifies that the background loop combined with a manual trigger drives at least four
+    /// refreshes (initial periodic tick, the manual trigger, and subsequent ticks) with zero errors
+    /// logged, confirming periodic and on-demand refresh coexist cleanly.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -130,17 +138,8 @@ public class StatisticsRefreshBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Two consecutive manual triggers must both be accepted and must not produce errors. After both
-    /// triggers are accepted the service loop must keep refreshing (at least one more refresh fires).
-    ///
-    /// Per-trigger refresh attribution is NOT assertable: the channel is Bounded(1)/DropNewest and
-    /// the loop drains pending signals, so accepted triggers may coalesce; periodic ticks (100 ms)
-    /// also increment the count. Properties under test: both triggers accepted (WaitUntilAsync fails
-    /// otherwise), zero errors, and the loop keeps refreshing.
-    ///
-    /// Failure-first evidence: on the pre-fix code, the first TriggerRefresh caused channelTask to
-    /// win WhenAny. The next loop iteration called WaitForNextTickAsync a second time while the first
-    /// was still registered, producing InvalidOperationException. errorCount > 0.
+    /// Verifies that two manual triggers issued back to back are handled without logging any errors,
+    /// confirming overlapping or rapid triggers do not destabilize the refresh loop.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -205,17 +204,10 @@ public class StatisticsRefreshBackgroundServiceTests {
     }
 
     /// <summary>
-    /// When ALL refreshes throw (startup and every loop iteration), the 5 s catch-backoff limits
-    /// errors to at most 3 over a 1 s observation window. Without the backoff the loop would spin
-    /// at the 100 ms CacheDuration producing ~10 errors/s. The service must remain alive.
-    ///
-    /// Discriminator: removing the Task.Delay(5 s) from the loop catch causes errorCount to exceed 3
-    /// well within the 1 s window (each periodic tick is 100 ms, so 8–10 errors accumulate).
-    ///
-    /// Failure-first evidence: verified by removing Task.Delay(TimeSpan.FromSeconds(5), stoppingToken)
-    /// from the catch(Exception) in StatisticsRefreshBackgroundService.ExecuteAsync — errorCount
-    /// reached 6 within 600 ms. With the backoff in place, at most 2 errors fire (startup + first
-    /// loop iteration before the 5 s delay kicks in).
+    /// Verifies that when every refresh throws, the fixed-delay catch-backoff limits the error rate
+    /// to at most three logged errors within a one-second observation window, and the service loop
+    /// keeps running: its execute task is non-null, not completed during the window, and not faulted
+    /// after a clean stop.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -279,6 +271,12 @@ public class StatisticsRefreshBackgroundServiceTests {
         Assert.IsFalse( backgroundService.ExecuteTask.IsFaulted, "ExecuteAsync must not be faulted after StopAsync" );
     }
 
+    /// <summary>
+    /// An async record stream that always throws <see cref="InvalidOperationException"/> when
+    /// enumerated, simulating a refresh that fails so the backoff and resilience behavior can be
+    /// observed.
+    /// </summary>
+    /// <returns>A stream that never yields and always throws on enumeration.</returns>
     private static async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ThrowingEnumerable( ) {
         await Task.Yield( );
         throw new InvalidOperationException( "Simulated refresh failure" );
@@ -287,6 +285,13 @@ public class StatisticsRefreshBackgroundServiceTests {
 #pragma warning restore CS0162
     }
 
+    /// <summary>
+    /// Polls <paramref name="condition"/> until it holds or <paramref name="timeout"/> elapses,
+    /// failing the test on timeout. Used to await refresh-count and error-count thresholds reached
+    /// asynchronously by the background loop.
+    /// </summary>
+    /// <param name="condition">The predicate to wait for.</param>
+    /// <param name="timeout">The maximum time to wait before failing.</param>
     private static async Task WaitUntilAsync( Func<bool> condition, TimeSpan timeout ) {
         DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline) {

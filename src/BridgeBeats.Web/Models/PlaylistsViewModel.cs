@@ -1,51 +1,49 @@
 namespace BridgeBeats.Web.Models {
-
     /// <summary>
-    /// View model for the user's playlists management page.
+    /// View model for the playlists listing page, holding the user's playlist summaries and an optional error message.
     /// </summary>
     public class PlaylistsViewModel {
-
         /// <summary>
-        /// List of playlists owned by the user.
+        /// The summaries of the playlists to display.
         /// </summary>
         public List<PlaylistSummary> Playlists { get; set; } = [];
 
         /// <summary>
-        /// Optional error message to display.
+        /// An optional error message shown when the playlists could not be loaded.
         /// </summary>
         public string? ErrorMessage { get; set; }
 
         /// <summary>
-        /// Summary information for a single playlist.
+        /// A lightweight summary of a single playlist for the listing view.
         /// </summary>
         public class PlaylistSummary {
             /// <summary>
-            /// The unique identifier for the playlist.
+            /// The playlist identifier.
             /// </summary>
             public string PlaylistId { get; set; } = string.Empty;
 
             /// <summary>
-            /// Title of the playlist.
+            /// The playlist title.
             /// </summary>
             public string Title { get; set; } = string.Empty;
 
             /// <summary>
-            /// Optional description of the playlist.
+            /// An optional playlist description.
             /// </summary>
             public string? Description { get; set; }
 
             /// <summary>
-            /// Number of items in the playlist.
+            /// The number of items in the playlist.
             /// </summary>
             public int ItemCount { get; set; }
 
             /// <summary>
-            /// When the playlist was created.
+            /// The timestamp when the playlist was created.
             /// </summary>
             public DateTime CreatedAt { get; set; }
 
             /// <summary>
-            /// Full URL to view the playlist.
+            /// The shareable URL of the playlist.
             /// </summary>
             public string PlaylistUrl { get; set; } = string.Empty;
         }

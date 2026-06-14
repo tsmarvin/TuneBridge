@@ -1,12 +1,14 @@
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// LoggerMessage methods for <see cref="HomeController"/>.
+/// Source-generated <see cref="Microsoft.Extensions.Logging.LoggerMessageAttribute"/> logging methods
+/// for <see cref="HomeController"/>.
 /// </summary>
 public partial class HomeController {
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to invalid operation.
+    /// Logs that resolving the ATProto URI from the cache failed with an invalid-operation error and is being skipped.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.HomeControllerCacheInvalidOp,
         Level = LogLevel.Warning,
@@ -14,8 +16,9 @@ public partial class HomeController {
     private partial void LogCacheInvalidOp( Exception ex );
 
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to argument error.
+    /// Logs that resolving the ATProto URI from the cache failed with an argument error and is being skipped.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.HomeControllerCacheArgError,
         Level = LogLevel.Warning,
@@ -23,8 +26,9 @@ public partial class HomeController {
     private partial void LogCacheArgError( Exception ex );
 
     /// <summary>
-    /// Logs ATProto URI retrieval failure due to general error.
+    /// Logs that resolving the ATProto URI from the cache failed and is being skipped.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.HomeControllerCacheError,
         Level = LogLevel.Warning,
@@ -32,8 +36,10 @@ public partial class HomeController {
     private partial void LogCacheError( Exception ex );
 
     /// <summary>
-    /// Logs error processing individual result in stream.
+    /// Logs an error processing an individual result during a lookup stream.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="uri">The (sanitized) URI being processed.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.HomeControllerStreamResultError,
         Level = LogLevel.Error,
@@ -41,8 +47,10 @@ public partial class HomeController {
     private partial void LogStreamResultError( Exception ex, string uri );
 
     /// <summary>
-    /// Logs error during entire lookup stream.
+    /// Logs an error that aborted a lookup stream.
     /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="uri">The (sanitized) URI being processed.</param>
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.HomeControllerStreamError,
         Level = LogLevel.Error,

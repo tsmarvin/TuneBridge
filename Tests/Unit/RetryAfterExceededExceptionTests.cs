@@ -4,8 +4,13 @@ using BridgeBeats.Contracts.Exceptions;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for RetryAfterExceededException to verify exception properties,
-/// message formatting, and provider detection from URIs.
+/// Unit tests for <see cref="RetryAfterExceededException"/>, thrown when a provider's
+/// <c>Retry-After</c> exceeds the configured threshold. Verify that the constructors set the
+/// retry-after, threshold, request URI, provider, and inner exception; that the formatted message
+/// includes the retry-after seconds, threshold, provider name (or <c>Unknown</c>), and host; the
+/// static <see cref="RetryAfterExceededException.DetermineProviderFromUri"/> host-to-provider mapping
+/// (including case-insensitivity, null, and unknown hosts); standard exception behavior; and that all
+/// data is preserved for a later re-queue.
 /// </summary>
 [TestClass]
 public class RetryAfterExceededExceptionTests {
@@ -13,7 +18,8 @@ public class RetryAfterExceededExceptionTests {
     #region Constructor Tests
 
     /// <summary>
-    /// Verifies that the exception constructor correctly sets all properties.
+    /// The full constructor sets <c>RetryAfterValue</c>, <c>Threshold</c>, <c>RequestUri</c>, and
+    /// <c>Provider</c>.
     /// </summary>
     [TestMethod]
     public void Constructor_WithAllParameters_ShouldSetProperties( ) {
@@ -33,9 +39,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( provider, exception.Provider );
     }
 
-    /// <summary>
-    /// Verifies that the exception constructor allows null URI and provider values.
-    /// </summary>
+    /// <summary>The constructor accepts a null request URI and provider, leaving both null.</summary>
     [TestMethod]
     public void Constructor_WithNullUri_ShouldAllowNull( ) {
         // Arrange
@@ -50,9 +54,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.IsNull( exception.Provider );
     }
 
-    /// <summary>
-    /// Verifies that the exception constructor correctly sets the inner exception.
-    /// </summary>
+    /// <summary>The inner-exception constructor sets <see cref="System.Exception.InnerException"/>.</summary>
     [TestMethod]
     public void Constructor_WithInnerException_ShouldSetInnerException( ) {
         // Arrange
@@ -74,9 +76,7 @@ public class RetryAfterExceededExceptionTests {
 
     #region Message Tests
 
-    /// <summary>
-    /// Verifies that the exception message contains the retry-after value.
-    /// </summary>
+    /// <summary>The message includes the retry-after value in seconds (300).</summary>
     [TestMethod]
     public void Message_ShouldContainRetryAfterValue( ) {
         // Arrange
@@ -90,9 +90,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "300", exception.Message );
     }
 
-    /// <summary>
-    /// Verifies that the exception message contains the threshold value.
-    /// </summary>
+    /// <summary>The message includes the threshold in seconds (120).</summary>
     [TestMethod]
     public void Message_ShouldContainThreshold( ) {
         // Arrange
@@ -106,9 +104,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "120", exception.Message );
     }
 
-    /// <summary>
-    /// Verifies that the exception message contains the provider name when specified.
-    /// </summary>
+    /// <summary>The message includes the provider name when a provider is supplied.</summary>
     [TestMethod]
     public void Message_ShouldContainProviderName( ) {
         // Arrange
@@ -124,9 +120,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "Spotify", exception.Message );
     }
 
-    /// <summary>
-    /// Verifies that the exception message contains "Unknown" when provider is null.
-    /// </summary>
+    /// <summary>The message reads <c>Unknown</c> for the provider when none is supplied.</summary>
     [TestMethod]
     public void Message_WithNullProvider_ShouldContainUnknown( ) {
         // Arrange
@@ -140,9 +134,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "Unknown", exception.Message );
     }
 
-    /// <summary>
-    /// Verifies that the exception message contains the request URI when specified.
-    /// </summary>
+    /// <summary>The message includes the request URI host when a request URI is supplied.</summary>
     [TestMethod]
     public void Message_ShouldContainRequestUri( ) {
         // Arrange
@@ -161,9 +153,7 @@ public class RetryAfterExceededExceptionTests {
 
     #region DetermineProviderFromUri Tests
 
-    /// <summary>
-    /// Verifies that DetermineProviderFromUri returns Spotify for Spotify API URIs.
-    /// </summary>
+    /// <summary>A Spotify API host maps to <see cref="SupportedProviders.Spotify"/>.</summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithSpotifyUri_ShouldReturnSpotify( ) {
         // Arrange
@@ -176,9 +166,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Spotify, result );
     }
 
-    /// <summary>
-    /// Verifies that DetermineProviderFromUri returns Spotify for Spotify auth URIs.
-    /// </summary>
+    /// <summary>A Spotify accounts/auth host maps to <see cref="SupportedProviders.Spotify"/>.</summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithSpotifyAuthUri_ShouldReturnSpotify( ) {
         // Arrange
@@ -191,9 +179,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Spotify, result );
     }
 
-    /// <summary>
-    /// Verifies that DetermineProviderFromUri returns AppleMusic for Apple Music API URIs.
-    /// </summary>
+    /// <summary>An Apple Music API host maps to <see cref="SupportedProviders.AppleMusic"/>.</summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithAppleMusicUri_ShouldReturnAppleMusic( ) {
         // Arrange
@@ -206,9 +192,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.AppleMusic, result );
     }
 
-    /// <summary>
-    /// Verifies that DetermineProviderFromUri returns Tidal for Tidal API URIs.
-    /// </summary>
+    /// <summary>A Tidal API host maps to <see cref="SupportedProviders.Tidal"/>.</summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithTidalApiUri_ShouldReturnTidal( ) {
         // Arrange
@@ -221,9 +205,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Tidal, result );
     }
 
-    /// <summary>
-    /// Verifies that DetermineProviderFromUri returns Tidal for Tidal auth URIs.
-    /// </summary>
+    /// <summary>A Tidal auth host maps to <see cref="SupportedProviders.Tidal"/>.</summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithTidalAuthUri_ShouldReturnTidal( ) {
         // Arrange
@@ -236,9 +218,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.AreEqual( SupportedProviders.Tidal, result );
     }
 
-    /// <summary>
-    /// Verifies that DetermineProviderFromUri returns null for unknown URIs.
-    /// </summary>
+    /// <summary>A host matching no known provider returns <c>null</c>.</summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithUnknownUri_ShouldReturnNull( ) {
         // Arrange
@@ -251,9 +231,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.IsNull( result );
     }
 
-    /// <summary>
-    /// Verifies that DetermineProviderFromUri returns null for null URIs.
-    /// </summary>
+    /// <summary>A null URI returns <c>null</c>.</summary>
     [TestMethod]
     public void DetermineProviderFromUri_WithNullUri_ShouldReturnNull( ) {
         // Act
@@ -263,9 +241,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.IsNull( result );
     }
 
-    /// <summary>
-    /// Verifies that DetermineProviderFromUri is case-insensitive for host matching.
-    /// </summary>
+    /// <summary>Host matching is case-insensitive: an upper-case Spotify host still maps to Spotify.</summary>
     [TestMethod]
     public void DetermineProviderFromUri_IsCaseInsensitive( ) {
         // Arrange
@@ -283,7 +259,7 @@ public class RetryAfterExceededExceptionTests {
     #region Exception Behavior Tests
 
     /// <summary>
-    /// Verifies that the exception can be serialized to string.
+    /// <c>ToString</c> produces a non-null representation that names the exception type.
     /// </summary>
     [TestMethod]
     public void Exception_ShouldBeSerializable( ) {
@@ -300,9 +276,7 @@ public class RetryAfterExceededExceptionTests {
         Assert.Contains( "RetryAfterExceededException", result );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="RetryAfterExceededException"/> inherits from <see cref="Exception"/>.
-    /// </summary>
+    /// <summary>The type derives from <see cref="System.Exception"/>.</summary>
     [TestMethod]
     public void Exception_ShouldInheritFromException( ) {
         // Arrange
@@ -316,9 +290,7 @@ public class RetryAfterExceededExceptionTests {
         _ = Assert.IsInstanceOfType<Exception>( exception );
     }
 
-    /// <summary>
-    /// Verifies that <see cref="RetryAfterExceededException"/> can be caught as base <see cref="Exception"/>.
-    /// </summary>
+    /// <summary>The exception can be thrown and caught as its own type.</summary>
     [TestMethod]
     public void Exception_CanBeCaughtAsBaseException( ) {
         // Arrange
@@ -336,7 +308,8 @@ public class RetryAfterExceededExceptionTests {
     #region Data Preservation Tests (for future re-queue)
 
     /// <summary>
-    /// Verifies that the exception preserves all data needed for re-queue operations.
+    /// The exception preserves retry-after, threshold, request URI, and provider intact, so a caller
+    /// can compute a future retry time (now + retry-after) for re-queueing.
     /// </summary>
     [TestMethod]
     public void Exception_ShouldPreserveAllDataForRequeue( ) {

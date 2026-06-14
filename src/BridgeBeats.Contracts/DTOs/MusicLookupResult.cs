@@ -1,88 +1,94 @@
 namespace BridgeBeats.Contracts.DTOs;
 
 /// <summary>
-/// Represents music metadata returned from a provider-specific API query. This DTO encapsulates
-/// all essential information needed to identify and link to a track or album on a streaming platform,
-/// including unique identifiers (ISRC/UPC) for cross-platform matching.
+/// One provider's resolved item (album or track) within a cross-provider lookup, carrying the
+/// metadata needed to identify and link to it on a streaming platform, including the standardized
+/// identifier (ISRC/UPC) used for cross-platform matching. A mutable in-memory transfer object:
+/// string fields default to empty rather than <see langword="null"/> so callers can populate them
+/// progressively. The persisted twin is <see cref="Records.ProviderResultRecord"/>.
 /// </summary>
 /// <remarks>
-/// Two instances are considered equal if they have the same ExternalId, Artist, Title, URL, ArtUrl,
-/// MarketRegion, and IsAlbum values. The IsPrimary flag is excluded from equality checks as it's
-/// an internal processing hint rather than identifying information.
+/// Two instances are equal when their <see cref="ExternalId"/>, <see cref="Artist"/>,
+/// <see cref="Title"/>, <see cref="URL"/>, <see cref="ArtUrl"/>, <see cref="MarketRegion"/>, and
+/// <see cref="IsAlbum"/> values match. The internal <see cref="IsPrimary"/> flag is excluded from
+/// equality, since it is a processing hint rather than identifying information.
 /// </remarks>
 public sealed class MusicLookupResult {
 
     /// <summary>
-    /// The primary artist name as returned by the music provider's API. For tracks, this is typically
-    /// the first/main artist even if multiple artists are credited. For albums, this is the album artist.
+    /// The primary artist name as returned by the provider. For tracks this is typically the main
+    /// artist even when several are credited; for albums it is the album artist. Defaults to an empty
+    /// string until populated.
     /// </summary>
     public string Artist { get; set; } = string.Empty;
 
     /// <summary>
-    /// The official title of the track or album as listed in the provider's catalog. May include
-    /// additional descriptors like "(Deluxe Edition)", "(Remastered)", or "- Single" depending on
-    /// how the provider formats their metadata.
+    /// The title of the track or album as listed in the provider's catalog. May include descriptors
+    /// such as "(Deluxe Edition)", "(Remastered)", or "- Single" depending on the provider. Defaults
+    /// to an empty string until populated.
     /// </summary>
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
-    /// The standardized global identifier for the recording or album. For tracks, this is the ISRC
-    /// (International Standard Recording Code). For albums, this is the UPC (Universal Product Code).
-    /// These IDs enable reliable cross-platform matching since they're consistent across all providers.
+    /// The standardized global identifier for the recording or album: the ISRC for tracks, the UPC
+    /// for albums. These identifiers enable reliable cross-platform matching because they are
+    /// consistent across providers. Defaults to an empty string, which is also used when the provider
+    /// returns no external identifier (some older or regional catalog items lack one).
     /// </summary>
-    /// <remarks>
-    /// Empty string if the provider didn't return an external ID. Some older or regional catalog
-    /// items may lack standardized identifiers.
-    /// </remarks>
     public string ExternalId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Direct web link to the track or album on the provider's platform. These URLs are shareable
-    /// and will open in the respective service's app if installed on the user's device.
+    /// The provider's web link to the track or album. The URL is shareable and opens in the
+    /// provider's app when installed. Defaults to an empty string until populated.
     /// </summary>
     public string URL { get; set; } = string.Empty;
 
     /// <summary>
-    /// URL to the cover artwork image. For tracks, this is the album artwork. For albums, this is
-    /// the main album cover. Image sizes vary by provider but are typically at least 640x640 pixels.
-    /// Empty string if no artwork is available.
+    /// URL to the cover artwork (album artwork for both tracks and albums). Defaults to an empty
+    /// string when no artwork is available.
     /// </summary>
     public string ArtUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// The market/storefront code indicating which regional catalog this result came from. Uses
-    /// ISO 3166-1 alpha-2 country codes. Defaults to "us" if not specified.
+    /// The market / storefront region code (lowercase ISO 3166-1 alpha-2, e.g. <c>"us"</c>) the item
+    /// was resolved in. Defaults to <c>"us"</c>.
     /// </summary>
     /// <remarks>
-    /// For Apple Music, this is used as the default storefront for ISRC, UPC, and title/artist searches.
-    /// For URI-based searches, the storefront is determined automatically from the URL.
-    /// Different markets may have different availability and versions of content.
+    /// For Apple Music this is the default storefront used for ISRC, UPC, and artist/title searches;
+    /// for URI-based searches the storefront is taken from the URL instead. Availability and content
+    /// versions can differ between markets.
     /// </remarks>
     public string MarketRegion { get; set; } = "us";
 
     /// <summary>
-    /// Discriminates between album and track results. True indicates an album/EP, false indicates
-    /// a single track/song. Null if the content type couldn't be determined (rare edge case).
+    /// <see langword="true"/> when the item is an album, <see langword="false"/> when it is a
+    /// track, or <see langword="null"/> when not determined.
     /// </summary>
     /// <remarks>
-    /// This flag affects which external ID type is expected (UPC for albums, ISRC for tracks) and
-    /// influences how the result is displayed in the UI (album icon vs track icon, etc.).
+    /// Selects which external-identifier type is expected (UPC for albums, ISRC for tracks) and
+    /// influences how the result is displayed.
     /// </remarks>
     public bool? IsAlbum { get; set; }
 
     /// <summary>
-    /// Internal flag indicating this result came from the provider that was directly queried (as opposed
-    /// to being found via cross-platform lookup). Used during result aggregation to prioritize data from
-    /// the original source. Not serialized and excluded from equality comparisons.
+    /// Marks this result as the anchor that seeded the cross-provider lookup (the item the user
+    /// started from), so its metadata is preferred when providers disagree. Set within Core when
+    /// combining results, not serialized, and excluded from value equality. Visible only to the
+    /// projects granted internal access (Core, Web, Tests).
     /// </summary>
-    /// <remarks>
-    /// When a user shares a Spotify link, the Spotify result is marked as primary. The corresponding
-    /// Apple Music result (if found) is secondary. This helps preserve the original link's metadata
-    /// preferences when there are conflicts between providers.
-    /// </remarks>
     internal bool IsPrimary { get; set; }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Determines value equality against another <see cref="MusicLookupResult"/> by comparing the
+    /// seven public fields (<see cref="ExternalId"/>, <see cref="Artist"/>, <see cref="Title"/>,
+    /// <see cref="URL"/>, <see cref="ArtUrl"/>, <see cref="MarketRegion"/>, <see cref="IsAlbum"/>).
+    /// The internal <see cref="IsPrimary"/> flag is not considered.
+    /// </summary>
+    /// <param name="obj">The object to compare with.</param>
+    /// <returns>
+    /// <see langword="true"/> when <paramref name="obj"/> is a <see cref="MusicLookupResult"/> whose
+    /// seven public fields all equal this one's.
+    /// </returns>
     public override bool Equals( object? obj ) {
         if (
             obj is not null &&
@@ -101,7 +107,12 @@ public sealed class MusicLookupResult {
         return false;
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Returns a hash code combining the same seven public fields used by
+    /// <see cref="Equals(object?)"/>, so equal instances hash equally. The internal
+    /// <see cref="IsPrimary"/> flag is excluded.
+    /// </summary>
+    /// <returns>A hash code derived from the seven public fields.</returns>
     public override int GetHashCode( ) {
         return Artist.GetHashCode( ) +
         Title.GetHashCode( ) +

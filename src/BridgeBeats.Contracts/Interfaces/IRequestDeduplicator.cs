@@ -3,67 +3,76 @@ using BridgeBeats.Contracts.Records;
 namespace BridgeBeats.Contracts.Interfaces;
 
 /// <summary>
-/// Prevents duplicate in-flight requests across all service instances.
+/// Single-flight coordination for identical concurrent lookups: one caller acquires the right
+/// to process a request key while others wait for its published result rather than duplicating
+/// the work.
 /// </summary>
 /// <remarks>
-/// Uses distributed locking (e.g., Redis SETNX with TTL) to ensure only one instance
-/// processes a given request at a time. Other instances can subscribe to completion
-/// notifications to receive results without making duplicate API calls.
+/// Implemented in <c>BridgeBeats.Core</c> by <c>RedisRequestDeduplicator</c>
+/// (<c>Infrastructure/Queue/RedisRequestDeduplicator.cs</c>), using distributed locking (Redis
+/// SETNX with a TTL) so the coordination holds across all service instances. The winning caller
+/// acquires via <see cref="TryAcquireAsync"/>, processes the request, then publishes the result
+/// AT-URI via <see cref="ReleaseAsync"/>; waiting callers receive that AT-URI from the wait
+/// methods.
 /// </remarks>
 public interface IRequestDeduplicator {
     /// <summary>
-    /// Attempt to acquire exclusive processing rights for a request.
+    /// Attempts to acquire the single-flight lock for a request key.
     /// </summary>
-    /// <param name="requestKey">A unique key identifying the request (e.g., "isrc:US1234567890").</param>
-    /// <param name="timeout">How long to hold the lock before it auto-expires.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="requestKey">The key identifying the logical request to deduplicate (for example <c>isrc:US1234567890</c>).</param>
+    /// <param name="timeout">How long the acquired lock is held before it auto-expires.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>
-    /// A result indicating whether this instance acquired the lock,
-    /// or if another instance is already processing the request.
+    /// A task whose result is a <see cref="DeduplicationResult"/>: <c>Acquired</c> is
+    /// <see langword="true"/> when this caller won the lock and must do the work;
+    /// <c>AlreadyInFlight</c> is <see langword="true"/> when another caller is already processing
+    /// the same key and this caller should wait instead.
     /// </returns>
     Task<DeduplicationResult> TryAcquireAsync( string requestKey, TimeSpan timeout, CancellationToken cancellationToken = default );
 
     /// <summary>
-    /// Release processing rights and notify any waiters of completion.
+    /// Releases the single-flight lock for a request key and publishes its result so waiting
+    /// callers can pick it up.
     /// </summary>
-    /// <param name="requestKey">The unique key for the request being released.</param>
-    /// <param name="resultUri">The ATProto URI of the result, or <c>null</c> if the request failed.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task representing the asynchronous release operation.</returns>
+    /// <param name="requestKey">The key whose lock is released; must match the acquired key.</param>
+    /// <param name="resultUri">The AT-URI (<c>at://…</c>) of the produced result, or <see langword="null"/> when the request produced no result (for example, it failed).</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>A task that completes when the lock has been released and any result published.</returns>
     Task ReleaseAsync( string requestKey, string? resultUri, CancellationToken cancellationToken = default );
 
     /// <summary>
-    /// Subscribe to completion notification for an in-flight request.
+    /// Waits for the in-flight processor of a request key to publish a result.
     /// </summary>
-    /// <param name="requestKey">The unique key for the request to wait for.</param>
-    /// <param name="timeout">Maximum time to wait for completion.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="requestKey">The key to wait on.</param>
+    /// <param name="timeout">The maximum time to wait for a published result.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>
-    /// The ATProto URI of the result if the request completed successfully,
-    /// or <c>null</c> if the request failed or the timeout was reached.
+    /// A task whose result is the published result AT-URI (<c>at://…</c>), or <see langword="null"/>
+    /// when the request failed, the wait times out, or the in-flight lock is already gone (no
+    /// processor to wait for).
     /// </returns>
     Task<string?> WaitForCompletionAsync( string requestKey, TimeSpan timeout, CancellationToken cancellationToken = default );
 
     /// <summary>
-    /// Subscribe to the next completion notification for a request that has already produced
-    /// a partial result (the in-flight lock may already be released).
+    /// Waits for the next completion notification for a request key that may have already produced
+    /// a partial result (its in-flight lock may already be released).
     /// </summary>
     /// <remarks>
     /// Unlike <see cref="WaitForCompletionAsync"/>, a missing in-flight lock is NOT treated as
     /// completion. To close the gap between the caller reading state and subscribing,
-    /// <paramref name="missedResultCheck"/> is invoked AFTER the subscription is active;
-    /// a non-empty value it returns is used as the result without waiting.
+    /// <paramref name="missedResultCheck"/> is invoked AFTER the subscription becomes active; a
+    /// non-empty value it returns is used as the result without waiting further.
     /// </remarks>
-    /// <param name="requestKey">The unique key for the request to wait for.</param>
-    /// <param name="timeout">Maximum time to wait for the next notification.</param>
+    /// <param name="requestKey">The key to wait on.</param>
+    /// <param name="timeout">The maximum time to wait for the next notification.</param>
     /// <param name="missedResultCheck">
-    /// Optional callback that re-checks durable state (e.g., the saga's final result URI)
-    /// for a result published before the subscription was active.
+    /// An optional callback that re-checks durable state (for example, the saga's final result
+    /// URI) for a result published before the subscription was active.
     /// </param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>
-    /// The next non-empty published payload (a result URI or rate-limit sentinel),
-    /// or <c>null</c> if the timeout was reached.
+    /// A task whose result is the next non-empty published result AT-URI (<c>at://…</c>), or
+    /// <see langword="null"/> when the wait times out and the fallback (if any) found nothing.
     /// </returns>
     Task<string?> WaitForFinalCompletionAsync(
         string requestKey,

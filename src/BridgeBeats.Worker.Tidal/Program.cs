@@ -7,14 +7,33 @@ using Serilog;
 namespace BridgeBeats.Worker.Tidal;
 
 /// <summary>
-/// Entry point for the Tidal worker service.
+/// Entry point and composition root for the Tidal provider worker process.
 /// </summary>
+/// <remarks>
+/// The Tidal worker is intentionally minimal. It hosts two things and no bespoke
+/// processing logic of its own:
+/// <list type="bullet">
+///   <item>the shared queue-processing background service (registered via
+///   <c>AddQueueProcessor&lt;TidalLookupService&gt;</c>), which consumes the asynchronous
+///   Redis Streams work queue; and</item>
+///   <item>the synchronous WorkerApi lookup endpoints (mapped via
+///   <c>MapProviderLookupEndpoints&lt;TidalLookupService&gt;</c>), which the Web layer
+///   calls directly for interactive lookups.</item>
+/// </list>
+/// All actual Tidal lookup behavior lives in <c>TidalLookupService</c> (in
+/// BridgeBeats.Core); this host only wires it up. The worker listens on its configured
+/// HTTP port and connects to the shared Redis backbone.
+/// </remarks>
 public static class Program {
 
     /// <summary>
-    /// The main entry point for the Tidal worker application.
+    /// Builds, configures, and runs the Tidal worker web application.
     /// </summary>
-    /// <param name="args">Command line arguments.</param>
+    /// <param name="args">Command-line arguments passed through to the host builder.</param>
+    /// <remarks>
+    /// Serilog is flushed in the <c>finally</c> block so buffered log entries are written
+    /// even when the host shuts down or faults.
+    /// </remarks>
     public static void Main( string[] args ) {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -32,9 +51,17 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the services for the Tidal worker application.
+    /// Registers the worker's services: file logging, Aspire service defaults, the Redis
+    /// client, the Tidal provider services, JSON options, and the shared queue processor
+    /// for the Tidal provider.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
+    /// <param name="builder">The web application builder whose service collection is populated.</param>
+    /// <remarks>
+    /// Provider credentials are validated up front via <see cref="ValidateConfiguration"/>;
+    /// a missing credential aborts startup before any service is registered. The
+    /// <c>enabledProviders</c> set is left empty here because secondary fan-out across
+    /// providers is the coordinator's concern, not this single-provider worker's.
+    /// </remarks>
     private static void ConfigureServices( WebApplicationBuilder builder ) {
         // Configure file logging
         _ = builder.ConfigureFileLogging( "Tidal" );
@@ -60,11 +87,17 @@ public static class Program {
     }
 
     /// <summary>
-    /// Validates the required configuration for the Tidal worker.
+    /// Reads and validates the Tidal credentials and resilience settings from configuration.
     /// </summary>
-    /// <param name="builder">The web application builder.</param>
-    /// <returns>A tuple containing the validated credentials and configuration values.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when required credentials are missing.</exception>
+    /// <param name="builder">The web application builder whose configuration is read.</param>
+    /// <returns>
+    /// A tuple of the Tidal client id, client secret, and the maximum honored
+    /// <c>Retry-After</c> value in seconds (defaulting to 120 when unset).
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when either <c>BridgeBeats:TidalClientId</c> or <c>BridgeBeats:TidalClientSecret</c>
+    /// is missing or blank.
+    /// </exception>
     private static (string ClientId, string ClientSecret, int MaxRetryAfterSeconds) ValidateConfiguration(
         WebApplicationBuilder builder
     ) {
@@ -80,9 +113,15 @@ public static class Program {
     }
 
     /// <summary>
-    /// Configures the endpoints for the Tidal worker application.
+    /// Maps the worker's HTTP endpoints: the Aspire default health/metrics endpoints and the
+    /// WorkerApi provider-lookup routes (<c>POST /lookup/{url,isrc,upc,id,metadata,from-result}</c>).
     /// </summary>
-    /// <param name="app">The web application.</param>
+    /// <param name="app">The built web application to map endpoints onto.</param>
+    /// <remarks>
+    /// The mapped lookup endpoints follow the WorkerApi convention of returning HTTP 200 even
+    /// on failure, carrying the outcome in the response envelope; callers inspect the
+    /// success flag and error message rather than the status code.
+    /// </remarks>
     private static void ConfigureEndpoints( WebApplication app ) {
         // Map Aspire health check endpoints
         _ = app.MapDefaultEndpoints( );

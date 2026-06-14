@@ -6,13 +6,21 @@ using Microsoft.Extensions.DependencyInjection;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for configuration validation and error handling.
-/// Tests edge cases and invalid configurations.
+/// Tests the startup configuration validation performed by
+/// <see cref="StartupExtensions.AddBridgeBeatsServices"/>, which composes the application's services
+/// from configuration and fails fast when required settings are missing or invalid.
 /// </summary>
+/// <remarks>
+/// Each test builds an in-memory configuration and asserts the specific exception (and message
+/// fragment) the registration raises: a missing or empty Apple key file, no provider credentials at
+/// all, and non-positive card-cache tuning values. One test confirms the happy path where only Spotify
+/// credentials are present and <see cref="IMediaLinkService"/> ends up registered.
+/// </remarks>
 [TestClass]
 public class ConfigurationValidationTests {
     /// <summary>
-    /// Verifies that AddBridgeBeatsServices throws <see cref="FileNotFoundException"/> when Apple key file is missing.
+    /// Verifies that a configured Apple key path pointing at a nonexistent file throws
+    /// <see cref="FileNotFoundException"/> whose message references the <c>.p8</c> key.
     /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithMissingAppleKeyFile_ShouldThrowFileNotFoundException( ) {
@@ -43,7 +51,9 @@ public class ConfigurationValidationTests {
     }
 
     /// <summary>
-    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidDataException"/> when Apple key file is empty.
+    /// Verifies that an Apple key file that exists but is empty throws
+    /// <see cref="InvalidDataException"/> whose message notes the missing contents. The temporary file
+    /// is cleaned up in a <c>finally</c> block.
     /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithEmptyAppleKeyFile_ShouldThrowInvalidDataException( ) {
@@ -80,7 +90,8 @@ public class ConfigurationValidationTests {
     }
 
     /// <summary>
-    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when no providers are configured.
+    /// Verifies that supplying no provider credentials at all throws
+    /// <see cref="InvalidOperationException"/> reporting that required settings are missing.
     /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithNoProviders_ShouldThrowInvalidOperationException( ) {
@@ -111,7 +122,8 @@ public class ConfigurationValidationTests {
     }
 
     /// <summary>
-    /// Verifies that AddBridgeBeatsServices succeeds when only Spotify credentials are configured.
+    /// Verifies the happy path: with only Spotify credentials configured, registration succeeds and
+    /// <see cref="IMediaLinkService"/> resolves from the built service provider.
     /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithOnlySpotifyCredentials_ShouldSucceed( ) {
@@ -145,7 +157,8 @@ public class ConfigurationValidationTests {
     }
 
     /// <summary>
-    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when card cache expiration hours is zero.
+    /// Verifies that a <c>CardCacheExpirationHours</c> of zero throws
+    /// <see cref="InvalidOperationException"/> requiring the value to be greater than zero.
     /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithZeroCardCacheExpirationHours_ShouldThrowInvalidOperationException( ) {
@@ -169,7 +182,8 @@ public class ConfigurationValidationTests {
     }
 
     /// <summary>
-    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when card cache expiration hours is negative.
+    /// Verifies that a negative <c>CardCacheExpirationHours</c> throws
+    /// <see cref="InvalidOperationException"/> requiring the value to be greater than zero.
     /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithNegativeCardCacheExpirationHours_ShouldThrowInvalidOperationException( ) {
@@ -193,7 +207,8 @@ public class ConfigurationValidationTests {
     }
 
     /// <summary>
-    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when card cache cleanup interval is zero.
+    /// Verifies that a <c>CardCacheCleanupInterval</c> of zero throws
+    /// <see cref="InvalidOperationException"/> requiring the value to be greater than zero.
     /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithZeroCardCacheCleanupInterval_ShouldThrowInvalidOperationException( ) {
@@ -217,7 +232,8 @@ public class ConfigurationValidationTests {
     }
 
     /// <summary>
-    /// Verifies that AddBridgeBeatsServices throws <see cref="InvalidOperationException"/> when card cache cleanup interval is negative.
+    /// Verifies that a negative <c>CardCacheCleanupInterval</c> throws
+    /// <see cref="InvalidOperationException"/> requiring the value to be greater than zero.
     /// </summary>
     [TestMethod]
     public void AddBridgeBeatsServices_WithNegativeCardCacheCleanupInterval_ShouldThrowInvalidOperationException( ) {

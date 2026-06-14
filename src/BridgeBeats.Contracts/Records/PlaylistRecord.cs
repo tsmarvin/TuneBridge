@@ -4,26 +4,34 @@ using idunno.AtProto.Repo;
 namespace BridgeBeats.Contracts.Records;
 
 /// <summary>
-/// AT Protocol record for BridgeBeats user playlists.
-/// Corresponds to the link.bridgebeats.playlist lexicon.
+/// A PDS-persisted user playlist, stored as an AT Protocol record corresponding to the
+/// <c>link.bridgebeats.playlist</c> lexicon. Holds playlist metadata plus the track references
+/// and any per-provider track substitutions.
 /// </summary>
+/// <remarks>
+/// <see cref="Tracks"/> holds references (record keys) into the <see cref="LookupRepository"/>
+/// rather than inline track data.
+/// </remarks>
 public sealed record PlaylistRecord : AtProtoRecord {
 
     /// <summary>
-    /// Creates a new instance of <see cref="PlaylistRecord"/>.
+    /// Initializes an empty playlist record. Present for the AT Protocol deserializer; populate
+    /// the properties via <c>init</c> after construction.
     /// </summary>
     public PlaylistRecord( ) : base( ) { }
 
     /// <summary>
-    /// Creates a new instance of <see cref="PlaylistRecord"/>.
+    /// Initializes a playlist record with its metadata, track references, and optional fields.
+    /// Used by JSON deserialization.
     /// </summary>
-    /// <param name="title">Display name of the playlist.</param>
-    /// <param name="createdBy">DID of the user who created this playlist.</param>
-    /// <param name="updatedAt">ISO 8601 UTC timestamp of when this playlist was last updated.</param>
-    /// <param name="lookupRepository">DID of the repository containing the lookup records.</param>
-    /// <param name="tracks">Ordered list of track rkeys referencing link.bridgebeats.lookup records.</param>
-    /// <param name="description">Optional description or notes for the playlist.</param>
-    /// <param name="substitutions">Optional per-provider track substitutions.</param>
+    /// <param name="title">The display name of the playlist.</param>
+    /// <param name="createdBy">The DID of the user who created this playlist.</param>
+    /// <param name="updatedAt">The ISO 8601 UTC timestamp of when the playlist was last updated.</param>
+    /// <param name="lookupRepository">The DID of the repository containing the lookup records the track references point into.</param>
+    /// <param name="tracks">The ordered track record keys (rkeys) referencing <c>link.bridgebeats.lookup</c> records.</param>
+    /// <param name="description">An optional description or notes for the playlist.</param>
+    /// <param name="substitutions">Optional per-provider track substitutions; see <see cref="PlaylistSubstitutionMap"/>.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="title"/>, <paramref name="createdBy"/>, <paramref name="lookupRepository"/>, or <paramref name="tracks"/> is <see langword="null"/>.</exception>
     [JsonConstructor]
     public PlaylistRecord(
         string title,
@@ -43,53 +51,46 @@ public sealed record PlaylistRecord : AtProtoRecord {
         Substitutions = substitutions;
     }
 
-    /// <summary>
-    /// Display name of the playlist.
-    /// </summary>
+    /// <summary>The display name of the playlist.</summary>
     [JsonPropertyName( "title" )]
     [JsonRequired]
     public string Title { get; init; } = string.Empty;
 
-    /// <summary>
-    /// Optional description or notes for the playlist.
-    /// </summary>
+    /// <summary>An optional description or notes for the playlist.</summary>
     [JsonPropertyName( "description" )]
     [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
     public string? Description { get; init; }
 
-    /// <summary>
-    /// DID of the user who created this playlist.
-    /// </summary>
+    /// <summary>The DID of the user who created this playlist.</summary>
     [JsonPropertyName( "createdBy" )]
     [JsonRequired]
     public string CreatedBy { get; init; } = string.Empty;
 
-    /// <summary>
-    /// ISO 8601 UTC timestamp of when this playlist was last updated.
-    /// </summary>
+    /// <summary>The ISO 8601 UTC timestamp of when this playlist was last updated.</summary>
     [JsonPropertyName( "updatedAt" )]
     [JsonRequired]
     public DateTimeOffset UpdatedAt { get; init; }
 
     /// <summary>
-    /// DID of the repository containing the link.bridgebeats.lookup records referenced by tracks.
-    /// Defaults to the BridgeBeats server DID.
+    /// The DID of the repository containing the <c>link.bridgebeats.lookup</c> records referenced
+    /// by <see cref="Tracks"/>. Defaults to the BridgeBeats server DID.
     /// </summary>
     [JsonPropertyName( "lookupRepository" )]
     [JsonRequired]
     public string LookupRepository { get; init; } = string.Empty;
 
     /// <summary>
-    /// Ordered list of track record keys (rkeys) referencing link.bridgebeats.lookup records.
-    /// Albums are expanded to individual tracks. Maximum 16,384 entries.
+    /// The ordered list of track record keys (rkeys) referencing <c>link.bridgebeats.lookup</c>
+    /// records, resolved against <see cref="LookupRepository"/> rather than holding inline track
+    /// data. Albums are expanded to individual tracks. Maximum 16,384 entries.
     /// </summary>
     [JsonPropertyName( "tracks" )]
     [JsonRequired]
     public IList<string> Tracks { get; init; } = [];
 
     /// <summary>
-    /// Optional per-provider track substitutions.
-    /// When playing on a specific provider, substitute the track at the given index with an alternative.
+    /// Optional per-provider track substitutions. When playing on a specific provider, substitute
+    /// the track at the given index with an alternative; see <see cref="PlaylistSubstitutionMap"/>.
     /// </summary>
     [JsonPropertyName( "substitutions" )]
     [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]

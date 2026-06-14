@@ -5,21 +5,30 @@ using BridgeBeats.Core.Infrastructure.Identity;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for ATProtoSigningKeyProvider to verify ES256 JWK loading,
-/// public JWKS generation, and key generation utility.
+/// Tests <see cref="ATProtoSigningKeyProvider"/>, which loads a P-256 ECDSA client-assertion signing
+/// key from a JWK, validates it, and exposes the key plus its public JWKS projection.
 /// </summary>
+/// <remarks>
+/// The tests cover JWK validation (key type must be EC, curve P-256, with the private <c>d</c>
+/// parameter and a <c>kid</c> present), the public JWKS output (which advertises ES256 for signing and
+/// must omit the private <c>d</c> parameter), key generation, signing round-trips, and idempotent
+/// disposal.
+/// </remarks>
 [TestClass]
 public class ATProtoSigningKeyProviderTests {
 
     /// <summary>
-    /// Helper to generate a valid ES256 JWK JSON string for testing.
+    /// Produces a valid signing-key JWK by minting a fresh key, giving each test a usable input without
+    /// embedding any fixed key material.
     /// </summary>
+    /// <returns>A freshly generated P-256 signing-key JWK as JSON.</returns>
     private static string CreateTestSigningKeyJwk( ) {
         return ATProtoSigningKeyProvider.GenerateNewSigningKeyJwk( );
     }
 
     /// <summary>
-    /// Verifies that the constructor successfully loads a valid ES256 JWK.
+    /// Verifies that constructing the provider from a valid JWK exposes a non-null signing key, key id,
+    /// and public <c>x</c>/<c>y</c> coordinates.
     /// </summary>
     [TestMethod]
     public void Constructor_WithValidJwk_ShouldCreateInstance( ) {
@@ -36,24 +45,21 @@ public class ATProtoSigningKeyProviderTests {
         Assert.IsNotNull( provider.PublicKeyY );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws for null input.
-    /// </summary>
+    /// <summary>Verifies that a null JWK argument throws <see cref="ArgumentNullException"/>.</summary>
     [TestMethod]
     public void Constructor_WithNullJwk_ShouldThrow( ) {
         _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) => new ATProtoSigningKeyProvider( null! ) );
     }
 
-    /// <summary>
-    /// Verifies that the constructor throws for empty input.
-    /// </summary>
+    /// <summary>Verifies that an empty-string JWK argument throws <see cref="ArgumentException"/>.</summary>
     [TestMethod]
     public void Constructor_WithEmptyJwk_ShouldThrow( ) {
         _ = Assert.ThrowsExactly<ArgumentException>( ( ) => new ATProtoSigningKeyProvider( "" ) );
     }
 
     /// <summary>
-    /// Verifies that the constructor throws for JWK with wrong key type.
+    /// Verifies that a JWK whose key type is not <c>EC</c> (here <c>RSA</c>) throws
+    /// <see cref="ArgumentException"/>, since only EC keys are accepted.
     /// </summary>
     [TestMethod]
     public void Constructor_WithWrongKeyType_ShouldThrow( ) {
@@ -62,7 +68,8 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws for JWK with wrong curve.
+    /// Verifies that a JWK on a curve other than P-256 (here <c>P-384</c>) throws
+    /// <see cref="ArgumentException"/>, since only the P-256 curve is accepted.
     /// </summary>
     [TestMethod]
     public void Constructor_WithWrongCurve_ShouldThrow( ) {
@@ -71,7 +78,8 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws for JWK missing private key.
+    /// Verifies that a JWK lacking the private <c>d</c> parameter throws <see cref="ArgumentException"/>,
+    /// since the provider needs a private key to sign.
     /// </summary>
     [TestMethod]
     public void Constructor_WithMissingPrivateKey_ShouldThrow( ) {
@@ -80,7 +88,8 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that the constructor throws for JWK missing kid.
+    /// Verifies that a JWK lacking a <c>kid</c> throws <see cref="ArgumentException"/>, since the key id
+    /// is required to identify the key in the published JWKS.
     /// </summary>
     [TestMethod]
     public void Constructor_WithMissingKid_ShouldThrow( ) {
@@ -89,7 +98,9 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that GetPublicJwks returns valid JSON with only the public key (no 'd' parameter).
+    /// Verifies that <see cref="ATProtoSigningKeyProvider.GetPublicJwks"/> returns a JWKS containing a
+    /// single EC/P-256 key advertised for ES256 signing (<c>use=sig</c>) with <c>x</c>/<c>y</c>/<c>kid</c>
+    /// present, and crucially that the private <c>d</c> parameter is absent from the published key.
     /// </summary>
     [TestMethod]
     public void GetPublicJwks_ShouldReturnValidJson_WithoutPrivateKey( ) {
@@ -126,7 +137,9 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that the kid in public JWKS matches the provider's KeyId.
+    /// Verifies that the <c>kid</c> in the published JWKS matches the provider's
+    /// <see cref="ATProtoSigningKeyProvider.KeyId"/>, so consumers can correlate the published key with
+    /// the one used to sign.
     /// </summary>
     [TestMethod]
     public void GetPublicJwks_Kid_ShouldMatchProviderKeyId( ) {
@@ -144,7 +157,9 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that GenerateNewSigningKeyJwk produces a valid JWK that can be loaded.
+    /// Verifies that a JWK produced by
+    /// <see cref="ATProtoSigningKeyProvider.GenerateNewSigningKeyJwk"/> can be loaded back into a
+    /// provider, exposing a non-null signing key and key id.
     /// </summary>
     [TestMethod]
     public void GenerateNewSigningKeyJwk_ShouldProduceLoadableKey( ) {
@@ -158,7 +173,9 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that each call to GenerateNewSigningKeyJwk produces a unique key.
+    /// Verifies that two calls to
+    /// <see cref="ATProtoSigningKeyProvider.GenerateNewSigningKeyJwk"/> produce different keys,
+    /// confirming each generation is fresh rather than returning a fixed key.
     /// </summary>
     [TestMethod]
     public void GenerateNewSigningKeyJwk_ShouldProduceUniqueKeys( ) {
@@ -171,7 +188,8 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that the signing key can actually produce valid ES256 signatures.
+    /// Verifies that the exposed <see cref="ATProtoSigningKeyProvider.SigningKey"/> can sign data and
+    /// verify its own signature, confirming the loaded private key is usable end to end.
     /// </summary>
     [TestMethod]
     public void SigningKey_ShouldBeAbleToSign( ) {
@@ -193,7 +211,8 @@ public class ATProtoSigningKeyProviderTests {
     }
 
     /// <summary>
-    /// Verifies that Dispose properly disposes the signing key.
+    /// Verifies that <see cref="ATProtoSigningKeyProvider.Dispose"/> can be called more than once
+    /// without throwing, confirming disposal is idempotent.
     /// </summary>
     [TestMethod]
     public void Dispose_ShouldDisposeSigningKey( ) {

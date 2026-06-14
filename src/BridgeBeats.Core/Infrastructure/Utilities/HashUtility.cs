@@ -5,27 +5,27 @@ using BridgeBeats.Core.Domain.Providers.Common;
 namespace BridgeBeats.Core.Infrastructure.Utilities;
 
 /// <summary>
-/// Provides utility methods for hashing strings, primarily used for generating
-/// URL-safe lookup keys in Redis cache operations.
+/// Helpers that compute stable, lowercase base32 SHA-256 hashes of strings and normalized URLs
+/// for use as cache and lookup keys, primarily for Redis cache operations.
 /// </summary>
 public static class HashUtility {
 
     /// <summary>
-    /// Base32 alphabet (RFC 4648) used for URL-safe encoding.
+    /// The RFC 4648 base32 alphabet (uppercase A-Z and digits 2-7) used to encode hash bytes
+    /// before they are lowercased.
     /// </summary>
     private const string Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
     /// <summary>
-    /// Computes a SHA-256 hash of the input string and returns it as a lowercase
-    /// base32-encoded string suitable for use as a cache key.
+    /// Computes the SHA-256 hash of the UTF-8 bytes of <paramref name="input"/> and returns it as
+    /// a lowercase base32 string.
     /// </summary>
-    /// <param name="input">The string to hash.</param>
-    /// <returns>A lowercase base32-encoded SHA-256 hash string.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when input is null.</exception>
+    /// <param name="input">The value to hash.</param>
+    /// <returns>The lowercase base32 encoding of the SHA-256 hash of <paramref name="input"/>.</returns>
+    /// <exception cref="System.ArgumentNullException">Thrown when <paramref name="input"/> is null.</exception>
     /// <remarks>
-    /// The resulting hash is URL-safe and case-insensitive, making it suitable
-    /// for Redis keys and other storage systems. The full SHA-256 hash (256 bits)
-    /// is encoded as base32 for maximum collision resistance.
+    /// The full SHA-256 hash (256 bits) is encoded, giving a URL-safe, case-insensitive key.
+    /// This is a non-cryptographic-identity use: the hash provides a stable key, not a secret.
     /// </remarks>
     public static string ComputeSha256Base32( string input ) {
         ArgumentNullException.ThrowIfNull( input );
@@ -33,20 +33,23 @@ public static class HashUtility {
         byte[] hashBytes = SHA256.HashData( Encoding.UTF8.GetBytes( input ) );
         string base32Hash = ToBase32( hashBytes );
 
-        // Truncate to 32 characters for practical key length
         return base32Hash.ToLowerInvariant( );
     }
 
     /// <summary>
-    /// Computes a SHA-256 hash of a URL string for use as a Redis lookup key.
-    /// The URL is normalized using <see cref="LinkNormalizer.Normalize"/> to remove
-    /// protocol, query parameters, fragments, www prefix, and trailing slashes before hashing
-    /// to ensure consistent lookups regardless of these variations.
+    /// Normalizes <paramref name="url"/> for cache-key stability and returns the lowercase base32
+    /// SHA-256 hash of the normalized form.
     /// </summary>
-    /// <param name="url">The URL to hash.</param>
-    /// <returns>A lowercase base32-encoded SHA-256 hash string.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when url is null.</exception>
-    /// <exception cref="ArgumentException">Thrown when url is empty or whitespace.</exception>
+    /// <param name="url">The URL to normalize and hash.</param>
+    /// <returns>The lowercase base32 SHA-256 hash of the normalized URL.</returns>
+    /// <exception cref="System.ArgumentNullException">Thrown when <paramref name="url"/> is null.</exception>
+    /// <exception cref="System.ArgumentException">Thrown when <paramref name="url"/> is empty or whitespace.</exception>
+    /// <remarks>
+    /// Normalization is performed by
+    /// <see cref="BridgeBeats.Core.Domain.Providers.Common.LinkNormalizer.Normalize(string)"/> so that
+    /// links differing only in scheme, host casing, <c>www.</c>, fragment, or non-significant query
+    /// parameters hash to the same key.
+    /// </remarks>
     public static string HashUrl( string url ) {
         ArgumentNullException.ThrowIfNull( url );
         if (string.IsNullOrWhiteSpace( url )) {
@@ -59,10 +62,10 @@ public static class HashUtility {
     }
 
     /// <summary>
-    /// Converts a byte array to a base32 string using RFC 4648 alphabet.
+    /// Encodes a byte array as a base32 string using <see cref="Base32Alphabet"/>, without padding.
     /// </summary>
-    /// <param name="input">The byte array to convert.</param>
-    /// <returns>A base32-encoded string without padding.</returns>
+    /// <param name="input">The bytes to encode.</param>
+    /// <returns>The base32 representation of <paramref name="input"/>, or an empty string when the input is empty.</returns>
     private static string ToBase32( byte[] input ) {
         if (input.Length == 0) {
             return string.Empty;

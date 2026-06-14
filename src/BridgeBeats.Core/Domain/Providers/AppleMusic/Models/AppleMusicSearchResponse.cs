@@ -3,8 +3,8 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.AppleMusic.Models {
 
     /// <summary>
-    /// Response from the Apple Music search endpoint.
-    /// Contains search results organized by resource type.
+    /// DTO mirroring the top-level Apple Music API search response, with results organized by resource type.
+    /// Deserialization target only.
     /// </summary>
     /// <remarks>
     /// Endpoint: GET /v1/catalog/{storefront}/search?term={query}&amp;types={types}
@@ -14,9 +14,7 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic.Models {
     /// </remarks>
     public sealed class AppleMusicSearchResponse {
 
-        /// <summary>
-        /// The search results organized by resource type.
-        /// </summary>
+        /// <summary>The grouped search results; <see langword="null"/> when the response contains none.</summary>
         [JsonPropertyName( "results" )]
         public AppleMusicSearchResults? Results { get; set; }
 

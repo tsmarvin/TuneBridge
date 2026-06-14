@@ -8,21 +8,27 @@ using idunno.Security;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for the Spotify JetStream type-routing logic.
-/// Covers the contract between <see cref="SpotifyLinkParser"/> entity recognition
-/// and the lookup-key / saga-ID format used by
-/// <c>JetStreamWatcherService.EnqueueMusicLinkAsync</c>.
+/// Unit tests for Spotify link parsing and lookup routing. Covers <c>SpotifyLinkParser</c> entity
+/// recognition (track and album URLs produce typed IDs; artist, playlist, and prerelease URLs do
+/// not), the cross-producer saga-id alignment guaranteed by <c>LookupKeyBuilder.TypedKey</c> and
+/// <c>ISagaStateManager.GenerateSagaId</c> (the JetStream watcher, bulk processor, and queue
+/// processor must derive identical saga ids for the same entity), the SSRF host gate on
+/// <c>spotify.link</c> short links (link-local, arbitrary-host, lookalike, and scheme-strip abuse
+/// vectors are rejected without an outbound fetch; valid short links resolve via an injected
+/// handler), and <c>JetStreamWatcherService.IdentifyProviderAsync</c> routing across providers and
+/// entity types.
 /// </summary>
 [TestClass]
 public class SpotifyLinkTypeRoutingTests {
 
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>MSTest-injected context; its cancellation token bounds awaited parse operations.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     #region SpotifyLinkParser Entity Recognition
 
     /// <summary>
-    /// Verifies that a Spotify track URL produces SpotifyEntity.Track with the correct ID.
+    /// Verifies that a canonical Spotify track URL parses to success with a <c>Track</c> entity and
+    /// the extracted track id.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithTrackUrl_ShouldReturnTrackEntityAndId( ) {
@@ -40,8 +46,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a Spotify track URL with query parameters strips the query parameter
-    /// and still extracts the correct ID.
+    /// Verifies that a track URL carrying query parameters (for example a share <c>si</c> token)
+    /// still parses to a <c>Track</c> entity with the bare track id, the query stripped.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithTrackUrlAndQueryParams_ShouldReturnTrackEntityAndId( ) {
@@ -59,7 +65,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a Spotify album URL produces SpotifyEntity.Album with the correct ID.
+    /// Verifies that a canonical Spotify album URL parses to success with an <c>Album</c> entity and
+    /// the extracted album id.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithAlbumUrl_ShouldReturnAlbumEntityAndId( ) {
@@ -79,7 +86,6 @@ public class SpotifyLinkTypeRoutingTests {
     /// <summary>
     /// Verifies that an artist URL is not recognised by the parser (parse returns success=false).
     /// Artist links are not processed anywhere in the system; the JetStream watcher drops them.
-    /// Director ruling 2026-06-07: no artist/playlist processing exists or is planned.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithArtistUrl_ShouldNotProduceTypedIdCandidate( ) {
@@ -100,7 +106,6 @@ public class SpotifyLinkTypeRoutingTests {
     /// <summary>
     /// Verifies that a playlist URL is not recognised by the parser (parse returns success=false).
     /// Playlist links are not processed anywhere in the system; the JetStream watcher drops them.
-    /// Director ruling 2026-06-07: no artist/playlist processing exists or is planned.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithPlaylistUrl_ShouldNotProduceTypedIdCandidate( ) {
@@ -119,7 +124,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a prerelease URL does not produce a typed ID lookup candidate.
+    /// Verifies that a prerelease URL does not yield a typed ID lookup candidate: even if the parse
+    /// reports a kind, it is neither <c>Track</c> nor <c>Album</c>, so no typed ID path is taken.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithPrereleaseUrl_ShouldNotProduceTypedIdCandidate( ) {
@@ -136,7 +142,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a non-Spotify URL produces no entity (TryParseUriAsync fails).
+    /// Verifies that a non-Spotify URL (an Apple Music link) is not parsed as a Spotify entity,
+    /// returning success=false.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithNonSpotifyUrl_ShouldReturnFailure( ) {
@@ -155,8 +162,8 @@ public class SpotifyLinkTypeRoutingTests {
     #region LookupKey Cross-Producer Alignment Tests
 
     /// <summary>
-    /// Verifies that <see cref="LookupKeyBuilder.TypedKey"/> for a SongIdLookup produces
-    /// the canonical three-segment format <c>{LookupType}:{Provider}:{id}</c>.
+    /// Verifies that <c>TypedKey</c> for a song-id lookup produces exactly three colon-separated
+    /// segments in the canonical order: lookup type, provider, then entity id.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_TypedKey_ForSongIdLookup_ShouldContainThreeSegments( ) {
@@ -176,8 +183,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="LookupKeyBuilder.TypedKey"/> for an AlbumIdLookup follows
-    /// the same three-segment format.
+    /// Verifies that <c>TypedKey</c> for an album-id lookup produces the same three-segment
+    /// type:provider:id shape as the song-id case.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_TypedKey_ForAlbumIdLookup_ShouldContainThreeSegments( ) {
@@ -196,11 +203,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="LookupKeyBuilder.UrlKey"/> produces a key starting with
-    /// <c>UriLookup:</c> followed by a URL hash — not the raw URL.
-    /// Failure-first: before the format-alignment fix, some producers used the raw URL as
-    /// the lookup value, while others used the hash, causing saga ID mismatches for the
-    /// same artist URL.
+    /// Verifies that <c>UrlKey</c> hashes the URL rather than embedding it raw: the resulting key
+    /// does not contain the original URL and is prefixed with <c>UriLookup:</c>.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_UrlKey_ShouldHashUrlNotUseRaw( ) {
@@ -218,11 +222,9 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that all four producers (JetStreamWatcher, SpotifyBulkProcessorService,
-    /// QueueProcessorBackgroundService, and LookupOrchestrator) produce the same saga ID
-    /// for the same track ID when they all use <see cref="LookupKeyBuilder.TypedKey"/>.
-    /// This is the core correctness guarantee of the format-alignment fix: cross-producer
-    /// state sharing works only when the lookup key format is identical.
+    /// Verifies the cross-producer saga-id invariant: the JetStream watcher, bulk processor, and
+    /// queue processor each build a typed key the same way for the same track, so
+    /// <c>GenerateSagaId</c> yields identical saga ids across all three producers.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_AllProducers_ShouldProduceSameSagaIdForSameTrackId( ) {
@@ -246,8 +248,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that different track IDs produce different saga IDs
-    /// (no hash collision for distinct Spotify entities).
+    /// Verifies that different track ids produce different saga ids, guarding against saga-id
+    /// collisions across distinct entities.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_TypedKey_ForDifferentTrackIds_ShouldProduceDifferentSagaIds( ) {
@@ -265,9 +267,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="ISagaStateManager.GenerateSagaId"/> is deterministic:
-    /// the same lookup key always produces the same saga ID regardless of call count.
-    /// Failure-first: the old watcher used a timestamp-based ID that changed on every call.
+    /// Verifies that <c>GenerateSagaId</c> is deterministic: the same key always yields the same
+    /// saga id, which is what lets independent producers converge on one saga.
     /// </summary>
     [TestMethod]
     public void GenerateSagaId_WithSameKey_ShouldBeDeterministic( ) {
@@ -288,13 +289,8 @@ public class SpotifyLinkTypeRoutingTests {
     #region SpotifyLinkParser Short-Link Host Gate (SSRF)
 
     /// <summary>
-    /// Verifies that a link-local IP address embedded as the host — SSRF vector
-    /// <c>169.254.169.254/spotify.link/a</c> — is rejected by the host gate and returns
-    /// no-match without performing an outbound HTTP call.
-    /// Failure-first evidence: before the host gate was added, the short-link resolver would
-    /// attempt <c>GetAsync("https://169.254.169.254/spotify.link/a")</c> and throw
-    /// <see cref="HttpRequestException"/> (or timeout after 5 s); the test would fail with
-    /// an unhandled exception rather than returning <c>success=false</c> cleanly.
+    /// Verifies that a link-local IP SSRF vector (<c>169.254.169.254/spotify.link/a</c>, the cloud
+    /// metadata address) is rejected by the host gate without an outbound fetch.
     /// </summary>
     [TestMethod]
     [Timeout( 3000, CooperativeCancellation = true )]
@@ -311,12 +307,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that an arbitrary external host — SSRF vector
-    /// <c>evil.com/spotify.link/a</c> — is rejected by the host gate and returns
-    /// no-match without performing an outbound HTTP call.
-    /// Failure-first evidence: before the host gate was added, the short-link resolver would
-    /// attempt <c>GetAsync("https://evil.com/spotify.link/a")</c> and throw
-    /// <see cref="HttpRequestException"/>; the test would fail with an unhandled exception.
+    /// Verifies that an arbitrary-host SSRF vector (<c>evil.com/spotify.link/a</c>) is rejected by
+    /// the host gate without an outbound fetch: a non-<c>spotify.link</c> host never resolves.
     /// </summary>
     [TestMethod]
     [Timeout( 3000, CooperativeCancellation = true )]
@@ -333,10 +325,9 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a subdomain look-alike host — <c>spotify.link.evil.com/x</c> —
-    /// is not matched by the short-link regex and therefore returns no-match.
-    /// This is not a short-link and the host gate is not even reached: the regex
-    /// requires <c>spotify\.link/</c> with the slash immediately after <c>.link</c>.
+    /// Verifies that a lookalike host (<c>spotify.link.evil.com</c>) does not match the
+    /// <c>spotify.link</c> short-link pattern, returning no match rather than treating the attacker
+    /// domain as a Spotify short link.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithSubdomainLookalikeHost_ReturnsNoMatch( ) {
@@ -352,12 +343,9 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a well-formed <c>spotify.link/&lt;id&gt;</c> input passes the host gate
-    /// and — when the fake handler returns a 301 redirect to an open.spotify.com track URL —
-    /// the full chain resolves to <c>(true, Track, &lt;id&gt;)</c>.
-    /// Failure-first: before the handler seam existed the test made a live outbound call and
-    /// asserted vacuously on an exception message; the new assertion would fail on any build
-    /// where the handler seam is not wired or <c>TryParseUriAsync</c> ignores the resolved URL.
+    /// Verifies that a valid <c>spotify.link</c> short link resolves via an injected fake handler: a
+    /// 301 redirect to a track URL yields success with a <c>Track</c> entity and the redirected
+    /// track id. The real SSRF handler factory is restored afterward.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithValidSpotifyLinkHost_ResolvesViaFakeHandler( ) {
@@ -388,11 +376,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies the full host-gate→resolve→re-parse chain for an album short link:
-    /// <c>spotify.link/&lt;id&gt;</c> + fake 301 → <c>open.spotify.com/album/&lt;id&gt;</c>
-    /// → <c>(true, Album, &lt;id&gt;)</c>.
-    /// Failure-first: would fail if <c>SpotifyEntity.Album</c> were never returned (e.g., if
-    /// the resolved URL were ignored or the album regex branch were missing).
+    /// Verifies that a <c>spotify.link</c> short link redirecting to an album URL resolves to an
+    /// <c>Album</c> entity with the redirected album id, via the injected fake handler.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithShortLinkResolvingToAlbum_ReturnsAlbumEntity( ) {
@@ -423,10 +408,9 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Negative control: an SSRF-vector host (<c>evil.com/spotify.link/x</c>) must not invoke
-    /// the fake handler — the host gate rejects the input before any outbound call is made.
-    /// Failure-first: would fail (call count == 1) against any implementation that skips
-    /// the host gate and forwards all short-link-shaped inputs to the HTTP handler.
+    /// Verifies that for an SSRF vector host (<c>evil.com/spotify.link/x</c>), the parse fails and
+    /// the injected counting handler is never invoked, proving the host gate blocks before any
+    /// network call is made.
     /// </summary>
     [TestMethod]
     [Timeout( 3000, CooperativeCancellation = true )]
@@ -454,13 +438,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a scheme-prefixed short link — <c>https://spotify.link/&lt;id&gt;</c> —
-    /// passes the host gate, resolves via the fake 301 redirect, and returns
-    /// <c>(true, Track, &lt;id&gt;)</c>.
-    /// Failure-first: before the scheme-normalization fix, <c>new Uri($"https://{link}")</c>
-    /// with a scheme-prefixed input produced <c>https://https://spotify.link/…</c>,
-    /// causing <c>Uri.Host</c> to equal <c>"https"</c> instead of <c>"spotify.link"</c>, so the
-    /// host gate rejected the input and the method returned <c>success=false</c>.
+    /// Verifies that a scheme-prefixed <c>https://spotify.link/…</c> input is accepted by the host
+    /// gate and resolves to the redirected track entity via the injected fake handler.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithSchemePrefixedSpotifyLink_ResolvesViaFakeHandler( ) {
@@ -493,13 +472,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a short link with an <c>http://</c> scheme — the http branch of the
-    /// scheme-strip path — passes the host gate, resolves via the fake 301 redirect,
-    /// and returns <c>(true, Track, &lt;id&gt;)</c>.
-    /// The scheme-strip logic normalizes both http:// and https:// before constructing
-    /// the host-gate URI; this test locks the http:// branch against regression.
-    /// Failure-first: would fail against any implementation that only strips https:// and
-    /// leaves http:// intact, producing "http://http://spotify.link/…" and failing the host gate.
+    /// Verifies that a scheme-prefixed <c>http://spotify.link/…</c> input (plain HTTP) is likewise
+    /// accepted by the host gate and resolves to the redirected track entity.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithHttpSchemePrefixedSpotifyLink_ResolvesViaFakeHandler( ) {
@@ -531,16 +505,11 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Negative controls: confirms that credential-injection and double-scheme abuse vectors
-    /// that contain the text "spotify.link" are rejected without any outbound fetch.
-    /// The inputs exercise four distinct attack shapes:
-    /// - credential injection: <c>spotify.link@evil.com</c>
-    /// - scheme + credential injection: <c>https://spotify.link@evil.com/x</c>
-    /// - double-scheme: <c>https://https://evil.com/spotify.link/x</c>
-    /// - trailing-dot TLD variant: <c>spotify.link./x</c>
-    /// Failure-first: would fail (call count &gt; 0 or success = true) against any
-    /// implementation that parses "spotify.link" from these inputs before applying the host gate.
+    /// Verifies that scheme-strip and userinfo abuse vectors that try to smuggle an attacker host
+    /// past the <c>spotify.link</c> gate are all rejected without invoking the handler, across
+    /// userinfo (<c>spotify.link@evil.com</c>), double-scheme, and trailing-dot variants.
     /// </summary>
+    /// <param name="vector">The abuse-vector URL under test, supplied per <c>[DataRow]</c>.</param>
     [TestMethod]
     [Timeout( 3000, CooperativeCancellation = true )]
     [DataRow( "spotify.link@evil.com" )]
@@ -574,8 +543,8 @@ public class SpotifyLinkTypeRoutingTests {
     #region IdentifyProviderAsync Direct Coverage
 
     /// <summary>
-    /// Verifies that a Spotify track URL produces SongIdLookup with the Spotify track ID
-    /// as the lookupValue — the ID, not the URL.
+    /// Verifies that a Spotify track URL routes to <c>Spotify</c> / <c>SongIdLookup</c> with
+    /// <c>isAlbum</c> false and the lookup value set to the bare track id (not the full URL).
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyTrackUrl_ShouldReturnSongIdLookupAndId( ) {
@@ -595,7 +564,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a Spotify album URL produces AlbumIdLookup with the Spotify album ID.
+    /// Verifies that a Spotify album URL routes to <c>Spotify</c> / <c>AlbumIdLookup</c> with
+    /// <c>isAlbum</c> true and the lookup value set to the album id.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyAlbumUrl_ShouldReturnAlbumIdLookupAndId( ) {
@@ -618,7 +588,6 @@ public class SpotifyLinkTypeRoutingTests {
     /// Verifies that a Spotify artist URL is not recognised and the link is dropped
     /// (provider == null, no candidate produced).
     /// No artist processing exists anywhere in the system; this is intended behavior.
-    /// Director ruling 2026-06-07: do not add artist/playlist processing.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyArtistUrl_ShouldNotBeRecognized_LinkDropped( ) {
@@ -640,7 +609,6 @@ public class SpotifyLinkTypeRoutingTests {
     /// Verifies that a Spotify playlist URL is not recognised and the link is dropped
     /// (provider == null, no candidate produced).
     /// No playlist processing exists anywhere in the system; this is intended behavior.
-    /// Director ruling 2026-06-07: do not add artist/playlist processing.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyPlaylistUrl_ShouldNotBeRecognized_LinkDropped( ) {
@@ -658,8 +626,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a Spotify prerelease URL produces UriLookup.
-    /// Prerelease links are not batch-API-eligible.
+    /// Verifies that a Spotify prerelease URL routes to <c>Spotify</c> with <c>UriLookup</c>: it is
+    /// recognized but resolved through the URI path rather than a typed ID lookup.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyPrereleaseUrl_ShouldReturnUriLookup( ) {
@@ -676,8 +644,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a Spotify short link (spotify.link/…) produces UriLookup without
-    /// attempting HTTP resolution — short links require redirect-following by the worker.
+    /// Verifies that a Spotify short link routes to <c>Spotify</c> with <c>UriLookup</c>, deferring
+    /// to the redirect-resolve path rather than parsing a typed id up front.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyShortLink_ShouldReturnUriLookup( ) {
@@ -694,14 +662,9 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies the producer contract for spotify.link inputs through the firehose path:
-    /// the scheme-prefixed URL must be returned as the lookupValue unchanged so that the
-    /// worker can resolve the redirect.
-    /// The worker receives the original scheme-prefixed URL as the lookup value; stripping
-    /// or normalizing here would lose the scheme and break the downstream resolver.
-    /// Failure-first: would fail against any implementation that normalizes the URL before
-    /// returning it (e.g. returns "spotify.link/x" instead of "https://spotify.link/x"),
-    /// since the consumer path depends on the scheme being present.
+    /// Verifies that for a Spotify short link, the lookup value carries the scheme-prefixed URL the
+    /// worker received verbatim (not a normalized variant), so the downstream resolve sees the exact
+    /// input.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyShortLink_ShouldCarrySchemeInLookupValue( ) {
@@ -721,7 +684,7 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a Tidal link produces SupportedProviders.Tidal with UriLookup.
+    /// Verifies that a Tidal URL routes to the <c>Tidal</c> provider with <c>UriLookup</c>.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithTidalUrl_ShouldReturnTidalProvider( ) {
@@ -738,7 +701,8 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that an Apple Music link produces SupportedProviders.AppleMusic with UriLookup.
+    /// Verifies that an Apple Music URL routes to the <c>AppleMusic</c> provider with
+    /// <c>UriLookup</c>.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithAppleMusicUrl_ShouldReturnAppleMusicProvider( ) {
@@ -758,17 +722,27 @@ public class SpotifyLinkTypeRoutingTests {
 }
 
 /// <summary>
-/// Hermetic HTTP message handler for use with <see cref="SpotifyLinkParser.SetHandlerFactoryForTests"/>.
-/// Returns a pre-configured response and records how many times it was invoked.
+/// Test double for <see cref="HttpMessageHandler"/> that returns a fixed response for every request
+/// and counts how many times it was invoked. Injected into <c>SpotifyLinkParser</c> via its
+/// test-only handler factory so short-link resolution can be exercised offline, and so SSRF tests
+/// can assert the handler was never called.
 /// </summary>
+/// <param name="response">The canned response returned for every request.</param>
 internal sealed class FakeHttpMessageHandler( HttpResponseMessage response ) : HttpMessageHandler {
+    /// <summary>The fixed response returned for every request.</summary>
     private readonly HttpResponseMessage _response = response;
+    /// <summary>Backing counter for <see cref="CallCount"/>, incremented per invocation.</summary>
     private int _callCount;
 
-    /// <summary>Gets the number of times <see cref="SendAsync"/> was invoked.</summary>
+    /// <summary>Number of times <see cref="SendAsync"/> has been invoked.</summary>
     public int CallCount => _callCount;
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Records the invocation and returns the canned response without performing any network I/O.
+    /// </summary>
+    /// <param name="request">The outgoing request (ignored beyond counting).</param>
+    /// <param name="cancellationToken">A cancellation token (unused).</param>
+    /// <returns>The fixed response supplied at construction.</returns>
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken ) {

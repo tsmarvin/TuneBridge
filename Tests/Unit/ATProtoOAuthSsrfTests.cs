@@ -7,24 +7,30 @@ using Microsoft.Extensions.DependencyInjection;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Verifies that the ATProtoOAuth named HTTP client refuses connections to private/link-local
-/// IP addresses via the SSRF handler installed by <see cref="StartupExtensions.AddATProtoOAuthHttpClient"/>.
+/// Verifies that the named <c>"ATProtoOAuth"</c> HttpClient registered by
+/// <see cref="StartupExtensions.AddATProtoOAuthHttpClient"/> is SSRF-hardened: requests to private and
+/// link-local address ranges are blocked before any connection is made.
 /// </summary>
+/// <remarks>
+/// The block is enforced by the third-party SSRF handler the client is wired with; these tests assert
+/// the wiring is in effect by confirming that a request to a forbidden host fails with an
+/// <see cref="HttpRequestException"/> whose inner exception is an <see cref="SsrfException"/>. The
+/// covered ranges are the cloud-metadata link-local address (<c>169.254.169.254</c>), IPv4 loopback
+/// (<c>127.0.0.1</c>), and an RFC 1918 private address (<c>10.0.0.1</c>) — the addresses an attacker
+/// would target to pivot through the server.
+/// </remarks>
 [TestClass]
 public class ATProtoOAuthSsrfTests {
 
-    /// <summary>Gets or sets the test context.</summary>
+    /// <summary>
+    /// MSTest-injected context, used here to flow the test's cancellation token into the HTTP calls.
+    /// </summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Verifies that the ATProtoOAuth client rejects a request to a link-local address
-    /// (169.254.169.254, the cloud-metadata endpoint) with an <see cref="HttpRequestException"/>
-    /// whose inner exception is <see cref="SsrfException"/>.
-    /// Failure-first: the test was run against the pre-implementation code (AddHttpClient without
-    /// ConfigurePrimaryHttpMessageHandler) and the inner exception was a network-level error rather
-    /// than <see cref="SsrfException"/> — the <c>Assert.IsInstanceOfType</c> check on
-    /// <c>ex.InnerException</c> went red. After wiring <c>SsrfSocketsHttpHandlerFactory.Create</c>
-    /// the inner exception becomes <see cref="SsrfException"/> and the assertion passes.
+    /// Verifies that a request to the link-local cloud-metadata address <c>169.254.169.254</c> through
+    /// the <c>"ATProtoOAuth"</c> client is blocked, throwing an <see cref="HttpRequestException"/> whose
+    /// inner exception is an <see cref="SsrfException"/>.
     /// </summary>
     [TestMethod]
     public async Task ATProtoOAuthClient_RequestToLinkLocalAddress_ThrowsSsrfException( ) {
@@ -43,13 +49,11 @@ public class ATProtoOAuthSsrfTests {
     }
 
     /// <summary>
-    /// Verifies that the ATProtoOAuth client rejects a request to a loopback address
-    /// (127.0.0.1) with an <see cref="HttpRequestException"/> whose inner exception is
-    /// <see cref="SsrfException"/>.
-    /// Loopback is a distinct SSRF vector from link-local; this test ensures the SSRF handler
-    /// blocks the full loopback range, not just the cloud-metadata address.
-    /// Failure-first: without the SSRF handler the connection attempt would produce a
-    /// connection-refused network error rather than an SsrfException inner exception.
+    /// Verifies that a request to the IPv4 loopback address <c>127.0.0.1</c> through the
+    /// <c>"ATProtoOAuth"</c> client is blocked, throwing an <see cref="HttpRequestException"/> whose
+    /// inner exception is an <see cref="SsrfException"/>. Loopback is a distinct SSRF vector from
+    /// link-local, so this confirms the handler blocks the full loopback range, not just the
+    /// cloud-metadata address.
     /// </summary>
     [TestMethod]
     public async Task ATProtoOAuthClient_RequestToLoopbackAddress_ThrowsSsrfException( ) {
@@ -68,13 +72,10 @@ public class ATProtoOAuthSsrfTests {
     }
 
     /// <summary>
-    /// Verifies that the ATProtoOAuth client rejects a request to an RFC-1918 private address
-    /// (10.0.0.1) with an <see cref="HttpRequestException"/> whose inner exception is
-    /// <see cref="SsrfException"/>.
-    /// RFC-1918 private ranges are an SSRF vector for accessing internal network services;
-    /// this test confirms the SSRF handler covers the 10.0.0.0/8 range.
-    /// Failure-first: without the SSRF handler the connection attempt would either time out
-    /// or produce a network error, not an SsrfException inner exception.
+    /// Verifies that a request to the RFC 1918 private address <c>10.0.0.1</c> through the
+    /// <c>"ATProtoOAuth"</c> client is blocked, throwing an <see cref="HttpRequestException"/> whose
+    /// inner exception is an <see cref="SsrfException"/>. RFC 1918 private ranges are an SSRF vector for
+    /// reaching internal network services, so this confirms the handler covers the 10.0.0.0/8 range.
     /// </summary>
     [TestMethod]
     public async Task ATProtoOAuthClient_RequestToRfc1918Address_ThrowsSsrfException( ) {

@@ -3,19 +3,14 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Core.Domain.Providers.Spotify.Models {
 
     /// <summary>
-    /// Response from GET /albums?ids={ids} - batch album lookup.
+    /// Deserialization target for the Spotify Web API "get several albums" response
+    /// (GET /albums?ids={ids}), which wraps the returned albums in a top-level <c>albums</c> array.
+    /// Entries may be null when a requested id was not found. The endpoint accepts up to 20 album ids per
+    /// request. Mirrors the Spotify Web API response shape.
     /// </summary>
-    /// <remarks>
-    /// Endpoint: GET /albums?ids={comma-separated-ids}
-    /// Maximum: 20 album IDs per request
-    /// Documentation: https://developer.spotify.com/documentation/web-api/reference/get-multiple-albums
-    /// </remarks>
     public sealed class SpotifyAlbumsResponse {
 
-        /// <summary>
-        /// A list of album objects. Position corresponds to the position of the ID in the request.
-        /// If an album is not found, null is returned at that position.
-        /// </summary>
+        /// <summary>Full album objects in the order requested; an entry is null when the corresponding id was not found. Maps to <c>albums</c>.</summary>
         [JsonPropertyName( "albums" )]
         public List<SpotifyAlbum?> Albums { get; set; } = [];
     }

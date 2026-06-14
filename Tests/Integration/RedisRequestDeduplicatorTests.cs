@@ -6,28 +6,32 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
-/// Integration tests for <see cref="RedisRequestDeduplicator"/> using the shared Redis container.
-/// Requires Docker to be running on the host machine.
+/// Integration tests for <see cref="RedisRequestDeduplicator"/> against a real Redis instance (the
+/// shared Testcontainers Redis). Verifies in-flight lock acquisition and contention, lock release,
+/// completion waiting (immediate, on timeout, and on a published result via pub/sub), and the
+/// canonicalization performed by the request-key generator. Requires Docker to be running on the host
+/// machine.
 /// </summary>
 [TestClass]
 [TestCategory( "Integration" )]
 [TestCategory( "Docker" )]
 public class RedisRequestDeduplicatorTests {
 
+    /// <summary>The shared Redis connection used by the deduplicator under test.</summary>
     private static IConnectionMultiplexer? s_redis;
 
+    /// <summary>Mock logger captured for the deduplicator under test.</summary>
     private Mock<ILogger<RedisRequestDeduplicator>> _mockLogger = null!;
+    /// <summary>The deduplicator under test, recreated for each test.</summary>
     private RedisRequestDeduplicator _deduplicator = null!;
 
-    /// <summary>
-    /// Gets or sets the test context which provides information about and functionality for the current test run.
-    /// </summary>
+    /// <summary>The MSTest-injected test context.</summary>
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Initializes the Redis connection for all tests in the class.
+    /// Requires the shared Redis container and opens a connection to it for the test class.
     /// </summary>
-    /// <param name="_">The test context provided by the test framework (unused).</param>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
@@ -35,7 +39,7 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Closes and disposes the Redis connection after all tests complete.
+    /// Closes and disposes the Redis connection after the class completes.
     /// </summary>
     [ClassCleanup]
     public static async Task ClassCleanup( ) {
@@ -46,7 +50,7 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Clears inflight-related Redis keys and initializes the deduplicator before each test.
+    /// Clears leftover <c>inflight:*</c> keys and constructs a fresh deduplicator before each test.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
@@ -66,8 +70,8 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestDeduplicator.TryAcquireAsync"/> returns Acquired=true
-    /// when no other request is in flight for the same key.
+    /// Verifies acquiring an in-flight lock for a key that is not yet in flight succeeds and reports the
+    /// key as not already in flight.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -89,15 +93,14 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestDeduplicator.TryAcquireAsync"/> returns AlreadyInFlight=true
-    /// when another instance already holds the lock for the same key.
+    /// Verifies a second acquirer fails to acquire the lock and reports the key as already in flight when
+    /// the lock is held.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task TryAcquireAsync_ReturnsAlreadyInFlight_WhenLockHeld( ) {
         // Arrange
         string requestKey = "isrc:USRC12345678";
-
 
         // First acquisition
         Contracts.Records.DeduplicationResult firstResult = await _deduplicator.TryAcquireAsync(
@@ -124,8 +127,7 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestDeduplicator.ReleaseAsync"/> removes the lock,
-    /// allowing a new acquisition of the same key.
+    /// Verifies releasing a lock removes it, allowing a subsequent acquisition to succeed.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -149,8 +151,7 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestDeduplicator.WaitForCompletionAsync"/> returns null
-    /// when no lock is held (request already completed).
+    /// Verifies waiting for completion of a key that was never in flight returns null immediately.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -172,8 +173,8 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestDeduplicator.WaitForCompletionAsync"/> returns null
-    /// when the wait times out before the result is published.
+    /// Verifies waiting for completion of a key that stays in flight returns null when the wait times
+    /// out.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -200,8 +201,8 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestDeduplicator.WaitForCompletionAsync"/> receives the
-    /// result URI when it is published via <see cref="RedisRequestDeduplicator.ReleaseAsync"/>.
+    /// Verifies a waiter receives the result URI when the holder releases the lock and publishes the
+    /// completion while the waiter is blocked.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -235,8 +236,8 @@ public class RedisRequestDeduplicatorTests {
     }
 
     /// <summary>
-    /// Verifies that <see cref="RedisRequestDeduplicator.GenerateRequestKey"/> creates consistent,
-    /// normalized keys regardless of input casing or whitespace.
+    /// Verifies the request-key generator produces consistent, normalized keys regardless of input
+    /// casing or whitespace.
     /// </summary>
     [TestMethod]
     public void GenerateRequestKey_CreatesConsistentKey( ) {

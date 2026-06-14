@@ -5,16 +5,21 @@ using StackExchange.Redis;
 namespace BridgeBeats.Core.Infrastructure.Extensions {
 
     /// <summary>
-    /// Extension methods for registering cache and database services.
+    /// Dependency-injection registration helpers for the Redis-backed cache services
+    /// in the Infrastructure layer (genre cache and media-link cache).
     /// </summary>
     public static class CacheServiceExtensions {
 
         /// <summary>
-        /// Adds the Redis-based genre cache service.
-        /// Redis connection must be available via <see cref="IConnectionMultiplexer"/>.
+        /// Registers the Redis-backed genre cache as a singleton implementation of
+        /// <see cref="BridgeBeats.Contracts.Interfaces.IGenreCacheService"/>.
         /// </summary>
-        /// <param name="services">The service collection to configure.</param>
-        /// <returns>The configured service collection.</returns>
+        /// <param name="services">The service collection to add the registration to.</param>
+        /// <returns>The same <paramref name="services"/> instance, to allow call chaining.</returns>
+        /// <remarks>
+        /// The implementation resolves the shared <c>IConnectionMultiplexer</c> and a typed
+        /// logger from the container at activation time. Registered with singleton lifetime.
+        /// </remarks>
         public static IServiceCollection AddGenreCache( this IServiceCollection services ) {
             _ = services.AddSingleton<IGenreCacheService>( s => new RedisGenreCache(
                 s.GetRequiredService<IConnectionMultiplexer>( ),
@@ -25,14 +30,26 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
         }
 
         /// <summary>
-        /// Adds the Redis-based media link cache repository.
-        /// This method should only be called when ATProto storage is configured.
-        /// Redis connection must be available via <see cref="IConnectionMultiplexer"/>.
+        /// Registers the Redis-backed media-link cache as a singleton implementation of
+        /// <see cref="BridgeBeats.Contracts.Interfaces.IMediaLinkCacheRepository"/>. Call this only
+        /// when ATProto storage is configured, since the implementation resolves
+        /// <see cref="BridgeBeats.Contracts.Interfaces.IATProtoStorageService"/> from the container.
         /// </summary>
-        /// <param name="services">The service collection to configure.</param>
-        /// <param name="cacheDays">Number of days to cache media link results.</param>
-        /// <param name="atProtoUserDID">ATProto user DID for storage (required).</param>
-        /// <returns>The configured service collection.</returns>
+        /// <param name="services">The service collection to add the registration to.</param>
+        /// <param name="cacheDays">
+        /// The number of days a cached media-link entry remains valid before it is treated as stale.
+        /// </param>
+        /// <param name="atProtoUserDID">
+        /// The ATProto user DID (decentralized identifier) of the service account whose PDS records
+        /// the cache indexes and reads through.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, to allow call chaining.</returns>
+        /// <remarks>
+        /// The implementation resolves the shared <c>IConnectionMultiplexer</c>, the ATProto storage
+        /// service, and a typed logger from the container at activation time, and is supplied the
+        /// <paramref name="cacheDays"/> expiry window and <paramref name="atProtoUserDID"/> as
+        /// captured values. Registered with singleton lifetime.
+        /// </remarks>
         public static IServiceCollection AddRedisMediaLinkCache(
             this IServiceCollection services,
             int cacheDays,

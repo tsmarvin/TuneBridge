@@ -3,10 +3,10 @@ using System.Text.Json.Serialization;
 namespace BridgeBeats.Contracts.Records;
 
 /// <summary>
-/// Information about a rate-limited endpoint.
+/// A single rate-limited endpoint paired with the instant it may be retried.
 /// </summary>
-/// <param name="Endpoint">The API endpoint path that is rate-limited.</param>
-/// <param name="RetryAfter">When the rate limit for this endpoint expires.</param>
+/// <param name="Endpoint">The API endpoint path that is currently rate-limited.</param>
+/// <param name="RetryAfter">The absolute wall-clock instant before which the endpoint should not be retried. An instant, not a duration.</param>
 public sealed record RateLimitedEndpoint(
 
     [property: JsonPropertyName( "endpoint" )]

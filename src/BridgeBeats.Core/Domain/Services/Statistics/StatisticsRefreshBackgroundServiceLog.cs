@@ -3,58 +3,50 @@ using BridgeBeats.Core.Infrastructure.Logging;
 namespace BridgeBeats.Core.Domain.Services;
 
 /// <summary>
-/// LoggerMessage methods for <see cref="StatisticsRefreshBackgroundService"/>.
+/// Source-generated <see cref="LoggerMessage"/> definitions for
+/// <see cref="StatisticsRefreshBackgroundService"/>.
 /// </summary>
 public sealed partial class StatisticsRefreshBackgroundService {
 
-    /// <summary>
-    /// Logs when the statistics refresh background service starts.
-    /// </summary>
+    /// <summary>Logs (Information) that the service is starting, with its startup delay and refresh interval.</summary>
+    /// <param name="startupDelay">The delay before the first refresh.</param>
+    /// <param name="interval">The periodic refresh interval.</param>
     [LoggerMessage(
         EventId = LogEventIds.BackgroundServices.StatisticsRefreshStarting,
         Level = LogLevel.Information,
         Message = "Statistics refresh background service starting. Startup delay: {StartupDelay}, interval: {Interval}" )]
     private partial void LogStarting( TimeSpan startupDelay, TimeSpan interval );
 
-    /// <summary>
-    /// Logs when the initial refresh completes.
-    /// </summary>
+    /// <summary>Logs (Information) that the initial forced refresh completed.</summary>
     [LoggerMessage(
         EventId = LogEventIds.BackgroundServices.StatisticsRefreshInitialComplete,
         Level = LogLevel.Information,
         Message = "Initial statistics refresh completed" )]
     private partial void LogInitialRefreshComplete( );
 
-    /// <summary>
-    /// Logs when the periodic timer triggered a refresh.
-    /// </summary>
+    /// <summary>Logs (Debug) that a refresh was triggered by the periodic timer.</summary>
     [LoggerMessage(
         EventId = LogEventIds.BackgroundServices.StatisticsRefreshPeriodicTriggered,
         Level = LogLevel.Debug,
         Message = "Statistics refresh triggered by periodic timer" )]
     private partial void LogPeriodicRefreshTriggered( );
 
-    /// <summary>
-    /// Logs when a manual trigger triggered a refresh.
-    /// </summary>
+    /// <summary>Logs (Debug) that a refresh was triggered manually through the trigger channel.</summary>
     [LoggerMessage(
         EventId = LogEventIds.BackgroundServices.StatisticsRefreshManualTriggered,
         Level = LogLevel.Debug,
         Message = "Statistics refresh triggered manually" )]
     private partial void LogManualRefreshTriggered( );
 
-    /// <summary>
-    /// Logs refresh errors while keeping the background loop alive.
-    /// </summary>
+    /// <summary>Logs (Error) that a refresh attempt threw; the loop backs off and continues.</summary>
+    /// <param name="ex">The exception raised during the refresh.</param>
     [LoggerMessage(
         EventId = LogEventIds.BackgroundServices.StatisticsRefreshError,
         Level = LogLevel.Error,
         Message = "Error occurred during statistics refresh" )]
     private partial void LogRefreshError( Exception ex );
 
-    /// <summary>
-    /// Logs when the statistics refresh background service stops.
-    /// </summary>
+    /// <summary>Logs (Information) that the refresh loop has stopped.</summary>
     [LoggerMessage(
         EventId = LogEventIds.BackgroundServices.StatisticsRefreshStopped,
         Level = LogLevel.Information,
@@ -62,9 +54,9 @@ public sealed partial class StatisticsRefreshBackgroundService {
     private partial void LogStopped( );
 
     /// <summary>
-    /// Logs when the trigger channel is closed by its writer (channel permanently completed).
-    /// The background service exits the loop because no further manual triggers can arrive.
+    /// Logs (Warning) that the manual-trigger channel completed unexpectedly, which ends the loop.
     /// </summary>
+    /// <param name="exception">The base exception that faulted the channel wait, if any.</param>
     [LoggerMessage(
         EventId = LogEventIds.BackgroundServices.StatisticsRefreshChannelCompleted,
         Level = LogLevel.Warning,
