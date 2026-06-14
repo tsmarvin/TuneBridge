@@ -7,22 +7,8 @@ namespace BridgeBeats.Contracts.Interfaces;
 /// Orchestrates lookup operations through the queue-based infrastructure.
 /// </summary>
 /// <remarks>
-/// <para>
-/// All lookup operations flow through this orchestrator, which handles:
-/// <list type="bullet">
-///   <item>Cache checking (Redis)</item>
-///   <item>Request deduplication (prevents duplicate in-flight requests)</item>
-///   <item>Queue submission to provider-specific Redis streams</item>
-///   <item>Pub/Sub subscription for result notification</item>
-///   <item>Saga creation for multi-provider lookups</item>
-///   <item>Partial result handling when providers are rate-limited</item>
-/// </list>
-/// </para>
-/// <para>
-/// The orchestrator ensures all lookups are queue-based for metrics collection
-/// and rate limit tracking. Initial lookups use Interactive priority, while
-/// secondary provider lookups (after initial result) use Background priority.
-/// </para>
+/// All lookups flow through cache checking, deduplication, queue submission, and Pub/Sub notification.
+/// Initial lookups use Interactive priority; secondary lookups use Background priority.
 /// </remarks>
 public interface ILookupOrchestrator {
     /// <summary>

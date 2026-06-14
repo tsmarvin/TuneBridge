@@ -341,7 +341,16 @@ public partial class ATProtoStorageService(
         } catch (CarParseException ex) {
             LogCarDownloadFailed( logger, ex );
             throw;
-        } catch (Exception ex) when (ex is not OperationCanceledException) {
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            // Cooperative shutdown: the caller's token was signaled — rethrow for normal shutdown handling.
+            throw;
+        } catch (OperationCanceledException oce) {
+            // HttpClient deadline fired (not the caller's token). Treat as a download failure so
+            // consumers' catch (Exception) degradation paths handle it rather than treating it as
+            // cooperative shutdown.
+            LogCarDownloadFailed( logger, oce );
+            throw;
+        } catch (Exception ex) {
             LogCarDownloadFailed( logger, ex );
             throw;
         }

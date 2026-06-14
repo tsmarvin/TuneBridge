@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Worker.Discord.Logging;
+using Polly.Timeout;
 
 namespace BridgeBeats.Worker.Discord.Services {
 
@@ -49,6 +50,15 @@ namespace BridgeBeats.Worker.Discord.Services {
             try {
                 response = await _httpClient.PostAsJsonAsync( "/music/lookup/url", new { Uri = content } );
                 _ = response.EnsureSuccessStatusCode( );
+            } catch (TimeoutRejectedException ex) {
+                // Polly AttemptTimeout fired — the pipeline rejected the attempt.
+                LogLookupApiTimeout( _logger, ex );
+                yield break;
+            } catch (OperationCanceledException ex) {
+                // HttpClient transport deadline or cooperative cancellation.
+                // TaskCanceledException (IS-A OperationCanceledException) is caught here too.
+                LogLookupApiTimeout( _logger, ex );
+                yield break;
             } catch (HttpRequestException ex) {
                 LogLookupApiError( _logger, ex );
                 yield break;
@@ -104,6 +114,13 @@ namespace BridgeBeats.Worker.Discord.Services {
         private record StoreCardResponse( string? CardUrl );
 
         #region LoggerMessage Methods
+
+        /// <summary>Logs timeout or cancellation of the music lookup API call.</summary>
+        [LoggerMessage(
+            EventId = LogEventIds.LookupApiTimeout,
+            Level = LogLevel.Warning,
+            Message = "Music lookup API call timed out or was cancelled; yielding no results" )]
+        private static partial void LogLookupApiTimeout( ILogger logger, Exception ex );
 
         /// <summary>Logs failure to call music lookup API.</summary>
         [LoggerMessage(

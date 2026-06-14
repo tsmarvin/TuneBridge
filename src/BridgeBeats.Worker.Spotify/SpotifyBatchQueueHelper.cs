@@ -14,21 +14,9 @@ namespace BridgeBeats.Worker.Spotify;
 /// for track and album ID lookups consumed by <c>SpotifyBulkProcessorService</c>.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Stream naming convention (constants in <see cref="SpotifyConstants"/>):
-/// <list type="bullet">
-///   <item><c>queue:spotify:bulk:track-id</c> — <see cref="LookupRequestType.SongIdLookup"/> bulk messages.</item>
-///   <item><c>queue:spotify:bulk:album-id</c> — <see cref="LookupRequestType.AlbumIdLookup"/> bulk messages.</item>
-/// </list>
-/// </para>
-/// <para>
-/// Pending-entry (PEL) recovery: at the start of each <see cref="DequeueBatchFromStreamAsync"/>
-/// call an <c>XAUTOCLAIM</c> sweep reclaims entries that have been idle in the PEL
-/// for more than <see cref="AutoClaimMinIdleMs"/> milliseconds. This prevents crash-between-read-and-ACK
-/// from stranding messages in a dead consumer's PEL indefinitely, which would otherwise
-/// cause the age trigger to fire every 500ms against empty dequeues (the project's
-/// known log-flood failure mode).
-/// </para>
+/// Manages <c>queue:spotify:bulk:track-id</c> and <c>queue:spotify:bulk:album-id</c> streams.
+/// An XAUTOCLAIM sweep at the start of each dequeue reclaims PEL entries idle longer than
+/// <see cref="AutoClaimMinIdleMs"/> ms, preventing stranded messages after a consumer crash.
 /// </remarks>
 public sealed partial class SpotifyBatchQueueHelper {
 
@@ -141,9 +129,17 @@ public sealed partial class SpotifyBatchQueueHelper {
             }
 
             string? enqueuedAtStr = entries[0][QueueStreamFieldNames.EnqueuedAt];
-            return !string.IsNullOrEmpty( enqueuedAtStr )
-                ? DateTimeOffset.ParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture )
-                : null;
+            if (string.IsNullOrEmpty( enqueuedAtStr )) {
+                return null;
+            }
+
+            if (!DateTimeOffset.TryParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset parsed )) {
+                // Malformed enqueuedAt — treat as absent so the age trigger does not strand a low-volume stream.
+                LogMalformedEnqueuedAt( _logger, enqueuedAtStr, stream );
+                return null;
+            }
+
+            return parsed;
         } catch (RedisServerException) {
             return null;
         }
@@ -235,9 +231,12 @@ public sealed partial class SpotifyBatchQueueHelper {
                             continue;
                         }
 
-                        DateTimeOffset enqueuedAt = !string.IsNullOrEmpty( enqueuedAtStr )
-                            ? DateTimeOffset.ParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture )
-                            : DateTimeOffset.UtcNow;
+                        DateTimeOffset enqueuedAt = DateTimeOffset.UtcNow;
+                        if (!string.IsNullOrEmpty( enqueuedAtStr ) &&
+                            !DateTimeOffset.TryParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out enqueuedAt )) {
+                            LogMalformedEnqueuedAt( _logger, enqueuedAtStr, stream );
+                            enqueuedAt = DateTimeOffset.UtcNow;
+                        }
 
                         string compositeId = $"{stream}:{entry.Id}";
                         messages.Add( new QueuedMessage<QueuedLookupRequest>( compositeId, request, enqueuedAt ) );
@@ -292,9 +291,12 @@ public sealed partial class SpotifyBatchQueueHelper {
                         continue;
                     }
 
-                    DateTimeOffset enqueuedAt = !string.IsNullOrEmpty( enqueuedAtStr )
-                        ? DateTimeOffset.ParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture )
-                        : DateTimeOffset.UtcNow;
+                    DateTimeOffset enqueuedAt = DateTimeOffset.UtcNow;
+                    if (!string.IsNullOrEmpty( enqueuedAtStr ) &&
+                        !DateTimeOffset.TryParseExact( enqueuedAtStr, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out enqueuedAt )) {
+                        LogMalformedEnqueuedAt( _logger, enqueuedAtStr, stream );
+                        enqueuedAt = DateTimeOffset.UtcNow;
+                    }
 
                     string compositeId = $"{stream}:{entry.Id}";
                     messages.Add( new QueuedMessage<QueuedLookupRequest>( compositeId, request, enqueuedAt ) );
@@ -350,15 +352,7 @@ public sealed partial class SpotifyBatchQueueHelper {
     /// after XAUTOCLAIM re-claim), this method returns <see cref="RequeueOutcome.NotFound"/>
     /// and the caller must leave the saga untouched (it was processed by another consumer).
     /// The caller is responsible for writing the complete-failed saga state and
-    /// publishing the completion events for <see cref="RequeueOutcome.CapReached"/> —
-    /// keeping service-layer saga writes out of this infrastructure helper.
-    /// <para>
-    /// DLQ note: the bulk streams do not have a reference to the underlying
-    /// <c>IRequestQueue</c> instance, so <c>MoveToDlqAsync</c> is not reachable from
-    /// this helper. The ACK+XDEL in the cap path removes the message from the stream;
-    /// this helper's own WARNING log (<see cref="LogMaxRetriesExceeded"/>) is the audit
-    /// trail. If DLQ access is needed in future, thread the queue reference through.
-    /// </para>
+    /// publishing the completion events for <see cref="RequeueOutcome.CapReached"/>.
     /// </remarks>
     /// <param name="messageId">The composite message ID (stream:id format).</param>
     /// <param name="sagaId">The saga ID of the associated request (for logging).</param>
@@ -417,8 +411,8 @@ public sealed partial class SpotifyBatchQueueHelper {
 
         if (request is null) {
             // Payload could not be deserialized — cannot safely increment AttemptCount.
-            // Drop and signal caller so the saga is not left incomplete.
-            LogMaxRetriesExceeded( _logger, id, 0, sagaId );
+            // Drop the message and signal CapReached so the caller writes failed saga state.
+            LogPoisonPayloadDiscarded( _logger, id, sagaId );
             return RequeueOutcome.CapReached;
         }
 
@@ -532,6 +526,20 @@ public sealed partial class SpotifyBatchQueueHelper {
         Level = LogLevel.Warning,
         Message = "Message {MessageId} in bulk stream exceeded {MaxRetries} retry attempts; discarding (saga={SagaId})" )]
     private static partial void LogMaxRetriesExceeded( ILogger logger, string messageId, int maxRetries, string sagaId );
+
+    /// <summary>Logs that an unserializable payload was discarded from the bulk stream.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.PoisonPayloadDiscarded,
+        Level = LogLevel.Warning,
+        Message = "Message {MessageId} in bulk stream has an unserializable payload; discarding (saga={SagaId})" )]
+    private static partial void LogPoisonPayloadDiscarded( ILogger logger, string messageId, string sagaId );
+
+    /// <summary>Logs that a malformed enqueuedAt field was skipped in GetOldestEnqueuedAtAsync.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.MalformedEnqueuedAt,
+        Level = LogLevel.Warning,
+        Message = "Malformed enqueuedAt field '{EnqueuedAtStr}' in stream {Stream}; treating as absent" )]
+    private static partial void LogMalformedEnqueuedAt( ILogger logger, string enqueuedAtStr, string stream );
 
     #endregion
 }

@@ -536,7 +536,7 @@ public class QueueContractsTests {
 
         // Assert
         Assert.AreEqual( TimeSpan.FromMinutes( 2 ), settings.RateLimitRetryThreshold );
-        Assert.AreEqual( 60, settings.JobExpirationMinutes );
+        Assert.AreEqual( 2880, settings.JobExpirationMinutes );
         Assert.IsNotNull( settings.Weights );
     }
 

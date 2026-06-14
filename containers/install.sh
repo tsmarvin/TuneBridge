@@ -23,7 +23,7 @@ UPGRADE_LOG="upgrade.log"
 CONTAINER_UID=1654
 
 # Files to download from the repository
-DOWNLOAD_FILES=("docker-compose.yml" "Caddyfile" ".env.example")
+DOWNLOAD_FILES=("docker-compose.yml" "Caddyfile" ".env.example" "truncate_seq.sh")
 
 # Files to backup during upgrades (excludes .env.example as it's just a template)
 BACKUP_FILES=("docker-compose.yml" "Caddyfile")
@@ -413,6 +413,11 @@ for file in "${DOWNLOAD_FILES[@]}"; do
     fi
 done
 
+# Mark the trim script executable (required for direct invocation by cron)
+if [[ -f "truncate_seq.sh" ]]; then
+    chmod +x "truncate_seq.sh"
+fi
+
 # =============================================================================
 # Setup Logs Directory
 # =============================================================================
@@ -442,6 +447,51 @@ else
     echo ""
     echo "[ACTION REQUIRED] Set logs ownership for container access:"
     echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/logs"
+fi
+
+# =============================================================================
+# Setup Data Directories
+# =============================================================================
+print_section "Setting Up Data Directories"
+
+# Create bind-mount targets for all persistent-data services (idempotent)
+mkdir -p ./data/app ./data/dp-keys ./data/redis ./data/pds ./logs/caddy
+echo "[OK] Data directories present: ./data/{app,dp-keys,redis,pds} ./logs/caddy"
+
+# Set ownership per the actual writing UID of each service.
+# Bind-mounts present host directory ownership directly to the container —
+# wrong ownership causes silent persistence failures or startup crashes.
+#
+# Ownership table:
+#   ./data/app, ./data/dp-keys  → 1654:1654 (.NET app; APP_UID=1654)
+#   ./data/pds                  → 0:0 root (PDS image has no USER directive)
+#   ./data/redis                → 0:0 root (compose command: override uses "sh -c …";
+#                                   gosu step-down is skipped, so redis-server runs as root.
+#                                   If the "sh -c" override is removed, change to 999:1000.)
+#   ./logs/caddy                → 0:0 root (caddy writes access logs as root)
+#
+# IMPORTANT: chown ./logs/caddy specifically — never the parent ./logs tree.
+# The parent ./logs is owned by ${CONTAINER_UID} (set by the Logs block above)
+# so the app's Serilog file sink can write there. Chowning the whole ./logs
+# tree to root would break app logging.
+if [[ "$USE_SUDO" == "true" ]]; then
+    if sudo chown -R "${CONTAINER_UID}:${CONTAINER_UID}" ./data/app ./data/dp-keys 2>/dev/null; then
+        echo "[OK] Set ./data/app and ./data/dp-keys ownership to UID ${CONTAINER_UID} (app user)"
+    else
+        echo "[WARN] Could not set data/app or data/dp-keys ownership. Please run manually:"
+        echo "       sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/data/app $(pwd)/data/dp-keys"
+    fi
+    if sudo chown -R 0:0 ./data/pds ./data/redis ./logs/caddy 2>/dev/null; then
+        echo "[OK] Set ./data/pds, ./data/redis, and ./logs/caddy ownership to root"
+    else
+        echo "[WARN] Could not set data/pds, data/redis, or logs/caddy ownership. Please run manually:"
+        echo "       sudo chown -R 0:0 $(pwd)/data/pds $(pwd)/data/redis $(pwd)/logs/caddy"
+    fi
+else
+    echo ""
+    echo "[ACTION REQUIRED] Set data directory ownership for container access:"
+    echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_UID} $(pwd)/data/app $(pwd)/data/dp-keys"
+    echo "  sudo chown -R 0:0 $(pwd)/data/pds $(pwd)/data/redis $(pwd)/logs/caddy"
 fi
 
 # =============================================================================
@@ -656,6 +706,69 @@ else
     fi
 fi
 
+
+# =============================================================================
+# Setup PDS Sequencer Trim
+# =============================================================================
+print_section "Setting Up PDS Sequencer Trim"
+
+# The PDS sequencer.sqlite grows unbounded at bot-write volume (repo_seq table
+# is never trimmed by the stock PDS). A daily host-cron job deletes rows older
+# than 14 days (336 hours) using the vendored truncate_seq.sh script.
+# The trim runs directly on the host using the host sqlite3 binary.
+# Requires: GNU date and sqlite3 on the host (apt-get install -y sqlite3).
+
+DEPLOY_DIR="$(pwd)"
+TRIM_SCRIPT="${DEPLOY_DIR}/truncate_seq.sh"
+TRIM_DB="${DEPLOY_DIR}/data/pds/sequencer.sqlite"
+TRIM_LOG="${DEPLOY_DIR}/logs/pds-trim.log"
+CRON_FILE="/etc/cron.d/bridgebeats-pds-trim"
+
+CRON_CONTENT="# BridgeBeats PDS sequencer trim — 14-day (336h) retention. The PDS repo_seq table
+# grows unbounded at bot-write volume; this daily job bounds it to a 14-day window.
+# Managed by install.sh; re-running install.sh overwrites this file (no duplicate entries).
+SHELL=/bin/sh
+17 4 * * * root ${TRIM_SCRIPT} ${TRIM_DB} 336 >> ${TRIM_LOG} 2>&1"
+
+CRON_AVAILABLE=false
+if [[ -d "/etc/cron.d" ]]; then
+    CRON_AVAILABLE=true
+fi
+
+if [[ "$USE_SUDO" == "true" ]] && [[ "$CRON_AVAILABLE" == "true" ]]; then
+    # Ensure sqlite3 is present on the host
+    if ! command -v sqlite3 &> /dev/null; then
+        echo "sqlite3 not found — installing..."
+        sudo apt-get update -qq
+        if sudo apt-get install -y sqlite3; then
+            echo "[OK] Installed sqlite3"
+        else
+            echo "[WARN] Could not install sqlite3 automatically. Please install it manually:"
+            echo "       sudo apt-get install -y sqlite3"
+        fi
+    else
+        echo "[OK] sqlite3 is available"
+    fi
+
+    # Register the cron entry by overwriting the fixed file (idempotent — no duplicate schedules)
+    if echo "${CRON_CONTENT}" | sudo tee "${CRON_FILE}" > /dev/null; then
+        sudo chmod 0644 "${CRON_FILE}"
+        echo "[OK] Registered daily PDS sequencer trim (14-day retention) via ${CRON_FILE}"
+    else
+        echo "[WARN] Could not write ${CRON_FILE}. Please create it manually (see ACTION REQUIRED below)."
+    fi
+else
+    if [[ "$CRON_AVAILABLE" == "false" ]]; then
+        echo "[WARN] /etc/cron.d not found — cron may not be available on this system"
+    fi
+    echo ""
+    echo "[ACTION REQUIRED] Register the PDS sequencer trim cron entry manually:"
+    echo "  Ensure sqlite3 is installed:   sudo apt-get install -y sqlite3"
+    echo "  Create ${CRON_FILE} with the following content:"
+    echo ""
+    echo "${CRON_CONTENT}"
+    echo ""
+fi
 
 # =============================================================================
 # Summary and Next Steps

@@ -725,5 +725,45 @@ public class QueueMetricsTests {
         Assert.AreEqual( "success", recordedStatus );
     }
 
+    /// <summary>
+    /// Verifies that <see cref="QueueMetrics.RecordInteractiveDeferral"/> records the counter with
+    /// the expected value (1), a lowercased provider tag, and the verbatim endpoint tag.
+    /// </summary>
+    [TestMethod]
+    public void RecordInteractiveDeferral_RecordsWithLowercaseProviderAndEndpoint( ) {
+        // Arrange
+        long recordedValue = 0;
+        string? recordedProvider = null;
+        string? recordedEndpoint = null;
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName && instrument.Name == "bridgebeats.ratelimit.interactive_deferred.total") {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.SetMeasurementEventCallback<long>( ( instrument, measurement, tags, state ) => {
+            recordedValue = measurement;
+            foreach (KeyValuePair<string, object?> tag in tags) {
+                if (tag.Key == QueueMetricTags.Provider) {
+                    recordedProvider = tag.Value?.ToString( );
+                } else if (tag.Key == QueueMetricTags.Endpoint) {
+                    recordedEndpoint = tag.Value?.ToString( );
+                }
+            }
+        } );
+
+        listener.Start( );
+
+        // Act
+        QueueMetrics.RecordInteractiveDeferral( SupportedProviders.Spotify, "tracks" );
+
+        // Assert
+        Assert.AreEqual( 1, recordedValue );
+        Assert.AreEqual( "spotify", recordedProvider );
+        Assert.AreEqual( "tracks", recordedEndpoint );
+    }
+
     #endregion
 }

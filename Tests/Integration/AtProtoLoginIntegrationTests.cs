@@ -154,7 +154,7 @@ public class AtProtoLoginIntegrationTests : IDisposable {
     /// Failure-first evidence: on the pre-fix code (RequireUniqueEmail = true), userManager.CreateAsync
     /// fails with "Email '' is invalid." The callback redirects to /account/login?error=... instead of
     /// returning a redirect to /. After the fix, the user is created and the redirect goes to /.
-    /// The ApiKeyHash assertion changed from non-null to null per M1 director ratification: ATProto
+    /// The ApiKeyHash assertion changed from non-null to null (ratified decision): ATProto
     /// users mint keys via POST /account/regenerate-api-key after sign-in.
     /// </summary>
     [TestMethod]

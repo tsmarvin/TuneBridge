@@ -46,10 +46,11 @@ Create a Cloudflare API token with the following permissions:
 
 ### 2. Secret File Setup
 
-Run the setup script to create the secrets directory and files:
+Create the secrets directory if it does not already exist:
 
 ```bash
-./setup-secrets.sh
+mkdir -p secrets && chmod 700 secrets
+touch secrets/cloudflare_api_token.txt
 ```
 
 Then edit the Cloudflare API token file with your actual token:
@@ -102,7 +103,8 @@ From the `containers/` directory:
 1. Set up secrets:
 ```bash
 cd containers
-./setup-secrets.sh
+mkdir -p secrets && chmod 700 secrets
+touch secrets/cloudflare_api_token.txt
 nano secrets/cloudflare_api_token.txt  # Add your Cloudflare API token
 ```
 

@@ -105,9 +105,9 @@ public class SpotifyBulkQueueDecoratorTests {
     #region Enqueue Routing Tests
 
     /// <summary>
-    /// Verifies that SongIdLookup is written to the track-id bulk stream, not the inner queue.
-    /// Failure-first: before §1.2, SongIdLookup was forwarded to inner queue (UriLookup path);
-    /// this test verifies the XADD interception added in §1.2.
+    /// Verifies that SongIdLookup at Bulk priority is written to the track-id bulk stream.
+    /// Interception is gated on type AND non-interactive priority; Bulk satisfies the gate.
+    /// Failure-first: SongIdLookup at Bulk must be intercepted and written to the track-id bulk stream.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenSongIdLookup_ShouldWriteToTrackIdStream( ) {
@@ -139,9 +139,9 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
-    /// Verifies that AlbumIdLookup is written to the album-id bulk stream, not the inner queue.
-    /// Failure-first: before §1.2, AlbumIdLookup was forwarded to inner queue;
-    /// this test verifies the XADD interception added in §1.2.
+    /// Verifies that AlbumIdLookup at Bulk priority is written to the album-id bulk stream.
+    /// Interception is gated on type AND non-interactive priority; Bulk satisfies the gate.
+    /// Failure-first: AlbumIdLookup at Bulk must be intercepted and written to the album-id bulk stream.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenAlbumIdLookup_ShouldWriteToAlbumIdStream( ) {
@@ -174,8 +174,7 @@ public class SpotifyBulkQueueDecoratorTests {
 
     /// <summary>
     /// Verifies that UriLookup is forwarded to the inner queue, not written to any stream.
-    /// Failure-first: the pre-§1.2 state forwarded everything; this test verifies the passthrough
-    /// path is preserved for UriLookup after the interception for typed IDs is added.
+    /// Failure-first: UriLookup must not be intercepted; the passthrough path must be preserved.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenUriLookup_ShouldDelegateToInnerQueue( ) {
@@ -234,9 +233,156 @@ public class SpotifyBulkQueueDecoratorTests {
     }
 
     /// <summary>
+    /// Verifies that SongIdLookup at Interactive priority delegates to the inner queue and
+    /// does NOT write to any bulk stream.
+    /// Failure-first: before the priority gate, Interactive SongIdLookup was routed to the bulk
+    /// stream; now it must pass through so it lands on the interactive stream.
+    /// </summary>
+    [TestMethod]
+    public async Task EnqueueAsync_WhenSongIdLookupAndInteractivePriority_ShouldDelegateToInnerQueue( ) {
+        // Arrange
+        _ = _innerQueueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.SongIdLookup, "3n3Ppam7vgaVa1iaRUc9Lp" );
+
+        // Act
+        await _decorator.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
+
+        // Assert — inner queue receives the call exactly once at Interactive priority
+        _innerQueueMock.Verify(
+            q => q.EnqueueAsync( request, QueuePriority.Interactive, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert — no StreamAddAsync (no bulk-stream write)
+        _databaseMock.Verify(
+            d => d.StreamAddAsync(
+                It.IsAny<RedisKey>( ),
+                It.IsAny<NameValueEntry[]>( ),
+                It.IsAny<RedisValue?>( ),
+                It.IsAny<long?>( ),
+                It.IsAny<bool>( ),
+                It.IsAny<long?>( ),
+                It.IsAny<StreamTrimMode>( ),
+                It.IsAny<CommandFlags>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that AlbumIdLookup at Interactive priority delegates to the inner queue and
+    /// does NOT write to any bulk stream.
+    /// Failure-first: before the priority gate, Interactive AlbumIdLookup was routed to the bulk
+    /// stream; now it must pass through so it lands on the interactive stream.
+    /// </summary>
+    [TestMethod]
+    public async Task EnqueueAsync_WhenAlbumIdLookupAndInteractivePriority_ShouldDelegateToInnerQueue( ) {
+        // Arrange
+        _ = _innerQueueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.AlbumIdLookup, "6WdSsBrH5QtofaTTqgwxOV" );
+
+        // Act
+        await _decorator.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
+
+        // Assert — inner queue receives the call exactly once at Interactive priority
+        _innerQueueMock.Verify(
+            q => q.EnqueueAsync( request, QueuePriority.Interactive, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert — no StreamAddAsync (no bulk-stream write)
+        _databaseMock.Verify(
+            d => d.StreamAddAsync(
+                It.IsAny<RedisKey>( ),
+                It.IsAny<NameValueEntry[]>( ),
+                It.IsAny<RedisValue?>( ),
+                It.IsAny<long?>( ),
+                It.IsAny<bool>( ),
+                It.IsAny<long?>( ),
+                It.IsAny<StreamTrimMode>( ),
+                It.IsAny<CommandFlags>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that SongIdLookup at Background priority is written to the track-id bulk stream
+    /// and NOT forwarded to the inner queue.
+    /// Guards against over-correction: background SongIdLookup must still batch, not fall through.
+    /// Failure-first: if the priority gate was inverted, Background would incorrectly pass through.
+    /// </summary>
+    [TestMethod]
+    public async Task EnqueueAsync_WhenSongIdLookupAndBackgroundPriority_ShouldWriteToTrackIdStream( ) {
+        // Arrange
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.SongIdLookup, "3n3Ppam7vgaVa1iaRUc9Lp" );
+
+        // Act
+        await _decorator.EnqueueAsync( request, QueuePriority.Background, TestContext.CancellationToken );
+
+        // Assert — XADD to the track-id stream
+        _databaseMock.Verify(
+            d => d.StreamAddAsync(
+                BulkTrackIdStream,
+                It.IsAny<NameValueEntry[]>( ),
+                It.IsAny<RedisValue?>( ),
+                It.IsAny<long?>( ),
+                It.IsAny<bool>( ),
+                It.IsAny<long?>( ),
+                It.IsAny<StreamTrimMode>( ),
+                It.IsAny<CommandFlags>( ) ),
+            Times.Once
+        );
+
+        // Assert — inner queue was NOT called
+        _innerQueueMock.Verify(
+            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that AlbumIdLookup at Background priority is written to the album-id bulk stream
+    /// and NOT forwarded to the inner queue.
+    /// Guards against over-correction: background AlbumIdLookup must still batch, not fall through.
+    /// Failure-first: if the priority gate was inverted, Background would incorrectly pass through.
+    /// </summary>
+    [TestMethod]
+    public async Task EnqueueAsync_WhenAlbumIdLookupAndBackgroundPriority_ShouldWriteToAlbumIdStream( ) {
+        // Arrange
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.AlbumIdLookup, "6WdSsBrH5QtofaTTqgwxOV" );
+
+        // Act
+        await _decorator.EnqueueAsync( request, QueuePriority.Background, TestContext.CancellationToken );
+
+        // Assert — XADD to the album-id stream
+        _databaseMock.Verify(
+            d => d.StreamAddAsync(
+                BulkAlbumIdStream,
+                It.IsAny<NameValueEntry[]>( ),
+                It.IsAny<RedisValue?>( ),
+                It.IsAny<long?>( ),
+                It.IsAny<bool>( ),
+                It.IsAny<long?>( ),
+                It.IsAny<StreamTrimMode>( ),
+                It.IsAny<CommandFlags>( ) ),
+            Times.Once
+        );
+
+        // Assert — inner queue was NOT called
+        _innerQueueMock.Verify(
+            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
     /// Verifies that the payload field in the XADD call is valid JSON containing the request.
-    /// Failure-first: before §1.2 the payload field was never set; this verifies the serialized
-    /// request written to the stream matches the original request.
+    /// Failure-first: the serialized request written to the stream must match the original request.
     /// </summary>
     [TestMethod]
     public async Task EnqueueAsync_WhenSongIdLookup_ShouldSerializePayloadField( ) {

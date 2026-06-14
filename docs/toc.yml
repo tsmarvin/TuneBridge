@@ -1,5 +1,7 @@
 - name: Home
   href: index.md
+- name: Quick Start
+  href: QUICKSTART.md
 - name: Configuration
   href: CONFIGURATION.md
 - name: Local Development
@@ -12,5 +14,15 @@
   href: TESTING.md
 - name: Caching
   href: CACHING.md
-- name: API Documentation
+- name: Spotify Batch and Routing
+  href: SPOTIFY_BATCH_AND_ROUTING.md
+- name: Discord Bot
+  href: DISCORD_BOT.md
+- name: ATProto Lexicon Setup
+  href: ATPROTO_LEXICON.md
+- name: Caddy + Cloudflare
+  href: CADDY_CLOUDFLARE.md
+- name: SBOM and Provenance
+  href: SBOM_AND_PROVENANCE.md
+- name: Code API Reference
   href: api/

@@ -11,20 +11,8 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// and pub/sub for completion notification.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Key patterns:
-/// <list type="bullet">
-///   <item><c>inflight:{requestKey}</c> - SETNX lock with processing instance ID</item>
-///   <item><c>complete:{requestKey}</c> - Pub/sub channel for completion notification</item>
-/// </list>
-/// </para>
-/// <para>
-/// When a request is in-flight, other instances can subscribe to the completion channel
-/// to be notified when the result is available, avoiding redundant API calls.
-/// </para>
-/// </remarks>
-/// <remarks>
-/// Initializes a new instance of the <see cref="RedisRequestDeduplicator"/> class.
+/// Key patterns: <c>inflight:{requestKey}</c> (SETNX lock) and <c>complete:{requestKey}</c> (pub/sub channel).
+/// In-flight subscribers receive the completion notification, avoiding redundant API calls.
 /// </remarks>
 /// <param name="redis">The Redis connection multiplexer.</param>
 /// <param name="logger">Logger for diagnostic information.</param>

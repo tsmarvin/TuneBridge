@@ -18,9 +18,10 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit and integration-level tests for the dispatch contract added in B1 fix
-/// and related Phase-1 corrections (M1 retry cap, M2 rate-limit parity, M5
-/// LookupKeyBuilder alignment, M7a ShouldFlush predicate).
+/// Unit and integration-level tests for the Spotify bulk dispatch contract:
+/// the three result-routing branches (empty dict, absent key, null value),
+/// the retry-cap increment and drop logic, rate-limit parity (SetIsPartialAsync
+/// per saga), LookupKeyBuilder canonical-format alignment, and ShouldFlush predicate.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -410,14 +411,14 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     // -------------------------------------------------------------------------
-    // M1 — Retry cap tests (SpotifyBatchQueueHelper.RequeueAsync)
+    // Retry cap tests (SpotifyBatchQueueHelper.RequeueAsync)
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Verifies that RequeueAsync increments AttemptCount on each requeue.
     /// The re-serialized payload written back to the stream must have AttemptCount + 1.
-    /// Failure-first: before M1, RequeueAsync ACKed and re-added the message but never
-    /// incremented AttemptCount, so a failing message could cycle forever.
+    /// Failure-first: before the retry-cap fix, RequeueAsync ACKed and re-added the
+    /// message but never incremented AttemptCount, so a failing message could cycle forever.
     /// </summary>
     [TestMethod]
     public async Task RequeueAsync_WhenAttemptCountIsZero_ShouldRequeueWithAttemptCountOne( ) {
@@ -481,8 +482,8 @@ public class SpotifyBulkDispatchContractTests {
     /// <summary>
     /// Verifies that RequeueAsync drops a message when AttemptCount has reached MaxRetryAttempts (5).
     /// The message must be ACKed and deleted (to remove it from the PEL) but NOT re-added.
-    /// Failure-first: before M1, the message would be re-added indefinitely. The cap prevents
-    /// a poison-message stream from occupying the bulk pipeline forever.
+    /// Failure-first: before the retry-cap fix, the message would be re-added indefinitely.
+    /// The cap prevents a poison-message stream from occupying the bulk pipeline forever.
     /// </summary>
     [TestMethod]
     public async Task RequeueAsync_WhenAttemptCountAtCap_ShouldAckAndNotRequeue( ) {
@@ -647,15 +648,16 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     // -------------------------------------------------------------------------
-    // M2 — Rate-limit parity
+    // Rate-limit parity: HandleBulkRateLimitAsync per-saga partial marking
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Verifies that HandleBulkRateLimitAsync calls SetIsPartialAsync for each message
     /// when the bulk endpoint returns a 429 (RetryAfterExceededException).
-    /// Failure-first: before M2, HandleBulkRateLimitAsync only called SetRateLimitedAsync
-    /// at the tracker level but never per-saga, leaving interactive callers waiting
-    /// indefinitely for a completion event that was never published.
+    /// Failure-first: before the rate-limit parity fix, HandleBulkRateLimitAsync only
+    /// called SetRateLimitedAsync at the tracker level but never per-saga, leaving
+    /// interactive callers waiting indefinitely for a completion event that was never
+    /// published.
     /// </summary>
     [TestMethod]
     public async Task HandleBulkRateLimit_WhenCalled_ShouldMarkSagasPartialAndPublishSentinel( ) {
@@ -692,7 +694,7 @@ public class SpotifyBulkDispatchContractTests {
             true,
             It.IsAny<CancellationToken>( ) ),
             Times.Once,
-            "Each rate-limited saga must be marked partial (M2 parity with QueueProcessorBackgroundService)" );
+            "Each rate-limited saga must be marked partial (parity with QueueProcessorBackgroundService rate-limit handling)" );
 
         // Assert — SetRateLimitInfoAsync called to merge rate-limit info into saga
         _sagaManagerMock.Verify( m => m.SetRateLimitInfoAsync(
@@ -713,13 +715,13 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     // -------------------------------------------------------------------------
-    // M5 — LookupKeyBuilder format alignment
+    // LookupKeyBuilder canonical format alignment
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Verifies that LookupKeyBuilder.TypedKey produces the canonical format
     /// <c>{LookupType}:{Provider}:{normalizedId}</c> that all four producers must agree on.
-    /// Failure-first: before M5, QueueProcessorBackgroundService used
+    /// Failure-first: before the format-alignment fix, QueueProcessorBackgroundService used
     /// <c>"{request.LookupType}:{request.LookupValue}"</c> (missing the provider segment),
     /// and JetStreamWatcherService used the same wrong format; the resulting saga IDs
     /// could never align between a JetStream-originated request and a bulk-processor result.
@@ -761,9 +763,10 @@ public class SpotifyBulkDispatchContractTests {
     /// Verifies cross-producer alignment: JetStreamWatcher and SpotifyBulkProcessorService
     /// must generate the same saga ID for the same track ID so they share state.
     /// The saga ID is derived from the lookup key via <see cref="ISagaStateManager.GenerateSagaId"/>.
-    /// Failure-first: before M5, the two producers used different key formats, so their
-    /// GenerateSagaId outputs never matched — each thought the other's request was a
-    /// different saga, producing duplicate entries and no cross-producer state sharing.
+    /// Failure-first: before the format-alignment fix, the two producers used different
+    /// key formats, so their GenerateSagaId outputs never matched — each thought the other's
+    /// request was a different saga, producing duplicate entries and no cross-producer state
+    /// sharing.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_JetStreamAndBulkProcessor_ShouldProduceSameSagaIdForSameTrackId( ) {
@@ -779,7 +782,7 @@ public class SpotifyBulkDispatchContractTests {
             SupportedProviders.Spotify,
             TestTrackId );
 
-        // QueueProcessorBackgroundService path: also uses LookupKeyBuilder.TypedKey (M5 fix)
+        // QueueProcessorBackgroundService path: also uses LookupKeyBuilder.TypedKey
         string queueProcessorKey = LookupKeyBuilder.TypedKey(
             LookupRequestType.SongIdLookup,
             SupportedProviders.Spotify,
@@ -796,15 +799,15 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     // -------------------------------------------------------------------------
-    // CR-m-1 — Poison entries (missing payload) must be ACK+XDELed, not skipped
+    // Poison entries (missing payload) must be ACK+XDELed, not skipped
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Verifies that an XREADGROUP entry with an empty payload field is ACK+XDELed rather than
     /// silently skipped. Skipping leaves it in the PEL and XAUTOCLAIM re-claims it every
     /// AutoClaimMinIdleMs, causing an eternal log-flood loop.
-    /// Failure-first: before CR-m-1, <c>string.IsNullOrEmpty(payload)</c> hit a bare
-    /// <c>continue</c>; this test would fail because StreamAcknowledgeAsync was never called.
+    /// Failure-first: before the poison-entry fix, <c>string.IsNullOrEmpty(payload)</c> hit a
+    /// bare <c>continue</c>; this test would fail because StreamAcknowledgeAsync was never called.
     /// </summary>
     [TestMethod]
     public async Task DequeueBatch_WhenXReadGroupEntryHasEmptyPayload_ShouldAckAndDeletePoisonEntry( ) {
@@ -913,16 +916,17 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     // -------------------------------------------------------------------------
-    // CR-m-2 — RequeueAsync not-found branch: leave saga untouched
+    // RequeueAsync not-found branch: leave saga untouched
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Verifies that when the stream entry is missing (already XDELed — duplicate in-flight
     /// after XAUTOCLAIM re-claim), <c>RequeueAsync</c> returns <see cref="RequeueOutcome.NotFound"/>
     /// and <c>RequeueSingleAsync</c> in <c>SpotifyBulkProcessorService</c> does NOT write saga state.
-    /// Failure-first: before CR-m-2, <c>not-found</c> returned <c>false</c> (same as cap-reached),
-    /// causing <c>RequeueSingleAsync</c> to write a complete-failed saga state for a message that
-    /// was already successfully processed by another consumer — corrupting the saga outcome.
+    /// Failure-first: before the not-found branch fix, <c>not-found</c> returned <c>false</c>
+    /// (same as cap-reached), causing <c>RequeueSingleAsync</c> to write a complete-failed saga
+    /// state for a message already successfully processed by another consumer — corrupting the
+    /// saga outcome.
     /// </summary>
     [TestMethod]
     public async Task RequeueAsync_WhenEntryNotFound_ShouldReturnNotFoundWithoutSagaWrite( ) {
@@ -973,10 +977,10 @@ public class SpotifyBulkDispatchContractTests {
     /// Verifies that when <c>RequeueAsync</c> returns <c>NotFound</c>, the service does NOT
     /// call <c>UpdateProviderStateAsync</c> — the saga must be left untouched because the
     /// entry was already processed by another consumer (duplicate in-flight).
-    /// Failure-first: before CR-m-2 the not-found case returned false (same as CapReached),
-    /// so <c>RequeueSingleAsync</c> would call <c>UpdateProviderStateAsync</c> with
-    /// <c>IsSuccess=false</c>, overwriting a potentially successful result already written
-    /// by the other consumer.
+    /// Failure-first: before the not-found branch fix, the not-found case returned false
+    /// (same as CapReached), so <c>RequeueSingleAsync</c> would call
+    /// <c>UpdateProviderStateAsync</c> with <c>IsSuccess=false</c>, overwriting a potentially
+    /// successful result already written by the other consumer.
     /// </summary>
     [TestMethod]
     public async Task ProcessBulkTracks_WhenRequeueReturnsNotFound_ShouldNotWriteSagaState( ) {
@@ -1011,7 +1015,7 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     // -------------------------------------------------------------------------
-    // CR-m-3 — ComputeCooldownSeconds overflow protection and clamping
+    // ComputeCooldownSeconds overflow protection and clamping
     // -------------------------------------------------------------------------
 
     /// <summary>
@@ -1020,10 +1024,10 @@ public class SpotifyBulkDispatchContractTests {
     /// </summary>
     /// <remarks>
     /// Failure-first discipline: the pure function is tested directly.
-    /// Before CR-m-3, <c>1 &lt;&lt; (consecutiveFailures - 1)</c> would overflow int at n≈32,
-    /// producing a negative product; the clamped formula prevents this. A test against the
-    /// pre-fix formula would fail at n=32 or n=40 because the result would be negative,
-    /// violating the "stays positive" assertion.
+    /// Before the overflow-protection fix, <c>1 &lt;&lt; (consecutiveFailures - 1)</c> would
+    /// overflow int at n≈32, producing a negative product; the clamped formula prevents this.
+    /// A test against the pre-fix formula would fail at n=32 or n=40 because the result
+    /// would be negative, violating the "stays positive" assertion.
     /// </remarks>
     [TestMethod]
     public void ComputeCooldownSeconds_ForRepresentativeFailureCounts_ShouldStayPositiveAndClampAtMax( ) {
@@ -1097,16 +1101,16 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     // -------------------------------------------------------------------------
-    // F1 — XAUTOCLAIM claimed entries must flow into the returned batch
+    // XAUTOCLAIM claimed entries must flow into the returned batch
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Verifies that a stranded entry recovered by XAUTOCLAIM is included in the returned
     /// message list when XREADGROUP returns empty (the common crash-recovery scenario).
-    /// Failure-first: before F1, <c>DequeueBatchFromStreamAsync</c> logged claimed entries
-    /// but discarded them; only ">" new entries from XREADGROUP were returned.
-    /// A stranded entry would be re-claimed every <c>AutoClaimMinIdleMs</c> but never
-    /// completed, causing the age-trigger flush to fire every 500ms with empty dequeues.
+    /// Failure-first: before the XAUTOCLAIM-inclusion fix, <c>DequeueBatchFromStreamAsync</c>
+    /// logged claimed entries but discarded them; only ">" new entries from XREADGROUP were
+    /// returned. A stranded entry would be re-claimed every <c>AutoClaimMinIdleMs</c> but
+    /// never completed, causing the age-trigger flush to fire every 500ms with empty dequeues.
     /// </summary>
     [TestMethod]
     public async Task DequeueTrackIdBatch_WhenAutoClaimReturnsEntry_ShouldIncludeClaimedEntryInBatch( ) {
@@ -1160,8 +1164,9 @@ public class SpotifyBulkDispatchContractTests {
     /// Verifies that the count budget is respected when both XAUTOCLAIM and XREADGROUP
     /// have entries: claimed entries reduce the XREADGROUP count, and the combined total
     /// does not exceed the requested batch size.
-    /// Failure-first: before F1, claimed entries were discarded and the XREADGROUP call
-    /// always received the full count, allowing the combined total to exceed the budget.
+    /// Failure-first: before the XAUTOCLAIM-inclusion fix, claimed entries were discarded
+    /// and the XREADGROUP call always received the full count, allowing the combined total
+    /// to exceed the budget.
     /// </summary>
     [TestMethod]
     public async Task DequeueTrackIdBatch_WhenAutoClaimFillsBudget_ShouldSkipXReadGroup( ) {
@@ -1209,16 +1214,16 @@ public class SpotifyBulkDispatchContractTests {
     }
 
     // -------------------------------------------------------------------------
-    // F6 — V2 dedup: completed saga with FinalResultUri set skips republish
+    // V2 dedup: completed saga with FinalResultUri set skips republish
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Verifies that <c>CheckAndPublishSagaCompletionAsync</c> skips the completion publish
-    /// when the saga already has a <c>FinalResultUri</c> set (§4.2 pre-check dedup guard).
+    /// when the saga already has a <c>FinalResultUri</c> set (dedup guard).
     /// With deterministic saga IDs, a re-shared URL hitting a lingering completed saga is
     /// the common case in V2; without this guard every re-share would re-publish, causing
     /// duplicate coordinator writes.
-    /// Failure-first: before the FinalResultUri guard at ~:519, ProcessBulkResultAsync
+    /// Failure-first: before the FinalResultUri dedup guard was added, ProcessBulkResultAsync
     /// would publish on every call regardless of whether the saga was already finalized.
     /// </summary>
     [TestMethod]

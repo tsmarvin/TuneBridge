@@ -9,6 +9,7 @@ services:
     networks:
       - internal
     environment:
+      - DOMAIN=${DOMAIN:-bridgebeats.link}
       - NODE_NUMBER=${NODE_NUMBER:-100}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
@@ -28,9 +29,9 @@ services:
       - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
       - RATE_LIMIT_REQUESTS_PER_HOUR=${RATE_LIMIT_REQUESTS_PER_HOUR:-20}
     volumes:
-      - bridgebeats-data:/app/data # Persistent data directory
+      - ./data/app:/app/data # Persistent data directory (sqlite + Aspire store)
       - ./logs:/app/data/logs # Logs bind-mounted to host for easy access
-      - bridgebeats-dp-keys:/app/keys # Data Protection key persistence
+      - ./data/dp-keys:/app/keys # Data Protection key persistence
       # Secret mounts (read-only)
       - ./secrets/apple_key.p8:/run/secrets/apple_key:ro
       - ./secrets/spotify_client_secret.txt:/run/secrets/spotify_client_secret:ro
@@ -51,7 +52,7 @@ services:
       resources:
         limits:
           cpus: '4'
-          memory: 4G
+          memory: 8G
         reservations:
           cpus: '0.5'
           memory: 256M
@@ -74,7 +75,7 @@ services:
           exec redis-server --appendonly yes
         fi
     volumes:
-      - bridgebeats-redis-data:/data
+      - ./data/redis:/data
       - ./secrets/redis_password.txt:/run/secrets/redis_password:ro
     healthcheck:
       test:
@@ -93,8 +94,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: '2'
+          memory: 6G
         reservations:
           cpus: '0.1'
           memory: 64M
@@ -106,7 +107,7 @@ services:
     networks:
       - internal
     volumes:
-      - bridgebeats-data:/pds
+      - ./data/pds:/pds
     environment:
       - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.bridgebeats.link}
       - PDS_JWT_SECRET=${PDS_JWT_SECRET:-}
@@ -145,20 +146,12 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - bridgebeats-caddy-data:/data/caddy
       - bridgebeats-caddy-config:/config/caddy
-      - bridgebeats-caddy-logs:/var/log/caddy
+      - ./logs/caddy:/var/log/caddy
 
 volumes:
-  bridgebeats-data:
-    driver: local
-  bridgebeats-dp-keys:
-    driver: local
-  bridgebeats-redis-data:
-    driver: local
   bridgebeats-caddy-data:
     driver: local
   bridgebeats-caddy-config:
-    driver: local
-  bridgebeats-caddy-logs:
     driver: local
 
 networks:

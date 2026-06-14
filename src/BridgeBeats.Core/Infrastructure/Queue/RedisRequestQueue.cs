@@ -28,20 +28,8 @@ internal static partial class RedisQueuePatterns {
 /// Redis Streams-based implementation of <see cref="IRequestQueue{T}"/> for a specific music provider.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Uses Redis Streams with consumer groups for reliable message delivery.
-/// Each provider has three priority streams (interactive, background, bulk)
-/// and a Dead Letter Queue for failed messages.
-/// </para>
-/// <para>
-/// Stream naming convention:
-/// <list type="bullet">
-///   <item><c>queue:{provider}:interactive</c> - Interactive priority stream</item>
-///   <item><c>queue:{provider}:background</c> - Background priority stream</item>
-///   <item><c>queue:{provider}:bulk</c> - Bulk priority stream</item>
-///   <item><c>queue:{provider}:dlq</c> - Dead Letter Queue</item>
-/// </list>
-/// </para>
+/// Uses Redis Streams with consumer groups. Stream keys: <c>queue:{provider}:interactive</c>,
+/// <c>queue:{provider}:background</c>, <c>queue:{provider}:bulk</c>, <c>queue:{provider}:dlq</c>.
 /// </remarks>
 /// <typeparam name="T">The type of request to queue.</typeparam>
 public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : class, IQueueableRequest {
@@ -59,6 +47,13 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     private readonly string _backgroundStream;
     private readonly string _bulkStream;
     private readonly string _dlqStream;
+
+    // Effective aging interval (validated in constructor; N ≤ 1 falls back to default)
+    private readonly int _agingInterval;
+
+    // Per-instance dequeue ordering counter — single consumer per queue instance, no volatile required.
+    // Unchecked increment: wraps at int.MaxValue harmlessly (the modulo arithmetic continues to work).
+    private int _dequeueCounter;
 
     // Track which stream a message came from for ack/requeue
     private const string DlqReasonField = "dlqReason";
@@ -83,6 +78,18 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         ArgumentNullException.ThrowIfNull( settings );
         _settings = settings.Value;
         _provider = provider;
+
+        // Validate the aging interval. N ≤ 1 is misconfiguration: N=1 would demote on every
+        // single dequeue, silently inverting interactive priority on a config typo.
+        // Fall back to the default (8) and log a warning at first use.
+        const int DefaultAgingInterval = 8;
+        int configuredInterval = _settings.InteractiveAgingInterval;
+        if (configuredInterval <= 1) {
+            _agingInterval = DefaultAgingInterval;
+            LogAgingIntervalMisconfigured( _logger, configuredInterval, DefaultAgingInterval );
+        } else {
+            _agingInterval = configuredInterval;
+        }
 
         string providerName = provider.ToString( ).ToLowerInvariant( );
         _interactiveStream = $"queue:{providerName}:interactive";
@@ -152,9 +159,9 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
     public async Task<QueuedMessage<T>?> DequeueAsync( CancellationToken cancellationToken = default ) {
         IDatabase db = _redis.GetDatabase( );
 
-        // Use weighted random selection to choose which stream to read from
-        // with bulk gating until minimum queue depth is reached
-        string[] streamOrder = await GetWeightedStreamOrderWithBulkGatingAsync( );
+        // Determine stream order: interactive-first with aging and bulk gating.
+        unchecked { _dequeueCounter++; }
+        string[] streamOrder = await GetWeightedStreamOrderWithBulkGatingAsync( _dequeueCounter );
 
         foreach (string stream in streamOrder) {
             StreamEntry[] entries = await db.StreamReadGroupAsync(
@@ -190,9 +197,9 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         IReadOnlyList<RateLimitedEndpoint> rateLimitedEndpoints = await rateLimitTracker.GetAllRateLimitedAsync( _provider, cancellationToken );
         HashSet<string> blockedEndpoints = rateLimitedEndpoints.Select( e => e.Endpoint ).ToHashSet( StringComparer.OrdinalIgnoreCase );
 
-        // Use weighted random selection to choose which stream to read from
-        // with bulk gating until minimum queue depth is reached
-        string[] streamOrder = await GetWeightedStreamOrderWithBulkGatingAsync( );
+        // Determine stream order: interactive-first with aging and bulk gating.
+        unchecked { _dequeueCounter++; }
+        string[] streamOrder = await GetWeightedStreamOrderWithBulkGatingAsync( _dequeueCounter );
 
         if (_logger.IsEnabled( LogLevel.Debug )) {
             LogDequeueStarting( _logger, blockedEndpoints.Count, streamOrder.Length );
@@ -545,42 +552,62 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         return QueuePriority.Background; // Default fallback
     }
 
-    private string[] GetWeightedStreamOrder( ) {
-        // Weighted random selection based on priority weights
-        // Returns streams in priority order based on weighted random selection
-        int total = _settings.Weights.Interactive + _settings.Weights.Background + _settings.Weights.Bulk;
-        int roll = Random.Shared.Next( total );
-
-        return roll < _settings.Weights.Interactive
-            ? [_interactiveStream, _backgroundStream, _bulkStream]
-            : roll < _settings.Weights.Interactive + _settings.Weights.Background
-            ? [_backgroundStream, _interactiveStream, _bulkStream]
-            : [_bulkStream, _interactiveStream, _backgroundStream];
+    /// <summary>
+    /// Returns the ordered stream array for the current dequeue call, applying bulk gating and
+    /// passing the current depth to the pure ordering seam.
+    /// </summary>
+    private async Task<string[]> GetWeightedStreamOrderWithBulkGatingAsync( int dequeueCounter ) {
+        QueueDepth depth = await GetDepthAsync( );
+        return GetStreamDequeueOrder( dequeueCounter, depth );
     }
 
-    private async Task<string[]> GetWeightedStreamOrderWithBulkGatingAsync( ) {
-        // Gate bulk processing until there are enough messages to batch
+    /// <summary>
+    /// Pure method: returns the deterministic stream dequeue order given the current counter and queue depth.
+    /// Interactive is served first on every non-aging call. On every <c>InteractiveAgingInterval</c>-th
+    /// call a lower-priority tier leads (background and bulk alternate) to prevent starvation.
+    /// Bulk is excluded when its depth is below the per-provider minimum threshold.
+    /// </summary>
+    /// <param name="dequeueCounter">The current dequeue ordering counter (incremented by caller before this call).</param>
+    /// <param name="depth">Current queue depths used for bulk gating.</param>
+    /// <returns>Ordered array of stream keys, highest effective priority first.</returns>
+    internal string[] GetStreamDequeueOrder( int dequeueCounter, QueueDepth depth ) {
+        // Bulk gating: exclude bulk stream if its depth is below the threshold.
         int minBulkThreshold = _settings.GetMinBulkThreshold( _provider );
+        bool bulkEligible = minBulkThreshold <= 0 || depth.Bulk >= minBulkThreshold;
 
-        if (minBulkThreshold > 0) {
-            QueueDepth depth = await GetDepthAsync( );
+        if (!bulkEligible) {
+            LogBulkGated( _logger, depth.Bulk, minBulkThreshold );
+        }
 
-            if (depth.Bulk < minBulkThreshold) {
-                // Not enough bulk messages to process - skip bulk queue
-                LogBulkGated( _logger, depth.Bulk, minBulkThreshold );
+        // Aging: every _agingInterval-th call, demote interactive and promote a lower tier.
+        // Rotate between background (odd aging slots) and bulk (even aging slots) so neither starves.
+        bool isAgingSlot = dequeueCounter % _agingInterval == 0;
 
-                // Return order without bulk
-                int total = _settings.Weights.Interactive + _settings.Weights.Background;
-                int roll = Random.Shared.Next( total );
+        if (isAgingSlot) {
+            // agingSlotIndex: 1 for first slot, 2 for second, …
+            int agingSlotIndex = dequeueCounter / _agingInterval;
+            bool backgroundLeads = (agingSlotIndex % 2) != 0;
 
-                return roll < _settings.Weights.Interactive
-                    ? [_interactiveStream, _backgroundStream]
+            if (backgroundLeads) {
+                // Background leads the aging slot.
+                return bulkEligible
+                    ? [_backgroundStream, _interactiveStream, _bulkStream]
                     : [_backgroundStream, _interactiveStream];
+            } else {
+                if (bulkEligible) {
+                    // Bulk leads the aging slot.
+                    return [_bulkStream, _interactiveStream, _backgroundStream];
+                } else {
+                    // Bulk not eligible — background leads anyway (no bulk to alternate with).
+                    return [_backgroundStream, _interactiveStream];
+                }
             }
         }
 
-        // Normal weighted selection including bulk
-        return GetWeightedStreamOrder( );
+        // Normal case: interactive first.
+        return bulkEligible
+            ? [_interactiveStream, _backgroundStream, _bulkStream]
+            : [_interactiveStream, _backgroundStream];
     }
 
     private QueuedMessage<T>? ParseStreamEntry( StreamEntry entry, string stream ) {
@@ -773,6 +800,12 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T> where T : cl
         Level = LogLevel.Debug,
         Message = "No messages found in stream {Stream}" )]
     internal static partial void LogNoNewMessagesInStream( ILogger logger, string stream );
+
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisRequestQueueAgingIntervalMisconfigured,
+        Level = LogLevel.Warning,
+        Message = "InteractiveAgingInterval {ConfiguredValue} is ≤ 1 (misconfiguration); falling back to default {DefaultValue}" )]
+    internal static partial void LogAgingIntervalMisconfigured( ILogger logger, int configuredValue, int defaultValue );
 
     #endregion
 }

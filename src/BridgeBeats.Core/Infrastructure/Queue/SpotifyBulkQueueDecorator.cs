@@ -15,35 +15,9 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// priority queue.
 /// </summary>
 /// <remarks>
-/// <para>
-/// When <see cref="EnqueueAsync"/> is called with a <see cref="QueuedLookupRequest"/>
-/// whose <see cref="QueuedLookupRequest.LookupType"/> is
-/// <see cref="LookupRequestType.SongIdLookup"/> or
-/// <see cref="LookupRequestType.AlbumIdLookup"/>, this decorator writes directly to
-/// <c>queue:spotify:bulk:track-id</c> (<see cref="SpotifyConstants.BulkTrackIdStream"/>)
-/// or <c>queue:spotify:bulk:album-id</c> (<see cref="SpotifyConstants.BulkAlbumIdStream"/>)
-/// respectively, using the same field shape (<c>payload</c> + <c>enqueuedAt</c>)
-/// that <c>RedisRequestQueue</c> uses. All other call sites — dequeue, acknowledge,
-/// requeue, depth, DLQ — are delegated unchanged to the inner queue.
-/// </para>
-/// <para>
-/// Race safety: both <c>SpotifyBulkProcessorService</c> and the generic
-/// <c>QueueProcessorBackgroundService</c> share the consumer group
-/// <c>spotify-workers</c>, but they read from <em>disjoint</em> streams:
-/// the type-specific bulk streams (<c>queue:spotify:bulk:track-id</c> /
-/// <c>queue:spotify:bulk:album-id</c>) are only consumed by
-/// <c>SpotifyBulkProcessorService</c>, while the generic priority streams
-/// (<c>queue:spotify:interactive</c> / <c>queue:spotify:background</c> /
-/// <c>queue:spotify:bulk</c>) are only consumed by the generic worker.
-/// Disjoint streams with a single consumer service per stream is the correct
-/// safety invariant — consumer group membership alone is not sufficient.
-/// </para>
-/// <para>
-/// Registration: this decorator is applied automatically by
-/// <c>QueueServiceExtensions.ApplySpotifyBulkDecorator</c>, which is called from both
-/// <c>CreateProviderQueue</c> and the <c>AddAllProviderQueues</c> resolver factory.
-/// Producers do not need any extra registration step.
-/// </para>
+/// <c>SongIdLookup</c> and <c>AlbumIdLookup</c> enqueues write to the type-specific bulk streams
+/// (<see cref="SpotifyConstants.BulkTrackIdStream"/> / <see cref="SpotifyConstants.BulkAlbumIdStream"/>);
+/// all other calls are delegated to the inner queue unchanged.
 /// </remarks>
 public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLookupRequest> {
 
@@ -76,16 +50,21 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
     /// <inheritdoc/>
     /// <remarks>
     /// Intercepts <see cref="LookupRequestType.SongIdLookup"/> and
-    /// <see cref="LookupRequestType.AlbumIdLookup"/> requests and writes them
-    /// to the type-specific bulk streams. All other lookup types are forwarded
-    /// to the underlying queue unchanged.
+    /// <see cref="LookupRequestType.AlbumIdLookup"/> requests with a non-interactive priority
+    /// and writes them to the type-specific bulk streams.
+    /// When <paramref name="priority"/> is <see cref="QueuePriority.Interactive"/>, typed ID lookups
+    /// pass through to the inner queue so they are served on the interactive stream with a
+    /// single-item <c>GetInfoByIDAsync</c> call, preserving the interactive latency budget.
+    /// All other lookup types are forwarded to the underlying queue unchanged regardless of priority.
     /// </remarks>
     public async Task EnqueueAsync(
         QueuedLookupRequest request,
         QueuePriority priority,
         CancellationToken cancellationToken = default
     ) {
-        if (request.LookupType is LookupRequestType.SongIdLookup or LookupRequestType.AlbumIdLookup) {
+        if (request.LookupType is LookupRequestType.SongIdLookup or LookupRequestType.AlbumIdLookup
+            && priority != QueuePriority.Interactive) {
+
             string stream = request.LookupType == LookupRequestType.SongIdLookup
                 ? SpotifyConstants.BulkTrackIdStream
                 : SpotifyConstants.BulkAlbumIdStream;
@@ -109,7 +88,8 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
             return;
         }
 
-        // All other lookup types (UriLookup, IsrcLookup, UpcLookup, etc.) pass through
+        // Interactive SongIdLookup/AlbumIdLookup, and all other lookup types, pass through
+        // to the inner queue so they are dispatched on the caller's intended priority lane.
         await _inner.EnqueueAsync( request, priority, cancellationToken );
     }
 

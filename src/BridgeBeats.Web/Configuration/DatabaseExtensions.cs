@@ -23,6 +23,17 @@ public static class DatabaseExtensions {
         // Apply pending migrations and create the database if it doesn't exist
         await context.Database.MigrateAsync( );
 
+        // Recovery pass: clear any rate-limit windows that have already expired so users
+        // pinned by the pre-fix non-persisted-reset bug are released on startup. Idempotent —
+        // a no-op once windows are fresh, safe to run on every boot.
+        DateTime windowFloor = DateTime.UtcNow.AddHours( -1 );
+        _ = await context.Database.ExecuteSqlInterpolatedAsync(
+            $@"UPDATE AspNetUsers
+               SET RequestCount = 0,
+                   RateLimitWindowStart = NULL
+               WHERE RateLimitWindowStart IS NOT NULL
+                 AND RateLimitWindowStart <= {windowFloor}" );
+
         // Seed the AspireDashboardAccess role if it doesn't exist
         await SeedRolesAsync( roleManager );
 

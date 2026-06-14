@@ -7,31 +7,16 @@ namespace BridgeBeats.Contracts.Interfaces;
 /// Manages the state of multi-provider lookup sagas.
 /// </summary>
 /// <remarks>
-/// <para>
-/// A saga tracks the progress of a lookup across multiple music providers,
-/// enabling eventual consistency when some providers are rate-limited.
-/// The saga ID is deterministically derived from the lookup key to ensure
-/// idempotent saga creation.
-/// </para>
-/// <para>
-/// Provider states are stored separately to allow efficient partial updates
-/// without read-modify-write cycles.
-/// </para>
+/// Tracks lookup progress across multiple providers. Saga ID is deterministically derived
+/// from the lookup key. Provider states are stored separately for efficient partial updates.
 /// </remarks>
 public interface ISagaStateManager {
     /// <summary>
     /// Gets an existing saga by ID, or creates a new one if it doesn't exist.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The saga ID should be deterministically derived from the lookup key
-    /// (e.g., using a hash of "isrc:USRC12345678") to ensure that identical
-    /// lookups always map to the same saga.
-    /// </para>
-    /// <para>
-    /// If a saga already exists for the given ID, it is returned and the
-    /// other parameters are ignored (idempotent operation).
-    /// </para>
+    /// Saga ID must be deterministically derived from the lookup key so identical lookups
+    /// always map to the same saga. Returns the existing saga if one already exists (idempotent).
     /// </remarks>
     /// <param name="sagaId">Unique saga identifier, derived from lookup key.</param>
     /// <param name="lookupKey">The deduplication key (e.g., "isrc:USRC12345678").</param>
@@ -70,15 +55,8 @@ public interface ISagaStateManager {
     /// Updates the state for a specific provider within a saga.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Called when a provider lookup completes (successfully or with failure).
-    /// Each provider's state is stored separately in Redis to allow efficient
-    /// partial updates without affecting other provider states.
-    /// </para>
-    /// <para>
-    /// Automatically extends the saga's TTL to prevent expiration during
-    /// active processing.
-    /// </para>
+    /// Called when a provider lookup completes. Each provider's state is stored separately.
+    /// Automatically extends the saga TTL to prevent expiration during active processing.
     /// </remarks>
     /// <param name="sagaId">The saga identifier.</param>
     /// <param name="state">The provider's updated state.</param>
@@ -93,14 +71,8 @@ public interface ISagaStateManager {
     /// Records the ATProto URI for a partial result.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This is the "first write" to ATProto, containing results from providers
-    /// that completed successfully before a rate limit was encountered.
-    /// </para>
-    /// <para>
-    /// Writing partial results allows users to see available data immediately
-    /// while waiting for remaining providers to complete.
-    /// </para>
+    /// The first ATProto write, containing results from providers that completed before a rate limit.
+    /// Allows users to see available data while remaining providers complete.
     /// </remarks>
     /// <param name="sagaId">The saga identifier.</param>
     /// <param name="uri">The ATProto record URI for the partial result.</param>
@@ -115,14 +87,8 @@ public interface ISagaStateManager {
     /// Records the ATProto URI for the final, complete result.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This is the "second write" to ATProto (or the only write if no rate
-    /// limits were encountered), containing results from all providers.
-    /// </para>
-    /// <para>
-    /// The saga is considered fully complete when the final result URI is set.
-    /// This replaces any partial result that was previously written.
-    /// </para>
+    /// The final ATProto write (or only write if no rate limits were encountered).
+    /// Replaces any partial result; the saga is fully complete when this URI is set.
     /// </remarks>
     /// <param name="sagaId">The saga identifier.</param>
     /// <param name="uri">The ATProto record URI for the final result.</param>
@@ -150,15 +116,8 @@ public interface ISagaStateManager {
     /// (no FinalResultUri set).
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This method is used by the SagaCoordinator polling loop as a fallback mechanism
-    /// to catch any sagas that may have been missed by Pub/Sub (e.g., due to network
-    /// issues or process restarts).
-    /// </para>
-    /// <para>
-    /// Only returns sagas older than <paramref name="minimumAge"/> to avoid race conditions
-    /// with in-flight Pub/Sub messages.
-    /// </para>
+    /// Used by the SagaCoordinator polling loop as a Pub/Sub fallback. Only returns sagas older
+    /// than <paramref name="minimumAge"/> to avoid races with in-flight Pub/Sub messages.
     /// </remarks>
     /// <param name="minimumAge">Minimum age of sagas to return (prevents race with Pub/Sub).</param>
     /// <param name="limit">Maximum number of sagas to return per call.</param>
@@ -219,12 +178,8 @@ public interface ISagaStateManager {
     /// Atomically marks a saga as having had its secondary lookups queued.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The coordinator can receive both a <c>saga:completed</c> and a <c>complete:{key}</c>
-    /// event for the same completion and race itself into queueing each secondary lookup
-    /// twice. This marker is a set-if-not-exists operation so exactly one caller wins the
-    /// right to queue secondaries.
-    /// </para>
+    /// Set-if-not-exists so exactly one caller wins the right to queue secondaries,
+    /// preventing double-queuing when both <c>saga:completed</c> and <c>complete:{key}</c> events arrive.
     /// </remarks>
     /// <param name="sagaId">The saga identifier.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>

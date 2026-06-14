@@ -93,6 +93,10 @@ aspire-output/
 # Secrets directory
 secrets/
 
+/data/
+.claude/
+projects/
+
 # Caddy data
 caddy-data/
 caddy-config/

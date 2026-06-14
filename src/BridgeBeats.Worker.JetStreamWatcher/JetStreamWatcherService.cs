@@ -16,13 +16,6 @@ using idunno.Bluesky.Embed;
 using idunno.Bluesky.Feed;
 using idunno.Bluesky.RichText;
 
-// Pre-check (§1.1): Downstream saga consumers (SagaCoordinatorBackgroundService,
-// QueueProcessorBackgroundService) do not condition behavior on LookupType == UriLookup
-// for JetStream-originated sagas, and no cache-pointer write uses the URL as a lookup value
-// — cache pointers are keyed by ISRC/UPC or provider ID. Switching Spotify track/album
-// JetStream messages to SongIdLookup/AlbumIdLookup with the Spotify ID as LookupValue
-// is therefore safe for all downstream consumers.
-
 namespace BridgeBeats.Worker.JetStreamWatcher;
 
 /// <summary>
@@ -33,9 +26,6 @@ namespace BridgeBeats.Worker.JetStreamWatcher;
 /// This service is fire-and-forget: it extracts music links from Bluesky posts,
 /// validates them against known provider patterns, and enqueues them for processing
 /// without waiting for results. Deduplication is handled by the queue infrastructure.
-/// </remarks>
-/// <remarks>
-/// Initializes a new instance of the <see cref="JetStreamWatcherService"/> class.
 /// </remarks>
 /// <param name="logger">The logger instance.</param>
 /// <param name="queueResolver">The provider queue resolver for submitting lookup requests.</param>

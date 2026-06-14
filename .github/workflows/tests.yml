@@ -83,6 +83,26 @@ jobs:
       - name: Run Integration Tests
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration-test-results.trx" --logger "console;verbosity=detailed"
 
+      - name: Guard — at least one integration test must have executed
+        # Docker-less CI skips all Testcontainer tests via Assert.Inconclusive, so dotnet test
+        # exits 0 with every test Inconclusive (not-run). This step fails the workflow when
+        # executed=0, catching any situation where an all-Inconclusive test class would
+        # otherwise silently pass the integration lane.
+        run: |
+          TRX=$(find . -name "integration-test-results.trx" | head -1)
+          if [ -z "$TRX" ]; then
+            echo "ERROR: no integration-test-results.trx file found — dotnet test may not have run."; exit 1
+          fi
+          if [ ! -f "$TRX" ]; then
+            echo "ERROR: integration-test-results.trx path does not exist: $TRX"; exit 1
+          fi
+          EXECUTED=$(grep -oP 'executed="\K[0-9]+' "$TRX" | head -1)
+          if ! [[ "$EXECUTED" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: could not parse executed count from $TRX (got: '$EXECUTED')"; exit 1
+          fi
+          echo "Integration tests executed: $EXECUTED"
+          [ "$EXECUTED" -gt 0 ] || { echo "ERROR: zero integration tests executed — all tests skipped (Inconclusive). Fix the test suite or integration environment."; exit 1; }
+
       - name: Run End-to-End Tests
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~EndToEnd" --logger "trx;LogFileName=e2e-test-results.trx" --logger "console;verbosity=detailed"
 

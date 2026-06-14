@@ -39,7 +39,7 @@ The Discord integration runs as a separate worker service (`BridgeBeats.Worker.D
 |----------|-------------|----------|
 | `BridgeBeats__DiscordToken` | Your Discord bot token | Yes** |
 | `BridgeBeats__NodeNumber` | Node number for Discord sharding | No (default: `0`) |
-| `BridgeBeats__Domain` | Base host for API calls (e.g., `bridgebeats.link`) | Yes** |
+| `BridgeBeats__Domain` | Base host for API calls (for example, `bridgebeats.link`) | Yes** |
 
 \*\* Required only when deploying the Discord worker service
 
@@ -47,21 +47,25 @@ The Discord integration runs as a separate worker service (`BridgeBeats.Worker.D
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ALLOWED_HOSTS` | Allowed hosts for the web server | `*` |
 | `DEFAULT_LOGLEVEL` | Default logging level | `Information` |
 | `HOSTING_DEFAULT_LOGLEVEL` | ASP.NET hosting logging level | `Information` |
-| `OTLP_ENDPOINT` | OpenTelemetry OTLP endpoint for Aspire Dashboard | `http://aspire-dashboard:4317` |
-| `LOG_FILE_PATH` | File path for log files | `/app/data/logs/bridgebeats-.log` |
+| `OTLP_ENDPOINT` | OpenTelemetry OTLP endpoint for Aspire Dashboard | empty (disabled) |
+| `LOG_DIR_PATH` | Directory for log files | `/app/data/logs` |
 | `CACHE_DAYS` | Number of days to cache ATProto PDS lookup results | `7` |
-| `REDIS_CONNECTION_STRING` | Redis connection string for caching and queuing | `localhost:6379` (provided by Aspire) |
-| `BridgeBeats__IdentityConnectionString` | SQLite connection string for identity database | `Data Source=bridgebeats.db` |
+| `REDIS_HOST` | Redis hostname | `redis` |
+| `REDIS_PORT` | Redis port | `6379` |
+| `IDENTITY_CONNECTION_STRING` | SQLite connection string for identity database | `Data Source=/app/data/bridgebeats.db` |
 | `BridgeBeats__Domain` | Base domain for the application (for OpenGraph card URLs and dashboard auth cookie scope) | `localhost` |
 | `CARD_CACHE_EXPIRATION_HOURS` | Number of hours to cache OpenGraph cards in memory | `1` |
 | `CARD_CACHE_CLEANUP_INTERVAL` | Number of operations between cleanup cycles for expired cards | `500` |
-| `RATE_LIMIT_RETRY_THRESHOLD` | Re-queue requests if Retry-After exceeds this (format: HH:MM:SS) | `00:02:00` |
-| `JOB_EXPIRATION_MINUTES` | Minutes before incomplete lookup jobs expire | `60` |
 
-**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (e.g., `BridgeBeats__Domain` maps to `BridgeBeats:Domain` in configuration).
+The container entrypoint reads `REDIS_HOST` and `REDIS_PORT` (plus the `redis_password` secret) and assembles the connection string the application consumes; there is no single `REDIS_CONNECTION_STRING` variable to set.
+
+The container image fixes `AllowedHosts` to `*` and reads no `ALLOWED_HOSTS` environment variable; host filtering is Caddy's responsibility in this topology.
+
+Job-queue tuning (`RateLimitRetryThreshold`, default `00:02:00`; `JobExpirationMinutes`, default `2880`) lives under the `BridgeBeats:Queue` configuration section. Set these through `appsettings.json` rather than the container environment.
+
+**Note**: Environment variables use double underscores (`__`) to denote nested configuration sections (for example, `BridgeBeats__Domain` maps to `BridgeBeats:Domain` in configuration).
 
 `BridgeBeats__Domain` must be a host-only value (no `http://`/`https://`, no path, and no port).
 
@@ -100,7 +104,7 @@ If you want to store lookup results on a ATProto PDS for persistent caching:
 1. Create a ATProto account at [bsky.app](https://bsky.app) if you don't have one
 2. Go to Settings → App Passwords
 3. Create a new app password for BridgeBeats
-4. Use your handle (e.g., `yourname.bsky.social`) as `ATPROTO_IDENTIFIER`
+4. Use your handle (for example, `yourname.bsky.social`) as `ATPROTO_IDENTIFIER`
 5. Use the generated app password as `ATPROTO_PASSWORD`
 
 **Note**: Lookup results are stored as custom AT Protocol lexicon records on your PDS. Input links with tracking parameters are kept private in Redis for efficient lookup (URL hashes only) and are never exposed publicly.
@@ -110,7 +114,7 @@ If you want to store lookup results on a ATProto PDS for persistent caching:
 Redis is used for distributed caching, request queuing, and rate limit tracking. In development, Aspire provides and configures Redis automatically. In production:
 
 1. Deploy a Redis instance (standalone or cluster)
-2. Set `REDIS_CONNECTION_STRING` to your Redis endpoint
+2. Set `REDIS_HOST` and `REDIS_PORT` to your Redis endpoint, and provide the `redis_password` secret for authentication
 3. Recommended: Use Redis with persistence (RDB or AOF) for queue durability
 4. Recommended: Enable TLS and authentication for production deployments
 
@@ -125,7 +129,7 @@ For local development, you can use an `appsettings.json` file instead of environ
 ```json
 {
   "BridgeBeats": {
-    "NodeNumber": 0,
+    "NodeNumber": 100,
     "AppleTeamId": "your_team_id",
     "AppleKeyId": "your_key_id",
     "AppleKeyPath": "/path/to/AuthKey.p8",
@@ -135,16 +139,32 @@ For local development, you can use an `appsettings.json` file instead of environ
     "TidalClientSecret": "your_tidal_client_secret",
     "DiscordToken": "your_bot_token",
     "IdentityConnectionString": "Data Source=bridgebeats.db",
+    "ApiKeySalt": "your_api_key_salt",
+    "RateLimitRequestsPerHour": 20,
     "ATProtoIdentifier": "your-handle.bsky.social",
     "ATProtoPassword": "your-app-password",
+    "ATProtoUserDID": "",
     "CacheDays": 7,
-    "RedisConnectionString": "localhost:6379",
     "Domain": "localhost",
     "LogDirPath": "./logs",
+    "DataProtectionKeyPath": "./keys",
     "CardCacheExpirationHours": 1,
     "CardCacheCleanupInterval": 500,
-    "RateLimitRetryThreshold": "00:02:00",
-    "JobExpirationMinutes": 60
+    "Resilience": {
+      "MaxRetryAfterSeconds": 120,
+      "MaxRetryAttempts": 5,
+      "TotalTimeoutMinutes": 10,
+      "AttemptTimeoutSeconds": 120
+    },
+    "Queue": {
+      "RateLimitRetryThreshold": "00:02:00",
+      "JobExpirationMinutes": 2880,
+      "Weights": {
+        "Interactive": 5,
+        "Background": 2,
+        "Bulk": 1
+      }
+    }
   },
   "Logging": {
     "LogLevel": {
@@ -153,11 +173,26 @@ For local development, you can use an `appsettings.json` file instead of environ
     }
   },
   "OpenTelemetry": {
-    "OtlpEndpoint": "http://aspire-dashboard:4317"
+    "OtlpEndpoint": "",
+    "EnableTracing": true,
+    "EnableMetrics": true
   },
-  "AllowedHosts": "localhost"
+  "AllowedHosts": "localhost;127.0.0.1"
 }
 ```
+
+### HTTP Resilience
+
+The `BridgeBeats:Resilience` block tunes the HTTP resilience pipeline applied to all outbound HTTP clients: provider APIs, the Discord worker's calls to the Web API, and CAR repo downloads.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `AttemptTimeoutSeconds` | `120` | Per-attempt timeout. Keep it above the ~90s server-side lookup budget so slow but legitimate lookups are not killed mid-flight. |
+| `TotalTimeoutMinutes` | `10` | Ceiling across all retry attempts for one logical request. Must exceed `AttemptTimeoutSeconds`. |
+| `MaxRetryAttempts` | `5` | Retry count for transient failures on safe (GET) requests. POST is never retried automatically. |
+| `MaxRetryAfterSeconds` | `120` | Largest `Retry-After` value honored before failing fast. |
+
+The circuit-breaker sampling window is derived as `2 × AttemptTimeoutSeconds` (240s at the default). Raising `AttemptTimeoutSeconds` widens that window and slows failure detection on hung endpoints; the total timeout and retry cap still bound the operation.
 
 ### Docker Configuration
 
@@ -204,10 +239,10 @@ BridgeBeats supports two logging destinations that work simultaneously:
 
 Logs are written to persistent files with automatic rotation and retention:
 
-- **Location**: `/app/data/logs/bridgebeats-.log` (configurable via `LOG_FILE_PATH`)
-- **Rotation**: Daily rotation + size-based rotation (10MB per file)
-- **Retention**: Maximum 5 log files (oldest files are automatically deleted)
-- **Total Size**: Up to ~50MB total log storage
+- **Location**: the directory set by `LOG_DIR_PATH` (default `/app/data/logs`); files are named `bridgebeats-<date>.log`
+- **Rotation**: Daily rotation plus size-based rotation (50MB per file)
+- **Retention**: Maximum 5 log files per service (oldest files are deleted)
+- **Total Size**: Up to ~250MB per service
 
 File logging provides local backup for diagnostics when the Aspire Dashboard is unavailable.
 
@@ -235,7 +270,7 @@ environment:
   - DEFAULT_LOGLEVEL=Debug
   - HOSTING_DEFAULT_LOGLEVEL=Information
   - OTLP_ENDPOINT=http://aspire-dashboard:4317
-  - LOG_FILE_PATH=/app/data/logs/bridgebeats-.log
+  - LOG_DIR_PATH=/app/data/logs
 ```
 
 ### Accessing Logs
@@ -259,8 +294,8 @@ docker exec -it bridgebeats tail -f /app/data/logs/bridgebeats-*.log
 
 Log files are automatically managed:
 
-1. **Daily rotation**: New file created each day (e.g., `bridgebeats-20250114.log`)
-2. **Size-based rotation**: When a file reaches 10MB, a new file is created
+1. **Daily rotation**: New file created each day (for example, `bridgebeats-20250114.log`)
+2. **Size-based rotation**: When a file reaches 50MB, a new file is created
 3. **Retention**: Only the 5 most recent files are kept
 4. **Automatic cleanup**: Old files are deleted when retention limit is reached
 

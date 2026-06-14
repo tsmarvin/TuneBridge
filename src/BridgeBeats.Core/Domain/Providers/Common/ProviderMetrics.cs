@@ -6,14 +6,7 @@ namespace BridgeBeats.Core.Domain.Providers.Common;
 /// OpenTelemetry metrics for provider API requests.
 /// </summary>
 /// <remarks>
-/// <para>
-/// All metrics are prefixed with <c>bridgebeats.provider.</c> and include appropriate
-/// tags for filtering by provider, endpoint, method, and status code.
-/// </para>
-/// <para>
-/// Register this meter with OpenTelemetry using <c>.AddMeter("BridgeBeats.Providers")</c>
-/// in your OpenTelemetry configuration.
-/// </para>
+/// All metrics prefixed with <c>bridgebeats.provider.</c>; register with <c>.AddMeter("BridgeBeats.Providers")</c>.
 /// </remarks>
 public static class ProviderMetrics {
 

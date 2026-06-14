@@ -12,24 +12,8 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// with separate keys for provider states to enable efficient partial updates.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Key patterns:
-/// <list type="bullet">
-///   <item><c>saga:{sagaId}</c> - Hash containing core saga state</item>
-///   <item><c>saga:{sagaId}:provider:{provider}</c> - Hash containing provider-specific state</item>
-/// </list>
-/// </para>
-/// <para>
-/// The saga ID is deterministically derived from the lookup key using SHA256 hashing,
-/// ensuring identical lookups map to the same saga (idempotent saga creation).
-/// </para>
-/// <para>
-/// All saga keys have a TTL that is automatically extended on each update to prevent
-/// expiration during active processing.
-/// </para>
-/// </remarks>
-/// <remarks>
-/// Initializes a new instance of the <see cref="RedisSagaStateManager"/> class.
+/// Key patterns: <c>saga:{sagaId}</c> (core state hash) and
+/// <c>saga:{sagaId}:provider:{provider}</c> (per-provider hash). TTL is extended on every update.
 /// </remarks>
 /// <param name="redis">The Redis connection multiplexer.</param>
 /// <param name="logger">Logger for diagnostic information.</param>

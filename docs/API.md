@@ -4,7 +4,10 @@ BridgeBeats provides a RESTful API for music link conversion and lookup. This gu
 
 ## Authentication
 
-Most API endpoints require authentication using an API key. To get an API key, you need to create a user account.
+Most API endpoints require authentication using an API key. The URL lookup endpoints
+(`/music/lookup/url` and `/music/lookup/urlList`) are public and do not require a key.
+All other music lookup endpoints (`/isrc`, `/upc`, `/title`) require an API key.
+To get an API key, you need to create a user account.
 
 ### Creating an Account
 
@@ -37,6 +40,9 @@ Include your API key in the `X-API-Key` header for all protected endpoints:
 X-API-Key: YOUR_API_KEY_HERE
 ```
 
+The protected endpoints (`/isrc`, `/upc`, `/title`) also accept internal service-to-service
+authentication via the `X-Service-Key` header (used by worker services; not intended for end users).
+
 ### Logging In
 
 If you need to retrieve your API key again, you can log in:
@@ -60,13 +66,16 @@ X-API-Key: YOUR_CURRENT_API_KEY
 
 ## Rate Limiting
 
-To ensure fair usage, the API implements rate limiting on protected endpoints.
+To ensure fair usage, the API implements rate limiting on identifier-based and name-search endpoints.
 
 ### Limits
 
-- **Rate**: 20 requests per hour per authenticated user
-- **Applies to**: All protected endpoints (ISRC, UPC, title, urlList)
-- **Exempt**: Public `/music/lookup/url` endpoint (streaming)
+- **Rate**: 20 requests per hour per authenticated user (default
+  `RateLimitRequestsPerHour`, `src/BridgeBeats.Web/Configuration/AppSettings.cs:80`)
+- **Applies to**: `/music/lookup/isrc`, `/music/lookup/upc`, `/music/lookup/title`
+- **Exempt**: both URL lookup endpoints (`/music/lookup/url` and
+  `/music/lookup/urlList`) are public and not rate-limited
+  (`src/BridgeBeats.Web/Middleware/RateLimitingMiddleware.cs:25-34`)
 
 ### Rate Limit Response
 
@@ -90,7 +99,8 @@ The `Retry-After` header and `retryAfter` field indicate how many seconds until 
 
 ### Lookup by URL (Streaming) - PUBLIC
 
-Convert a music link without authentication. Returns results as a stream.
+Convert a music link and receive results progressively as they are found.
+No authentication required.
 
 ```http
 POST /music/lookup/url
@@ -101,21 +111,26 @@ Content-Type: application/json
 }
 ```
 
-**Response:** Server-Sent Events stream with matching results
+**Response:** A streamed JSON array of `MediaLinkResult` objects. The action
+returns `IAsyncEnumerable<MediaLinkResult>` (`MusicLookupController.ByUrl`,
+`src/BridgeBeats.Web/Controllers/MusicLookupController.cs`), which
+ASP.NET Core serializes as a single JSON array streamed to the client as each
+result becomes available. It is not a `text/event-stream` (Server-Sent Events)
+response.
 
 **Features:**
-- ✅ No authentication required
-- ✅ No rate limiting
-- ✅ Streaming response for real-time results
+- ✅ No authentication required (`[AllowAnonymous]`)
+- ✅ Not rate-limited
+- ✅ Streamed response for progressive results
 
-### Lookup by URL (List) - PROTECTED
+### Lookup by URL (List) - PUBLIC
 
 Convert a music link and get all results as a single response.
+No authentication required.
 
 ```http
 POST /music/lookup/urlList
 Content-Type: application/json
-X-API-Key: YOUR_API_KEY
 
 {
   "uri": "https://music.apple.com/us/album/..."
@@ -332,13 +347,11 @@ This ensures proper rendering on platforms like Discord, Slack, Twitter, and Fac
 ```python
 import requests
 
-API_KEY = "your_api_key_here"
 BASE_URL = "https://bridgebeats.example.com"
 
-# Lookup by URL
+# Lookup by URL (public endpoint — no API key required)
 response = requests.post(
     f"{BASE_URL}/music/lookup/urlList",
-    headers={"X-API-Key": API_KEY},
     json={"uri": "https://open.spotify.com/track/..."}
 )
 
@@ -353,15 +366,14 @@ if response.status_code == 200:
 ```javascript
 const axios = require('axios');
 
-const API_KEY = 'your_api_key_here';
 const BASE_URL = 'https://bridgebeats.example.com';
 
+// Lookup by URL (public endpoint — no API key required)
 async function lookup(uri) {
   try {
     const response = await axios.post(
       `${BASE_URL}/music/lookup/urlList`,
-      { uri },
-      { headers: { 'X-API-Key': API_KEY } }
+      { uri }
     );
 
     return response.data.results;
@@ -377,9 +389,9 @@ async function lookup(uri) {
 ### cURL
 
 ```bash
+# Lookup by URL (public endpoint — no API key required)
 curl -X POST https://bridgebeats.example.com/music/lookup/urlList \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your_api_key_here" \
   -d '{"uri": "https://open.spotify.com/track/..."}'
 ```
 

@@ -6,17 +6,8 @@ namespace BridgeBeats.Worker.Spotify.Metrics;
 /// OpenTelemetry metrics for Spotify batch (bulk) lookup processing.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Register this meter with OpenTelemetry using
-/// <c>.AddMeter("BridgeBeats.Spotify.Batch")</c> in the Spotify worker's telemetry configuration.
-/// </para>
-/// <para>
-/// These metrics complement the HTTP-level endpoint metrics already captured by
-/// <c>ProviderMetricsHandler</c> (<c>bridgebeats.provider.requests.total</c>):
-/// the handler records one observation per HTTP call, while <c>RecordBatchSize</c>
-/// records how many IDs were included in each call, making the batching efficiency
-/// visible without additional query-time joins.
-/// </para>
+/// Register with <c>.AddMeter("BridgeBeats.Spotify.Batch")</c>. Complements the per-HTTP-call
+/// metrics from <c>ProviderMetricsHandler</c> by recording batch sizes per call.
 /// </remarks>
 public static class SpotifyBatchMetrics {
 

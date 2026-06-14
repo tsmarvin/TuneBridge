@@ -33,18 +33,25 @@ Get started in 5 minutes with automatic HTTPS:
 ```bash
 git clone https://github.com/tsmarvin/BridgeBeats.git
 cd BridgeBeats/containers
-./setup-secrets.sh
-nano secrets/apple_key.p8
-nano secrets/atproto_password.txt
-nano secrets/discord_token.txt
-nano secrets/spotify_client_secret.txt
-nano secrets/tidal_client_secret.txt
-# Edit secrets/ with your credentials
+
+# Create the secrets directory and placeholder files
+mkdir -p secrets && chmod 700 secrets
+touch secrets/apple_key.p8 secrets/spotify_client_secret.txt \
+      secrets/tidal_client_secret.txt secrets/discord_token.txt \
+      secrets/atproto_password.txt
+openssl rand -base64 32 > secrets/api_key_salt.txt
+openssl rand -base64 32 > secrets/redis_password.txt
+chmod 600 secrets/*
+# Edit the secret files with your credentials
+
 cp .env.example .env
-nano .env
 # Edit .env with your configuration
 docker compose up -d
 ```
+
+> The `.env.example` and `secrets/` placeholders are also created for you by the
+> one-line installer (`containers/install.sh` / `install.ps1`). See the
+> [Quick Start Guide](docs/QUICKSTART.md) for both paths.
 
 Visit `https://localhost` to start converting links.
 
@@ -86,20 +93,24 @@ dotnet run
 ```
 BridgeBeats/
 ├── src/
-│   ├── BridgeBeats.Web/             # ASP.NET Core web application (MVC, controllers, views)
-│   ├── BridgeBeats.Services/        # Business logic and service layer
-│   ├── BridgeBeats.Providers/       # Music provider integrations (Apple Music, Spotify, Tidal)
-│   ├── BridgeBeats.Infrastructure/  # Data access, caching, identity, storage
-│   ├── BridgeBeats.Contracts/       # Shared DTOs, interfaces, enums, constants
-│   ├── BridgeBeats.AppHost/         # .NET Aspire orchestration
-│   └── BridgeBeats.ServiceDefaults/ # Shared service configuration (telemetry, resilience)
-├── Tests/                           # Test project
-│   ├── Unit/                        # Unit tests
-│   ├── Integration/                 # Integration tests (service interactions)
-│   └── EndToEnd/                    # End-to-end tests (full request/response flows)
-├── docs/                            # Documentation (guides, API reference)
-├── containers/                      # Docker deployment configuration
-├── .github/                         # GitHub templates, workflows, and community files
+│   ├── BridgeBeats.Web/                   # ASP.NET Core web app (MVC, controllers, views, API)
+│   ├── BridgeBeats.Core/                  # Domain logic and infrastructure (caching, identity, storage, queue)
+│   ├── BridgeBeats.Contracts/             # Shared DTOs, interfaces, enums, constants, records
+│   ├── BridgeBeats.AppHost/               # .NET Aspire orchestration
+│   ├── BridgeBeats.Worker.Spotify/        # Spotify lookup worker (incl. batch processor)
+│   ├── BridgeBeats.Worker.AppleMusic/     # Apple Music lookup worker
+│   ├── BridgeBeats.Worker.Tidal/          # Tidal lookup worker
+│   ├── BridgeBeats.Worker.Discord/        # Discord bot worker
+│   ├── BridgeBeats.Worker.JetStreamWatcher/ # AT Protocol firehose watcher
+│   ├── BridgeBeats.Worker.SagaCoordinator/  # Cross-provider lookup saga coordinator
+│   └── BridgeBeats.Worker.CacheBootstrap/   # Cache warm-up/refresh worker
+├── Tests/                                 # Single test project (BridgeBeats.Tests.csproj)
+│   ├── Unit/                              # Unit tests
+│   ├── Integration/                       # Integration tests (service interactions)
+│   └── EndToEnd/                          # End-to-end tests (full request/response flows)
+├── docs/                                  # Documentation (guides, API reference)
+├── containers/                            # Docker deployment configuration
+├── .github/                               # GitHub templates, workflows, and community files
 ```
 
 ## 📖 Documentation
@@ -192,7 +203,7 @@ dotnet test
 dotnet test --filter "FullyQualifiedName~Unit"
 ```
 
-For more details on testing, see the [Contributing Guidelines](CONTRIBUTING.md#testing-guidelines).
+For more details on testing, see the [Testing Guide](docs/TESTING.md) or the [Contributing Guidelines](.github/CONTRIBUTING.md#testing-guidelines).
 
 ## 🤝 Contributing
 

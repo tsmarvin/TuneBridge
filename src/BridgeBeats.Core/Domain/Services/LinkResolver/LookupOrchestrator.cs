@@ -14,17 +14,8 @@ namespace BridgeBeats.Services.LinkResolver;
 /// Orchestrates lookup operations through the queue-based infrastructure.
 /// </summary>
 /// <remarks>
-/// <para>
-/// All lookup operations flow through this orchestrator:
-/// 1. Check Redis cache for existing results
-/// 2. Check deduplication (is another request in-flight?)
-/// 3. If in-flight, subscribe to completion notification
-/// 4. Otherwise, create saga, queue initial provider lookup
-/// 5. Wait for initial result via Pub/Sub
-/// 6. On a partial result (secondary lookups pending), keep waiting with the
-///    remaining time budget until the final result is published
-/// 7. Return result to caller (partial only when rate-limited or the budget is exhausted)
-/// </para>
+/// All lookups flow through cache check → deduplication → saga creation → queue submission → Pub/Sub wait.
+/// Returns a partial result only when a provider is rate-limited or the interactive time budget is exhausted.
 /// </remarks>
 /// <remarks>
 /// Initializes a new instance of the <see cref="LookupOrchestrator"/> class.
@@ -59,11 +50,12 @@ public sealed partial class LookupOrchestrator(
     private static readonly TimeSpan s_deduplicationLockDuration = TimeSpan.FromMinutes( 5 );
 
     /// <summary>
-    /// Target wait budget across all links of a single content lookup, kept under the
-    /// Discord bot's 120s HTTP client timeout (see BridgeBeats.Worker.Discord Program.cs)
-    /// so the server-side budget, not the transport, is the binding constraint. Note the
+    /// Target wait budget across all links of a single content lookup. The budget is kept
+    /// under the global 120s resilience AttemptTimeout so the server-side budget, not the
+    /// transport, is the binding constraint (the Discord worker's HTTP transport backstop is
+    /// 130s, above the AttemptTimeout, so the resilience pipeline fires first). Note the
     /// per-link floor below takes precedence, so messages with more than 18 links can
-    /// exceed this target (and beyond ~24 links may exceed the bot's transport timeout).
+    /// exceed this target (and beyond ~24 links may approach the transport backstop).
     /// </summary>
     private static readonly TimeSpan s_maxContentWaitBudget = TimeSpan.FromSeconds( 90 );
 

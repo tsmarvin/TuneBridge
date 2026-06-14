@@ -13,6 +13,7 @@ using BridgeBeats.Core.Infrastructure.Identity;
 using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Web.Authentication;
 using BridgeBeats.Web.Middleware;
+using idunno.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
@@ -462,8 +463,7 @@ namespace BridgeBeats.Web.Configuration {
                 }
 
                 // Register HTTP client for OAuth token endpoint with standard resilience
-                _ = services.AddHttpClient( "ATProtoOAuth" )
-                    .AddStandardResilienceHandler( );
+                _ = services.AddATProtoOAuthHttpClient( );
 
                 _ = services.AddScoped<IATProtoOAuthService>( sp =>
                     new ATProtoOAuthService(
@@ -526,6 +526,17 @@ namespace BridgeBeats.Web.Configuration {
             _ = services.AddQueueInfrastructure( );
             _ = services.AddAllProviderQueues<QueuedLookupRequest>( );
 
+        }
+
+        // SSRF guard (default block-list): auth-server metadata + token-endpoint hosts are
+        // derived from an attacker-supplied handle on the anonymous POST account/login-atproto
+        // path, so gate outbound connects at the socket layer.
+        internal static IHttpClientBuilder AddATProtoOAuthHttpClient( this IServiceCollection services ) {
+            IHttpClientBuilder builder = services.AddHttpClient( "ATProtoOAuth" )
+                .ConfigurePrimaryHttpMessageHandler( ( ) =>
+                    SsrfSocketsHttpHandlerFactory.Create( connectTimeout: TimeSpan.FromSeconds( 10 ) ) );
+            _ = builder.AddStandardResilienceHandler( );
+            return builder;
         }
 
         private static HashSet<SupportedProviders> RegisterMusicProviders( IServiceCollection services, AppSettings settings ) {

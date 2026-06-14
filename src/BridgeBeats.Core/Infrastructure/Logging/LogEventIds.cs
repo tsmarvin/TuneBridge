@@ -26,8 +26,6 @@ using SpotifyTokenHandler = BridgeBeats.Core.Domain.Providers.Spotify.SpotifyTok
 using StatisticsService = BridgeBeats.Core.Domain.Services.StatisticsService;
 using TidalLookupService = BridgeBeats.Core.Domain.Providers.Tidal.TidalLookupService;
 using TidalTokenHandler = BridgeBeats.Core.Domain.Providers.Tidal.TidalTokenHandler;
-using UserPlaylistATProtoService = BridgeBeats.Core.Infrastructure.Storage.UserPlaylistATProtoService;
-
 namespace BridgeBeats.Core.Infrastructure.Logging;
 
 /// <summary>
@@ -162,9 +160,9 @@ public static class LogEventIds {
             public const int RedisATProtoSessionManagerWaitingForLock = 1107;
 
             /// <summary>
-            /// EventId for <see cref="RedisATProtoSessionManager.LogProceedingWithLogin"/>.
+            /// EventId for <see cref="RedisATProtoSessionManager.LogLockWaitTimeout"/>.
             /// </summary>
-            public const int RedisATProtoSessionManagerProceedingWithLogin = 1108;
+            public const int RedisATProtoSessionManagerLockWaitTimeout = 1108;
 
             /// <summary>
             /// EventId for <see cref="RedisATProtoSessionManager.LogFreshLogin"/>.
@@ -231,67 +229,15 @@ public static class LogEventIds {
             /// </summary>
             public const int RedisATProtoSessionManagerCleared = 1121;
 
-            // UserPlaylistATProtoService (1150-1199)
+            /// <summary>
+            /// EventId for <see cref="RedisATProtoSessionManager.LogClearSuppressedByCooldown"/>.
+            /// </summary>
+            public const int RedisATProtoSessionManagerClearSuppressedByCooldown = 1122;
 
             /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogPlaylistCreated"/>.
+            /// EventId for <see cref="RedisATProtoSessionManager.LogLockReleaseFailed"/>.
             /// </summary>
-            public const int UserPlaylistATProtoServiceCreated = 1150;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogCreateFailed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceCreateFailed = 1151;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogGetFailed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceGetFailed = 1152;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogRetrieveError"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceRetrieveError = 1153;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogPlaylistUpdated"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceUpdated = 1154;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogUpdateFailed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceUpdateFailed = 1155;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogDeleteWarning"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceDeleteWarning = 1156;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogPlaylistDeleted"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceDeleted = 1157;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogDeleteError"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceDeleteError = 1158;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogListFailed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceListFailed = 1159;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogRefreshingTokens"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceRefreshingTokens = 1160;
-
-            /// <summary>
-            /// EventId for <see cref="UserPlaylistATProtoService.LogTokensRefreshed"/>.
-            /// </summary>
-            public const int UserPlaylistATProtoServiceTokensRefreshed = 1161;
+            public const int RedisATProtoSessionManagerLockReleaseFailed = 1123;
         }
 
         /// <summary>
@@ -414,6 +360,12 @@ public static class LogEventIds {
             /// EventId for <see cref="RedisRequestQueue.LogNoNewMessagesInStream"/>.
             /// </summary>
             public const int RedisRequestQueueNoNewMessagesInStream = 1272;
+
+            /// <summary>
+            /// EventId for <see cref="RedisRequestQueue.LogAgingIntervalMisconfigured"/>.
+            /// Emitted at startup when InteractiveAgingInterval is ≤ 1 (misconfiguration guard).
+            /// </summary>
+            public const int RedisRequestQueueAgingIntervalMisconfigured = 1273;
 
             // RedisSagaStateManager (1300-1349)
 
@@ -1248,6 +1200,13 @@ public static class LogEventIds {
             /// EventId for <see cref="QueueProcessorBackgroundService.LogLookupCompletionPublishFailed"/>.
             /// </summary>
             public const int LookupCompletionPublishFailed = 3017;
+
+            /// <summary>
+            /// EventId for <see cref="QueueProcessorBackgroundService.LogInteractiveDeferredToBackground"/>.
+            /// Emitted when a rate-limited request whose <c>OriginPriority</c> was Interactive is
+            /// requeued at Background priority, deferring it to the bulk-stream retry lane.
+            /// </summary>
+            public const int InteractiveDeferredToBackground = 3018;
 
             // SagaResultCombiner (3100-3149)
 

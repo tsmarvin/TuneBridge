@@ -3,43 +3,16 @@ using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Providers.Spotify;
 using BridgeBeats.Worker.JetStreamWatcher;
+using idunno.Security;
 
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for the Spotify JetStream type-routing logic introduced in §1.1.
+/// Unit tests for the Spotify JetStream type-routing logic.
 /// Covers the contract between <see cref="SpotifyLinkParser"/> entity recognition
 /// and the lookup-key / saga-ID format used by
 /// <c>JetStreamWatcherService.EnqueueMusicLinkAsync</c>.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The JetStream routing logic (§1.1) classifies Spotify URLs as follows:
-/// <list type="bullet">
-///   <item>open.spotify.com/track/{id} → SongIdLookup, lookupValue = trackId</item>
-///   <item>open.spotify.com/album/{id} → AlbumIdLookup, lookupValue = albumId</item>
-///   <item>open.spotify.com/artist/{id} → not recognised; link is dropped (no artist processing)</item>
-///   <item>open.spotify.com/playlist/{id} → not recognised; link is dropped (no playlist processing)</item>
-///   <item>open.spotify.com/prerelease/{id} → UriLookup, lookupValue = URL</item>
-///   <item>spotify.link/… → UriLookup (short-link, requires HTTP resolve; handled as pass-through)</item>
-/// </list>
-/// </para>
-/// <para>
-/// The saga-ID format for typed ID lookups must be:
-/// <c>{LookupType}:{Provider}:{lookupValue}</c> (case-folded by <c>GenerateSagaId</c>).
-/// This ensures JetStream-produced requests share saga state with orchestrator-produced requests
-/// for the same Spotify entity.
-/// </para>
-/// <para>
-/// Failure-first discipline: all tests were authored against the production implementation.
-/// The parser-recognition tests (§SpotifyLinkParser Entity Recognition) exercise
-/// <c>SpotifyLinkParser.TryParseUriAsync</c> directly — the same logic consumed by
-/// <c>IdentifyProviderAsync</c>. Direct tests of <c>IdentifyProviderAsync</c> are in the
-/// §IdentifyProviderAsync Direct Coverage section below, which verifies the
-/// <see cref="SpotifyEntity"/>→<see cref="LookupRequestType"/> mapping and the
-/// lookupValue format selected by <c>JetStreamWatcherService.IdentifyProviderAsync</c>.
-/// </para>
-/// </remarks>
 [TestClass]
 public class SpotifyLinkTypeRoutingTests {
 
@@ -50,8 +23,6 @@ public class SpotifyLinkTypeRoutingTests {
 
     /// <summary>
     /// Verifies that a Spotify track URL produces SpotifyEntity.Track with the correct ID.
-    /// Failure-first: before §1.1, TryParseUriAsync was not consulted for routing decisions;
-    /// this documents the parser behavior the routing logic depends on.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithTrackUrl_ShouldReturnTrackEntityAndId( ) {
@@ -89,7 +60,6 @@ public class SpotifyLinkTypeRoutingTests {
 
     /// <summary>
     /// Verifies that a Spotify album URL produces SpotifyEntity.Album with the correct ID.
-    /// Failure-first: before §1.1, album links were not converted to AlbumIdLookup.
     /// </summary>
     [TestMethod]
     public async Task TryParseUriAsync_WithAlbumUrl_ShouldReturnAlbumEntityAndId( ) {
@@ -187,11 +157,6 @@ public class SpotifyLinkTypeRoutingTests {
     /// <summary>
     /// Verifies that <see cref="LookupKeyBuilder.TypedKey"/> for a SongIdLookup produces
     /// the canonical three-segment format <c>{LookupType}:{Provider}:{id}</c>.
-    /// Failure-first: before §1.1/M5, JetStreamWatcherService built
-    /// <c>"{LookupType}:{LookupValue}"</c> (two segments, no provider), while the
-    /// LookupOrchestrator used three segments. The mismatch meant JetStream-originated
-    /// and orchestrator-originated requests for the same track always produced different
-    /// saga IDs and could never share state.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_TypedKey_ForSongIdLookup_ShouldContainThreeSegments( ) {
@@ -233,8 +198,9 @@ public class SpotifyLinkTypeRoutingTests {
     /// <summary>
     /// Verifies that <see cref="LookupKeyBuilder.UrlKey"/> produces a key starting with
     /// <c>UriLookup:</c> followed by a URL hash — not the raw URL.
-    /// Failure-first: before M5, some producers used the raw URL as the lookup value,
-    /// while others used the hash, causing saga ID mismatches for the same artist URL.
+    /// Failure-first: before the format-alignment fix, some producers used the raw URL as
+    /// the lookup value, while others used the hash, causing saga ID mismatches for the
+    /// same artist URL.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_UrlKey_ShouldHashUrlNotUseRaw( ) {
@@ -255,8 +221,8 @@ public class SpotifyLinkTypeRoutingTests {
     /// Verifies that all four producers (JetStreamWatcher, SpotifyBulkProcessorService,
     /// QueueProcessorBackgroundService, and LookupOrchestrator) produce the same saga ID
     /// for the same track ID when they all use <see cref="LookupKeyBuilder.TypedKey"/>.
-    /// This is the core correctness guarantee of M5: cross-producer state sharing works
-    /// only when the lookup key format is identical.
+    /// This is the core correctness guarantee of the format-alignment fix: cross-producer
+    /// state sharing works only when the lookup key format is identical.
     /// </summary>
     [TestMethod]
     public void LookupKeyBuilder_AllProducers_ShouldProduceSameSagaIdForSameTrackId( ) {
@@ -319,13 +285,297 @@ public class SpotifyLinkTypeRoutingTests {
 
     #endregion
 
+    #region SpotifyLinkParser Short-Link Host Gate (SSRF)
+
+    /// <summary>
+    /// Verifies that a link-local IP address embedded as the host — SSRF vector
+    /// <c>169.254.169.254/spotify.link/a</c> — is rejected by the host gate and returns
+    /// no-match without performing an outbound HTTP call.
+    /// Failure-first evidence: before the host gate was added, the short-link resolver would
+    /// attempt <c>GetAsync("https://169.254.169.254/spotify.link/a")</c> and throw
+    /// <see cref="HttpRequestException"/> (or timeout after 5 s); the test would fail with
+    /// an unhandled exception rather than returning <c>success=false</c> cleanly.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 3000, CooperativeCancellation = true )]
+    public async Task TryParseUriAsync_WithLinkLocalIpSsrfVector_RejectsWithoutFetch( ) {
+        // Arrange — link-local IP used as host with spotify.link in the path
+        string ssrfVector = "169.254.169.254/spotify.link/a";
+
+        // Act — must not throw; must return no-match immediately (no 5s fetch timeout)
+        (bool success, _, _) = await SpotifyLinkParser.TryParseUriAsync( ssrfVector );
+
+        // Assert — host gate rejects before any outbound fetch
+        Assert.IsFalse( success,
+            "SSRF vector 169.254.169.254/spotify.link/a must be rejected by the host gate" );
+    }
+
+    /// <summary>
+    /// Verifies that an arbitrary external host — SSRF vector
+    /// <c>evil.com/spotify.link/a</c> — is rejected by the host gate and returns
+    /// no-match without performing an outbound HTTP call.
+    /// Failure-first evidence: before the host gate was added, the short-link resolver would
+    /// attempt <c>GetAsync("https://evil.com/spotify.link/a")</c> and throw
+    /// <see cref="HttpRequestException"/>; the test would fail with an unhandled exception.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 3000, CooperativeCancellation = true )]
+    public async Task TryParseUriAsync_WithArbitraryHostSsrfVector_RejectsWithoutFetch( ) {
+        // Arrange — arbitrary host with spotify.link in the path
+        string ssrfVector = "evil.com/spotify.link/a";
+
+        // Act — must not throw; must return no-match immediately
+        (bool success, _, _) = await SpotifyLinkParser.TryParseUriAsync( ssrfVector );
+
+        // Assert — host gate rejects before any outbound fetch
+        Assert.IsFalse( success,
+            "SSRF vector evil.com/spotify.link/a must be rejected by the host gate" );
+    }
+
+    /// <summary>
+    /// Verifies that a subdomain look-alike host — <c>spotify.link.evil.com/x</c> —
+    /// is not matched by the short-link regex and therefore returns no-match.
+    /// This is not a short-link and the host gate is not even reached: the regex
+    /// requires <c>spotify\.link/</c> with the slash immediately after <c>.link</c>.
+    /// </summary>
+    [TestMethod]
+    public async Task TryParseUriAsync_WithSubdomainLookalikeHost_ReturnsNoMatch( ) {
+        // Arrange — looks like spotify.link but the TLD is evil.com
+        string lookalike = "spotify.link.evil.com/x";
+
+        // Act
+        (bool success, _, _) = await SpotifyLinkParser.TryParseUriAsync( lookalike );
+
+        // Assert — the short-link regex does not match; no host check or fetch is attempted
+        Assert.IsFalse( success,
+            "spotify.link.evil.com does not match the spotify.link short-link pattern; must return no-match" );
+    }
+
+    /// <summary>
+    /// Verifies that a well-formed <c>spotify.link/&lt;id&gt;</c> input passes the host gate
+    /// and — when the fake handler returns a 301 redirect to an open.spotify.com track URL —
+    /// the full chain resolves to <c>(true, Track, &lt;id&gt;)</c>.
+    /// Failure-first: before the handler seam existed the test made a live outbound call and
+    /// asserted vacuously on an exception message; the new assertion would fail on any build
+    /// where the handler seam is not wired or <c>TryParseUriAsync</c> ignores the resolved URL.
+    /// </summary>
+    [TestMethod]
+    public async Task TryParseUriAsync_WithValidSpotifyLinkHost_ResolvesViaFakeHandler( ) {
+        // Arrange — inject a fake handler that returns a 301 redirect to a known track URL
+        const string TrackId = "3n3Ppam7vgaVa1iaRUc9Lp";
+        string redirectTarget = $"https://open.spotify.com/track/{TrackId}";
+
+        HttpResponseMessage fakeResponse = new( System.Net.HttpStatusCode.MovedPermanently );
+        fakeResponse.Headers.Location = new Uri( redirectTarget );
+
+        SpotifyLinkParser.SetHandlerFactoryForTests(
+            ( ) => new FakeHttpMessageHandler( fakeResponse ) );
+        try {
+            // Act
+            (bool success, SpotifyEntity kind, string id) =
+                await SpotifyLinkParser.TryParseUriAsync( "spotify.link/abcdef123" );
+
+            // Assert — full chain: host gate → resolve → re-parse → Track entity
+            Assert.IsTrue( success, "A valid spotify.link redirect to a track URL must succeed" );
+            Assert.AreEqual( SpotifyEntity.Track, kind );
+            Assert.AreEqual( TrackId, id );
+        } finally {
+            SpotifyLinkParser.SetHandlerFactoryForTests(
+                ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                    connectTimeout: TimeSpan.FromSeconds( 5 ),
+                    allowAutoRedirect: false ) );
+        }
+    }
+
+    /// <summary>
+    /// Verifies the full host-gate→resolve→re-parse chain for an album short link:
+    /// <c>spotify.link/&lt;id&gt;</c> + fake 301 → <c>open.spotify.com/album/&lt;id&gt;</c>
+    /// → <c>(true, Album, &lt;id&gt;)</c>.
+    /// Failure-first: would fail if <c>SpotifyEntity.Album</c> were never returned (e.g., if
+    /// the resolved URL were ignored or the album regex branch were missing).
+    /// </summary>
+    [TestMethod]
+    public async Task TryParseUriAsync_WithShortLinkResolvingToAlbum_ReturnsAlbumEntity( ) {
+        // Arrange
+        const string AlbumId = "6WdSsBrH5QtofaTTqgwxOV";
+        string redirectTarget = $"https://open.spotify.com/album/{AlbumId}";
+
+        HttpResponseMessage fakeResponse = new( System.Net.HttpStatusCode.MovedPermanently );
+        fakeResponse.Headers.Location = new Uri( redirectTarget );
+
+        SpotifyLinkParser.SetHandlerFactoryForTests(
+            ( ) => new FakeHttpMessageHandler( fakeResponse ) );
+        try {
+            // Act
+            (bool success, SpotifyEntity kind, string id) =
+                await SpotifyLinkParser.TryParseUriAsync( "spotify.link/AlbumCode1" );
+
+            // Assert
+            Assert.IsTrue( success );
+            Assert.AreEqual( SpotifyEntity.Album, kind );
+            Assert.AreEqual( AlbumId, id );
+        } finally {
+            SpotifyLinkParser.SetHandlerFactoryForTests(
+                ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                    connectTimeout: TimeSpan.FromSeconds( 5 ),
+                    allowAutoRedirect: false ) );
+        }
+    }
+
+    /// <summary>
+    /// Negative control: an SSRF-vector host (<c>evil.com/spotify.link/x</c>) must not invoke
+    /// the fake handler — the host gate rejects the input before any outbound call is made.
+    /// Failure-first: would fail (call count == 1) against any implementation that skips
+    /// the host gate and forwards all short-link-shaped inputs to the HTTP handler.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 3000, CooperativeCancellation = true )]
+    public async Task TryParseUriAsync_WithSsrfVectorHost_NeverInvokesHandler( ) {
+        // Arrange — countable fake; any invocation is a gate failure
+        FakeHttpMessageHandler countingHandler = new(
+            new HttpResponseMessage( System.Net.HttpStatusCode.OK ) );
+
+        SpotifyLinkParser.SetHandlerFactoryForTests( ( ) => countingHandler );
+        try {
+            // Act
+            (bool success, _, _) =
+                await SpotifyLinkParser.TryParseUriAsync( "evil.com/spotify.link/x" );
+
+            // Assert — host gate must reject; handler must never be called
+            Assert.IsFalse( success, "SSRF vector must be rejected" );
+            Assert.AreEqual( 0, countingHandler.CallCount,
+                "Handler must NOT be invoked for a non-spotify.link host" );
+        } finally {
+            SpotifyLinkParser.SetHandlerFactoryForTests(
+                ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                    connectTimeout: TimeSpan.FromSeconds( 5 ),
+                    allowAutoRedirect: false ) );
+        }
+    }
+
+    /// <summary>
+    /// Verifies that a scheme-prefixed short link — <c>https://spotify.link/&lt;id&gt;</c> —
+    /// passes the host gate, resolves via the fake 301 redirect, and returns
+    /// <c>(true, Track, &lt;id&gt;)</c>.
+    /// Failure-first: before the scheme-normalization fix, <c>new Uri($"https://{link}")</c>
+    /// with a scheme-prefixed input produced <c>https://https://spotify.link/…</c>,
+    /// causing <c>Uri.Host</c> to equal <c>"https"</c> instead of <c>"spotify.link"</c>, so the
+    /// host gate rejected the input and the method returned <c>success=false</c>.
+    /// </summary>
+    [TestMethod]
+    public async Task TryParseUriAsync_WithSchemePrefixedSpotifyLink_ResolvesViaFakeHandler( ) {
+        // Arrange — inject a fake handler that returns a 301 redirect to a known track URL
+        const string TrackId = "3n3Ppam7vgaVa1iaRUc9Lp";
+        string redirectTarget = $"https://open.spotify.com/track/{TrackId}";
+
+        HttpResponseMessage fakeResponse = new( System.Net.HttpStatusCode.MovedPermanently );
+        fakeResponse.Headers.Location = new Uri( redirectTarget );
+
+        SpotifyLinkParser.SetHandlerFactoryForTests(
+            ( ) => new FakeHttpMessageHandler( fakeResponse ) );
+        try {
+            // Act — scheme-prefixed input: the real web/Discord path strips the scheme upstream,
+            // but the parser contract must also accept scheme-prefixed inputs directly.
+            (bool success, SpotifyEntity kind, string id) =
+                await SpotifyLinkParser.TryParseUriAsync( "https://spotify.link/abcdef123" );
+
+            // Assert — full chain: normalize scheme → host gate → resolve → re-parse → Track entity
+            Assert.IsTrue( success,
+                "A scheme-prefixed https://spotify.link/… input must be accepted by the host gate" );
+            Assert.AreEqual( SpotifyEntity.Track, kind );
+            Assert.AreEqual( TrackId, id );
+        } finally {
+            SpotifyLinkParser.SetHandlerFactoryForTests(
+                ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                    connectTimeout: TimeSpan.FromSeconds( 5 ),
+                    allowAutoRedirect: false ) );
+        }
+    }
+
+    /// <summary>
+    /// Verifies that a short link with an <c>http://</c> scheme — the http branch of the
+    /// scheme-strip path — passes the host gate, resolves via the fake 301 redirect,
+    /// and returns <c>(true, Track, &lt;id&gt;)</c>.
+    /// The scheme-strip logic normalizes both http:// and https:// before constructing
+    /// the host-gate URI; this test locks the http:// branch against regression.
+    /// Failure-first: would fail against any implementation that only strips https:// and
+    /// leaves http:// intact, producing "http://http://spotify.link/…" and failing the host gate.
+    /// </summary>
+    [TestMethod]
+    public async Task TryParseUriAsync_WithHttpSchemePrefixedSpotifyLink_ResolvesViaFakeHandler( ) {
+        // Arrange — inject a fake handler that returns a 301 redirect to a known track URL
+        const string TrackId = "3n3Ppam7vgaVa1iaRUc9Lp";
+        string redirectTarget = $"https://open.spotify.com/track/{TrackId}";
+
+        HttpResponseMessage fakeResponse = new( System.Net.HttpStatusCode.MovedPermanently );
+        fakeResponse.Headers.Location = new Uri( redirectTarget );
+
+        SpotifyLinkParser.SetHandlerFactoryForTests(
+            ( ) => new FakeHttpMessageHandler( fakeResponse ) );
+        try {
+            // Act — http:// scheme prefix
+            (bool success, SpotifyEntity kind, string id) =
+                await SpotifyLinkParser.TryParseUriAsync( "http://spotify.link/abcdef123" );
+
+            // Assert — full chain: normalize http:// scheme → host gate → resolve → re-parse → Track entity
+            Assert.IsTrue( success,
+                "A scheme-prefixed http://spotify.link/… input must be accepted by the host gate" );
+            Assert.AreEqual( SpotifyEntity.Track, kind );
+            Assert.AreEqual( TrackId, id );
+        } finally {
+            SpotifyLinkParser.SetHandlerFactoryForTests(
+                ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                    connectTimeout: TimeSpan.FromSeconds( 5 ),
+                    allowAutoRedirect: false ) );
+        }
+    }
+
+    /// <summary>
+    /// Negative controls: confirms that credential-injection and double-scheme abuse vectors
+    /// that contain the text "spotify.link" are rejected without any outbound fetch.
+    /// The inputs exercise four distinct attack shapes:
+    /// - credential injection: <c>spotify.link@evil.com</c>
+    /// - scheme + credential injection: <c>https://spotify.link@evil.com/x</c>
+    /// - double-scheme: <c>https://https://evil.com/spotify.link/x</c>
+    /// - trailing-dot TLD variant: <c>spotify.link./x</c>
+    /// Failure-first: would fail (call count &gt; 0 or success = true) against any
+    /// implementation that parses "spotify.link" from these inputs before applying the host gate.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 3000, CooperativeCancellation = true )]
+    [DataRow( "spotify.link@evil.com" )]
+    [DataRow( "https://spotify.link@evil.com/x" )]
+    [DataRow( "https://https://evil.com/spotify.link/x" )]
+    [DataRow( "spotify.link./x" )]
+    public async Task TryParseUriAsync_WithSchemeStripAbuseVectors_RejectWithoutFetch( string vector ) {
+        // Arrange — countable fake; any invocation means the gate was bypassed
+        FakeHttpMessageHandler countingHandler = new(
+            new HttpResponseMessage( System.Net.HttpStatusCode.OK ) );
+
+        SpotifyLinkParser.SetHandlerFactoryForTests( ( ) => countingHandler );
+        try {
+            // Act
+            (bool success, _, _) = await SpotifyLinkParser.TryParseUriAsync( vector );
+
+            // Assert — must be rejected before any outbound fetch
+            Assert.IsFalse( success, $"Abuse vector '{vector}' must be rejected" );
+            Assert.AreEqual( 0, countingHandler.CallCount,
+                $"Handler must NOT be invoked for abuse vector '{vector}'" );
+        } finally {
+            SpotifyLinkParser.SetHandlerFactoryForTests(
+                ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                    connectTimeout: TimeSpan.FromSeconds( 5 ),
+                    allowAutoRedirect: false ) );
+        }
+    }
+
+    #endregion
+
     #region IdentifyProviderAsync Direct Coverage
 
     /// <summary>
     /// Verifies that a Spotify track URL produces SongIdLookup with the Spotify track ID
     /// as the lookupValue — the ID, not the URL.
-    /// Failure-first: before §1.1 this method emitted UriLookup for every Spotify URL,
-    /// which prevented typed ID lookups from reaching the bulk streams.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyTrackUrl_ShouldReturnSongIdLookupAndId( ) {
@@ -346,8 +596,6 @@ public class SpotifyLinkTypeRoutingTests {
 
     /// <summary>
     /// Verifies that a Spotify album URL produces AlbumIdLookup with the Spotify album ID.
-    /// Failure-first: before §1.1, album links were classified as UriLookup;
-    /// this verifies the §1.1 fix routes them to AlbumIdLookup for bulk processing.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithSpotifyAlbumUrl_ShouldReturnAlbumIdLookupAndId( ) {
@@ -446,8 +694,34 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that a Tidal link produces SupportedProviders.Tidal with UriLookup,
-    /// unchanged by the Spotify §1.1 changes.
+    /// Verifies the producer contract for spotify.link inputs through the firehose path:
+    /// the scheme-prefixed URL must be returned as the lookupValue unchanged so that the
+    /// worker can resolve the redirect.
+    /// The worker receives the original scheme-prefixed URL as the lookup value; stripping
+    /// or normalizing here would lose the scheme and break the downstream resolver.
+    /// Failure-first: would fail against any implementation that normalizes the URL before
+    /// returning it (e.g. returns "spotify.link/x" instead of "https://spotify.link/x"),
+    /// since the consumer path depends on the scheme being present.
+    /// </summary>
+    [TestMethod]
+    public async Task IdentifyProviderAsync_WithSpotifyShortLink_ShouldCarrySchemeInLookupValue( ) {
+        // Arrange
+        string url = "https://spotify.link/x";
+
+        // Act
+        (SupportedProviders? provider, LookupRequestType lookupType, bool isAlbum, string lookupValue)
+            = await JetStreamWatcherService.IdentifyProviderAsync( url );
+
+        // Assert — firehose path shape: Spotify, UriLookup, not album, scheme-prefixed URL as lookupValue
+        Assert.AreEqual( SupportedProviders.Spotify, provider );
+        Assert.AreEqual( LookupRequestType.UriLookup, lookupType );
+        Assert.IsFalse( isAlbum );
+        Assert.AreEqual( url, lookupValue,
+            "lookupValue must be the scheme-prefixed URL the worker received, not a normalized variant" );
+    }
+
+    /// <summary>
+    /// Verifies that a Tidal link produces SupportedProviders.Tidal with UriLookup.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithTidalUrl_ShouldReturnTidalProvider( ) {
@@ -464,8 +738,7 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     /// <summary>
-    /// Verifies that an Apple Music link produces SupportedProviders.AppleMusic with UriLookup,
-    /// unchanged by the Spotify §1.1 changes.
+    /// Verifies that an Apple Music link produces SupportedProviders.AppleMusic with UriLookup.
     /// </summary>
     [TestMethod]
     public async Task IdentifyProviderAsync_WithAppleMusicUrl_ShouldReturnAppleMusicProvider( ) {
@@ -482,4 +755,24 @@ public class SpotifyLinkTypeRoutingTests {
     }
 
     #endregion
+}
+
+/// <summary>
+/// Hermetic HTTP message handler for use with <see cref="SpotifyLinkParser.SetHandlerFactoryForTests"/>.
+/// Returns a pre-configured response and records how many times it was invoked.
+/// </summary>
+internal sealed class FakeHttpMessageHandler( HttpResponseMessage response ) : HttpMessageHandler {
+    private readonly HttpResponseMessage _response = response;
+    private int _callCount;
+
+    /// <summary>Gets the number of times <see cref="SendAsync"/> was invoked.</summary>
+    public int CallCount => _callCount;
+
+    /// <inheritdoc/>
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken ) {
+        _ = System.Threading.Interlocked.Increment( ref _callCount );
+        return Task.FromResult( _response );
+    }
 }

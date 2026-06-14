@@ -5,6 +5,7 @@ using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Services.Queue;
+using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
@@ -870,6 +871,163 @@ public class QueueProcessorBackgroundServiceTests {
             ),
             Times.Once
         );
+    }
+
+    #endregion
+
+    #region Interactive Origin Rate-Limit Deferral Tests
+
+    /// <summary>
+    /// Verifies that an interactive-origin request that hits a rate limit is still acknowledged
+    /// and requeued at Background priority — the observability gate (OriginPriority == Interactive)
+    /// must not change the routing behavior.
+    /// Also verifies the LogInteractiveDeferredToBackground Warning (EventId 3018) fires exactly once,
+    /// proving the interactive-deferral branch ran.
+    /// Failure-first: if the production gate's LogInteractiveDeferredToBackground call were removed,
+    /// the Times.Once assertion on EventId 3018 would fail; if the gate short-circuits AcknowledgeAsync
+    /// or changes the requeue priority, the Acknowledge or Enqueue verification would fail.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessMessage_WhenRateLimitAndInteractiveOrigin_ShouldStillRequeueAtBackground( ) {
+        // Arrange
+        // [LoggerMessage] source-generated code gates every call with IsEnabled().
+        // Without this setup Moq returns false and Log() is never invoked, making
+        // the Times.Once assertion spuriously fail and Times.Never vacuously true.
+        _ = _loggerMock.Setup( l => l.IsEnabled( It.IsAny<LogLevel>( ) ) ).Returns( true );
+
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.IsrcLookup, "US1234567890" ) with {
+            OriginPriority = QueuePriority.Interactive
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+        TimeSpan retryAfter = TimeSpan.FromSeconds( 60 );
+
+        SetupNotRateLimited( );
+        _ = _lookupServiceMock.Setup( l => l.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
+            .ThrowsAsync( new RetryAfterExceededException(
+                retryAfter,
+                TimeSpan.FromSeconds( 30 ),
+                new Uri( "https://api.spotify.com/v1/tracks" ),
+                SupportedProviders.Spotify
+            ) );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert — acknowledge then requeue at Background (routing unchanged by the observability gate)
+        _queueMock.Verify(
+            q => q.AcknowledgeAsync( message.MessageId, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _queueMock.Verify(
+            q => q.EnqueueAsync(
+                It.Is<QueuedLookupRequest>( r =>
+                    r.LookupType == request.LookupType &&
+                    r.AttemptCount == request.AttemptCount + 1
+                ),
+                QueuePriority.Background,
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once
+        );
+
+        // Assert — the interactive-deferral log fires exactly once.
+        // Disambiguated on EventId 3018 (InteractiveDeferredToBackground) to avoid ambiguity with
+        // other Warning logs on this path (LogRateLimitEncountered/3006, LogSagaMarkedPartial/3007).
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                new EventId( LogEventIds.Services.Queue.InteractiveDeferredToBackground ),
+                It.IsAny<It.IsAnyType>( ),
+                It.IsAny<Exception?>( ),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
+            Times.Once,
+            "LogInteractiveDeferredToBackground (Warning, EventId 3018) must fire once for an Interactive-origin rate-limited request" );
+    }
+
+    /// <summary>
+    /// Verifies that a background-origin request that hits a rate limit is also requeued at Background
+    /// and that the OriginPriority branch (interactive gate) is NOT taken.
+    /// Failure-first: if the gate fired unconditionally, the Times.Never assertion on EventId 3018 would
+    /// fail; if routing diverged, the Acknowledge or Enqueue verification would fail.
+    /// The IsEnabled setup is present so that any mis-fired log would be observable rather than silently
+    /// swallowed — ensuring the Times.Never check is meaningful and not vacuously true.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessMessage_WhenRateLimitAndBackgroundOrigin_ShouldRequeueAtBackground( ) {
+        // Arrange
+        // [LoggerMessage] source-generated code gates every call with IsEnabled().
+        // Setting it true so a mis-fired LogInteractiveDeferredToBackground would reach Log()
+        // and be caught by the Times.Never assertion below (without this, Times.Never would be
+        // vacuously true even if the gate ran on the wrong branch).
+        _ = _loggerMock.Setup( l => l.IsEnabled( It.IsAny<LogLevel>( ) ) ).Returns( true );
+
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.IsrcLookup, "US1234567890" ) with {
+            OriginPriority = QueuePriority.Background
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+        TimeSpan retryAfter = TimeSpan.FromSeconds( 60 );
+
+        SetupNotRateLimited( );
+        _ = _lookupServiceMock.Setup( l => l.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
+            .ThrowsAsync( new RetryAfterExceededException(
+                retryAfter,
+                TimeSpan.FromSeconds( 30 ),
+                new Uri( "https://api.spotify.com/v1/tracks" ),
+                SupportedProviders.Spotify
+            ) );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert — same requeue-at-Background path; no divergence from background-origin behavior
+        _queueMock.Verify(
+            q => q.AcknowledgeAsync( message.MessageId, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _queueMock.Verify(
+            q => q.EnqueueAsync(
+                It.Is<QueuedLookupRequest>( r =>
+                    r.LookupType == request.LookupType &&
+                    r.AttemptCount == request.AttemptCount + 1
+                ),
+                QueuePriority.Background,
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once
+        );
+
+        // Assert — the interactive-deferral log must NOT fire for a Background-origin request.
+        // Disambiguated on EventId 3018 (InteractiveDeferredToBackground). The IsEnabled(true)
+        // setup above makes this a meaningful negative control rather than a vacuously true check.
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                new EventId( LogEventIds.Services.Queue.InteractiveDeferredToBackground ),
+                It.IsAny<It.IsAnyType>( ),
+                It.IsAny<Exception?>( ),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
+            Times.Never,
+            "LogInteractiveDeferredToBackground (Warning, EventId 3018) must NOT fire for a Background-origin request" );
     }
 
     #endregion
