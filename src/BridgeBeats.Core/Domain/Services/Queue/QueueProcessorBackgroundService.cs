@@ -208,16 +208,23 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
                 ct
             );
 
+            // Acknowledge the message before publishing completion events so that a crash
+            // between the two does not leave the message in the PEL and re-publish both
+            // completion channels on redelivery. If the publish calls are lost, the 30-second
+            // polling sweep re-finalizes within one cycle.
+            await _queue.AcknowledgeAsync( message.MessageId, ct );
+
             // Check if saga is complete and publish saga completion event for coordinator
             await CheckAndPublishSagaCompletionAsync( request.SagaId, ct );
 
             // Publish lookup completion so the SagaCoordinator can process via pattern subscription
             await PublishLookupCompletionAsync( request.SagaId, ct );
 
-            // Acknowledge the message - processing complete
-            await _queue.AcknowledgeAsync( message.MessageId, ct );
-
             LogMessageProcessed( _logger, message.MessageId, request.SagaId );
+        } catch (OperationCanceledException) {
+            // Host is shutting down; do not publish completion events.
+            // The message will be redelivered after restart, or the polling sweep will finalize.
+            throw;
         } catch (RetryAfterExceededException ex) {
             status = "rate_limited";
             await HandleRateLimitExceptionAsync( message, request, ex, ct );
@@ -397,11 +404,12 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
                 ct
             );
 
+            // Acknowledge before publishing so a crash between the two does not re-publish
+            // the completion event on redelivery.
+            await _queue.AcknowledgeAsync( message.MessageId, ct );
+
             // Check if saga is complete and publish completion event
             await CheckAndPublishSagaCompletionAsync( request.SagaId, ct );
-
-            // Acknowledge the message (don't retry indefinitely for non-rate-limit errors)
-            await _queue.AcknowledgeAsync( message.MessageId, ct );
         }
     }
 

@@ -164,4 +164,7 @@ public static class LogEventIds {
 
     /// <summary>No secondary lookups could be enqueued; finalization is deferred so waiters get a partial result and the saga is retried after it expires.</summary>
     public const int NoSecondariesEnqueued = 5053;
+
+    /// <summary>The finalize claim for a saga was already held by another handler; this handler is skipping finalization.</summary>
+    public const int FinalizationClaimLost = 5054;
 }

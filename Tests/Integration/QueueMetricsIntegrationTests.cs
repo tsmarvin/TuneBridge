@@ -1,5 +1,9 @@
 using System.Diagnostics.Metrics;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Extensions;
 using BridgeBeats.Core.Infrastructure.Queue;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Tests.Integration;
@@ -21,13 +25,21 @@ public class QueueMetricsIntegrationTests {
     private static IConnectionMultiplexer? s_redis;
 
     /// <summary>
-    /// Requires the shared Redis container and opens a connection to it for the test class.
+    /// Per-run token used to namespace all <c>queue:*</c> keys this class touches, so parallel
+    /// class runs cannot delete each other's in-flight stream data.
+    /// </summary>
+    private static string s_runToken = string.Empty;
+
+    /// <summary>
+    /// Requires the shared Redis container, opens a connection, and generates a stable per-run key
+    /// prefix token so every key created by this class is isolated from other concurrent classes.
     /// </summary>
     /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         SharedTestInfrastructure.RequireRedis( );
         s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
+        s_runToken = Guid.NewGuid( ).ToString( "N" )[..8];
     }
 
     /// <summary>
@@ -42,17 +54,53 @@ public class QueueMetricsIntegrationTests {
     }
 
     /// <summary>
-    /// Clears any leftover <c>queue:*</c> keys from Redis before each test for isolation.
+    /// Clears this run's prefixed <c>queue:{runToken}:*</c> keys and the specific production-format
+    /// queue keys written by the gauge-depth tests within this class before each test, so tests do
+    /// not accumulate stream entries from prior runs within the session. The cleanup uses explicit
+    /// known-key deletion for the production-format keys — not a bare <c>queue:*</c> wipe — so keys
+    /// owned by concurrently executing test classes are never touched.
     /// </summary>
     [TestInitialize]
     public async Task TestInitialize( ) {
-        // Clear queue-related keys before each test
+        await CleanupOwnKeysAsync( );
+    }
+
+    /// <summary>
+    /// Deletes this run's own prefixed <c>queue:{runToken}:*</c> keys and the explicit set of
+    /// production-format keys written by the gauge-depth tests. Uses known-key deletion only —
+    /// no bare wildcard wipe — so foreign-class keys are never touched.
+    /// </summary>
+    private async Task CleanupOwnKeysAsync( ) {
         IDatabase db = s_redis!.GetDatabase( );
         IServer server = s_redis.GetServer( s_redis.GetEndPoints( )[0] );
-        await foreach (RedisKey key in server.KeysAsync( pattern: "queue:*" )) {
+
+        // Clean this run's own namespaced keys
+        string ownPattern = $"queue:{s_runToken}:*";
+        await foreach (RedisKey key in server.KeysAsync( pattern: ownPattern )) {
+            _ = await db.KeyDeleteAsync( key );
+        }
+
+        // Clean the specific production-format keys written by gauge-depth tests in this class.
+        // Using explicit key names, not a wildcard wipe, so no foreign keys are touched.
+        string[] productionKeys = [
+            "queue:spotify:interactive",
+            "queue:spotify:background",
+            "queue:spotify:bulk",
+            "queue:applemusic:interactive",
+            "queue:applemusic:background",
+            "queue:applemusic:bulk",
+            "queue:tidal:interactive",
+            "queue:tidal:background",
+            "queue:tidal:bulk",
+        ];
+        foreach (string key in productionKeys) {
             _ = await db.KeyDeleteAsync( key );
         }
     }
+
+    /// <summary>Returns a stream key namespaced under this class's per-run token.</summary>
+    private static string QueueKey( string provider, string priority ) =>
+        $"queue:{s_runToken}:{provider}:{priority}";
 
     #region Observable Gauge Tests
 
@@ -291,6 +339,116 @@ public class QueueMetricsIntegrationTests {
         }
 
         Assert.HasCount( 9, recordedCombinations, "Should have exactly 9 provider/priority combinations" );
+    }
+
+    #endregion
+
+    #region Alarm Observability Tests
+
+    /// <summary>
+    /// Verifies that <see cref="QueueServiceExtensions.AddQueueInfrastructure"/> with
+    /// <c>registerMetrics: true</c> (the default) registers a <see cref="QueueMetricsRegistration"/>
+    /// hosted service. Starting that service invokes <see cref="QueueMetrics.RegisterQueueDepthGauges"/>
+    /// and the queue-depth instrument is visible to a <see cref="MeterListener"/> without any direct
+    /// call to <see cref="QueueMetrics.RegisterQueueDepthGauges"/> in this test.
+    /// </summary>
+    [TestMethod]
+    public async Task HostBuild_WithMetricsEnabled_RegistersHostedServiceThatEmitsGauge( ) {
+        // Arrange - build a minimal service collection the same way the hosts do
+        ServiceCollection services = new( );
+        _ = services.AddSingleton( s_redis! );
+        _ = services.AddLogging( );
+        _ = services.Configure<QueueSettings>( _ => { } );
+        _ = services.AddQueueInfrastructure( registerMetrics: true );
+
+        await using ServiceProvider provider = services.BuildServiceProvider( );
+
+        // Verify a QueueMetricsRegistration hosted service was registered
+        IEnumerable<IHostedService> hostedServices = provider.GetServices<IHostedService>( );
+        bool hasMetricsService = hostedServices.Any( svc => svc is QueueMetricsRegistration );
+        Assert.IsTrue( hasMetricsService,
+            "AddQueueInfrastructure(registerMetrics: true) must register a QueueMetricsRegistration IHostedService" );
+
+        // Start the hosted service so the gauges are registered (idempotent — latch already set
+        // by earlier tests in this class, but StartAsync must not throw)
+        QueueMetricsRegistration metricsService = (QueueMetricsRegistration)hostedServices.First( svc => svc is QueueMetricsRegistration );
+        await metricsService.StartAsync( CancellationToken.None );
+
+        // Verify the queue-depth gauge is present on the meter
+        bool gaugeFound = false;
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, _ ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName && instrument.Name == "bridgebeats.queue.depth") {
+                gaugeFound = true;
+            }
+        };
+        listener.Start( );
+
+        Assert.IsTrue( gaugeFound,
+            "The queue-depth gauge must be visible on the BridgeBeats.Queue meter after the hosted service starts" );
+    }
+
+    /// <summary>
+    /// Negative control: verifies that <see cref="QueueServiceExtensions.AddQueueInfrastructure"/>
+    /// with <c>registerMetrics: false</c> does NOT register a <see cref="QueueMetricsRegistration"/>
+    /// hosted service. Prevents the gauge from being registered in hosts that opt out of metrics.
+    /// </summary>
+    [TestMethod]
+    public void HostBuild_WithMetricsDisabled_DoesNotRegisterMetricsHostedService( ) {
+        // Arrange
+        ServiceCollection services = new( );
+        _ = services.AddSingleton( s_redis! );
+        _ = services.AddLogging( );
+        _ = services.Configure<QueueSettings>( _ => { } );
+        _ = services.AddQueueInfrastructure( registerMetrics: false );
+
+        using ServiceProvider provider = services.BuildServiceProvider( );
+
+        // Assert - no QueueMetricsRegistration in the service collection
+        IEnumerable<IHostedService> hostedServices = provider.GetServices<IHostedService>( );
+        bool hasMetricsService = hostedServices.Any( svc => svc is QueueMetricsRegistration );
+        Assert.IsFalse( hasMetricsService,
+            "AddQueueInfrastructure(registerMetrics: false) must NOT register a QueueMetricsRegistration IHostedService" );
+    }
+
+    #endregion
+
+    #region Test-Isolation Guard
+
+    /// <summary>
+    /// Regression guard: verifies that <see cref="CleanupOwnKeysAsync"/> never touches keys outside
+    /// this run's own prefix. Two sentinels are seeded to cover distinct bypass vectors: a bare
+    /// <c>queue:*</c> wipe catches a revert to an unnamespaced pattern, and a foreign run-token-shaped
+    /// key catches a namespaced-but-foreign-class wipe. Both must survive the cleanup call.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task TestIsolation_ForeignPrefixKeys_AreNeverTouched( ) {
+        IDatabase db = s_redis!.GetDatabase( );
+
+        // Sentinel 1: bare queue: prefix — catches a revert to an unnamespaced queue:* wipe
+        string bareKey = "queue:__sentinel__:metrics-guard";
+        _ = await db.StringSetAsync( bareKey, "exists", TimeSpan.FromMinutes( 5 ) );
+
+        // Sentinel 2: foreign run-token-shaped key — catches a namespaced-foreign-class wipe
+        string foreignRunKey = "queue:ffffffff:spotify:interactive";
+        _ = await db.StringSetAsync( foreignRunKey, "exists", TimeSpan.FromMinutes( 5 ) );
+
+        // Exercise the real cleanup method (same code path as TestInitialize)
+        await CleanupOwnKeysAsync( );
+
+        // Both sentinels must survive: the cleanup must be scoped to this run's own prefix only
+        bool bareKeyStillExists = await db.KeyExistsAsync( bareKey );
+        Assert.IsTrue( bareKeyStillExists,
+            "CleanupOwnKeysAsync touched a key outside this class's prefix (bare queue: sentinel gone); isolation is broken." );
+
+        bool foreignRunKeyStillExists = await db.KeyExistsAsync( foreignRunKey );
+        Assert.IsTrue( foreignRunKeyStillExists,
+            "CleanupOwnKeysAsync touched a foreign run-token-shaped key; isolation is broken." );
+
+        // Cleanup: remove both sentinels
+        _ = await db.KeyDeleteAsync( bareKey );
+        _ = await db.KeyDeleteAsync( foreignRunKey );
     }
 
     #endregion

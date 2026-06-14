@@ -993,21 +993,21 @@ public class LookupOrchestratorTests {
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( partialUri );
+            .ReturnsAsync( PartialUri );
 
         // First read: saga is partial with a pending provider; second read: saga finalized
         LookupSagaState partialSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
         LookupSagaState finalSaga = CreateSagaState(
             isPartial: false,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             finalResultUri: TestRecordUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, true)]
         );
@@ -1050,15 +1050,15 @@ public class LookupOrchestratorTests {
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( partialUri );
+            .ReturnsAsync( PartialUri );
 
         LookupSagaState partialSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
 
@@ -1097,11 +1097,11 @@ public class LookupOrchestratorTests {
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( partialUri );
+            .ReturnsAsync( PartialUri );
 
         List<ProviderRateLimitInfo> rateLimitInfo = [
             new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
@@ -1111,7 +1111,7 @@ public class LookupOrchestratorTests {
         // second read (after sentinel): rate limit info recorded
         LookupSagaState pendingSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false), (SupportedProviders.Tidal, false)]
         );
         LookupSagaState rateLimitedSaga = pendingSaga with { RateLimitInfo = rateLimitInfo };
@@ -1152,11 +1152,11 @@ public class LookupOrchestratorTests {
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( partialUri );
+            .ReturnsAsync( PartialUri );
 
         List<ProviderRateLimitInfo> rateLimitInfo = [
             new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
@@ -1164,7 +1164,7 @@ public class LookupOrchestratorTests {
 
         LookupSagaState rateLimitedSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             rateLimitInfo: rateLimitInfo,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
@@ -1202,20 +1202,20 @@ public class LookupOrchestratorTests {
         SetupCacheMiss( );
         SetupDeduplicationInFlight( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( partialUri );
+            .ReturnsAsync( PartialUri );
 
         LookupSagaState partialSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
         LookupSagaState finalSaga = CreateSagaState(
             isPartial: false,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             finalResultUri: TestRecordUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, true)]
         );
@@ -1257,11 +1257,11 @@ public class LookupOrchestratorTests {
         SetupCacheMiss( );
         SetupDeduplicationAcquired( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         LookupSagaState resumedSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
 
@@ -1309,11 +1309,11 @@ public class LookupOrchestratorTests {
         SetupCacheMiss( );
         SetupDeduplicationAcquired( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         LookupSagaState resumedSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
 
@@ -1338,7 +1338,7 @@ public class LookupOrchestratorTests {
         _ = await _orchestrator.LookupByIsrcAsync( TestIsrc );
 
         // Assert - released with the known URI (not null: an empty publish would leave waiters stuck)
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), partialUri ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), PartialUri ), Times.Once );
         _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Never );
     }
 
@@ -1353,7 +1353,7 @@ public class LookupOrchestratorTests {
         SetupCacheMiss( );
         SetupDeduplicationInFlight( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         List<ProviderRateLimitInfo> rateLimitInfo = [
             new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
@@ -1361,7 +1361,7 @@ public class LookupOrchestratorTests {
 
         LookupSagaState rateLimitedSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             rateLimitInfo: rateLimitInfo,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
@@ -1399,7 +1399,7 @@ public class LookupOrchestratorTests {
         SetupCacheMiss( );
         SetupDeduplicationInFlight( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         List<ProviderRateLimitInfo> rateLimitInfo = [
             new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
@@ -1407,7 +1407,7 @@ public class LookupOrchestratorTests {
 
         LookupSagaState rateLimitedSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             rateLimitInfo: rateLimitInfo,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
@@ -1424,7 +1424,7 @@ public class LookupOrchestratorTests {
 
         MediaLinkResult partialResult = CreateMediaLinkResult( );
         _ = _atProtoStorageMock
-            .Setup( a => a.GetMediaLinkResultAsync( partialUri ) )
+            .Setup( a => a.GetMediaLinkResultAsync( PartialUri ) )
             .ReturnsAsync( partialResult );
 
         // Act
@@ -1449,11 +1449,11 @@ public class LookupOrchestratorTests {
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( partialUri );
+            .ReturnsAsync( PartialUri );
 
         // Rate limit lapsed five minutes ago - waiting CAN help, escape hatch must not fire
         List<ProviderRateLimitInfo> expiredRateLimitInfo = [
@@ -1462,13 +1462,13 @@ public class LookupOrchestratorTests {
 
         LookupSagaState partialSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             rateLimitInfo: expiredRateLimitInfo,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
         LookupSagaState finalSaga = CreateSagaState(
             isPartial: false,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             finalResultUri: TestRecordUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, true)]
         );
@@ -1511,11 +1511,11 @@ public class LookupOrchestratorTests {
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( partialUri );
+            .ReturnsAsync( PartialUri );
 
         List<ProviderRateLimitInfo> expiredRateLimitInfo = [
             new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( -5 ), "/v1/catalog" )
@@ -1523,7 +1523,7 @@ public class LookupOrchestratorTests {
 
         LookupSagaState partialSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             rateLimitInfo: expiredRateLimitInfo,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
@@ -1604,7 +1604,7 @@ public class LookupOrchestratorTests {
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
@@ -1616,7 +1616,7 @@ public class LookupOrchestratorTests {
 
         LookupSagaState rateLimitedSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             rateLimitInfo: rateLimitInfo,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
@@ -1627,7 +1627,7 @@ public class LookupOrchestratorTests {
 
         MediaLinkResult partialResult = CreateMediaLinkResult( );
         _ = _atProtoStorageMock
-            .Setup( a => a.GetMediaLinkResultAsync( partialUri ) )
+            .Setup( a => a.GetMediaLinkResultAsync( PartialUri ) )
             .ReturnsAsync( partialResult );
 
         // Act
@@ -1652,11 +1652,11 @@ public class LookupOrchestratorTests {
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
 
-        const string partialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
+        const string PartialUri = "at://did:plc:test/com.bridgebeats.media.link/partial";
 
         _ = _deduplicatorMock
             .Setup( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( partialUri );
+            .ReturnsAsync( PartialUri );
 
         List<ProviderRateLimitInfo> rateLimitInfo = [
             new ProviderRateLimitInfo( SupportedProviders.AppleMusic, DateTimeOffset.UtcNow.AddMinutes( 5 ), "/v1/catalog" )
@@ -1664,7 +1664,7 @@ public class LookupOrchestratorTests {
 
         LookupSagaState pendingSaga = CreateSagaState(
             isPartial: true,
-            partialResultUri: partialUri,
+            partialResultUri: PartialUri,
             providers: [(SupportedProviders.Spotify, true), (SupportedProviders.AppleMusic, false)]
         );
         LookupSagaState rateLimitedSaga = pendingSaga with { RateLimitInfo = rateLimitInfo };

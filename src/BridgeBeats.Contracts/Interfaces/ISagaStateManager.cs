@@ -189,6 +189,29 @@ public interface ISagaStateManager {
     Task<bool> TryMarkSecondariesQueuedAsync( string sagaId, CancellationToken cancellationToken = default );
 
     /// <summary>
+    /// Atomically claims the exclusive right to finalize a saga, succeeding only once
+    /// (set-if-not-exists) so exactly one of the overlapping finalization triggers
+    /// (<c>saga:completed</c>, <c>complete:{key}</c>, the polling sweep) performs the PDS write.
+    /// </summary>
+    /// <param name="sagaId">The saga id to claim finalization for.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>
+    /// A task whose result is <see langword="true"/> when this caller acquired the claim (and must
+    /// finalize), or <see langword="false"/> when another caller already holds it.
+    /// </returns>
+    Task<bool> TryClaimFinalizeAsync( string sagaId, CancellationToken cancellationToken = default );
+
+    /// <summary>
+    /// Releases a finalize claim previously acquired via <see cref="TryClaimFinalizeAsync"/>,
+    /// so a legitimate retry can re-finalize after a failed PDS write. Must be called only on
+    /// the failure path; a saga that finalized successfully keeps its claim until TTL expiry.
+    /// </summary>
+    /// <param name="sagaId">The saga id whose finalize claim should be released.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>A task that completes when the claim has been released.</returns>
+    Task ReleaseFinalizeClaimAsync( string sagaId, CancellationToken cancellationToken = default );
+
+    /// <summary>
     /// Seeds the saga with an initial, not-yet-complete provider state for each of the given
     /// providers at the start of a saga, so the set of providers that must complete is known.
     /// </summary>

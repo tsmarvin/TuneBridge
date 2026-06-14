@@ -413,14 +413,27 @@ public sealed partial class SagaCoordinatorBackgroundService(
             return;
         }
 
+        // Atomically claim the exclusive right to finalize this saga. Exactly one concurrent
+        // handler wins; losers return silently so only one PDS write occurs.
+        bool claimed = await _sagaManager.TryClaimFinalizeAsync( saga.SagaId, ct );
+        if (!claimed) {
+            LogFinalizationClaimLost( _logger, saga.SagaId );
+            return;
+        }
+
+        bool uriRecorded = false;
+
         try {
             // Write to ATProto
             string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( finalResult, ct );
 
             LogWroteFinalToAtProto( _logger, saga.SagaId, recordUri );
 
-            // Update saga with final result URI
+            // Update saga with final result URI. The durability line: once this returns the URI is
+            // durably stored. A failure after this point must NOT release the claim — re-entering
+            // would issue a second PDS write against an already-recorded URI.
             await _sagaManager.SetFinalResultUriAsync( saga.SagaId, recordUri, ct );
+            uriRecorded = true;
 
             // Clear the partial flag - the saga now represents a complete result
             await _sagaManager.SetIsPartialAsync( saga.SagaId, false, ct );
@@ -434,13 +447,39 @@ public sealed partial class SagaCoordinatorBackgroundService(
             await _deduplicator.ReleaseAsync( saga.LookupKey, recordUri, ct );
 
             LogSuccessfullyFinalized( _logger, saga.SagaId, finalResult.Results.Count );
+        } catch (OperationCanceledException) {
+            // Before the durability line: release the claim so the next host restart can re-finalize.
+            // After the durability line: retain the claim — re-entering would issue a second PDS write
+            // against a URI that is already recorded. The dedup lock is never released here in either
+            // case (the saga is healthy; no premature empty completion).
+            if (!uriRecorded) {
+                await _sagaManager.ReleaseFinalizeClaimAsync( saga.SagaId, CancellationToken.None );
+            }
+            throw;
         } catch (Exception ex) {
             LogFailedToWriteFinal( _logger, ex, saga.SagaId );
 
-            // Release the lock anyway to unblock waiters
-            await _deduplicator.ReleaseAsync( saga.LookupKey, null, ct );
+            // Only release the claim and dedup lock when the URI has not yet been durably recorded.
+            // If the URI is already recorded, retaining the claim prevents a re-entrant PDS write;
+            // releasing the dedup lock with null here would hand waiters an empty result for a saga
+            // that succeeded — a clean lock timeout is strictly better in that case.
+            if (!uriRecorded) {
+                await _sagaManager.ReleaseFinalizeClaimAsync( saga.SagaId, ct );
+                await _deduplicator.ReleaseAsync( saga.LookupKey, null, ct );
+            }
         }
     }
+
+    /// <summary>
+    /// Test-only entry point that delegates directly to <see cref="WriteFinalResultAsync"/> so
+    /// integration tests can drive the finalize claim path without running the full
+    /// <see cref="ExecuteAsync"/> polling loop. Not used in production code paths.
+    /// </summary>
+    /// <param name="saga">The saga to finalize.</param>
+    /// <param name="ct">A token that cancels the operation.</param>
+    /// <returns>A task that completes when finalization (or its failure cleanup) is done.</returns>
+    internal Task InvokeFinalizeForTestAsync( LookupSagaState saga, CancellationToken ct )
+        => WriteFinalResultAsync( saga, ct );
 
     /// <summary>
     /// Writes an interim partial result for a saga whose providers have not all completed (for example
@@ -690,8 +729,11 @@ public sealed partial class SagaCoordinatorBackgroundService(
             // set, so finalizing now would publish a result that is missing providers as
             // complete and overwrite richer cached data. Waiters receive the honest partial
             // instead; the cache marks partial results stale, so the lookup is retried once
-            // the saga expires.
+            // the queue backend recovers. Remove the saga from the reconciliation index so
+            // it does not strand as an actionable pending entry until TTL expiry. The saga
+            // record itself remains readable until TTL so late GetAsync calls still resolve.
             LogNoSecondariesEnqueued( _logger, originalSaga.SagaId, externalId );
+            await _sagaManager.RemoveFromPendingIndexAsync( originalSaga.SagaId, ct );
         }
 
         // Pending provider states exist and the saga is marked partial, so the caller must
@@ -1003,6 +1045,15 @@ public sealed partial class SagaCoordinatorBackgroundService(
         Level = LogLevel.Warning,
         Message = "Saga {SagaId} completed with no successful results, cleaning up" )]
     private static partial void LogNoSuccessfulResults( ILogger logger, string sagaId );
+
+    /// <summary>Logs that this handler lost the finalize claim race and is deferring to the winner.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga whose finalize claim was already held.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.FinalizationClaimLost,
+        Level = LogLevel.Debug,
+        Message = "Finalize claim for saga {SagaId} already held by another handler; skipping" )]
+    private static partial void LogFinalizationClaimLost( ILogger logger, string sagaId );
 
     /// <summary>Logs that the final result was written to the ATProto PDS.</summary>
     /// <param name="logger">The logger to write to.</param>

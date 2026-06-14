@@ -80,6 +80,11 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _sagaManagerMock
             .Setup( s => s.TryMarkSecondariesQueuedAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( true );
+
+        // By default the coordinator wins the finalize claim (no concurrent handler)
+        _ = _sagaManagerMock
+            .Setup( s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( true );
     }
 
     #region Constructor Tests
@@ -1154,13 +1159,14 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies resilience when every secondary enqueue throws: both enqueues are attempted, the
-    /// saga is still marked partial and a partial result is written, and finalization is deferred —
-    /// a queue outage must not finalize a saga whose secondaries never ran.
+    /// Verifies the terminal-state contract when every secondary enqueue throws: both enqueues are
+    /// attempted, the saga is not finalized (the one-provider result is not promoted to final), the
+    /// partial result is written for waiting callers, and the saga is immediately removed from the
+    /// reconciliation pending index so it does not strand to TTL expiry.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task SagaCompletion_WhenEveryEnqueueFails_ShouldStillDeferFinalizationAndWritePartial( ) {
+    public async Task SagaCompletion_WhenEveryEnqueueFails_ReachesTerminalStateAndWritesPartial( ) {
         // Arrange
         Dictionary<string, Action<RedisChannel, RedisValue>> handlers = [];
         _ = _subscriberMock
@@ -1223,8 +1229,8 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Exactly( 2 )
         );
 
-        // Assert - The saga is NOT finalized: the one-provider result must not be published
-        // as complete while providers are still missing
+        // Assert - The saga is NOT finalized: the one-provider result must not be promoted to
+        // final while secondary providers are still unresolved
         _sagaManagerMock.Verify(
             s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never
@@ -1238,6 +1244,105 @@ public class SagaCoordinatorBackgroundServiceTests {
         _sagaManagerMock.Verify(
             s => s.SetIsPartialAsync( TestSagaId, true, It.IsAny<CancellationToken>( ) ),
             Times.Once
+        );
+
+        // Assert - The saga is removed from the pending index so it does not strand to TTL expiry
+        _sagaManagerMock.Verify(
+            s => s.RemoveFromPendingIndexAsync( TestSagaId, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Negative control: a saga with at least one successful secondary enqueue stays partial and in
+    /// the pending index, awaiting its secondary providers. It must NOT reach the terminal state
+    /// reserved for the all-enqueues-failed path.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task SagaCompletion_WhenSomeEnqueueSucceeds_StaysPartialAwaitingSecondaries( ) {
+        // Arrange
+        Dictionary<string, Action<RedisChannel, RedisValue>> handlers = [];
+        _ = _subscriberMock
+            .Setup( s => s.SubscribeAsync( It.IsAny<RedisChannel>( ), It.IsAny<Action<RedisChannel, RedisValue>>( ), It.IsAny<CommandFlags>( ) ) )
+            .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
+                ( channel, handler, _ ) => handlers[channel.ToString( )] = handler )
+            .Returns( Task.CompletedTask );
+
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState uriSaga = CreateUriLookupSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetAsync( TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( uriSaga );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [] );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.TryGetCachedResultByISRCAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( ((MediaLinkResult result, string recordUri, bool isStale)?)null );
+
+        // One provider enqueues successfully; the other fails
+        Mock<IRequestQueue<QueuedLookupRequest>> successQueueMock = new( );
+        _ = successQueueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        Mock<IRequestQueue<QueuedLookupRequest>> failQueueMock = new( );
+        _ = failQueueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "queue unavailable" ) );
+
+        // AppleMusic succeeds, Tidal fails
+        _ = _queueResolverMock
+            .Setup( r => r.GetQueue( SupportedProviders.AppleMusic ) )
+            .Returns( successQueueMock.Object );
+        _ = _queueResolverMock
+            .Setup( r => r.GetQueue( SupportedProviders.Tidal ) )
+            .Returns( failQueueMock.Object );
+
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 100, TestContext.CancellationToken );
+
+        Assert.IsTrue( handlers.ContainsKey( "saga:completed" ), "Service should have subscribed to saga:completed" );
+        handlers["saga:completed"]( RedisChannel.Literal( "saga:completed" ), TestSagaId );
+        await Task.Delay( 250, TestContext.CancellationToken );
+
+        await cts.CancelAsync( );
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - Not finalized: secondaries are still pending
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - The partial result is written so waiting callers receive a response
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.Is<MediaLinkResult>( r => r.IsPartial ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert - The pending index is NOT cleared: at least one provider is in flight
+        _sagaManagerMock.Verify(
+            s => s.RemoveFromPendingIndexAsync( TestSagaId, It.IsAny<CancellationToken>( ) ),
+            Times.Never
         );
     }
 
@@ -1302,6 +1407,523 @@ public class SagaCoordinatorBackgroundServiceTests {
         _sagaManagerMock.Verify(
             s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never
+        );
+    }
+
+    #endregion
+
+    #region Finalize Claim Tests
+
+    /// <summary>
+    /// Verifies that a handler that loses the finalize claim performs no PDS write and does not
+    /// call SetFinalResultUriAsync. The loser must be completely silent.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_WhenClaimLost_DoesNotWrite( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [completeSaga] );
+
+        // The claim is already held by another handler
+        _ = _sagaManagerMock
+            .Setup( s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( false );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 250, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - No PDS write (the loser must be completely silent)
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - No final URI recorded
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - No dedup release (the loser must not publish on complete:{key})
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( It.IsAny<string>( ), It.IsAny<string?>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a handler that wins the finalize claim writes to the PDS exactly once and
+    /// records the final URI. This is the companion positive control for the loser test above.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_WhenClaimWon_WritesOnce( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [completeSaga] );
+
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 250, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - Exactly one PDS write
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert - Final URI recorded
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( completeSaga.SagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert - The claim is NOT released on the success path
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a failed PDS write releases the finalize claim so the next poll cycle can
+    /// retry. The dedup lock is released with null to unblock waiters.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_WhenPdsWriteFails_ReleasesClaimAndDedup( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [completeSaga] );
+
+        // PDS write fails
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "PDS unavailable" ) );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 250, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - Claim released so the next poll can retry
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( completeSaga.SagaId, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert - Dedup lock released with null to unblock waiters
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( completeSaga.LookupKey, null, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a re-delivery of a saga whose finalization already succeeded is a no-op:
+    /// the existing final result URI short-circuits before the claim is even attempted.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Completion_WhenSagaAlreadyFinalized_IsNoOp( ) {
+        // Arrange
+        Dictionary<string, Action<RedisChannel, RedisValue>> handlers = [];
+        _ = _subscriberMock
+            .Setup( s => s.SubscribeAsync( It.IsAny<RedisChannel>( ), It.IsAny<Action<RedisChannel, RedisValue>>( ), It.IsAny<CommandFlags>( ) ) )
+            .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
+                ( channel, handler, _ ) => handlers[channel.ToString( )] = handler )
+            .Returns( Task.CompletedTask );
+
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        // Saga already has a final result URI (already finalized)
+        LookupSagaState alreadyFinalizedSaga = CreateCompleteSaga( ) with {
+            FinalResultUri = TestRecordUri
+        };
+
+        _ = _sagaManagerMock.Setup( s => s.GetAsync( TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( alreadyFinalizedSaga );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [] );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 100, TestContext.CancellationToken );
+
+        // Simulate re-delivery of the saga:completed event
+        Assert.IsTrue( handlers.ContainsKey( "saga:completed" ), "Service should have subscribed to saga:completed" );
+        handlers["saga:completed"]( RedisChannel.Literal( "saga:completed" ), TestSagaId );
+        await Task.Delay( 250, TestContext.CancellationToken );
+
+        await cts.CancelAsync( );
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - No second PDS write
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - No second final URI write
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - No second dedup release
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( It.IsAny<string>( ), It.IsAny<string?>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Negative control for <see cref="Completion_WhenSagaAlreadyFinalized_IsNoOp"/>: verifies
+    /// that the first delivery DOES finalize once, proving the no-op path is not over-suppressing.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task FirstDelivery_OfCompletedSaga_FinalizesOnce( ) {
+        // Arrange
+        Dictionary<string, Action<RedisChannel, RedisValue>> handlers = [];
+        _ = _subscriberMock
+            .Setup( s => s.SubscribeAsync( It.IsAny<RedisChannel>( ), It.IsAny<Action<RedisChannel, RedisValue>>( ), It.IsAny<CommandFlags>( ) ) )
+            .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
+                ( channel, handler, _ ) => handlers[channel.ToString( )] = handler )
+            .Returns( Task.CompletedTask );
+
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetAsync( TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( completeSaga );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [] );
+
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 100, TestContext.CancellationToken );
+
+        Assert.IsTrue( handlers.ContainsKey( "saga:completed" ), "Service should have subscribed to saga:completed" );
+        handlers["saga:completed"]( RedisChannel.Literal( "saga:completed" ), TestSagaId );
+        await Task.Delay( 250, TestContext.CancellationToken );
+
+        await cts.CancelAsync( );
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - Exactly one PDS write on first delivery
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a failure occurring after the final result URI has been durably recorded does
+    /// NOT release the finalize claim. Retaining the claim prevents a re-entrant PDS write against
+    /// a URI that was already written. Pairs with
+    /// <see cref="Finalize_WhenPdsWriteFails_ReleasesClaimAndDedup"/> (pre-URI failure) as a
+    /// discriminator: together they prove the release is conditioned on the durability line, not
+    /// unconditional.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_WhenFailureAfterUriRecorded_DoesNotReleaseClaim( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [completeSaga] );
+
+        // PDS write succeeds and returns a URI
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // SetFinalResultUriAsync succeeds (URI is now durably recorded)
+        _ = _sagaManagerMock
+            .Setup( s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        // The first post-URI step throws — simulates a failure after the durability line
+        _ = _sagaManagerMock
+            .Setup( s => s.SetIsPartialAsync( It.IsAny<string>( ), It.IsAny<bool>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "post-URI step failed" ) );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 250, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - A failure after the URI is recorded must retain the claim (no release)
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a cancellation mid-finalize (before the PDS write returns) releases the
+    /// finalize claim so the next host restart can re-finalize, but does NOT release the dedup lock
+    /// with a null URI (which would hand waiters a stale empty completion for a healthy saga) and
+    /// does NOT delete the saga.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_WhenCancelledMidFinalize_ReleasesClaimButNotDedup( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [completeSaga] );
+
+        // Cancellation fires before the PDS write completes (before the durability line)
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new OperationCanceledException( ) );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 250, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - Claim must be released so the next host can re-finalize
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert - Dedup lock must NOT be released with null (no premature empty completion)
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( It.IsAny<string>( ), null, It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - Saga must not be deleted
+        _sagaManagerMock.Verify(
+            s => s.DeleteAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a cancellation arriving after the final result URI is durably recorded does NOT
+    /// release the finalize claim. Retaining the claim prevents a re-entrant PDS write against an
+    /// already-recorded URI. The dedup lock is also never released here. Pairs with
+    /// <see cref="Finalize_WhenCancelledMidFinalize_ReleasesClaimButNotDedup"/> (pre-URI cancellation
+    /// → claim released) to prove the cancellation catch is conditioned on the durability line.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_WhenCancelledAfterUriRecorded_DoesNotReleaseClaim( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [completeSaga] );
+
+        // PDS write succeeds — URI returned and durably recorded
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // SetFinalResultUriAsync completes — durability line crossed
+        _ = _sagaManagerMock
+            .Setup( s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        // The first post-URI step throws OperationCanceledException — cancellation after the durability line
+        _ = _sagaManagerMock
+            .Setup( s => s.SetIsPartialAsync( It.IsAny<string>( ), It.IsAny<bool>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new OperationCanceledException( ) );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 250, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - Claim must NOT be released; releasing would allow a re-entrant PDS write against
+        // a URI that is already recorded
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - Dedup lock must NOT be released with null (saga succeeded; no premature empty completion)
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( It.IsAny<string>( ), null, It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - Saga must not be deleted
+        _sagaManagerMock.Verify(
+            s => s.DeleteAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies two distinct sagas each finalize exactly once. This proves the single-winner
+    /// guard keys on saga identity and does not suppress legitimate distinct finalizations.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_TwoDistinctSagas_EachWriteOnce( ) {
+        // Arrange
+        const string SagaId2 = "test-saga-id-87654321";
+
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        LookupSagaState saga1 = CreateCompleteSaga( );
+        LookupSagaState saga2 = CreateCompleteSaga( ) with { SagaId = SagaId2 };
+
+        _ = _sagaManagerMock.Setup( s => s.GetCompletedButUnfinalizedAsync(
+                It.IsAny<TimeSpan>( ),
+                It.IsAny<int>( ),
+                It.IsAny<CancellationToken>( )
+            ) )
+            .ReturnsAsync( [saga1, saga2] );
+
+        _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // Act - polling processes both sagas
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 250, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+
+        try {
+            await service.StopAsync( CancellationToken.None );
+        } catch (OperationCanceledException) {
+            // Expected
+        }
+
+        // Assert - Each saga produces exactly one PDS write (two total)
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Exactly( 2 )
         );
     }
 

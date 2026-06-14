@@ -454,6 +454,16 @@ public static class LogEventIds {
             /// </summary>
             public const int RedisSagaStateManagerSecondariesQueuedMarker = 1316;
 
+            /// <summary>
+            /// EventId for <see cref="RedisSagaStateManager.LogFinalizeClaimMarker"/>.
+            /// </summary>
+            public const int RedisSagaStateManagerFinalizeClaimMarker = 1317;
+
+            /// <summary>
+            /// EventId for <see cref="RedisSagaStateManager.LogFinalizeClaimReleased"/>.
+            /// </summary>
+            public const int RedisSagaStateManagerFinalizeClaimReleased = 1318;
+
             // RedisRequestDeduplicator (1350-1374)
 
             /// <summary>
