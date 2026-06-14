@@ -5,6 +5,7 @@ using BridgeBeats.Providers.Spotify;
 namespace BridgeBeats.Tests.Integration;
 
 [TestClass]
+[DoNotParallelize] // Prevent parallel execution; SpotifyLinkParser has a static test hook (SetHandlerFactoryForTests) used by unit tests.
 [TestCategory( "Integration" )]
 public class SpotifyShortLinkIntegrationTests {
 
