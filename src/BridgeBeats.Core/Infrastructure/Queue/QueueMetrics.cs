@@ -94,6 +94,19 @@ public static class QueueMetrics {
         description: "Total number of duplicate requests prevented"
     );
 
+    /// <summary>
+    /// Total number of interactive-origin lookups deferred to the background retry lane
+    /// due to a provider rate limit.
+    /// </summary>
+    /// <remarks>
+    /// Tags: provider, endpoint
+    /// </remarks>
+    public static readonly Counter<long> InteractiveDeferredTotal = Meter.CreateCounter<long>(
+        "bridgebeats.ratelimit.interactive_deferred.total",
+        unit: "{requests}",
+        description: "Total number of interactive-origin lookups deferred to background due to rate limiting"
+    );
+
     #endregion
 
     #region Histograms
@@ -320,6 +333,22 @@ public static class QueueMetrics {
             new KeyValuePair<string, object?>( QueueMetricTags.Provider, provider.ToString( ).ToLowerInvariant( ) ),
             new KeyValuePair<string, object?>( QueueMetricTags.LookupType, lookupType.ToString( ) ),
             new KeyValuePair<string, object?>( QueueMetricTags.Status, status )
+        );
+    }
+
+    /// <summary>
+    /// Records an interactive-origin deferral event — an interactive lookup that was rate-limited
+    /// and requeued at Background priority.
+    /// </summary>
+    /// <param name="provider">The provider that encountered the rate limit.</param>
+    /// <param name="endpoint">The endpoint that was rate limited.</param>
+    public static void RecordInteractiveDeferral( SupportedProviders provider, string endpoint ) {
+        string providerName = provider.ToString( ).ToLowerInvariant( );
+
+        InteractiveDeferredTotal.Add(
+            1,
+            new KeyValuePair<string, object?>( QueueMetricTags.Provider, providerName ),
+            new KeyValuePair<string, object?>( QueueMetricTags.Endpoint, endpoint )
         );
     }
 

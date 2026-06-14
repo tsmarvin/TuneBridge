@@ -158,7 +158,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
             return false;
         }
 
-        // Request-failure cooldown guard (F7): suppress flush while in backoff after an
+        // Request-failure cooldown guard: suppress flush while in backoff after an
         // empty-dict failure so all attempts are not burned during a transient Spotify outage.
         if (DateTimeOffset.UtcNow < _trackIdCooldownUntil) {
             return false;
@@ -199,7 +199,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
             return false;
         }
 
-        // Request-failure cooldown guard (F7)
+        // Request-failure cooldown guard
         if (DateTimeOffset.UtcNow < _albumIdCooldownUntil) {
             return false;
         }
@@ -260,7 +260,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
 
             // B1 fix: empty dictionary = request failure (auth error, network error).
             // Requeue ALL messages without writing any saga state. Arm the request-failure
-            // cooldown so the linger-trigger does not immediately re-flush (F7).
+            // cooldown so the linger-trigger does not immediately re-flush.
             if (results.Count == 0) {
                 LogBulkDispatchRequeuingAll( _logger, messages.Count, "empty-dict (request failure)" );
                 ArmRequestFailureCooldown( ref _trackIdCooldownUntil, ref _consecutiveTrackIdFailures );
@@ -332,7 +332,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
             // Call the bulk lookup API (GET /albums?ids=...)
             Dictionary<string, MusicLookupResult?> results = await _lookupService.GetAlbumsByIdsAsync( idToMessages.Keys );
 
-            // B1 fix: empty dictionary = request failure → requeue ALL. Arm cooldown (F7).
+            // Empty dictionary = request failure → requeue ALL. Arm cooldown.
             if (results.Count == 0) {
                 LogBulkDispatchRequeuingAll( _logger, messages.Count, "empty-dict (request failure)" );
                 ArmRequestFailureCooldown( ref _albumIdCooldownUntil, ref _consecutiveAlbumIdFailures );

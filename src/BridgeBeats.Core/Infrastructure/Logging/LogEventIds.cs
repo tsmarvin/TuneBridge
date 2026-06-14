@@ -367,16 +367,6 @@ public static class LogEventIds {
             /// </summary>
             public const int RedisRequestQueueAgingIntervalMisconfigured = 1273;
 
-            // SpotifyBulkQueueDecorator (1274-1299)
-
-            /// <summary>
-            /// EventId for <see cref="BridgeBeats.Core.Infrastructure.Queue.SpotifyBulkQueueDecorator.LogInteractivePriorityOnBulkStream"/>.
-            /// Emitted when a SongIdLookup/AlbumIdLookup arrives with Interactive priority —
-            /// the item still routes to the 24 h-linger bulk stream. Callers must never pass
-            /// SupportedProviders.Spotify to the interactive provider-ID entry point.
-            /// </summary>
-            public const int SpotifyBulkDecoratorInteractivePriority = 1274;
-
             // RedisSagaStateManager (1300-1349)
 
             /// <summary>
@@ -1210,6 +1200,13 @@ public static class LogEventIds {
             /// EventId for <see cref="QueueProcessorBackgroundService.LogLookupCompletionPublishFailed"/>.
             /// </summary>
             public const int LookupCompletionPublishFailed = 3017;
+
+            /// <summary>
+            /// EventId for <see cref="QueueProcessorBackgroundService.LogInteractiveDeferredToBackground"/>.
+            /// Emitted when a rate-limited request whose <c>OriginPriority</c> was Interactive is
+            /// requeued at Background priority, deferring it to the bulk-stream retry lane.
+            /// </summary>
+            public const int InteractiveDeferredToBackground = 3018;
 
             // SagaResultCombiner (3100-3149)
 

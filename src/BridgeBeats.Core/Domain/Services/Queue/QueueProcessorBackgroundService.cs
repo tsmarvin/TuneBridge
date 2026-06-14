@@ -259,6 +259,11 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
             RateLimitedEndpoint = endpoint
         };
 
+        if (request.OriginPriority == QueuePriority.Interactive) {
+            LogInteractiveDeferredToBackground( _logger, request.SagaId, request.LookupType, endpoint, retryAfter );
+            QueueMetrics.RecordInteractiveDeferral( _provider, endpoint );
+        }
+
         await _queue.AcknowledgeAsync( message.MessageId, ct );
         await _queue.EnqueueAsync( requeuedRequest, QueuePriority.Background, ct );
 
@@ -464,6 +469,21 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         Level = LogLevel.Information,
         Message = "Saga {SagaId} marked as partial due to rate limit on {Endpoint}, requeued for {Provider} (will be deferred until {RetryAfter})" )]
     private static partial void LogSagaMarkedPartial( ILogger logger, string sagaId, string endpoint, SupportedProviders provider, DateTimeOffset retryAfter );
+
+    /// <summary>
+    /// Logs that an interactive-origin lookup was deferred to the background retry lane
+    /// because the provider endpoint returned a rate limit (429).
+    /// </summary>
+    [LoggerMessage(
+        EventId = LogEventIds.Services.Queue.InteractiveDeferredToBackground,
+        Level = LogLevel.Warning,
+        Message = "Interactive lookup {SagaId}/{LookupType} deferred to the background lane due to a rate limit on {Endpoint}, retry after {RetryAfter}" )]
+    private static partial void LogInteractiveDeferredToBackground(
+        ILogger logger,
+        string sagaId,
+        LookupRequestType lookupType,
+        string endpoint,
+        DateTimeOffset retryAfter );
 
     /// <summary>
     /// Logs that processing of a lookup request failed.

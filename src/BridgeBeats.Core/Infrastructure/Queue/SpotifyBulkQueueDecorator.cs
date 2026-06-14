@@ -3,7 +3,6 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using QueueFieldNames = BridgeBeats.Core.Infrastructure.Queue.QueueStreamFieldNames;
@@ -51,24 +50,20 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
     /// <inheritdoc/>
     /// <remarks>
     /// Intercepts <see cref="LookupRequestType.SongIdLookup"/> and
-    /// <see cref="LookupRequestType.AlbumIdLookup"/> requests and writes them
-    /// to the type-specific bulk streams. All other lookup types are forwarded
-    /// to the underlying queue unchanged.
+    /// <see cref="LookupRequestType.AlbumIdLookup"/> requests with a non-interactive priority
+    /// and writes them to the type-specific bulk streams.
+    /// When <paramref name="priority"/> is <see cref="QueuePriority.Interactive"/>, typed ID lookups
+    /// pass through to the inner queue so they are served on the interactive stream with a
+    /// single-item <c>GetInfoByIDAsync</c> call, preserving the interactive latency budget.
+    /// All other lookup types are forwarded to the underlying queue unchanged regardless of priority.
     /// </remarks>
     public async Task EnqueueAsync(
         QueuedLookupRequest request,
         QueuePriority priority,
         CancellationToken cancellationToken = default
     ) {
-        if (request.LookupType is LookupRequestType.SongIdLookup or LookupRequestType.AlbumIdLookup) {
-            // Invariant: interactive lookups never wait. SongIdLookup/AlbumIdLookup are always
-            // routed to the 24 h-linger bulk stream regardless of the priority argument, so a
-            // caller that passes QueuePriority.Interactive will wait up to 24 h — not the
-            // interactive wait budget. Callers must never pass SupportedProviders.Spotify to
-            // the interactive provider-ID entry point (ICachingMediaLinkService.GetInfoByProviderIdAsync).
-            if (priority == QueuePriority.Interactive) {
-                LogInteractivePriorityOnBulkStream( _logger, request.LookupType, request.SagaId );
-            }
+        if (request.LookupType is LookupRequestType.SongIdLookup or LookupRequestType.AlbumIdLookup
+            && priority != QueuePriority.Interactive) {
 
             string stream = request.LookupType == LookupRequestType.SongIdLookup
                 ? SpotifyConstants.BulkTrackIdStream
@@ -93,7 +88,8 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
             return;
         }
 
-        // All other lookup types (UriLookup, IsrcLookup, UpcLookup, etc.) pass through
+        // Interactive SongIdLookup/AlbumIdLookup, and all other lookup types, pass through
+        // to the inner queue so they are dispatched on the caller's intended priority lane.
         await _inner.EnqueueAsync( request, priority, cancellationToken );
     }
 
@@ -146,20 +142,6 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
         LookupRequestType lookupType,
         string sagaId,
         string stream );
-
-    /// <summary>
-    /// Logs a warning when a SongIdLookup or AlbumIdLookup arrives with Interactive priority.
-    /// The item still routes to the 24 h-linger bulk stream — callers must never pass
-    /// SupportedProviders.Spotify to the interactive provider-ID entry point.
-    /// </summary>
-    [LoggerMessage(
-        EventId = LogEventIds.Infrastructure.Queue.SpotifyBulkDecoratorInteractivePriority,
-        Level = LogLevel.Warning,
-        Message = "SpotifyBulkQueueDecorator received {LookupType} (SagaId={SagaId}) with Interactive priority; item routes to the 24 h-linger bulk stream — interactive caller will not receive a timely result" )]
-    private static partial void LogInteractivePriorityOnBulkStream(
-        ILogger logger,
-        LookupRequestType lookupType,
-        string sagaId );
 
     #endregion
 }

@@ -385,7 +385,7 @@ public partial class AccountController(
         } catch (Exception ex) {
             LogAtProtoOAuthStartFailed( ex, request.Handle );
             return BadRequest( new {
-                message = $"Failed to start login: {ex.Message}"
+                message = "Failed to start login. Please check your handle and try again."
             } );
         }
     }
@@ -487,7 +487,7 @@ public partial class AccountController(
         } catch (Exception ex) {
             LogAtProtoCallbackFailed( ex );
             return RedirectToAction( nameof( LoginPage ), new {
-                error = $"Login failed: {ex.Message}"
+                error = "Login failed. Please try again."
             } );
         }
     }

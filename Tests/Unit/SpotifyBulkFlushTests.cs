@@ -15,23 +15,25 @@ using StackExchange.Redis;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Invariant-pinning tests for the spotify-bulk-flush-semantics change (D6 + D7).
+/// Invariant-pinning tests for the Spotify bulk-flush semantics: routing gate,
+/// saga-deferral contract, size/age flush policy, enqueuedAt graceful degradation,
+/// and saga-hash pre-materialization.
 /// </summary>
 /// <remarks>
-/// Tests are grouped by the directive they pin:
+/// Tests are grouped by the invariant they pin:
 /// <list type="bullet">
-///   <item>D6a — "interactive never rides bulk": <see cref="SpotifyBulkQueueDecorator"/> routes
+///   <item>"Interactive never rides bulk": <see cref="SpotifyBulkQueueDecorator"/> routes
 ///   <see cref="LookupRequestType.SongIdLookup"/>/<see cref="LookupRequestType.AlbumIdLookup"/>
 ///   to the bulk streams irrespective of <see cref="QueuePriority"/>, including
 ///   <see cref="QueuePriority.Interactive"/>.</item>
-///   <item>D6b — bulk-stream items are saga-less until flush: the decorator writes no saga state;
+///   <item>Bulk-stream items are saga-less until flush: the decorator writes no saga state;
 ///   saga materialization happens only in <c>ProcessBulkResultAsync</c> via
 ///   <see cref="ISagaStateManager.GetOrCreateAsync"/>.</item>
-///   <item>D7 — flush contract: size-50 fires immediately; sub-backstop age does not flush;
+///   <item>Flush contract: size-50 fires immediately; sub-backstop age does not flush;
 ///   age ≥ backstop does flush; malformed <c>enqueuedAt</c> yields null + no flush.</item>
-///   <item>D3 — <c>GetOldestEnqueuedAtAsync</c> graceful degradation on malformed
+///   <item><c>GetOldestEnqueuedAtAsync</c> graceful degradation on malformed
 ///   <c>enqueuedAt</c>: returns null + emits a warning log, no exception.</item>
-///   <item>D4 — <c>HandleBulkRateLimitAsync</c> and the <see cref="RequeueOutcome.CapReached"/>
+///   <item><c>HandleBulkRateLimitAsync</c> and the <see cref="RequeueOutcome.CapReached"/>
 ///   branch in <c>RequeueSingleAsync</c> call <see cref="ISagaStateManager.GetOrCreateAsync"/>
 ///   before writing provider state (saga-hash fix for JetStream fire-and-forget items).</item>
 /// </list>
@@ -221,33 +223,44 @@ public class SpotifyBulkFlushTests {
     }
 
     // =========================================================================
-    // D6a — "Interactive never rides bulk" invariant
+    // "Interactive never rides bulk" invariant
     // =========================================================================
 
     /// <summary>
-    /// Pins that SongIdLookup with <see cref="QueuePriority.Interactive"/> is still written
-    /// to the bulk track-id stream and never delegated to the inner queue.
+    /// Pins that SongIdLookup with <see cref="QueuePriority.Interactive"/> is delegated to
+    /// the inner queue and NOT written to the bulk stream.
+    /// Interactive lookups must never wait in the 24 h-linger bulk stream; the routing gate
+    /// now keys on the priority argument so Interactive passes through to the interactive lane.
     /// </summary>
     /// <remarks>
-    /// Failure-first: before the linger change the 500 ms linger masked this coupling; at 24 h
-    /// an interactive SongIdLookup accidentally sent to the bulk stream would wait up to 24 h.
-    /// The decorator routes by LookupType, not priority — this test makes that coupling explicit
-    /// and visible. A future caller that passes Interactive priority will still land in the bulk
-    /// stream; this test documents the invariant so the regression fails loudly.
+    /// Updated from the pre-routing-gate behavior: previously the decorator routed by LookupType
+    /// alone, which meant Interactive SongIdLookup went to the 24 h bulk stream. The routing fix
+    /// adds <c>&amp;&amp; priority != QueuePriority.Interactive</c> to the interception predicate;
+    /// this test now documents the corrected invariant.
     /// </remarks>
     [TestMethod]
-    public async Task Decorator_SongIdLookup_WithInteractivePriority_RoutesToBulkStream( ) {
+    public async Task Decorator_SongIdLookup_WithInteractivePriority_DelegatesToInnerQueue( ) {
         // Arrange — SongIdLookup with explicitly Interactive priority
         QueuedLookupRequest request = MakeTrackRequest( TestTrackId, QueuePriority.Interactive );
         SpotifyBulkQueueDecorator decorator = CreateDecorator( );
 
+        _ = _innerQueueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
         // Act
         await decorator.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        // Assert — XADD was called on the track-id bulk stream
+        // Assert — inner queue receives the call (interactive lane, not bulk stream)
+        _innerQueueMock.Verify(
+            q => q.EnqueueAsync( request, QueuePriority.Interactive, It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "SongIdLookup at Interactive priority must delegate to the inner queue, not the bulk stream" );
+
+        // Assert — no XADD on any bulk stream
         _dbMock.Verify(
             d => d.StreamAddAsync(
-                (RedisKey)TrackStream,
+                It.IsAny<RedisKey>( ),
                 It.IsAny<NameValueEntry[]>( ),
                 It.IsAny<RedisValue?>( ),
                 It.IsAny<long?>( ),
@@ -255,37 +268,40 @@ public class SpotifyBulkFlushTests {
                 It.IsAny<long?>( ),
                 It.IsAny<StreamTrimMode>( ),
                 It.IsAny<CommandFlags>( ) ),
-            Times.Once,
-            "SongIdLookup must route to the bulk track stream regardless of priority" );
-
-        // Assert — inner queue was NOT invoked (not treated as an interactive passthrough)
-        _innerQueueMock.Verify(
-            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never,
-            "Inner queue must not be called for SongIdLookup even at Interactive priority" );
+            "Interactive SongIdLookup must not be written to any bulk stream" );
     }
 
     /// <summary>
-    /// Pins that AlbumIdLookup with <see cref="QueuePriority.Interactive"/> is still written
-    /// to the bulk album-id stream and never delegated to the inner queue.
+    /// Pins that AlbumIdLookup with <see cref="QueuePriority.Interactive"/> is delegated to
+    /// the inner queue and NOT written to the bulk stream.
     /// </summary>
     /// <remarks>
-    /// Failure-first: same reasoning as the track test — decorator routes by LookupType only.
-    /// Test fails against a decorator that respects the priority argument for bulk-stream routing.
+    /// Updated from the pre-routing-gate behavior: same reasoning as the track variant.
     /// </remarks>
     [TestMethod]
-    public async Task Decorator_AlbumIdLookup_WithInteractivePriority_RoutesToBulkStream( ) {
+    public async Task Decorator_AlbumIdLookup_WithInteractivePriority_DelegatesToInnerQueue( ) {
         // Arrange
         QueuedLookupRequest request = MakeAlbumRequest( "6WdSsBrH5QtofaTTqgwxOV", QueuePriority.Interactive );
         SpotifyBulkQueueDecorator decorator = CreateDecorator( );
 
+        _ = _innerQueueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
         // Act
         await decorator.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        // Assert — XADD on album-id stream
+        // Assert — inner queue receives the call (interactive lane)
+        _innerQueueMock.Verify(
+            q => q.EnqueueAsync( request, QueuePriority.Interactive, It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "AlbumIdLookup at Interactive priority must delegate to the inner queue, not the bulk stream" );
+
+        // Assert — no XADD on any bulk stream
         _dbMock.Verify(
             d => d.StreamAddAsync(
-                (RedisKey)AlbumStream,
+                It.IsAny<RedisKey>( ),
                 It.IsAny<NameValueEntry[]>( ),
                 It.IsAny<RedisValue?>( ),
                 It.IsAny<long?>( ),
@@ -293,17 +309,12 @@ public class SpotifyBulkFlushTests {
                 It.IsAny<long?>( ),
                 It.IsAny<StreamTrimMode>( ),
                 It.IsAny<CommandFlags>( ) ),
-            Times.Once,
-            "AlbumIdLookup must route to the bulk album stream regardless of priority" );
-
-        _innerQueueMock.Verify(
-            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never,
-            "Inner queue must not be called for AlbumIdLookup even at Interactive priority" );
+            "Interactive AlbumIdLookup must not be written to any bulk stream" );
     }
 
     // =========================================================================
-    // D6b — Bulk-stream items are saga-less until flush
+    // Bulk-stream items are saga-less until flush
     // =========================================================================
 
     /// <summary>
@@ -337,11 +348,11 @@ public class SpotifyBulkFlushTests {
                 It.IsAny<QueuePriority>( ),
                 It.IsAny<CancellationToken>( ) ),
             Times.Never,
-            "Decorator must not materialize a saga at enqueue time — sagas are created at flush in ProcessBulkResultAsync (D6b)" );
+            "Decorator must not materialize a saga at enqueue time — sagas are created at flush in ProcessBulkResultAsync" );
     }
 
     // =========================================================================
-    // D7 — Flush contract: size trigger / linger backstop
+    // Flush contract: size trigger / linger backstop
     // =========================================================================
 
     /// <summary>
@@ -411,13 +422,13 @@ public class SpotifyBulkFlushTests {
     }
 
     /// <summary>
-    /// Pins that a null oldestAge (from a malformed enqueuedAt, post-D3) does not flush on age,
+    /// Pins that a null oldestAge (from a malformed enqueuedAt) does not flush on age,
     /// but the stream still flushes on size.
     /// </summary>
     /// <remarks>
-    /// This is the critical safety case under D3: a malformed enqueuedAt in a low-volume stream
-    /// yields null from <c>GetOldestEnqueuedAtAsync</c>. The age trigger must not fire; the size
-    /// trigger must still work normally.
+    /// This is the critical safety case for the graceful-degradation path: a malformed enqueuedAt
+    /// in a low-volume stream yields null from <c>GetOldestEnqueuedAtAsync</c>. The age trigger
+    /// must not fire; the size trigger must still work normally.
     /// Failure-first: if null were treated as "age = 0" the age trigger would never fire, but
     /// the count=50 size check still returns true — the test distinguishes these correctly.
     /// </remarks>
@@ -431,7 +442,7 @@ public class SpotifyBulkFlushTests {
             oldestAge: null,
             threshold: SpotifyConstants.MaxTracksPerBatchLookup,
             linger: backstop );
-        Assert.IsFalse( ageResult, "Null oldestAge must not trigger an age flush (D3 safe degradation)" );
+        Assert.IsFalse( ageResult, "Null oldestAge must not trigger an age flush (safe degradation for malformed enqueuedAt)" );
 
         // At-threshold count + null age → flush (size trigger fires)
         bool sizeResult = SpotifyBulkProcessorService.ShouldFlush(
@@ -443,7 +454,7 @@ public class SpotifyBulkFlushTests {
     }
 
     // =========================================================================
-    // D3 — GetOldestEnqueuedAtAsync graceful degradation on malformed enqueuedAt
+    // GetOldestEnqueuedAtAsync graceful degradation on malformed enqueuedAt
     // =========================================================================
 
     /// <summary>
@@ -451,11 +462,11 @@ public class SpotifyBulkFlushTests {
     /// to return null and emit a warning log rather than throwing <see cref="FormatException"/>.
     /// </summary>
     /// <remarks>
-    /// Failure-first: before D3, <c>DateTimeOffset.ParseExact</c> threw
-    /// <see cref="FormatException"/> for a malformed field. The test verifies the post-D3
-    /// behaviour by asserting (a) no exception is thrown, (b) null is returned, and (c) a
-    /// warning-level log is emitted. Running the test against the pre-D3 code causes an
-    /// unhandled <see cref="FormatException"/>, failing the test.
+    /// Failure-first: before the graceful-degradation fix, <c>DateTimeOffset.ParseExact</c>
+    /// threw <see cref="FormatException"/> for a malformed field. The test verifies the
+    /// hardened behaviour by asserting (a) no exception is thrown, (b) null is returned, and
+    /// (c) a warning-level log is emitted. Running the test against the pre-fix code causes
+    /// an unhandled <see cref="FormatException"/>, failing the test.
     /// </remarks>
     [TestMethod]
     public async Task GetOldestEnqueuedAtAsync_MalformedEnqueuedAt_ReturnsNullAndLogsWarning( ) {
@@ -484,7 +495,7 @@ public class SpotifyBulkFlushTests {
         DateTimeOffset? result = await helper.GetOldestEnqueuedAtAsync( isTracks: true, TestContext.CancellationToken );
 
         // Assert (a): returns null
-        Assert.IsNull( result, "Malformed enqueuedAt must return null (D3 safe degradation)" );
+        Assert.IsNull( result, "Malformed enqueuedAt must return null (safe degradation)" );
 
         // Assert (b): a warning-level log was emitted
         _helperLoggerMock.Verify(
@@ -495,12 +506,13 @@ public class SpotifyBulkFlushTests {
                 It.IsAny<Exception?>( ),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
             Times.AtLeastOnce,
-            "A warning log must be emitted for a malformed enqueuedAt field (D3)" );
+            "A warning log must be emitted for a malformed enqueuedAt field" );
     }
 
     /// <summary>
-    /// Pins that a well-formed <c>enqueuedAt</c> field is still parsed correctly after D3
-    /// (regression guard: TryParseExact must not silently reject valid timestamps).
+    /// Pins that a well-formed <c>enqueuedAt</c> field is still parsed correctly after
+    /// the graceful-degradation hardening (regression guard: TryParseExact must not
+    /// silently reject valid timestamps).
     /// </summary>
     /// <remarks>
     /// Failure-first: if TryParseExact were incorrectly configured (wrong format string,
@@ -540,7 +552,7 @@ public class SpotifyBulkFlushTests {
     }
 
     // =========================================================================
-    // D4 — Saga-hash fix: HandleBulkRateLimitAsync calls GetOrCreateAsync first
+    // Saga-hash fix: HandleBulkRateLimitAsync calls GetOrCreateAsync first
     // =========================================================================
 
     /// <summary>
@@ -549,10 +561,10 @@ public class SpotifyBulkFlushTests {
     /// fire-and-forget items that never pre-materialized a saga.
     /// </summary>
     /// <remarks>
-    /// Failure-first: before D4, <c>HandleBulkRateLimitAsync</c> went straight to
-    /// <c>SetIsPartialAsync</c> without calling <c>GetOrCreateAsync</c>. Removing the
-    /// <c>GetOrCreateAsync</c> call from the production code causes <c>Times.Once</c>
-    /// to become <c>Times.Never</c>, failing the test.
+    /// Failure-first: before the saga-hash fix, <c>HandleBulkRateLimitAsync</c> went
+    /// straight to <c>SetIsPartialAsync</c> without calling <c>GetOrCreateAsync</c>.
+    /// Removing the <c>GetOrCreateAsync</c> call from the production code causes
+    /// <c>Times.Once</c> to become <c>Times.Never</c>, failing the test.
     /// </remarks>
     [TestMethod]
     public async Task HandleBulkRateLimitAsync_CallsGetOrCreateAsync_BeforeWritingProviderState( ) {
@@ -613,7 +625,7 @@ public class SpotifyBulkFlushTests {
                 It.IsAny<QueuePriority?>( ),
                 It.IsAny<CancellationToken>( ) ),
             Times.Once,
-            "HandleBulkRateLimitAsync must call GetOrCreateAsync to ensure the core hash exists (D4)" );
+            "HandleBulkRateLimitAsync must call GetOrCreateAsync to ensure the core hash exists before writing provider state" );
 
         // Assert (b): GetOrCreateAsync was called BEFORE SetIsPartialAsync
         Assert.IsTrue( getOrCreateCalledBeforeSetPartial,
@@ -621,7 +633,7 @@ public class SpotifyBulkFlushTests {
     }
 
     // =========================================================================
-    // D4 — Saga-hash fix: RequeueSingleAsync CapReached calls GetOrCreateAsync first
+    // Saga-hash fix: RequeueSingleAsync CapReached calls GetOrCreateAsync first
     // =========================================================================
 
     /// <summary>
@@ -631,10 +643,11 @@ public class SpotifyBulkFlushTests {
     /// JetStream fire-and-forget items.
     /// </summary>
     /// <remarks>
-    /// Failure-first: before D4, the CapReached branch went straight to
-    /// <c>UpdateProviderStateAsync</c>. Removing the <c>GetOrCreateAsync</c> call from the
-    /// production code causes the <c>Times.Once</c> assertion on <c>GetOrCreateAsync</c>
-    /// to become <c>Times.Never</c>, failing the test.
+    /// Failure-first: before the saga-hash fix, the CapReached branch went straight to
+    /// <c>UpdateProviderStateAsync</c> without ensuring the core saga hash existed.
+    /// Removing the <c>GetOrCreateAsync</c> call from the production code causes the
+    /// <c>Times.Once</c> assertion on <c>GetOrCreateAsync</c> to become <c>Times.Never</c>,
+    /// failing the test.
     /// </remarks>
     [TestMethod]
     public async Task RequeueSingle_CapReached_CallsGetOrCreateAsync_BeforeUpdateProviderState( ) {
@@ -718,7 +731,7 @@ public class SpotifyBulkFlushTests {
                 It.IsAny<QueuePriority?>( ),
                 It.IsAny<CancellationToken>( ) ),
             Times.AtLeastOnce,
-            "RequeueSingleAsync CapReached branch must call GetOrCreateAsync to ensure the core hash exists (D4)" );
+            "RequeueSingleAsync CapReached branch must call GetOrCreateAsync to ensure the core hash exists before writing provider state" );
 
         // Assert (b): GetOrCreateAsync preceded UpdateProviderStateAsync
         Assert.IsTrue( getOrCreateCalledBeforeUpdateProvider,
@@ -726,7 +739,7 @@ public class SpotifyBulkFlushTests {
     }
 
     // =========================================================================
-    // D6.2 — CI guard: caller-enumeration invariant (interactive never waits)
+    // CI guard: caller-enumeration invariant (interactive never waits)
     // =========================================================================
 
     /// <summary>
@@ -789,31 +802,35 @@ public class SpotifyBulkFlushTests {
     }
 
     // =========================================================================
-    // D6.2 — Runtime guard: Interactive-priority warning in decorator
+    // Runtime guard: no Interactive-priority warning emitted by decorator
     // =========================================================================
 
     /// <summary>
-    /// Pins that the decorator emits a WARNING log when a <see cref="LookupRequestType.SongIdLookup"/>
+    /// Pins that the decorator does NOT emit a WARNING log when a <see cref="LookupRequestType.SongIdLookup"/>
     /// arrives with <see cref="QueuePriority.Interactive"/> priority.
     /// </summary>
     /// <remarks>
-    /// Failure-first: before this guard the decorator silently routed Interactive-priority
-    /// SongIdLookup to the 24 h-linger bulk stream without any diagnostic signal. This test
-    /// was verified to fail against the pre-guard decorator (no warning emitted); it passes
-    /// after the <c>LogInteractivePriorityOnBulkStream</c> call is added to the enqueue path.
+    /// Updated from the pre-routing-gate behavior: the <c>LogInteractivePriorityOnBulkStream</c>
+    /// warning and its <c>[LoggerMessage]</c> were removed because Interactive SongIdLookup
+    /// now passes through to the inner queue — the warning was documenting a routing bug
+    /// (interactive going to the 24 h bulk stream). With the fix in place there is no
+    /// anomalous condition to warn about.
     /// </remarks>
     [TestMethod]
-    public async Task Decorator_SongIdLookup_WithInteractivePriority_EmitsWarningLog( ) {
+    public async Task Decorator_SongIdLookup_WithInteractivePriority_DoesNotEmitWarning( ) {
         // Arrange
         QueuedLookupRequest request = MakeTrackRequest( TestTrackId, QueuePriority.Interactive );
         SpotifyBulkQueueDecorator decorator = CreateDecorator( );
 
         _ = _decoratorLoggerMock.Setup( l => l.IsEnabled( It.IsAny<LogLevel>( ) ) ).Returns( true );
+        _ = _innerQueueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         await decorator.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        // Assert — a WARNING-level log was emitted
+        // Assert — no WARNING (the routing-fix removed the interactive-warning branch)
         _decoratorLoggerMock.Verify(
             l => l.Log(
                 LogLevel.Warning,
@@ -821,30 +838,38 @@ public class SpotifyBulkFlushTests {
                 It.IsAny<It.IsAnyType>( ),
                 It.IsAny<Exception?>( ),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
+            Times.Never,
+            "Decorator must not emit a WARNING for SongIdLookup at Interactive priority — the item is now correctly passed through to the inner queue" );
+
+        // Assert — inner queue received the call
+        _innerQueueMock.Verify(
+            q => q.EnqueueAsync( request, QueuePriority.Interactive, It.IsAny<CancellationToken>( ) ),
             Times.Once,
-            "Decorator must emit exactly one WARNING log when SongIdLookup arrives with Interactive priority (D6.2 runtime guard)" );
+            "Inner queue must be called for SongIdLookup at Interactive priority" );
     }
 
     /// <summary>
-    /// Pins that the decorator emits a WARNING log when a <see cref="LookupRequestType.AlbumIdLookup"/>
+    /// Pins that the decorator does NOT emit a WARNING log when a <see cref="LookupRequestType.AlbumIdLookup"/>
     /// arrives with <see cref="QueuePriority.Interactive"/> priority.
     /// </summary>
     /// <remarks>
-    /// Failure-first: same reasoning as the SongIdLookup variant — warning was absent
-    /// before the guard was added. This test covers the album-ID path.
+    /// Same as the SongIdLookup variant — the warning was removed with the routing fix.
     /// </remarks>
     [TestMethod]
-    public async Task Decorator_AlbumIdLookup_WithInteractivePriority_EmitsWarningLog( ) {
+    public async Task Decorator_AlbumIdLookup_WithInteractivePriority_DoesNotEmitWarning( ) {
         // Arrange
         QueuedLookupRequest request = MakeAlbumRequest( "6WdSsBrH5QtofaTTqgwxOV", QueuePriority.Interactive );
         SpotifyBulkQueueDecorator decorator = CreateDecorator( );
 
         _ = _decoratorLoggerMock.Setup( l => l.IsEnabled( It.IsAny<LogLevel>( ) ) ).Returns( true );
+        _ = _innerQueueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         await decorator.EnqueueAsync( request, QueuePriority.Interactive, TestContext.CancellationToken );
 
-        // Assert
+        // Assert — no WARNING
         _decoratorLoggerMock.Verify(
             l => l.Log(
                 LogLevel.Warning,
@@ -852,8 +877,14 @@ public class SpotifyBulkFlushTests {
                 It.IsAny<It.IsAnyType>( ),
                 It.IsAny<Exception?>( ),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
+            Times.Never,
+            "Decorator must not emit a WARNING for AlbumIdLookup at Interactive priority" );
+
+        // Assert — inner queue received the call
+        _innerQueueMock.Verify(
+            q => q.EnqueueAsync( request, QueuePriority.Interactive, It.IsAny<CancellationToken>( ) ),
             Times.Once,
-            "Decorator must emit exactly one WARNING log when AlbumIdLookup arrives with Interactive priority (D6.2 runtime guard)" );
+            "Inner queue must be called for AlbumIdLookup at Interactive priority" );
     }
 
     /// <summary>
@@ -886,7 +917,7 @@ public class SpotifyBulkFlushTests {
                     It.IsAny<Exception?>( ),
                     It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
                 Times.Never,
-                $"Decorator must NOT emit a WARNING log for {priority} priority SongIdLookup (D6.2 runtime guard fires only on Interactive)" );
+                $"Decorator must NOT emit a WARNING log for {priority} priority SongIdLookup (warning guard fires only on Interactive; these are bulk-routed non-interactive requests)" );
         }
     }
 

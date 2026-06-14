@@ -21,7 +21,7 @@ public sealed record QueueSettings {
     /// Must exceed the Spotify bulk-batch linger backstop (<c>BridgeBeats:Spotify:Batch:LingerMs</c>,
     /// default 24 h / 1 440 min) so that a saga created before a bulk flush is not evicted before
     /// the flush writes its result. Default is 2 880 min (48 h) = 2× the 24 h backstop, giving
-    /// visible margin. See <c>spotify-bulk-flush-semantics.md</c> D-decision-1 for the trade-off.
+    /// visible margin. See <c>docs/SPOTIFY_BATCH_AND_ROUTING.md</c> ("Saga time-to-live reconciliation") for the trade-off.
     /// </remarks>
     [JsonPropertyName( "jobExpirationMinutes" )]
     public int JobExpirationMinutes { get; init; } = 2880;

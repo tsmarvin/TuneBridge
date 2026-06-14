@@ -309,6 +309,37 @@ public class SpotifyBulkFlushPolicyTests {
         Assert.IsFalse( result, "Cannot linger-flush without an oldest-age timestamp" );
     }
 
+    /// <summary>
+    /// At <see cref="SpotifyBatchSettings.DefaultLingerMs"/> (24 h) scale:
+    /// a single message whose age equals DefaultLingerMs triggers ShouldFlush,
+    /// while a message just under that age does not.
+    /// Uses the constant directly so the test is not sensitive to the literal value.
+    /// Failure-first: before ShouldFlush was extracted into a pure function, the linger
+    /// threshold was inlined and could not be exercised here with arbitrary ages.
+    /// </summary>
+    [TestMethod]
+    public void ShouldFlush_AtDefaultLingerMs_FlushesWhenAgeEqualsLinger_NotJustUnder( ) {
+        TimeSpan defaultLinger = TimeSpan.FromMilliseconds( SpotifyBatchSettings.DefaultLingerMs );
+
+        // Exactly at the linger boundary — must flush
+        bool atLinger = SpotifyBulkProcessorService.ShouldFlush(
+            count: 1,
+            oldestAge: defaultLinger,
+            threshold: SpotifyConstants.MaxTracksPerBatchLookup,
+            linger: defaultLinger
+        );
+        Assert.IsTrue( atLinger, "A message aged exactly DefaultLingerMs must trigger a flush" );
+
+        // 1 ms under the linger boundary — must NOT flush
+        bool justUnder = SpotifyBulkProcessorService.ShouldFlush(
+            count: 1,
+            oldestAge: defaultLinger - TimeSpan.FromMilliseconds( 1 ),
+            threshold: SpotifyConstants.MaxTracksPerBatchLookup,
+            linger: defaultLinger
+        );
+        Assert.IsFalse( justUnder, "A message 1 ms under DefaultLingerMs must not trigger a flush" );
+    }
+
     #endregion
 
     #region Helpers

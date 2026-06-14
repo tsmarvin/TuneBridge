@@ -21,6 +21,15 @@
         "resolved": "9.0.0",
         "contentHash": "bvQc1iVs3RJZY+BEzId90Dv5R4pFVCyDscYoYIwkbpKRWPR5CCKgAjICsrS6pV8jfZOKNaJRyCLtGGn35adO2Q=="
       },
+      "idunno.Security.Ssrf": {
+        "type": "Direct",
+        "requested": "[5.3.0, )",
+        "resolved": "5.3.0",
+        "contentHash": "IJhyGIolnc/ZSueqhL+gq9f8Yb3oqErQamQGJ2JT/LXPOALA16t4SIWRWjFx9XeBez3/JnIApJTCkQCTM3wTWg==",
+        "dependencies": {
+          "OpenTelemetry.Extensions.Hosting": "1.15.3"
+        }
+      },
       "Microsoft.AspNetCore.Identity.EntityFrameworkCore": {
         "type": "Direct",
         "requested": "[10.0.9, )",
@@ -227,14 +236,6 @@
         "contentHash": "96qzrShtaxJUdbZlWLQKe8ygjJl8edmz8yl91pqov+pHcrtsP+oPynxwKWeL2yQ9SadkM7ru9Gtb+YmDO9atcQ==",
         "dependencies": {
           "idunno.AtProto": "2.0.0"
-        }
-      },
-      "idunno.Security.Ssrf": {
-        "type": "Transitive",
-        "resolved": "5.3.0",
-        "contentHash": "IJhyGIolnc/ZSueqhL+gq9f8Yb3oqErQamQGJ2JT/LXPOALA16t4SIWRWjFx9XeBez3/JnIApJTCkQCTM3wTWg==",
-        "dependencies": {
-          "OpenTelemetry.Extensions.Hosting": "1.15.3"
         }
       },
       "Microsoft.Build.Framework": {

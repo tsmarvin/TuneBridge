@@ -18,7 +18,11 @@ namespace BridgeBeats.Tests.EndToEnd;
 public class MusicLookupControllerTests {
     private static CustomWebApplicationFactory? s_factory;
     private static HttpClient? s_client;
+    private static HttpClient? s_anonymousClient;
+    private static HttpClient? s_internalClient;
+    private static HttpClient? s_badInternalClient;
     private static string? s_apiKey;
+    private const string TestInternalServiceKey = "test-internal-service-key-abc123";
 
     /// <summary>
     /// Initializes the test factory, HTTP client, and registers a test user with an API key.
@@ -40,6 +44,11 @@ public class MusicLookupControllerTests {
             .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
             .ToDictionary( );
 
+        // Inject a known internal-service key via environment variable so it is available
+        // during service registration (AddBridgeBeatsServices runs before ConfigureAppConfiguration
+        // test overrides are applied, so environment variables are the reliable injection point).
+        Environment.SetEnvironmentVariable( "BridgeBeats__InternalServiceKey", TestInternalServiceKey );
+        configData["BridgeBeats:InternalServiceKey"] = TestInternalServiceKey;
         // Force Discord token to null to prevent Discord service registration
         configData["BridgeBeats:DiscordToken"] = string.Empty;
         // Disable worker services mode - use direct provider implementations
@@ -94,6 +103,17 @@ public class MusicLookupControllerTests {
         s_client = s_factory.CreateClient( );
         s_client.DefaultRequestHeaders.Add( "X-API-Key", s_apiKey );
 
+        // Create an anonymous client with no API key for auth-boundary tests
+        s_anonymousClient = s_factory.CreateClient( );
+
+        // Create a client bearing a valid X-Service-Key for InternalService auth tests
+        s_internalClient = s_factory.CreateClient( );
+        s_internalClient.DefaultRequestHeaders.Add( "X-Service-Key", TestInternalServiceKey );
+
+        // Create a client bearing an invalid X-Service-Key for negative-control auth tests
+        s_badInternalClient = s_factory.CreateClient( );
+        s_badInternalClient.DefaultRequestHeaders.Add( "X-Service-Key", "wrong-key" );
+
         registrationClient.Dispose( );
     }
 
@@ -103,6 +123,7 @@ public class MusicLookupControllerTests {
     [ClassCleanup]
     public static void ClassCleanup( ) {
         s_factory?.Dispose( );
+        Environment.SetEnvironmentVariable( "BridgeBeats__InternalServiceKey", null );
     }
 
     /// <summary>
@@ -333,6 +354,117 @@ public class MusicLookupControllerTests {
         } else {
             Assert.IsGreaterThan( 0, content.Length, "content should not be empty" );
         }
+    }
+
+    /// <summary>
+    /// Verifies that /music/lookup/url accepts requests without an API key.
+    /// Failure-first: before [AllowAnonymous] was added, the class-level [Authorize] returned 401
+    /// for any unauthenticated request; the anonymous client would have received 401, not 200.
+    /// </summary>
+    [TestMethod]
+    [TestCategory( "Auth" )]
+    [Timeout( 10000, CooperativeCancellation = true )]
+    public async Task ByUrl_WithoutApiKey_ReturnsOkNotUnauthorized( ) {
+        // Arrange — anonymous client (no X-API-Key header)
+        MusicLookupController.UrlReq request = new( "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv" );
+
+        // Act
+        HttpResponseMessage response = await s_anonymousClient!.PostAsJsonAsync(
+            "/music/lookup/url", request, cancellationToken: TestContext.CancellationToken );
+
+        // Assert — 401 would mean the endpoint is still gated; 200 confirms [AllowAnonymous] is effective
+        Assert.AreNotEqual( HttpStatusCode.Unauthorized, response.StatusCode,
+            "ByUrl must not return 401; the endpoint is public ([AllowAnonymous])" );
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode,
+            "ByUrl must return 200 for anonymous callers" );
+    }
+
+    /// <summary>
+    /// Verifies that /music/lookup/urlList accepts requests without an API key.
+    /// Failure-first: before [AllowAnonymous] was added, the class-level [Authorize] returned 401
+    /// for any unauthenticated request; the anonymous client would have received 401, not 200.
+    /// </summary>
+    [TestMethod]
+    [TestCategory( "Auth" )]
+    [Timeout( 10000, CooperativeCancellation = true )]
+    public async Task ByUrlList_WithoutApiKey_ReturnsOkNotUnauthorized( ) {
+        // Arrange — anonymous client (no X-API-Key header)
+        MusicLookupController.UrlReq request = new( "https://open.spotify.com/album/6i6folBtxKV28WX3msQ4FE" );
+
+        // Act
+        HttpResponseMessage response = await s_anonymousClient!.PostAsJsonAsync(
+            "/music/lookup/urlList", request, cancellationToken: TestContext.CancellationToken );
+
+        // Assert — 401 would mean the endpoint is still gated; 200 confirms [AllowAnonymous] is effective
+        Assert.AreNotEqual( HttpStatusCode.Unauthorized, response.StatusCode,
+            "ByUrlList must not return 401; the endpoint is public ([AllowAnonymous])" );
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode,
+            "ByUrlList must return 200 for anonymous callers" );
+    }
+
+    /// <summary>
+    /// Verifies that /music/lookup/isrc still requires authentication (representative for isrc/upc/title).
+    /// Failure-first: this test verifies the class-level [Authorize] still applies to non-URL actions.
+    /// If [AllowAnonymous] were incorrectly placed at class level, this test would fail with 200.
+    /// </summary>
+    [TestMethod]
+    [TestCategory( "Auth" )]
+    [Timeout( 10000, CooperativeCancellation = true )]
+    public async Task ByIsrc_WithoutApiKey_ReturnsUnauthorized( ) {
+        // Arrange — anonymous client (no X-API-Key header)
+        MusicLookupController.IsrcReq request = new( "GBUM71029604" );
+
+        // Act
+        HttpResponseMessage response = await s_anonymousClient!.PostAsJsonAsync(
+            "/music/lookup/isrc", request, cancellationToken: TestContext.CancellationToken );
+
+        // Assert — isrc endpoint must remain protected
+        Assert.AreEqual( HttpStatusCode.Unauthorized, response.StatusCode,
+            "ByIsrc must return 401 for anonymous callers; the endpoint requires an API key" );
+    }
+
+    /// <summary>
+    /// Verifies that a valid <c>X-Service-Key</c> authenticates against a protected endpoint
+    /// (<c>/music/lookup/isrc</c>) via the InternalService scheme.
+    /// Failure-first: before the InternalService scheme was registered (or if the controller's
+    /// <c>[Authorize]</c> did not list <c>InternalService</c>), a valid service key would
+    /// have received 401 because no scheme would accept it.
+    /// </summary>
+    [TestMethod]
+    [TestCategory( "Auth" )]
+    [Timeout( 10000, CooperativeCancellation = true )]
+    public async Task ByIsrc_WithValidInternalServiceKey_ReturnsOkNotUnauthorized( ) {
+        // Arrange — client bears a valid X-Service-Key; no X-API-Key header
+        MusicLookupController.IsrcReq request = new( "GBUM71029604" );
+
+        // Act
+        HttpResponseMessage response = await s_internalClient!.PostAsJsonAsync(
+            "/music/lookup/isrc", request, cancellationToken: TestContext.CancellationToken );
+
+        // Assert — the InternalService scheme must authenticate the request
+        Assert.AreNotEqual( HttpStatusCode.Unauthorized, response.StatusCode,
+            "A valid X-Service-Key must not return 401; InternalService auth must succeed" );
+    }
+
+    /// <summary>
+    /// Verifies that an invalid <c>X-Service-Key</c> is rejected with 401 on a protected endpoint.
+    /// Failure-first: a lenient auth handler that accepted any non-empty key would return 200,
+    /// not 401, causing this test to fail.
+    /// </summary>
+    [TestMethod]
+    [TestCategory( "Auth" )]
+    [Timeout( 10000, CooperativeCancellation = true )]
+    public async Task ByIsrc_WithInvalidInternalServiceKey_ReturnsUnauthorized( ) {
+        // Arrange — client bears an incorrect X-Service-Key; no X-API-Key header
+        MusicLookupController.IsrcReq request = new( "GBUM71029604" );
+
+        // Act
+        HttpResponseMessage response = await s_badInternalClient!.PostAsJsonAsync(
+            "/music/lookup/isrc", request, cancellationToken: TestContext.CancellationToken );
+
+        // Assert — wrong key must be rejected
+        Assert.AreEqual( HttpStatusCode.Unauthorized, response.StatusCode,
+            "An invalid X-Service-Key must return 401" );
     }
 
     /// <summary>

@@ -84,10 +84,10 @@ jobs:
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration-test-results.trx" --logger "console;verbosity=detailed"
 
       - name: Guard — at least one integration test must have executed
-        # B8-silent-skip: Docker-less CI skips all Testcontainer tests via Assert.Inconclusive,
-        # so dotnet test exits 0 with every test Inconclusive (not-run). This step fails the
-        # workflow when executed=0, ensuring a new all-Inconclusive test class cannot silently
-        # pass the integration lane.
+        # Docker-less CI skips all Testcontainer tests via Assert.Inconclusive, so dotnet test
+        # exits 0 with every test Inconclusive (not-run). This step fails the workflow when
+        # executed=0, catching any situation where an all-Inconclusive test class would
+        # otherwise silently pass the integration lane.
         run: |
           TRX=$(find . -name "integration-test-results.trx" | head -1)
           if [ -z "$TRX" ]; then

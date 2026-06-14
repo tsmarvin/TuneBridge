@@ -524,7 +524,7 @@ public partial class RedisRequestQueueTests {
     }
 
     // -------------------------------------------------------------------------
-    // B7–B12: Interactive-first ordering with aging (new deterministic algorithm)
+    // B7–B11: Interactive-first ordering with aging (new deterministic algorithm)
     // -------------------------------------------------------------------------
 
     /// <summary>

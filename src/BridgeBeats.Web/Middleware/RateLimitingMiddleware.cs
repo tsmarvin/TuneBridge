@@ -22,13 +22,14 @@ public partial class RateLimitingMiddleware(
     int maxRequestsPerHour
 ) {
 
-    // Only these endpoints are rate-limited (all are POST). Public URL streaming endpoint is excluded.
+    // Only these endpoints are rate-limited (all are POST). Both public URL endpoints
+    // (/music/lookup/url and /music/lookup/urlList) are excluded; only identifier-based
+    // and name-search lookups are throttled.
     private static readonly HashSet<string> s_rateLimitedRoutes = new(
         [
             "/music/lookup/isrc",
             "/music/lookup/upc",
-            "/music/lookup/title",
-            "/music/lookup/urllist" // case-insensitive compare below
+            "/music/lookup/title"
         ],
         StringComparer.OrdinalIgnoreCase
     );

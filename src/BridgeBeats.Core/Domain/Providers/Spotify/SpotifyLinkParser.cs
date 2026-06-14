@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Core.Domain.Utilities;
+using idunno.Security;
 
 namespace BridgeBeats.Providers.Spotify {
 
@@ -43,11 +44,27 @@ namespace BridgeBeats.Providers.Spotify {
             SpotifyEntity kind = SpotifyEntity.Unknown;
             string id = string.Empty;
 
-            // If it's a spotify.link URL, resolve it to the actual Spotify URL
+            // If it's a spotify.link URL, resolve it to the actual Spotify URL.
+            // The host must be exactly "spotify.link" before any outbound fetch is attempted.
             if (s_spotifyShortLink.IsMatch( link )) {
-                string? resolvedUrl = await ResolveSpotifyShortLink( link );
-                if (resolvedUrl != null) {
-                    link = resolvedUrl;
+                // Strip any existing http(s):// prefix so both the host-gate URI construction
+                // and the resolve fetch work correctly for bare and scheme-prefixed inputs.
+                // Without this, "https://spotify.link/x" would produce "https://https://…" and
+                // Uri.Host would equal "https" instead of "spotify.link", silently dropping
+                // a legitimate short link.
+                string bareLink = link.StartsWith( "https://", StringComparison.OrdinalIgnoreCase )
+                    ? link[ "https://".Length.. ]
+                    : link.StartsWith( "http://", StringComparison.OrdinalIgnoreCase )
+                        ? link[ "http://".Length.. ]
+                        : link;
+                Uri parsed = new( $"https://{bareLink}" );
+                if (parsed.Host.Equals( "spotify.link", StringComparison.OrdinalIgnoreCase )) {
+                    string? resolvedUrl = await ResolveSpotifyShortLinkAsync( bareLink );
+                    if (resolvedUrl != null) {
+                        link = resolvedUrl;
+                    }
+                } else {
+                    return (false, kind, id);
                 }
             }
 
@@ -71,8 +88,8 @@ namespace BridgeBeats.Providers.Spotify {
         /// </summary>
         /// <param name="shortLink">The spotify.link URL to resolve.</param>
         /// <returns>The resolved open.spotify.com URL, or null if resolution fails.</returns>
-        private static async Task<string?> ResolveSpotifyShortLink( string shortLink ) {
-            using HttpClient client = new( new HttpClientHandler { AllowAutoRedirect = false } );
+        internal static async Task<string?> ResolveSpotifyShortLinkAsync( string shortLink ) {
+            using HttpClient client = new( s_handlerFactory( ) );
             client.Timeout = TimeSpan.FromSeconds( 5 );
             HttpResponseMessage response = await client.GetAsync( $"https://{shortLink}" );
             return response.StatusCode is System.Net.HttpStatusCode.MovedPermanently or
@@ -83,12 +100,20 @@ namespace BridgeBeats.Providers.Spotify {
                 : null;
         }
 
+        private static Func<HttpMessageHandler> s_handlerFactory = ( ) =>
+            SsrfSocketsHttpHandlerFactory.Create(
+                connectTimeout: TimeSpan.FromSeconds( 5 ),
+                allowAutoRedirect: false );
+
+        internal static void SetHandlerFactoryForTests( Func<HttpMessageHandler> factory ) =>
+            s_handlerFactory = factory;
+
         private static readonly Regex s_spotifyLink = SpotifyMusicLink();
         [GeneratedRegex( @"(?:open\.spotify\.com/)(?<type>track|album|prerelease)/(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex SpotifyMusicLink( );
 
         private static readonly Regex s_spotifyShortLink = SpotifyShortLinkPattern();
-        [GeneratedRegex( @"spotify\.link/[A-Za-z0-9]+", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
+        [GeneratedRegex( @"^(?:https?://)?spotify\.link/[A-Za-z0-9]+", RegexOptions.IgnoreCase | RegexOptions.Compiled )]
         private static partial Regex SpotifyShortLinkPattern( );
 
         /// <summary>

@@ -50,11 +50,12 @@ public sealed partial class LookupOrchestrator(
     private static readonly TimeSpan s_deduplicationLockDuration = TimeSpan.FromMinutes( 5 );
 
     /// <summary>
-    /// Target wait budget across all links of a single content lookup, kept under the
-    /// Discord bot's 120s HTTP client timeout (see BridgeBeats.Worker.Discord Program.cs)
-    /// so the server-side budget, not the transport, is the binding constraint. Note the
+    /// Target wait budget across all links of a single content lookup. The budget is kept
+    /// under the global 120s resilience AttemptTimeout so the server-side budget, not the
+    /// transport, is the binding constraint (the Discord worker's HTTP transport backstop is
+    /// 130s, above the AttemptTimeout, so the resilience pipeline fires first). Note the
     /// per-link floor below takes precedence, so messages with more than 18 links can
-    /// exceed this target (and beyond ~24 links may exceed the bot's transport timeout).
+    /// exceed this target (and beyond ~24 links may approach the transport backstop).
     /// </summary>
     private static readonly TimeSpan s_maxContentWaitBudget = TimeSpan.FromSeconds( 90 );
 

@@ -4,6 +4,7 @@ using BridgeBeats.Core.Domain.Providers.AppleMusic;
 using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Spotify;
 using BridgeBeats.Core.Domain.Providers.Tidal;
+using idunno.Security;
 
 namespace BridgeBeats.Core.Domain.Extensions {
 
@@ -136,6 +137,8 @@ namespace BridgeBeats.Core.Domain.Extensions {
             _ = services.AddHttpClient( "musickit-api", c => {
                 c.BaseAddress = new Uri( "https://api.music.apple.com/v1/catalog/" );
             } )
+            .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
             .AddHttpMessageHandler( CreateRetryAfterLimitHandlerFactory( maxRetryAfterSeconds ) )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "applemusic" ) );
 
@@ -170,12 +173,16 @@ namespace BridgeBeats.Core.Domain.Extensions {
             _ = services.AddHttpClient( "spotify-auth", c => {
                 c.BaseAddress = new Uri( "https://accounts.spotify.com/" );
             } )
+            .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
             .AddHttpMessageHandler( handlerFactory )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "spotify" ) );
 
             _ = services.AddHttpClient( "spotify-api", c => {
                 c.BaseAddress = new Uri( "https://api.spotify.com/v1/" );
             } )
+            .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
             .AddHttpMessageHandler( handlerFactory )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "spotify" ) );
 
@@ -217,12 +224,16 @@ namespace BridgeBeats.Core.Domain.Extensions {
             _ = services.AddHttpClient( "tidal-auth", c => {
                 c.BaseAddress = new Uri( "https://auth.tidal.com/" );
             } )
+            .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
             .AddHttpMessageHandler( handlerFactory )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "tidal" ) );
 
             _ = services.AddHttpClient( "tidal-api", c => {
                 c.BaseAddress = new Uri( "https://openapi.tidal.com/v2/" );
             } )
+            .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
+                connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
             .AddHttpMessageHandler( handlerFactory )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "tidal" ) );
 

@@ -50,7 +50,7 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// </returns>
     /// <response code="200">Successfully parsed and looked up all URLs.</response>
     /// <response code="400">Invalid request body or malformed URLs.</response>
-    /// <response code="401">Unauthorized - API key required.</response>
+    [AllowAnonymous]
     [HttpPost( "urlList" )]
     public async Task<IActionResult> ByUrlList( [FromBody] UrlReq req ) {
         List<MediaLinkResult> results = [];
@@ -71,6 +71,7 @@ public class MusicLookupController( IMediaLinkService svc ) : ControllerBase {
     /// as soon as it's available, enabling progressive UI updates. Stream completes when all URLs
     /// have been processed.
     /// </returns>
+    [AllowAnonymous]
     [HttpPost( "url" )]
     public async IAsyncEnumerable<MediaLinkResult> ByUrl( [FromBody] UrlReq req ) {
         await foreach (MediaLinkResult result in _svc.GetInfoAsync( req.Uri )) {

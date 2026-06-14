@@ -295,7 +295,7 @@ public class RedisRequestQueueOrderingTests {
     /// </summary>
     [TestMethod]
     public void GetStreamDequeueOrder_BulkBelowThreshold_BulkExcluded( ) {
-        // Arrange — threshold=5, bulk=2
+        // Arrange — threshold=5, bulk=0
         RedisRequestQueue<QueuedLookupRequest> queue = CreateQueue( agingInterval: 8, minBulkThreshold: 5 );
         QueueDepth depth = DepthWithoutBulk( ); // bulk=0
 
