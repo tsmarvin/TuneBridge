@@ -1,3 +1,5 @@
+using BridgeBeats.Core.Infrastructure.Extensions;
+
 namespace BridgeBeats.Web.Configuration {
     /// <summary>
     /// Represents application settings for external service integrations.<para/>
@@ -148,7 +150,14 @@ namespace BridgeBeats.Web.Configuration {
         /// Keys must survive container restarts to decrypt Identity personal data fields, so in Docker
         /// this should be a mounted volume (for example, <c>/app/keys</c>).
         /// </summary>
-        public string DataProtectionKeyPath { get; set; } = "./keys";
+        public string DataProtectionKeyPath { get; set; } = DataProtectionExtensions.DefaultKeyPath;
+
+        /// <summary>
+        /// The number of days a service-account ATProto Redis session is retained before it expires and
+        /// triggers a fresh login. Defaults to 45, matching a typical OAuth refresh-token lifetime. Every
+        /// successful persist resets the TTL, so an active session never expires; only a dormant one ages out.
+        /// </summary>
+        public int ATProtoSessionTtlDays { get; set; } = 45;
 
         /// <summary>
         /// The number of hours a generated Open Graph card is cached before expiring. Defaults to 1.

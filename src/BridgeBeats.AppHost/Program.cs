@@ -301,7 +301,8 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue );
+        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
+        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath );
 } else {
     _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" )
         .WithReference( redis )
@@ -310,7 +311,8 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue );
+        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
+        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath );
 }
 
 // JetStream Watcher Worker. Monitors Bluesky Jetstream for music links and submits them to provider
@@ -333,7 +335,8 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays );
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath );
 } else {
     _ = builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" )
         .WithReference( redis )
@@ -342,7 +345,8 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays );
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath );
 }
 
 // Main Web Application. In production, service discovery uses resource names for endpoint resolution.

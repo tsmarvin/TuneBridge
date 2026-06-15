@@ -285,9 +285,17 @@ public partial class ATProtoOAuthService : IATProtoOAuthService {
             .FirstOrDefaultAsync( s => s.State == state, cancellationToken )
             ?? throw new InvalidOperationException( "OAuth state not found. The authorization flow may have expired." );
 
-        // Decrypt sensitive fields that were encrypted before storage
-        oauthState.CodeVerifier = _personalDataProtector.Unprotect( oauthState.CodeVerifier )!;
-        oauthState.DPoPKeyJwk = _personalDataProtector.Unprotect( oauthState.DPoPKeyJwk )!;
+        // Decrypt sensitive fields that were encrypted before storage.
+        // A CryptographicException here means the key ring has rotated since the flow started;
+        // treat it as an expired flow so the user sees the same message as a genuine timeout.
+        try {
+            oauthState.CodeVerifier = _personalDataProtector.Unprotect( oauthState.CodeVerifier )!;
+            oauthState.DPoPKeyJwk = _personalDataProtector.Unprotect( oauthState.DPoPKeyJwk )!;
+        } catch (System.Security.Cryptography.CryptographicException) {
+            _ = dbContext.AtProtoOAuthStates.Remove( oauthState );
+            _ = await dbContext.SaveChangesAsync( cancellationToken );
+            throw new InvalidOperationException( "OAuth state has expired. Please try logging in again." );
+        }
 
         if (oauthState.ExpiresAt < DateTime.UtcNow) {
             // Clean up expired state

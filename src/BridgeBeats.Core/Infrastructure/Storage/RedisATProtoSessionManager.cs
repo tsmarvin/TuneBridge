@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography;
 using System.Text.Json;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
@@ -6,6 +7,7 @@ using idunno.AtProto;
 using idunno.AtProto.Authentication;
 using idunno.AtProto.Events;
 using idunno.Bluesky;
+using Microsoft.AspNetCore.DataProtection;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Core.Infrastructure.Storage;
@@ -26,6 +28,12 @@ namespace BridgeBeats.Core.Infrastructure.Storage;
 /// pattern: <c>atproto:session:{identifier}</c>.
 /// </remarks>
 public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager, IDisposable {
+
+    /// <summary>
+    /// Purpose string for the service-account ATProto session protector. Standalone and versioned so
+    /// it is independent of the key-ring version and the user-token purpose string.
+    /// </summary>
+    internal const string SessionProtectorPurpose = "BridgeBeats.ServiceAccount.ATProtoSession.v1";
 
     /// <summary>Redis key prefix for the persisted session, completed with the account identifier.</summary>
     private const string SessionKeyPrefix = "atproto:session:";
@@ -85,6 +93,18 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     /// <summary>JSON options used to serialize and deserialize the persisted credentials.</summary>
     private readonly JsonSerializerOptions _jsonOptions;
 
+    /// <summary>
+    /// Protector used to encrypt/decrypt the session JSON before writing to or reading from Redis.
+    /// When <see langword="null"/> the value is stored without encryption (test seam).
+    /// </summary>
+    private readonly IDataProtector? _protector;
+
+    /// <summary>
+    /// Time-to-live applied to every Redis persist operation. Reset on each write so an active
+    /// session never expires; a dormant one ages out after this window.
+    /// </summary>
+    private readonly TimeSpan _sessionTtl;
+
     /// <summary>Factory that creates a new agent, allowing the default construction to be overridden for testing.</summary>
     private readonly Func<BlueskyAgent> _agentFactory;
 
@@ -104,6 +124,15 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
     /// <param name="logger">The logger for session lifecycle events.</param>
     /// <param name="identifier">The service-account identifier (handle or DID) to authenticate as.</param>
     /// <param name="password">The service-account app password used for fresh logins.</param>
+    /// <param name="protector">
+    /// An <see cref="IDataProtector"/> used to encrypt the session JSON before writing to Redis and to
+    /// decrypt it on read. When <see langword="null"/> no encryption is applied (test seam). In
+    /// production this is always supplied via <see cref="BridgeBeats.Core.Infrastructure.Extensions.StorageServiceExtensions.AddATProtoSessionManager"/>.
+    /// </param>
+    /// <param name="sessionTtlDays">
+    /// Number of days before a dormant (never-refreshed) Redis session key expires. Defaults to 45.
+    /// Every successful persist call resets the TTL, so an active session never expires.
+    /// </param>
     /// <param name="agentFactory">An optional factory for creating agents; when null, a default agent with background token refresh disabled and an <see cref="s_refreshTimeout"/>-bounded HTTP timeout is used.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="redis"/>, <paramref name="logger"/>, <paramref name="identifier"/>, or <paramref name="password"/> is null.</exception>
     public RedisATProtoSessionManager(
@@ -111,6 +140,8 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
         ILogger<RedisATProtoSessionManager> logger,
         string identifier,
         string password,
+        IDataProtector? protector = null,
+        int sessionTtlDays = 45,
         Func<BlueskyAgent>? agentFactory = null
     ) {
         _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
@@ -126,6 +157,8 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
             WriteIndented = false
         };
 
+        _protector = protector;
+        _sessionTtl = TimeSpan.FromDays( sessionTtlDays > 0 ? sessionTtlDays : 45 );
         _agentFactory = agentFactory ?? CreateDefaultAgent;
     }
 
@@ -258,15 +291,23 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
         BlueskyAgent? agent = null;
         try {
             IDatabase db = _redis.GetDatabase( );
-            RedisValue storedCredentials = await db.StringGetAsync( _sessionKey );
+            RedisValue storedValue = await db.StringGetAsync( _sessionKey );
 
-            if (storedCredentials.IsNullOrEmpty) {
+            if (storedValue.IsNullOrEmpty) {
                 LogNoStoredCredentials( _identifier );
                 return false;
             }
 
+            // Decrypt the stored payload. A CryptographicException means the key ring has rotated
+            // or the value is legacy plaintext (first deploy before any encrypted persist).
+            // Both cases degrade to fresh login — the catch block below handles them.
+            string payload = storedValue.ToString( );
+            if (_protector is not null) {
+                payload = _protector.Unprotect( payload );
+            }
+
             ATProtoPersistedCredentials? credentials = JsonSerializer.Deserialize<ATProtoPersistedCredentials>(
-                storedCredentials.ToString( ),
+                payload,
                 _jsonOptions
             );
 
@@ -316,6 +357,12 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             agent?.Dispose( );
             throw;
+        } catch (CryptographicException ex) {
+            // Key-ring mismatch or legacy plaintext value present before first encrypted persist.
+            // Degrade to fresh login — the next persist will write ciphertext.
+            LogRestoreCryptoMismatch( ex, _identifier );
+            agent?.Dispose( );
+            return false;
         } catch (Exception ex) {
             LogRestoreException( ex, _identifier );
             agent?.Dispose( );
@@ -580,10 +627,24 @@ public sealed partial class RedisATProtoSessionManager : IATProtoSessionManager,
             PersistedAt = DateTimeOffset.UtcNow
         };
 
+        await PersistPayloadAsync( persistedCredentials );
+    }
+
+    /// <summary>
+    /// Serializes, optionally encrypts, and writes the given credentials to Redis under the session
+    /// key with the configured TTL. Extracted as an internal seam so tests can drive the
+    /// serialize→protect→write path directly without requiring a live authenticated agent.
+    /// </summary>
+    /// <param name="persistedCredentials">The credentials record to persist.</param>
+    internal async Task PersistPayloadAsync( ATProtoPersistedCredentials persistedCredentials ) {
         string json = JsonSerializer.Serialize( persistedCredentials, _jsonOptions );
 
+        // Encrypt the JSON before writing to Redis. When no protector is supplied (test seam)
+        // the raw JSON is stored as a convenience.
+        string payload = _protector is not null ? _protector.Protect( json ) : json;
+
         IDatabase db = _redis.GetDatabase( );
-        _ = await db.StringSetAsync( _sessionKey, json );
+        _ = await db.StringSetAsync( _sessionKey, payload, _sessionTtl );
 
         LogPersisted( _identifier );
     }

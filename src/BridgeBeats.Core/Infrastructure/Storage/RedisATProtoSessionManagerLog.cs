@@ -67,6 +67,19 @@ public sealed partial class RedisATProtoSessionManager {
         Message = "Exception while restoring session for {Identifier}" )]
     private partial void LogRestoreException( Exception ex, string identifier );
 
+    /// <summary>
+    /// Logs a cryptographic failure while decrypting the stored session, caused by a key-ring mismatch
+    /// or a legacy plaintext value that has not yet been rotated to ciphertext. The manager degrades
+    /// to a fresh login — not a generic restore failure — so this event is tracked distinctly.
+    /// </summary>
+    /// <param name="ex">The <see cref="System.Security.Cryptography.CryptographicException"/> that occurred.</param>
+    /// <param name="identifier">The service-account identifier.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Storage.RedisATProtoSessionManagerRestoreCryptoMismatch,
+        Level = LogLevel.Warning,
+        Message = "Cryptographic mismatch decrypting stored session for {Identifier} — key-ring may have rotated or value is pre-encryption plaintext; falling back to fresh login" )]
+    private partial void LogRestoreCryptoMismatch( Exception ex, string identifier );
+
     /// <summary>Logs that another instance holds the distributed lock and this instance is polling for it.</summary>
     /// <param name="identifier">The service-account identifier.</param>
     [LoggerMessage(

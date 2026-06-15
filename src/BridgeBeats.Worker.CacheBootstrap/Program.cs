@@ -56,13 +56,20 @@ public static class Program {
         // Add Redis client from Aspire
         builder.AddRedisClient( "redis" );
 
+        // Lane B: Data Protection — must use the same app name and key path as Web so
+        // values encrypted in one process (Web, SagaCoordinator, CacheBootstrap) can be
+        // decrypted by any other.
+        string dataProtectionKeyPath = builder.Configuration["BridgeBeats:DataProtectionKeyPath"] ?? DataProtectionExtensions.DefaultKeyPath;
+        _ = builder.Services.AddBridgeBeatsDataProtection( dataProtectionKeyPath );
+
         // Read and validate credentials
         (string atProtoIdentifier, string atProtoPassword, string atProtoUserDID,
             string atProtoPdsUri, int cacheDays, int bootstrapIntervalHours) =
                 ValidateConfiguration( builder );
 
         // Register ATProto session manager and storage service (centralized authentication)
-        _ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
+        int sessionTtlDays = builder.Configuration.GetValue( "BridgeBeats:ATProtoSessionTtlDays", 45 );
+        _ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword, sessionTtlDays );
         _ = builder.Services.AddATProtoStorage( );
 
         // Register the cache repository
@@ -141,9 +148,10 @@ public static class Program {
         // Log Redis connection details
         if (logger.IsEnabled( LogLevel.Information )) {
             int databaseNum = redis.GetDatabase( ).Database;
+            string sanitizedEndpoints = SanitizeRedisConfiguration( redis.Configuration );
             ProgramLog.LogRedisConnectionInfo(
                 logger,
-                redis.Configuration,
+                sanitizedEndpoints,
                 redis.IsConnected,
                 databaseNum
             );
@@ -177,5 +185,25 @@ public static class Program {
                 ProgramLog.LogRedisKeyCount( logger, endpointStr, keyCount );
             }
         }
+    }
+
+    /// <summary>
+    /// Returns a sanitized representation of a Redis connection string with the password redacted.
+    /// Parses the configuration via <see cref="ConfigurationOptions"/> and renders it with
+    /// <c>includePassword: false</c> so the password field is replaced with asterisks. Returns
+    /// <c>"(unavailable)"</c> when <paramref name="configuration"/> is <see langword="null"/> or empty
+    /// to avoid calling <see cref="ConfigurationOptions.Parse(string)"/> on an empty string, which throws.
+    /// </summary>
+    /// <param name="configuration">The raw Redis connection string to sanitize, or <see langword="null"/>.</param>
+    /// <returns>
+    /// A connection string with the password replaced by <c>*****</c>, or <c>"(unavailable)"</c> if
+    /// <paramref name="configuration"/> is <see langword="null"/> or empty.
+    /// </returns>
+    internal static string SanitizeRedisConfiguration( string? configuration ) {
+        if (string.IsNullOrEmpty( configuration )) {
+            return "(unavailable)";
+        }
+
+        return ConfigurationOptions.Parse( configuration ).ToString( includePassword: false );
     }
 }

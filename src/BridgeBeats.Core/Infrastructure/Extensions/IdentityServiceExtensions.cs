@@ -24,28 +24,29 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
         /// </param>
         /// <returns>The same <paramref name="services"/> instance, to allow call chaining.</returns>
         /// <remarks>
-        /// Configures Data Protection with the application name <c>BridgeBeats</c> and persists keys
-        /// to the filesystem at <paramref name="dataProtectionKeyPath"/>. Identity Core is configured
-        /// with a password policy requiring digits, lower- and upper-case letters, a non-alphanumeric
-        /// character, and a minimum length of 14, and with unique-email enforcement disabled at the
-        /// Identity validator level. It adds roles, the Entity Framework user store backed by the
-        /// application database context, the sign-in manager, default token providers, and personal-data
-        /// protection: the <see cref="DataProtectionLookupProtector"/> and
-        /// <see cref="DataProtectionKeyRing"/> are registered but are currently inert —
-        /// <c>ProtectPersonalData</c> is never set in the Identity options, so fields marked with
-        /// <c>[ProtectedPersonalData]</c> are stored plaintext at rest. A scoped application
-        /// database context is also registered, created from the registered context factory.
+        /// Delegates the Data Protection registration to
+        /// <see cref="DataProtectionExtensions.AddBridgeBeatsDataProtection"/> with application name
+        /// <c>BridgeBeats</c> and the supplied key path. Identity Core is configured with a password
+        /// policy requiring digits, lower- and upper-case letters, a non-alphanumeric character, and a
+        /// minimum length of 14, and with unique-email enforcement disabled at the Identity validator
+        /// level. It adds roles, the Entity Framework user store backed by the application database
+        /// context, the sign-in manager, default token providers, and personal-data protection. The
+        /// <see cref="DataProtectionLookupProtector"/> and <see cref="DataProtectionKeyRing"/> are
+        /// registered so that <c>IPersonalDataProtector</c> is available — it is used by the ATProto
+        /// OAuth service to protect and unprotect OAuth-state fields. Column-level token encryption for
+        /// the four credential fields (<c>AppleMusicUserToken</c>, <c>AtProtoAccessToken</c>,
+        /// <c>AtProtoRefreshToken</c>, <c>AtProtoDPoPKey</c>) uses a separate
+        /// <c>IDataProtector</c> wired in <c>ApplicationDbContext.OnModelCreating</c> via a value
+        /// converter — not <c>[ProtectedPersonalData]</c>. A scoped application database context is
+        /// also registered, created from the registered context factory.
         /// </remarks>
         public static IServiceCollection AddBridgeBeatsIdentity(
             this IServiceCollection services,
-            string dataProtectionKeyPath = "./keys"
+            string dataProtectionKeyPath = DataProtectionExtensions.DefaultKeyPath
         ) {
-            // Configure Data Protection with persistent key storage.
-            // Keys must survive container restarts to decrypt existing data.
-            DirectoryInfo keyDirectory = new( dataProtectionKeyPath );
-            _ = services.AddDataProtection( )
-                .SetApplicationName( "BridgeBeats" )
-                .PersistKeysToFileSystem( keyDirectory );
+            // Delegate to the shared DP extension so the app-name and key-path convention is defined
+            // in exactly one place across all three host processes.
+            _ = services.AddBridgeBeatsDataProtection( dataProtectionKeyPath );
 
             _ = services.AddIdentityCore<ApplicationUser>( options => {
                 // Password settings

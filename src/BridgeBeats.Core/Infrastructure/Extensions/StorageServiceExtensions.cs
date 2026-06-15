@@ -1,5 +1,6 @@
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Infrastructure.Storage;
+using Microsoft.AspNetCore.DataProtection;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Core.Infrastructure.Extensions {
@@ -19,32 +20,42 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
         /// <param name="services">The service collection to add the registration to.</param>
         /// <param name="atProtoIdentifier">The ATProto service-account identifier (handle or DID).</param>
         /// <param name="atProtoPassword">The ATProto service-account password (app password).</param>
+        /// <param name="sessionTtlDays">
+        /// Number of days before a dormant Redis session key expires. Defaults to 45. Every successful
+        /// persist resets the TTL, so an active session never expires.
+        /// </param>
         /// <returns>The same <paramref name="services"/> instance, to allow call chaining.</returns>
         /// <remarks>
         /// No registration is performed when <paramref name="atProtoIdentifier"/> or
         /// <paramref name="atProtoPassword"/> is null, empty, or whitespace; the method returns the
         /// service collection unchanged. The implementation resolves the shared
-        /// <c>IConnectionMultiplexer</c> and a typed logger at activation time and captures the supplied
-        /// credentials. Registered with singleton lifetime.
+        /// <c>IConnectionMultiplexer</c>, a typed logger, and an <c>IDataProtector</c> created from the
+        /// singleton <c>IDataProtectionProvider</c> with the canonical purpose
+        /// <c>BridgeBeats.ServiceAccount.ATProtoSession.v1</c>. Registered with singleton lifetime.
         /// </remarks>
         public static IServiceCollection AddATProtoSessionManager(
             this IServiceCollection services,
             string? atProtoIdentifier,
-            string? atProtoPassword
+            string? atProtoPassword,
+            int sessionTtlDays = 45
         ) {
             if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
                 string.IsNullOrWhiteSpace( atProtoPassword )) {
                 return services;
             }
 
-            _ = services.AddSingleton<IATProtoSessionManager>( sp =>
-                new RedisATProtoSessionManager(
+            _ = services.AddSingleton<IATProtoSessionManager>( sp => {
+                IDataProtector protector = sp.GetRequiredService<IDataProtectionProvider>( )
+                    .CreateProtector( RedisATProtoSessionManager.SessionProtectorPurpose );
+                return new RedisATProtoSessionManager(
                     sp.GetRequiredService<IConnectionMultiplexer>( ),
                     sp.GetRequiredService<ILogger<RedisATProtoSessionManager>>( ),
                     atProtoIdentifier,
-                    atProtoPassword
-                )
-            );
+                    atProtoPassword,
+                    protector,
+                    sessionTtlDays
+                );
+            } );
 
             return services;
         }

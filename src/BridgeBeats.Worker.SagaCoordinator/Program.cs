@@ -57,6 +57,12 @@ public static class Program {
         // Add Redis client from Aspire
         builder.AddRedisClient( "redis" );
 
+        // Lane B: Data Protection — must use the same app name and key path as Web so
+        // values encrypted in one process (Web, SagaCoordinator, CacheBootstrap) can be
+        // decrypted by any other.
+        string dataProtectionKeyPath = builder.Configuration["BridgeBeats:DataProtectionKeyPath"] ?? DataProtectionExtensions.DefaultKeyPath;
+        _ = builder.Services.AddBridgeBeatsDataProtection( dataProtectionKeyPath );
+
         // Read and validate credentials
         (string atProtoIdentifier, string atProtoPassword, string atProtoUserDID, int cacheDays) =
             ValidateConfiguration( builder );
@@ -82,7 +88,8 @@ public static class Program {
         _ = builder.Services.AddAllProviderQueues<QueuedLookupRequest>( );
 
         // Register ATProto session manager and storage service (centralized authentication)
-        _ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword );
+        int sessionTtlDays = builder.Configuration.GetValue( "BridgeBeats:ATProtoSessionTtlDays", 45 );
+        _ = builder.Services.AddATProtoSessionManager( atProtoIdentifier, atProtoPassword, sessionTtlDays );
         _ = builder.Services.AddATProtoStorage( );
 
         // Register the cache repository

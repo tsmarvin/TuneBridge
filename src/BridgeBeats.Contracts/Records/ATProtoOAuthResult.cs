@@ -31,4 +31,13 @@ public sealed record ATProtoOAuthResult {
 
     /// <summary>The OAuth scope string granted by the authorization.</summary>
     public required string Scope { get; init; }
+
+    /// <summary>
+    /// Returns a non-secret representation of the OAuth result, omitting all token fields so this
+    /// record cannot leak credential material into logs or exception messages.
+    /// </summary>
+    /// <returns>A string showing only non-sensitive identity fields.</returns>
+    public override string ToString( ) =>
+        $"ATProtoOAuthResult {{ Did = {Did}, Handle = {Handle}, " +
+        $"TokenExpiration = {TokenExpiration}, Scope = {Scope} }}";
 }

@@ -1,6 +1,9 @@
 using BridgeBeats.Core.Infrastructure.Playlists;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace BridgeBeats.Core.Infrastructure.Identity;
 
@@ -9,8 +12,30 @@ namespace BridgeBeats.Core.Infrastructure.Identity;
 /// Identity context with playlist and ATProto OAuth-state entities.
 /// </summary>
 /// <param name="options">The options used to configure the context.</param>
-public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> options )
-    : IdentityDbContext<ApplicationUser>( options ) {
+/// <param name="tokenProtector">
+/// An optional <see cref="IDataProtector"/> applied as an EF value converter to the four credential
+/// columns (<c>AppleMusicUserToken</c>, <c>AtProtoAccessToken</c>, <c>AtProtoRefreshToken</c>,
+/// <c>AtProtoDPoPKey</c>) so they are stored encrypted at rest. When <see langword="null"/> the
+/// converter is not installed — this is the design-time factory path so <c>dotnet ef migrations</c>
+/// tooling works without a key ring.
+/// </param>
+public class ApplicationDbContext(
+    DbContextOptions<ApplicationDbContext> options,
+    IDataProtector? tokenProtector = null
+) : IdentityDbContext<ApplicationUser>( options ) {
+
+    /// <summary>
+    /// Purpose string for the user-token column encryptor. Standalone and versioned, independent of
+    /// the key-ring version and the service-account session purpose string.
+    /// </summary>
+    public const string TokenProtectorPurpose = "BridgeBeats.ApplicationUser.Tokens.v1";
+
+    /// <summary>
+    /// Indicates whether a token protector was supplied to this context instance. Used by
+    /// <see cref="ApplicationDbContextModelCacheKeyFactory"/> to bucket EF Core's process-wide model
+    /// cache so a null-protector model and a protector-bearing model never share a cache entry.
+    /// </summary>
+    internal bool TokenProtectorPresent { get; } = tokenProtector is not null;
 
     /// <summary>
     /// Gets or sets the set of stored playlist entries, created by users or anonymously.
@@ -21,6 +46,19 @@ public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> option
     /// Gets or sets the set of transient ATProto OAuth state rows held during the authentication flow.
     /// </summary>
     public DbSet<AtProtoOAuthState> AtProtoOAuthStates { get; set; }
+
+    /// <summary>
+    /// Registers the <see cref="ApplicationDbContextModelCacheKeyFactory"/> so that every
+    /// construction path — runtime factory, design-time factory — produces a model-cache key
+    /// that reflects whether a token protector is present. This prevents a null-protector model
+    /// from being cached and later reused for a protector-bearing context, which would silently
+    /// drop the value converters.
+    /// </summary>
+    /// <param name="optionsBuilder">The builder used to configure the context options.</param>
+    protected override void OnConfiguring( DbContextOptionsBuilder optionsBuilder ) {
+        base.OnConfiguring( optionsBuilder );
+        _ = optionsBuilder.ReplaceService<IModelCacheKeyFactory, ApplicationDbContextModelCacheKeyFactory>( );
+    }
 
     /// <summary>
     /// Configures the entity model, including indexes and column constraints.
@@ -51,6 +89,34 @@ public class ApplicationDbContext( DbContextOptions<ApplicationDbContext> option
     /// <param name="builder">The model builder used to construct the schema.</param>
     protected override void OnModelCreating( ModelBuilder builder ) {
         base.OnModelCreating( builder );
+
+        // Lane B: encrypt the four credential columns at rest via a NULL-transparent value converter.
+        // Applied only when a protector is supplied; the design-time factory passes null so EF tooling
+        // works without a key ring. The converter is string→string (schema-transparent: column type
+        // stays TEXT and the snapshot carries only an annotation, no DDL change). The indexed columns
+        // AtProtoDid, AtProtoHandle, and ApiKeyHash are intentionally excluded so lookups remain exact.
+        if (tokenProtector is not null) {
+            ValueConverter<string?, string?> encryptConverter = new(
+                plaintext => plaintext != null ? tokenProtector.Protect( plaintext ) : null,
+                ciphertext => ciphertext != null ? tokenProtector.Unprotect( ciphertext ) : null
+            );
+
+            _ = builder.Entity<ApplicationUser>( )
+                .Property( u => u.AppleMusicUserToken )
+                .HasConversion( encryptConverter );
+
+            _ = builder.Entity<ApplicationUser>( )
+                .Property( u => u.AtProtoAccessToken )
+                .HasConversion( encryptConverter );
+
+            _ = builder.Entity<ApplicationUser>( )
+                .Property( u => u.AtProtoRefreshToken )
+                .HasConversion( encryptConverter );
+
+            _ = builder.Entity<ApplicationUser>( )
+                .Property( u => u.AtProtoDPoPKey )
+                .HasConversion( encryptConverter );
+        }
 
         // Add indexes for performance
         _ = builder.Entity<ApplicationUser>( )

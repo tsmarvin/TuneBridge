@@ -7,18 +7,21 @@ namespace BridgeBeats.Worker.CacheBootstrap;
 /// Redis-connection verification messages emitted from <see cref="Program"/> before the worker runs.
 /// </summary>
 internal static partial class ProgramLog {
-    /// <summary>Logs the Redis connection configuration and state at startup.</summary>
+    /// <summary>Logs the Redis connection endpoints and state at startup.</summary>
     /// <param name="logger">The logger to write to.</param>
-    /// <param name="configuration">The Redis connection configuration string.</param>
+    /// <param name="endpoints">
+    /// The Redis connection string with the password already masked (must be pre-sanitized by the
+    /// caller using <c>SanitizeRedisConfiguration</c> before passing here).
+    /// </param>
     /// <param name="isConnected">Whether the multiplexer reports a live connection.</param>
     /// <param name="database">The Redis database number in use.</param>
     [LoggerMessage(
         EventId = LogEventIds.RedisConnectionInfo,
         Level = LogLevel.Information,
-        Message = "Redis connection: {Configuration}, IsConnected: {IsConnected}, Database: {Database}" )]
+        Message = "Redis connection: {Endpoints}, IsConnected: {IsConnected}, Database: {Database}" )]
     internal static partial void LogRedisConnectionInfo(
         ILogger logger,
-        string? configuration,
+        string? endpoints,
         bool isConnected,
         int database );
 

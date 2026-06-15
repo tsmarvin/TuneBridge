@@ -356,15 +356,85 @@ namespace BridgeBeats.Web.Configuration {
         /// </summary>
         /// <param name="services">The service collection to populate.</param>
         /// <param name="settings">The settings supplying the Identity connection string.</param>
-        private static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
-            // Register DbContext factory for Identity only (SQLite)
-            // Media link cache is now handled by Redis (see ConfigureATProtoIfEnabled)
-            _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
-                options.UseSqlite(
+        internal static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
+            // Register DbContext factory for Identity only (SQLite).
+            // Lane B: the sp-overload of AddDbContextFactory receives IServiceProvider so we can resolve
+            // the DP provider and pass the token protector directly to ApplicationDbContext.
+            // ConfigureDatabases runs before ConfigureIdentity (see AddBridgeBeatsServices call order),
+            // so IDataProtectionProvider is not yet registered when this line executes — but the
+            // singleton factory lambda below captures the service provider and resolves the protector
+            // lazily at first use, after all registrations are complete. Call order no longer affects
+            // which descriptor survives — both null-protector descriptors are removed immediately after
+            // AddDbContextFactory (see below); a pathological reverse order would fail-fast at first
+            // resolve (the factory lambda throws if IDataProtectionProvider is unregistered), never
+            // silently fall back to plaintext.
+            _ = services.AddDbContextFactory<ApplicationDbContext>( ( sp, options ) => {
+                _ = options.UseSqlite(
                     settings.IdentityConnectionString,
                     b => b.MigrationsAssembly( "BridgeBeats.Core" )
-                )
-            );
+                );
+            } );
+
+            // AddDbContextFactory<T> auto-registers TWO descriptors: an IDbContextFactory<T> and a
+            // scoped ApplicationDbContext — both wired to the options-only constructor (null protector).
+            // Remove BOTH before registering the singleton factory below so that no null-protector
+            // ApplicationDbContext descriptor survives regardless of the order ConfigureDatabases and
+            // ConfigureIdentity are called. The only remaining scoped ApplicationDbContext descriptor
+            // will be the one AddBridgeBeatsIdentity registers via the factory (with the protector).
+            Microsoft.Extensions.DependencyInjection.ServiceDescriptor? existingFactory =
+                services.FirstOrDefault( d =>
+                    d.ServiceType == typeof( Microsoft.EntityFrameworkCore.IDbContextFactory<ApplicationDbContext> ) );
+            if (existingFactory is not null) {
+                _ = services.Remove( existingFactory );
+            }
+
+            Microsoft.Extensions.DependencyInjection.ServiceDescriptor? nullScopedContext =
+                services.FirstOrDefault( d =>
+                    d.ServiceType == typeof( ApplicationDbContext ) );
+            if (nullScopedContext is not null) {
+                _ = services.Remove( nullScopedContext );
+            }
+
+            _ = services.AddSingleton<Microsoft.EntityFrameworkCore.IDbContextFactory<ApplicationDbContext>>( sp => {
+                // Lane B: create the token protector once at factory-build time. The protector is
+                // singleton-safe: IDataProtector created from a singleton IDataProtectionProvider is
+                // thread-safe and stateless.
+                Microsoft.AspNetCore.DataProtection.IDataProtector tokenProtector =
+                    sp.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>( )
+                      .CreateProtector( ApplicationDbContext.TokenProtectorPurpose );
+
+                DbContextOptions<ApplicationDbContext> contextOptions =
+                    new DbContextOptionsBuilder<ApplicationDbContext>( )
+                        .UseSqlite(
+                            settings.IdentityConnectionString,
+                            b => b.MigrationsAssembly( "BridgeBeats.Core" )
+                        )
+                        .Options;
+
+                return new TokenEncryptingDbContextFactory( contextOptions, tokenProtector );
+            } );
+        }
+
+        /// <summary>
+        /// Singleton factory that injects the token protector into every <see cref="ApplicationDbContext"/>
+        /// it creates, enabling the EF value converter for the four credential columns at rest.
+        /// Thread-safe: <c>CreateDbContext</c> allocates a new context per call; the shared options and
+        /// protector are immutable.
+        /// </summary>
+        private sealed class TokenEncryptingDbContextFactory
+            : Microsoft.EntityFrameworkCore.IDbContextFactory<ApplicationDbContext> {
+            private readonly DbContextOptions<ApplicationDbContext> _options;
+            private readonly Microsoft.AspNetCore.DataProtection.IDataProtector _protector;
+
+            internal TokenEncryptingDbContextFactory(
+                DbContextOptions<ApplicationDbContext> options,
+                Microsoft.AspNetCore.DataProtection.IDataProtector protector
+            ) {
+                _options = options;
+                _protector = protector;
+            }
+
+            public ApplicationDbContext CreateDbContext( ) => new( _options, _protector );
         }
 
         /// <summary>
@@ -375,9 +445,14 @@ namespace BridgeBeats.Web.Configuration {
         /// <param name="services">The service collection to populate.</param>
         /// <param name="settings">The settings supplying the Data Protection key path and domain.</param>
         private static void ConfigureIdentity( IServiceCollection services, AppSettings settings ) {
-            // Use the centralized Identity configuration from Infrastructure project
-            // This includes Data Protection key persistence. Note: [ProtectedPersonalData] fields are
-            // stored plaintext today — ProtectPersonalData is not enabled, so the attribute is inert.
+            // Use the centralized Identity configuration from Infrastructure project.
+            // This registers Data Protection (shared with workers), Identity Core, and
+            // AddPersonalDataProtection — which makes IPersonalDataProtector available for the ATProto
+            // OAuth service's OAuth-state encrypt/decrypt path. The four credential columns
+            // (AppleMusicUserToken, AtProtoAccessToken, AtProtoRefreshToken, AtProtoDPoPKey) are
+            // encrypted separately via the EF value converter in ApplicationDbContext.OnModelCreating
+            // using a dedicated IDataProtector with purpose BridgeBeats.ApplicationUser.Tokens.v1 —
+            // not via [ProtectedPersonalData], which has been removed from those fields.
             _ = services.AddBridgeBeatsIdentity( settings.DataProtectionKeyPath );
 
             _ = services.ConfigureApplicationCookie( options => {
@@ -552,7 +627,7 @@ namespace BridgeBeats.Web.Configuration {
             ATProtoUriHelper.ValidateDid( settings.ATProtoUserDID, "ATProtoUserDID" );
 
             // Register ATProto session manager and storage service (centralized authentication)
-            _ = services.AddATProtoSessionManager( settings.ATProtoIdentifier, settings.ATProtoPassword );
+            _ = services.AddATProtoSessionManager( settings.ATProtoIdentifier, settings.ATProtoPassword, settings.ATProtoSessionTtlDays );
             _ = services.AddATProtoStorage( );
 
             // Register Redis-based cache service (requires IConnectionMultiplexer from Aspire)

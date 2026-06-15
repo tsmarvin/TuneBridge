@@ -11,8 +11,10 @@ namespace BridgeBeats.Contracts.Records;
 /// Per idunno.Bluesky guidance, access tokens are short-lived and are NOT persisted; only the
 /// refresh token and related metadata are stored so a session can be restored without
 /// re-authenticating. See: https://bluesky.idunno.dev/docs/savingAndRestoringAuthentication.html.
-/// Holds credential material. Today the dominant writer persists this record as plaintext JSON in
-/// Redis with no encryption and no TTL; no separate protection layer is applied at rest.
+/// Holds credential material. The dominant writer encrypts this record at rest via
+/// ASP.NET Data Protection (<c>IDataProtector</c>, purpose
+/// <c>BridgeBeats.ServiceAccount.ATProtoSession.v1</c>) before writing to Redis; the TTL is
+/// reset on each persist.
 /// </remarks>
 public sealed record ATProtoPersistedCredentials {
 
@@ -47,5 +49,14 @@ public sealed record ATProtoPersistedCredentials {
     /// <summary>The absolute instant at which these credentials were written to storage; used to monitor credential age.</summary>
     [JsonPropertyName( "persistedAt" )]
     public required DateTimeOffset PersistedAt { get; init; }
+
+    /// <summary>
+    /// Returns a non-secret representation of the credentials, omitting all token fields so this
+    /// record cannot leak credential material into logs or exception messages.
+    /// </summary>
+    /// <returns>A string showing only non-sensitive identity fields.</returns>
+    public override string ToString( ) =>
+        $"ATProtoPersistedCredentials {{ Handle = {Handle}, Did = {Did}, Service = {Service}, " +
+        $"AuthenticationType = {AuthenticationType}, PersistedAt = {PersistedAt} }}";
 
 }

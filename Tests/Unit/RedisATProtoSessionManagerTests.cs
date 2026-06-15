@@ -112,7 +112,9 @@ public class RedisATProtoSessionManagerTests {
             _loggerMock.Object,
             TestIdentifier,
             TestPassword,
-            factory
+            protector: null,
+            sessionTtlDays: 45,
+            agentFactory: factory
         );
 
     /// <summary>Sets the manager's private <c>_agent</c> field via reflection.</summary>
@@ -710,7 +712,9 @@ public class RedisATProtoSessionManagerTests {
             _loggerMock.Object,
             TestIdentifier,
             TestPassword,
-            trackingFactory
+            protector: null,
+            sessionTtlDays: 45,
+            agentFactory: trackingFactory
         ) {
             LockExpiry = TimeSpan.FromMilliseconds( 100 ),
             LockPollInterval = TimeSpan.FromMilliseconds( 10 )

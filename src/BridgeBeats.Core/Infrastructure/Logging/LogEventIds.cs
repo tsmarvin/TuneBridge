@@ -238,6 +238,13 @@ public static class LogEventIds {
             /// EventId for <see cref="RedisATProtoSessionManager.LogLockReleaseFailed"/>.
             /// </summary>
             public const int RedisATProtoSessionManagerLockReleaseFailed = 1123;
+
+            /// <summary>
+            /// EventId for <see cref="RedisATProtoSessionManager.LogRestoreCryptoMismatch"/>.
+            /// Distinct from <see cref="RedisATProtoSessionManagerRestoreException"/> — tracks key-ring
+            /// mismatch or legacy plaintext degradation, not a generic restore failure.
+            /// </summary>
+            public const int RedisATProtoSessionManagerRestoreCryptoMismatch = 1124;
         }
 
         /// <summary>
