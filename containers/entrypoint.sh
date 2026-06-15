@@ -81,6 +81,7 @@ REDIS_PASSWORD="$(read_secret "redis_password")"
 CACHE_DAYS="${CACHE_DAYS:-7}"
 CARD_CACHE_EXPIRATION_HOURS="${CARD_CACHE_EXPIRATION_HOURS:-1}"
 CARD_CACHE_CLEANUP_INTERVAL="${CARD_CACHE_CLEANUP_INTERVAL:-500}"
+CARD_CACHE_MAX_ENTRIES="${CARD_CACHE_MAX_ENTRIES:-25000}"
 
 # Authentication and rate limiting configuration
 IDENTITY_CONNECTION_STRING="${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}"
@@ -164,6 +165,7 @@ cat > /src/BridgeBeats.Web/appsettings.json <<EOF
     "DataProtectionKeyPath": "$(escape_bs "$DATA_PROTECTION_KEY_PATH")",
     "CardCacheExpirationHours": $CARD_CACHE_EXPIRATION_HOURS,
     "CardCacheCleanupInterval": $CARD_CACHE_CLEANUP_INTERVAL,
+    "CardCacheMaxEntries": $CARD_CACHE_MAX_ENTRIES,
     "Resilience": {
       "MaxRetryAfterSeconds": $RESILIENCE_MAX_RETRY_AFTER_SECONDS,
       "MaxRetryAttempts": $RESILIENCE_MAX_RETRY_ATTEMPTS,
@@ -228,6 +230,7 @@ export Parameters__LogDirPath="$LOG_DIR_PATH"
 export Parameters__DataProtectionKeyPath="$DATA_PROTECTION_KEY_PATH"
 export Parameters__CardCacheExpirationHours="$CARD_CACHE_EXPIRATION_HOURS"
 export Parameters__CardCacheCleanupInterval="$CARD_CACHE_CLEANUP_INTERVAL"
+export Parameters__CardCacheMaxEntries="$CARD_CACHE_MAX_ENTRIES"
 export Parameters__ResilienceMaxRetryAfterSeconds="$RESILIENCE_MAX_RETRY_AFTER_SECONDS"
 export Parameters__ResilienceMaxRetryAttempts="$RESILIENCE_MAX_RETRY_ATTEMPTS"
 export Parameters__ResilienceTotalTimeoutMinutes="$RESILIENCE_TOTAL_TIMEOUT_MINUTES"

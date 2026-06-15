@@ -19,10 +19,13 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
     /// <param name="cleanupInterval">
     /// How many store operations elapse between lazy expiry sweeps. Must be greater than zero.
     /// </param>
+    /// <param name="maxEntries">
+    /// The maximum number of entries retained in the store before nearest-expiry eviction begins. Must be greater than zero.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// Thrown when <paramref name="expirationHours"/> or <paramref name="cleanupInterval"/> is not greater than zero.
+    /// Thrown when <paramref name="expirationHours"/>, <paramref name="cleanupInterval"/>, or <paramref name="maxEntries"/> is not greater than zero.
     /// </exception>
-    public class OpenGraphCardService( string domain, int expirationHours, int cleanupInterval ) : IOpenGraphCardService {
+    public class OpenGraphCardService( string domain, int expirationHours, int cleanupInterval, int maxEntries ) : IOpenGraphCardService {
 
         /// <summary>Gets a value indicating whether card generation is enabled, that is, whether a public domain is configured.</summary>
         public bool IsEnabled => string.IsNullOrWhiteSpace( domain ) == false;
@@ -42,6 +45,21 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
         private readonly int _cleanupInterval = cleanupInterval > 0
             ? cleanupInterval
             : throw new ArgumentOutOfRangeException( nameof( cleanupInterval ), cleanupInterval, "Cleanup interval must be greater than zero." );
+        /// <summary>The maximum number of entries retained before nearest-expiry eviction kicks in.</summary>
+        private readonly int _maxEntries = maxEntries > 0
+            ? maxEntries
+            : throw new ArgumentOutOfRangeException( nameof( maxEntries ), maxEntries, "Max entries must be greater than zero." );
+        /// <summary>
+        /// Guards the at-capacity evict-then-add critical section. The cap is soft: a concurrent
+        /// distinct-id writer that passes the outer count check before eviction completes can cause the
+        /// count to transiently exceed <c>maxEntries</c> by up to (concurrent writers − 1). The store
+        /// is self-correcting — subsequent writes and lazy sweeps reclaim the overshoot — and cannot
+        /// grow without bound.
+        /// </summary>
+        private readonly Lock _evictionLock = new();
+
+        /// <summary>Returns the number of entries currently in the store. Exposed for testability.</summary>
+        internal int Count => _store.Count;
 
         /// <summary>
         /// Stores a resolved result under a deterministically generated card id and returns the
@@ -56,6 +74,19 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             // Generate deterministic ID based on rkey (always available with fallback)
             string rkey = RecordKeyGenerator.GenerateRkey( result );
             string id = RecordKeyGenerator.GenerateCardId( rkey );
+
+            // When at capacity and this id is new, evict the nearest-expiry entry under a lock so the store stays bounded.
+            if (_store.Count >= _maxEntries && !_store.ContainsKey( id )) {
+                lock (_evictionLock) {
+                    while (_store.Count >= _maxEntries && !_store.ContainsKey( id )) {
+                        string? evictKey = _store.MinBy( kv => kv.Value.Expiry ).Key;
+                        if (evictKey is null) {
+                            break;
+                        }
+                        _ = _store.TryRemove( evictKey, out _ );
+                    }
+                }
+            }
 
             // Atomically add or update the entry, preserving expiry if not expired
             _ = _store.AddOrUpdate(

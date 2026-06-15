@@ -361,16 +361,18 @@ public static class ServiceExtensions {
     /// <param name="domain">The public domain used to build card and playlist URLs.</param>
     /// <param name="cardCacheExpirationHours">How long a stored card is retained, in hours; must be greater than zero.</param>
     /// <param name="cardCacheCleanupInterval">How often the lazy expiry sweep runs, expressed as a count of store operations; must be greater than zero.</param>
+    /// <param name="cardCacheMaxEntries">The maximum number of entries retained in the in-memory store before nearest-expiry eviction begins; must be greater than zero.</param>
     /// <returns>The same <paramref name="services"/>, to allow call chaining.</returns>
     /// <exception cref="InvalidOperationException">
-    /// Thrown when <paramref name="cardCacheExpirationHours"/> or
-    /// <paramref name="cardCacheCleanupInterval"/> is not greater than zero.
+    /// Thrown when <paramref name="cardCacheExpirationHours"/>, <paramref name="cardCacheCleanupInterval"/>,
+    /// or <paramref name="cardCacheMaxEntries"/> is not greater than zero.
     /// </exception>
     public static IServiceCollection AddCardServices(
         this IServiceCollection services,
         string domain,
         int cardCacheExpirationHours,
-        int cardCacheCleanupInterval
+        int cardCacheCleanupInterval,
+        int cardCacheMaxEntries
     ) {
         // Validate card cache settings
         if (cardCacheExpirationHours <= 0) {
@@ -379,13 +381,17 @@ public static class ServiceExtensions {
         if (cardCacheCleanupInterval <= 0) {
             throw new InvalidOperationException( $"CardCacheCleanupInterval must be greater than zero. Current value: {cardCacheCleanupInterval}" );
         }
+        if (cardCacheMaxEntries <= 0) {
+            throw new InvalidOperationException( $"CardCacheMaxEntries must be greater than zero. Current value: {cardCacheMaxEntries}" );
+        }
 
         // OpenGraph card service
         _ = services.AddSingleton<IOpenGraphCardService, OpenGraphCardService>(
             _ => new OpenGraphCardService(
                 domain,
                 cardCacheExpirationHours,
-                cardCacheCleanupInterval
+                cardCacheCleanupInterval,
+                cardCacheMaxEntries
             )
         );
 
@@ -532,10 +538,11 @@ public static class ServiceExtensions {
     /// <param name="domain">The public domain used to build card and playlist URLs.</param>
     /// <param name="cardCacheExpirationHours">How long a stored card is retained, in hours; must be greater than zero.</param>
     /// <param name="cardCacheCleanupInterval">How often the lazy card-expiry sweep runs, as a count of store operations; must be greater than zero.</param>
+    /// <param name="cardCacheMaxEntries">The maximum number of entries retained in the in-memory store before nearest-expiry eviction begins; must be greater than zero.</param>
     /// <returns>The same <paramref name="services"/>, to allow call chaining.</returns>
     /// <exception cref="InvalidOperationException">
-    /// Thrown when <paramref name="cardCacheExpirationHours"/> or
-    /// <paramref name="cardCacheCleanupInterval"/> is not greater than zero.
+    /// Thrown when <paramref name="cardCacheExpirationHours"/>, <paramref name="cardCacheCleanupInterval"/>,
+    /// or <paramref name="cardCacheMaxEntries"/> is not greater than zero.
     /// </exception>
     public static IServiceCollection AddBridgeBeatsServices(
         this IServiceCollection services,
@@ -543,10 +550,11 @@ public static class ServiceExtensions {
         bool useCaching,
         string domain,
         int cardCacheExpirationHours,
-        int cardCacheCleanupInterval
+        int cardCacheCleanupInterval,
+        int cardCacheMaxEntries
     ) {
         _ = services.AddMediaLinkResolver( enabledProviders, useCaching );
-        _ = services.AddCardServices( domain, cardCacheExpirationHours, cardCacheCleanupInterval );
+        _ = services.AddCardServices( domain, cardCacheExpirationHours, cardCacheCleanupInterval, cardCacheMaxEntries );
         _ = services.AddQrCodeService( );
 
         return services;

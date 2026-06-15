@@ -1,5 +1,7 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Web.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;
@@ -39,6 +41,7 @@ public class CardApiController( IOpenGraphCardService cardService ) : Controller
     /// </returns>
     [HttpPost( "store" )]
     [IgnoreAntiforgeryToken]
+    [Authorize( AuthenticationSchemes = InternalServiceDefaults.AuthenticationScheme )]
     public IActionResult Store( [FromBody] MediaLinkResult result ) {
         if (!_cardService.IsEnabled) {
             return StatusCode( 503, new StoreCardResponse( null ) );
