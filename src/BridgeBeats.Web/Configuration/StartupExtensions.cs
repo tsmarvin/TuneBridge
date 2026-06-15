@@ -144,7 +144,8 @@ namespace BridgeBeats.Web.Configuration {
                 useCaching,
                 settings.Domain,
                 settings.CardCacheExpirationHours,
-                settings.CardCacheCleanupInterval
+                settings.CardCacheCleanupInterval,
+                settings.CardCacheMaxEntries
             );
             _ = services.AddSingleton( enabledProviders );
 

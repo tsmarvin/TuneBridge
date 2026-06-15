@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
@@ -48,7 +50,9 @@ public class InternalServiceAuthHandler(
             return Task.FromResult( AuthenticateResult.Fail( "Internal service authentication is not configured." ) );
         }
 
-        if (!string.Equals( providedKey, configuredKey, StringComparison.Ordinal )) {
+        byte[] providedBytes = Encoding.UTF8.GetBytes( providedKey );
+        byte[] configuredBytes = Encoding.UTF8.GetBytes( configuredKey );
+        if (!CryptographicOperations.FixedTimeEquals( providedBytes, configuredBytes )) {
             return Task.FromResult( AuthenticateResult.Fail( "Invalid service key." ) );
         }
 
