@@ -170,9 +170,9 @@ namespace BridgeBeats.Web.Configuration {
         public int CardCacheCleanupInterval { get; set; } = 500;
 
         /// <summary>
-        /// The maximum number of cards retained in the in-memory store before nearest-expiry eviction begins. Defaults to 10000.
+        /// The maximum number of cards retained in the in-memory store before nearest-expiry eviction begins. Defaults to 25000.
         /// </summary>
-        public int CardCacheMaxEntries { get; set; } = 10000;
+        public int CardCacheMaxEntries { get; set; } = 25000;
 
         /// <summary>
         /// HTTP resilience settings (retry and timeout limits) applied to outbound provider calls.

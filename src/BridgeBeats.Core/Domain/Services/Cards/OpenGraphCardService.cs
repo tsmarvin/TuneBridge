@@ -79,10 +79,7 @@ namespace BridgeBeats.Core.Domain.Services.Cards {
             if (_store.Count >= _maxEntries && !_store.ContainsKey( id )) {
                 lock (_evictionLock) {
                     while (_store.Count >= _maxEntries && !_store.ContainsKey( id )) {
-                        string? evictKey = _store
-                            .OrderBy( kv => kv.Value.Expiry )
-                            .Select( kv => kv.Key )
-                            .FirstOrDefault();
+                        string? evictKey = _store.MinBy( kv => kv.Value.Expiry ).Key;
                         if (evictKey is null) {
                             break;
                         }

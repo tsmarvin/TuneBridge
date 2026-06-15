@@ -90,6 +90,7 @@ IResourceBuilder<ParameterResource> identityConnectionString = builder.AddParame
 IResourceBuilder<ParameterResource> logDirPath               = builder.AddParameter( "LogDirPath" );
 IResourceBuilder<ParameterResource> cardCacheExpirationHours = builder.AddParameter( "CardCacheExpirationHours" );
 IResourceBuilder<ParameterResource> cardCacheCleanupInterval = builder.AddParameter( "CardCacheCleanupInterval" );
+IResourceBuilder<ParameterResource> cardCacheMaxEntries      = builder.AddParameter( "CardCacheMaxEntries" );
 IResourceBuilder<ParameterResource> dataProtectionKeyPath    = builder.AddParameter( "DataProtectionKeyPath" );
 
 // Resilience configuration parameters.
@@ -376,6 +377,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
         .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
+        .WithEnvironment( "BridgeBeats__CardCacheMaxEntries", cardCacheMaxEntries )
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
         .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
@@ -404,6 +406,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
         .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
+        .WithEnvironment( "BridgeBeats__CardCacheMaxEntries", cardCacheMaxEntries )
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
         .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
         .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
