@@ -73,6 +73,8 @@ The Discord integration runs as a separate worker service (`BridgeBeats.Worker.D
 | `DATA_PROTECTION_KEY_PATH` | Directory where ASP.NET Data Protection keys are persisted | `/app/keys` |
 | `CARD_CACHE_EXPIRATION_HOURS` | Hours to cache OpenGraph cards in memory | `1` |
 | `CARD_CACHE_CLEANUP_INTERVAL` | Operations between cleanup cycles for expired cards | `500` |
+| `REFRESH_INTERVAL_HOURS` | Hours between stale-cache refresh sweeps | `24` |
+| `MAX_RECORDS_PER_RUN` | Maximum stale records re-enqueued per refresh sweep | `100` |
 
 > Note: `RATE_LIMIT_REQUESTS_PER_HOUR` defaults to `20` in the container entrypoint and application code. The shipped `.env.example` sets it to `100`; whichever value you place in `.env` wins for a Docker deployment.
 

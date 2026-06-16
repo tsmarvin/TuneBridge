@@ -36,9 +36,24 @@ The relevant settings live under the `BridgeBeats` configuration section:
 | `ATProtoPassword` | — | The ATProto password or app password. Use an app password. |
 | `CacheDays` | `7` | Pointer lifetime and freshness window, in days. |
 | `RedisConnectionString` | — | Redis connection (supplied by Aspire in development). |
+| `RefreshIntervalHours` | `24` | Hours between stale-cache refresh sweeps. |
+| `MaxRecordsPerRun` | `100` | Maximum stale records re-enqueued per refresh sweep. |
 
 Defaults are from `src/BridgeBeats.Web/Configuration/AppSettings.cs`. Use an ATProto app password
 rather than your main account password.
+
+### Stale-cache refresh sweep
+
+The `StaleCacheRefreshBackgroundService` (in `BridgeBeats.Worker.CacheBootstrap`) runs on a
+periodic timer, defaulting to every 24 hours (`RefreshIntervalHours`). Each run queries Redis for
+the oldest stale or expired media-link records and re-enqueues up to `MaxRecordsPerRun` of them at
+bulk priority. The provider workers process these lookups and write refreshed records back to the
+PDS, after which the cache pointer TTLs are renewed. This sweep causes the cache to converge toward
+fresh data without requiring a lookup request to trigger revalidation.
+
+Set `REFRESH_INTERVAL_HOURS` and `MAX_RECORDS_PER_RUN` in `.env` (or the corresponding
+`BridgeBeats:RefreshIntervalHours` / `BridgeBeats:MaxRecordsPerRun` configuration keys) to tune
+throughput and frequency for your deployment volume.
 
 ### Redis key patterns
 
