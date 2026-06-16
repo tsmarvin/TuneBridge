@@ -4,15 +4,20 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for AppSettings configuration binding and validation.
+/// Tests configuration binding and default values for <see cref="AppSettings"/>, the strongly typed
+/// view of the <c>BridgeBeats</c> configuration section.
 /// </summary>
 [TestClass]
 public class AppSettingsTests {
+    /// <summary>
+    /// Verifies that binding an in-memory configuration under the <c>BridgeBeats</c> section populates
+    /// every <see cref="AppSettings"/> property with the configured value, including the numeric
+    /// <c>RateLimitRequestsPerHour</c> and <c>CacheDays</c> and the empty-string ATProto fields.
+    /// </summary>
     [TestMethod]
     public void AppSettings_BindsCorrectly_FromConfiguration( ) {
         // Arrange
         Dictionary<string, string?> configData = new( ) {
-            ["BridgeBeats:NodeNumber"] = "5",
             ["BridgeBeats:AppleTeamId"] = "TEAM123456",
             ["BridgeBeats:AppleKeyId"] = "KEY1234567",
             ["BridgeBeats:AppleKeyPath"] = "/path/to/key.p8",
@@ -20,7 +25,6 @@ public class AppSettingsTests {
             ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
             ["BridgeBeats:TidalClientId"] = "tidal_client_id",
             ["BridgeBeats:TidalClientSecret"] = "tidal_secret",
-            ["BridgeBeats:DiscordToken"] = "discord_token_here",
             ["BridgeBeats:IdentityConnectionString"] = "Data Source=bridgebeats.db",
             ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
             ["BridgeBeats:RateLimitRequestsPerHour"] = "10",
@@ -28,9 +32,8 @@ public class AppSettingsTests {
             ["BridgeBeats:ATProtoPassword"] = string.Empty,
             ["BridgeBeats:ATProtoUserDID"] = string.Empty,
             ["BridgeBeats:CacheDays"] = "7",
-            ["BridgeBeats:LinkCacheConnectionString"] = "Data Source=bridgebeats.db",
-            ["BridgeBeats:BaseUrl"] = "localhost",
-            ["BridgeBeats:LogFilePath"] = "./logs/bridgebeats-.log",
+            ["BridgeBeats:Domain"] = "localhost",
+            ["BridgeBeats:LogDirPath"] = "./logs",
         };
 
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -42,7 +45,6 @@ public class AppSettingsTests {
         configuration.GetRequiredSection( "BridgeBeats" ).Bind( settings );
 
         // Assert
-        Assert.AreEqual( 5, settings.NodeNumber );
         Assert.AreEqual( "TEAM123456", settings.AppleTeamId );
         Assert.AreEqual( "KEY1234567", settings.AppleKeyId );
         Assert.AreEqual( "/path/to/key.p8", settings.AppleKeyPath );
@@ -50,7 +52,6 @@ public class AppSettingsTests {
         Assert.AreEqual( "spotify_secret", settings.SpotifyClientSecret );
         Assert.AreEqual( "tidal_client_id", settings.TidalClientId );
         Assert.AreEqual( "tidal_secret", settings.TidalClientSecret );
-        Assert.AreEqual( "discord_token_here", settings.DiscordToken );
         Assert.AreEqual( "Data Source=bridgebeats.db", settings.IdentityConnectionString );
         Assert.AreEqual( "api_key_salt", settings.ApiKeySalt );
         Assert.AreEqual( 10, settings.RateLimitRequestsPerHour );
@@ -58,42 +59,37 @@ public class AppSettingsTests {
         Assert.AreEqual( string.Empty, settings.ATProtoPassword );
         Assert.AreEqual( string.Empty, settings.ATProtoUserDID );
         Assert.AreEqual( 7, settings.CacheDays );
-        Assert.AreEqual( "Data Source=bridgebeats.db", settings.LinkCacheConnectionString );
-        Assert.AreEqual( "localhost", settings.BaseUrl );
-        Assert.AreEqual( "./logs/bridgebeats-.log", settings.LogFilePath );
+        Assert.AreEqual( "localhost", settings.Domain );
+        Assert.AreEqual( "./logs", settings.LogDirPath );
     }
 
+    /// <summary>
+    /// Verifies that a freshly constructed <see cref="AppSettings"/> defaults its credential string
+    /// properties (Apple team/key/path, Spotify client id/secret) to empty strings rather than null.
+    /// </summary>
     [TestMethod]
     public void AppSettings_DefaultValues_AreCorrect( ) {
         // Arrange & Act
         AppSettings settings = new();
 
         // Assert
-        Assert.AreEqual( 0, settings.NodeNumber );
         Assert.AreEqual( string.Empty, settings.AppleTeamId );
         Assert.AreEqual( string.Empty, settings.AppleKeyId );
         Assert.AreEqual( string.Empty, settings.AppleKeyPath );
         Assert.AreEqual( string.Empty, settings.SpotifyClientId );
         Assert.AreEqual( string.Empty, settings.SpotifyClientSecret );
-        Assert.AreEqual( string.Empty, settings.DiscordToken );
     }
 
+    /// <summary>
+    /// Verifies that the <see cref="AppSettings.Domain"/> property defaults to an empty string on a
+    /// newly constructed instance.
+    /// </summary>
     [TestMethod]
-    public void AppSettings_NodeNumber_CanBeZero( ) {
-        // Arrange
-        Dictionary<string, string?> configData = new( ) {
-            ["BridgeBeats:NodeNumber"] = "0"
-        };
-
-        IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configData)
-            .Build();
-
-        // Act
+    public void AppSettings_Domain_DefaultsToEmpty( ) {
+        // Arrange & Act
         AppSettings settings = new();
-        configuration.GetRequiredSection( "BridgeBeats" ).Bind( settings );
 
         // Assert
-        Assert.AreEqual( 0, settings.NodeNumber );
+        Assert.AreEqual( string.Empty, settings.Domain );
     }
 }

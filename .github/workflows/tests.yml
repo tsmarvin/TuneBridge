@@ -21,15 +21,33 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@2016bd2012dba4e32de620c46fe006a3ac9f0602  # v5.0.1
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2  # v5.3.0
         with:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore --locked-mode
+        run: |
+          # Backup lock files before restore
+          find . -name "packages.lock.json" -exec cp {} {}.backup \;
+
+          # Restore with force-evaluate for linux-x64
+          dotnet restore --force-evaluate -r linux-x64
+
+          # Validate lock file changes
+          for lockfile in $(find . -name "packages.lock.json" ! -name "*.backup"); do
+            backup="${lockfile}.backup"
+            if [ -f "$backup" ]; then
+              from_rid=$(grep -oE '"net[0-9.]+/(linux|win|osx)-(x64|x86|arm64|arm)"' "$backup" \
+                | head -n1 | sed -E 's#.*/([a-z0-9-]+)"#\1#')
+              [ -z "$from_rid" ] && from_rid="linux-x64"
+              pwsh containers/Test-LockFileChanges.ps1 -BackupPath "$backup" -CurrentPath "$lockfile" \
+                -FromPlatform "$from_rid" -ToPlatform "linux-x64"
+              rm -f "$backup"
+            fi
+          done
 
       - name: Build
         run: dotnet build --no-restore --configuration Release
@@ -69,11 +87,31 @@ jobs:
       - name: Run Integration Tests
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration-test-results.trx" --logger "console;verbosity=detailed"
 
+      - name: Guard — at least one integration test must have executed
+        # Docker-less CI skips all Testcontainer tests via Assert.Inconclusive, so dotnet test
+        # exits 0 with every test Inconclusive (not-run). This step fails the workflow when
+        # executed=0, catching any situation where an all-Inconclusive test class would
+        # otherwise silently pass the integration lane.
+        run: |
+          TRX=$(find . -name "integration-test-results.trx" | head -1)
+          if [ -z "$TRX" ]; then
+            echo "ERROR: no integration-test-results.trx file found — dotnet test may not have run."; exit 1
+          fi
+          if [ ! -f "$TRX" ]; then
+            echo "ERROR: integration-test-results.trx path does not exist: $TRX"; exit 1
+          fi
+          EXECUTED=$(grep -oP 'executed="\K[0-9]+' "$TRX" | head -1)
+          if ! [[ "$EXECUTED" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: could not parse executed count from $TRX (got: '$EXECUTED')"; exit 1
+          fi
+          echo "Integration tests executed: $EXECUTED"
+          [ "$EXECUTED" -gt 0 ] || { echo "ERROR: zero integration tests executed — all tests skipped (Inconclusive). Fix the test suite or integration environment."; exit 1; }
+
       - name: Run End-to-End Tests
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~EndToEnd" --logger "trx;LogFileName=e2e-test-results.trx" --logger "console;verbosity=detailed"
 
       - name: Upload Test Results
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: always()
         with:
           name: test-results

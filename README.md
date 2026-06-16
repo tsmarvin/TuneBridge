@@ -26,94 +26,129 @@ Ever wanted to share your favorite song, only to realize your friend uses a diff
 
 ## 🚀 Quick Start
 
-### Using Docker Compose (Recommended)
+### Using the one-line installer (recommended)
 
-Get started in 5 minutes with automatic HTTPS:
+The installer downloads the Compose files, creates `.env` and the `secrets/`
+directory, and generates the secrets that must be auto-generated (including the
+required `INTERNAL_SERVICE_KEY` and the ATProto OAuth signing key):
+
+```bash
+# Linux / macOS
+curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+iwr -useb https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.ps1 | iex
+```
+
+Then add at least one music provider's credentials and start the stack.
+
+### Using Docker Compose manually
 
 ```bash
 git clone https://github.com/tsmarvin/BridgeBeats.git
 cd BridgeBeats/containers
-./setup-secrets.sh
-nano secrets/apple_key.p8
-nano secrets/atproto_password.txt
-nano secrets/discord_token.txt
-nano secrets/spotify_client_secret.txt
-nano secrets/tidal_client_secret.txt
-# Edit secrets/ with your credentials
+
+# Create the secrets directory and placeholder files
+mkdir -p secrets && chmod 700 secrets
+touch secrets/apple_key.p8 secrets/spotify_client_secret.txt \
+      secrets/tidal_client_secret.txt secrets/discord_token.txt \
+      secrets/atproto_password.txt
+openssl rand -base64 32 > secrets/api_key_salt.txt
+openssl rand -base64 32 > secrets/redis_password.txt
+openssl rand -base64 32 > secrets/internal_service_key.txt
+chmod 600 secrets/*
+# Edit the secret files with your credentials
+
 cp .env.example .env
-nano .env
 # Edit .env with your configuration
 docker compose up -d
 ```
 
-Visit `https://localhost` to start converting links.
+`secrets/internal_service_key.txt` is required: it is the shared key the worker
+processes present to authenticate to the web API, and the container will not
+start without it. The installer generates it for you.
 
-📖 **[Complete Quick Start Guide →](QUICKSTART.md)**
+`docker compose up -d` starts four containers: `bridgebeats` (the app, which
+also spawns the worker processes), `redis` (cache, request queue, and
+rate-limit tracking), `bridgebeats-pds` (a Bluesky Personal Data Server for
+ATProto caching), and `bridgebeats-caddy` (the reverse proxy that terminates
+HTTPS). Only Caddy publishes ports to the host (80 and 443); the app listens on
+port 10000 inside the internal Docker network and is reached through Caddy.
 
-### Using Docker
+Visit `https://localhost` to start converting links (accept the self-signed
+certificate warning for `localhost`).
 
-```bash
-docker run -p 10000:10000 \
-  -e SPOTIFY_CLIENT_ID="your_client_id" \
-  -e SPOTIFY_CLIENT_SECRET="your_client_secret" \
-  ghcr.io/tsmarvin/bridgebeats:latest
-```
-
-Visit `http://localhost:10000` to start converting links.
+📖 **[Complete Quick Start Guide →](docs/QUICKSTART.md)**
 
 ### Running Locally
 
-1. Install [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10)
+1. Install the [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10)
 2. Clone the repository
-3. Add your API credentials to `appsettings.json` (see [Configuration Guide](docs/CONFIGURATION.md))
+3. Provide an external Redis and set its connection string. Aspire does not start
+   Redis for you. Run one with Docker and point the AppHost at it:
 
-**Option A: Using .NET Aspire (Recommended)**
+   ```bash
+   docker run -d --name bridgebeats-redis -p 6379:6379 redis:8-alpine
+   dotnet user-secrets set "ConnectionStrings:redis" "localhost:6379" \
+     --project src/BridgeBeats.AppHost/BridgeBeats.AppHost.csproj
+   ```
+
+4. Add at least one provider's credentials through user secrets or environment
+   variables (see [Configuration Guide](docs/CONFIGURATION.md))
+
+Then start the host from the repository root:
 
 ```bash
 aspire run
 ```
 
-This starts the app with the Aspire Dashboard for monitoring, tracing, and structured logging. See the [Local Development Guide](docs/LOCAL_DEVELOPMENT.md) for details.
-
-**Option B: Direct .NET Run**
-
-```bash
-dotnet run
-```
+This starts the app and the worker processes with the Aspire Dashboard for
+monitoring, tracing, and structured logging. If you prefer to run without the
+Aspire CLI, use `dotnet run --project src/BridgeBeats.AppHost`. See the
+[Local Development Guide](docs/LOCAL_DEVELOPMENT.md) for details.
 
 ## 📁 Project Structure
 
 ```
 BridgeBeats/
 ├── src/
-│   ├── BridgeBeats.Web/             # ASP.NET Core web application (MVC, controllers, views)
-│   ├── BridgeBeats.Services/        # Business logic and service layer
-│   ├── BridgeBeats.Providers/       # Music provider integrations (Apple Music, Spotify, Tidal)
-│   ├── BridgeBeats.Infrastructure/  # Data access, caching, identity, storage
-│   ├── BridgeBeats.Contracts/       # Shared DTOs, interfaces, enums, constants
-│   ├── BridgeBeats.AppHost/         # .NET Aspire orchestration
-│   └── BridgeBeats.ServiceDefaults/ # Shared service configuration (telemetry, resilience)
-├── Tests/                           # Test project
-│   ├── Unit/                        # Unit tests
-│   ├── Integration/                 # Integration tests (service interactions)
-│   └── EndToEnd/                    # End-to-end tests (full request/response flows)
-├── docs/                            # Documentation (guides, API reference)
-├── containers/                      # Docker deployment configuration
-├── .github/                         # GitHub templates, workflows, and community files
+│   ├── BridgeBeats.Web/                   # ASP.NET Core web app (MVC, controllers, views, API)
+│   ├── BridgeBeats.Core/                  # Domain logic and infrastructure (caching, identity, storage, queue)
+│   ├── BridgeBeats.Contracts/             # Shared DTOs, interfaces, enums, constants, records
+│   ├── BridgeBeats.AppHost/               # .NET Aspire orchestration
+│   ├── BridgeBeats.Worker.Spotify/        # Spotify lookup worker (incl. batch processor)
+│   ├── BridgeBeats.Worker.AppleMusic/     # Apple Music lookup worker
+│   ├── BridgeBeats.Worker.Tidal/          # Tidal lookup worker
+│   ├── BridgeBeats.Worker.Discord/        # Discord bot worker
+│   ├── BridgeBeats.Worker.JetStreamWatcher/ # AT Protocol firehose watcher
+│   ├── BridgeBeats.Worker.SagaCoordinator/  # Cross-provider lookup saga coordinator
+│   └── BridgeBeats.Worker.CacheBootstrap/   # Cache warm-up/refresh worker
+├── Tests/                                 # Single test project (BridgeBeats.Tests.csproj)
+│   ├── Unit/                              # Unit tests
+│   ├── Integration/                       # Integration tests (service interactions)
+│   └── EndToEnd/                          # End-to-end tests (full request/response flows)
+├── docs/                                  # Documentation (guides, API reference)
+├── containers/                            # Docker deployment configuration
+├── .github/                               # GitHub templates, workflows, and community files
 ```
 
 ## 📖 Documentation
 
-- **[Quick Start Guide](docs/QUICKSTART.md)** - Get up and running in 5 minutes
-- **[Local Development Guide](docs/LOCAL_DEVELOPMENT.md)** - Develop with .NET Aspire Dashboard
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get up and running with Docker Compose
+- **[Local Development Guide](docs/LOCAL_DEVELOPMENT.md)** - Develop with .NET Aspire and the Aspire Dashboard
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Set up API credentials and environment variables
 - **[API Reference](docs/API.md)** - Integrate BridgeBeats into your applications
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or cloud platforms
-- **[SBOM and Provenance Guide](docs/SBOM_AND_PROVENANCE.md)** - Verify supply chain security and inspect dependencies
-- **[Caddy Cloudflare Guide](docs/CADDY_CLOUDFLARE.md)** - Configure Cloudflare DNS for wildcard certificates
-- **[Contributing Guidelines](.github/CONTRIBUTING.md)** - Learn how to contribute to BridgeBeats
+- **[Discord Bot Guide](docs/DISCORD_BOT.md)** - Set up and run the Discord bot
+- **[Testing Guide](docs/TESTING.md)** - Run and write the test suite
 - **[Caching Guide](docs/CACHING.md)** - Configure ATProto PDS caching
+- **[Spotify Batch and Routing Guide](docs/SPOTIFY_BATCH_AND_ROUTING.md)** - How Spotify lookups are batched and routed through the queue
 - **[ATProto Lexicon Setup](docs/ATPROTO_LEXICON.md)** - Configure lexicon resolution and DNS for ATProto compliance
+- **[Caddy Cloudflare Guide](docs/CADDY_CLOUDFLARE.md)** - Configure Cloudflare DNS for wildcard certificates
+- **[SBOM and Provenance Guide](docs/SBOM_AND_PROVENANCE.md)** - Verify supply chain security and inspect dependencies
+- **[Contributing Guidelines](.github/CONTRIBUTING.md)** - Learn how to contribute to BridgeBeats
 
 ## 🎯 How It Works
 
@@ -123,21 +158,25 @@ BridgeBeats connects to official APIs from music streaming services. When you pr
 2. **Match** - Uses external IDs (ISRC/UPC) or metadata to find equivalents
 3. **Return** - Provides links for all available platforms
 
-The result? You share the music, not the platform.
+You share the music, not the platform.
 
 ## 🤖 Discord Bot
 
 Add BridgeBeats to your Discord server to automatically convert music links in conversations:
 
 1. Get a Discord bot token (see [Configuration Guide](docs/CONFIGURATION.md#discord-bot-token))
-2. Set `DISCORD_TOKEN` environment variable
+2. Put the token in `secrets/discord_token.txt` and restart the stack
 3. Invite the bot to your server
 
-When someone shares a Spotify link, BridgeBeats responds with a card showing Apple Music and Tidal alternatives—and vice versa.
+When someone shares a Spotify link, BridgeBeats responds with a card showing Apple Music and Tidal alternatives, and vice versa. See the [Discord Bot Guide](docs/DISCORD_BOT.md) for full setup.
 
 ## 🛠️ Built With
 
-- **.NET 10.0** - Modern, cross-platform framework
+- **.NET 10.0** - Cross-platform framework
+- **.NET Aspire** - Orchestration of the app and its worker processes
+- **Redis** - Cache, request queue (Redis Streams), and rate-limit tracking
+- **Caddy** - Reverse proxy and automatic HTTPS
+- **SQLite** - Identity / user store
 - **Apple MusicKit API** - Apple Music integration
 - **Spotify Web API** - Spotify integration
 - **Tidal API** - Tidal integration
@@ -147,8 +186,9 @@ When someone shares a Spotify link, BridgeBeats responds with a card showing App
 
 - API keys are hashed and never stored in plain text
 - Input URLs with tracking parameters are kept private (not stored on ATProto PDS)
-- Rate limiting ensures fair usage (20 requests/hour per user)
-- All credentials configured via environment variables
+- The identifier and name-search lookup endpoints (`isrc`, `upc`, `title`) are rate limited per user (default 20 requests/hour); the public URL endpoints are not rate limited
+- Worker processes authenticate to the web API with a shared internal service key
+- Credentials are provided as Docker secrets (and as environment variables or user secrets in local development)
 
 ## 🌍 Deployment Options
 
@@ -163,21 +203,27 @@ See the [Deployment Guide](docs/DEPLOYMENT.md) for platform-specific instruction
 
 ## 📊 API Usage
 
-Create an account to get your API key:
+Convert a link by URL. This endpoint is public, so no API key is required (`-k`
+accepts the self-signed `localhost` certificate):
 
 ```bash
-curl -X POST http://localhost:10000/account/register \
+curl -k -X POST https://localhost/music/lookup/urlList \
   -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"SecurePassword123"}'
+  -d '{"uri":"https://open.spotify.com/track/..."}'
 ```
 
-Convert a link:
+For the identifier and name-search endpoints (`isrc`, `upc`, `title`), register
+an account to get a one-time API key and send it in the `X-API-Key` header:
 
 ```bash
-curl -X POST http://localhost:10000/music/lookup/urlList \
+curl -k -X POST https://localhost/account/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"SecurePassword123"}'
+
+curl -k -X POST https://localhost/music/lookup/isrc \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
-  -d '{"uri":"https://open.spotify.com/track/..."}'
+  -d '{"isrc":"USRC17607839"}'
 ```
 
 See the [API Reference](docs/API.md) for complete documentation.
@@ -192,7 +238,7 @@ dotnet test
 dotnet test --filter "FullyQualifiedName~Unit"
 ```
 
-For more details on testing, see the [Contributing Guidelines](CONTRIBUTING.md#testing-guidelines).
+For more details on testing, see the [Testing Guide](docs/TESTING.md) or the [Contributing Guidelines](.github/CONTRIBUTING.md#testing-guidelines).
 
 ## 🤝 Contributing
 

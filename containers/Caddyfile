@@ -43,32 +43,6 @@
         -X-Powered-By
     }
 
-    # Aspire Dashboard routing with authentication
-    # Route /dashboard requests to the Aspire Dashboard container after checking authorization
-    handle /dashboard* {
-        # Forward auth check - verify user has AspireDashboardAccess role
-        forward_auth bridgebeats:10000 {
-            uri /api/dashboard/authorize
-            copy_headers Authorization Cookie
-        }
-
-        # Proxy to Aspire Dashboard container
-        reverse_proxy bridgebeats-aspire-dashboard:18888 {
-            # Pass real client IP
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
-
-            # Timeouts
-            transport http {
-                read_timeout 30s
-                write_timeout 30s
-                dial_timeout 5s
-            }
-        }
-    }
-
     # Reverse proxy to BridgeBeats application
     reverse_proxy bridgebeats:10000 {
         # Health check endpoint
@@ -95,6 +69,48 @@
         @5xx expression `{err.status_code} >= 500 && {err.status_code} < 600`
         handle @5xx {
             respond "Service temporarily unavailable. Please try again later." 503
+        }
+    }
+}
+
+dashboard.{$DOMAIN} {
+    log {
+        output file /var/log/caddy/dashboard-access.log
+        format json
+    }
+
+    # Use Cloudflare DNS challenge for dashboard subdomain certificates
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    # Security headers - do not override dashboard CSP
+    header {
+        Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload'
+        X-Content-Type-Options 'nosniff'
+        X-XSS-Protection '1; mode=block'
+        Referrer-Policy 'strict-origin-when-cross-origin'
+        Permissions-Policy 'geolocation=(), microphone=(), camera=(), payment=()'
+        -Server
+        -X-Powered-By
+    }
+
+    # Forward auth check - verify user has AspireDashboardAccess role
+    forward_auth bridgebeats:10000 {
+        uri /api/dashboard/authorize
+    }
+
+    # Proxy to Aspire Dashboard at root path
+    reverse_proxy bridgebeats:18888 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+
+        transport http {
+            read_timeout 30s
+            write_timeout 30s
+            dial_timeout 5s
         }
     }
 }

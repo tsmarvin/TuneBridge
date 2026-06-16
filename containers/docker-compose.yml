@@ -3,14 +3,16 @@ services:
     image: tsmarvin/bridgebeats:develop
     container_name: bridgebeats
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - internal
     environment:
-      - BASEURL=${BASEURL:-bridgebeats.link}
-      - NODE_NUMBER=${NODE_NUMBER:-100}
+      - DOMAIN=${DOMAIN:-bridgebeats.link}
+      - NODE_NUMBER=${NODE_NUMBER:-0}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
-      - LOG_FILE_PATH=${LOG_FILE_PATH:-/app/data/logs/bridgebeats-.log}
       - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
       - APPLE_KEY_ID=${APPLE_KEY_ID:-}
       - APPLE_KEY_PATH=${APPLE_KEY_PATH:-}
@@ -18,23 +20,32 @@ services:
       - TIDAL_CLIENT_ID=${TIDAL_CLIENT_ID:-}
       - ATPROTO_IDENTIFIER=${ATPROTO_IDENTIFIER:-}
       - ATPROTO_USER_DID=${ATPROTO_USER_DID:-}
+      - ATPROTO_PDS_URI=${ATPROTO_PDS_URI:-https://pds.bridgebeats.link}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
       - CACHE_DAYS=${CACHE_DAYS:-7}
       - CARD_CACHE_EXPIRATION_HOURS=${CARD_CACHE_EXPIRATION_HOURS:-1}
       - CARD_CACHE_CLEANUP_INTERVAL=${CARD_CACHE_CLEANUP_INTERVAL:-500}
-      - LINK_CACHE_CONNECTION_STRING=${LINK_CACHE_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
+      - REFRESH_INTERVAL_HOURS=${REFRESH_INTERVAL_HOURS:-24}
+      - MAX_RECORDS_PER_RUN=${MAX_RECORDS_PER_RUN:-100}
       - IDENTITY_CONNECTION_STRING=${IDENTITY_CONNECTION_STRING:-Data Source=/app/data/bridgebeats.db}
       - RATE_LIMIT_REQUESTS_PER_HOUR=${RATE_LIMIT_REQUESTS_PER_HOUR:-20}
     volumes:
-      - bridgebeats-data:/app/data # Persistent data directory
+      - ./data/app:/app/data # Persistent data directory (sqlite + Aspire store)
+      - ./logs:/app/data/logs # Logs bind-mounted to host for easy access
+      - ./data/dp-keys:/app/keys # Data Protection key persistence
       # Secret mounts (read-only)
       - ./secrets/apple_key.p8:/run/secrets/apple_key:ro
       - ./secrets/spotify_client_secret.txt:/run/secrets/spotify_client_secret:ro
       - ./secrets/tidal_client_secret.txt:/run/secrets/tidal_client_secret:ro
       - ./secrets/discord_token.txt:/run/secrets/discord_token:ro
       - ./secrets/atproto_password.txt:/run/secrets/atproto_password:ro
+      - ./secrets/atproto_oauth_key.json:/run/secrets/atproto_oauth_key:ro
       - ./secrets/api_key_salt.txt:/run/secrets/api_key_salt:ro
+      - ./secrets/redis_password.txt:/run/secrets/redis_password:ro
+      - ./secrets/internal_service_key.txt:/run/secrets/internal_service_key:ro
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:10000/health"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:10000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -43,10 +54,53 @@ services:
       resources:
         limits:
           cpus: '4'
-          memory: 4G
+          memory: 8G
         reservations:
           cpus: '0.5'
           memory: 256M
+
+  redis:
+    image: redis:8-alpine
+    container_name: bridgebeats-redis
+    restart: unless-stopped
+    networks:
+      - internal
+    command:
+      - sh
+      - -c
+      - |
+        if [ -f /run/secrets/redis_password ]; then
+          password=$$(head -n 1 /run/secrets/redis_password | tr -d '\015\012')
+          printf 'requirepass %s\nappendonly yes\n' "$$password" > /tmp/redis.conf
+          exec redis-server /tmp/redis.conf
+        else
+          exec redis-server --appendonly yes
+        fi
+    volumes:
+      - ./data/redis:/data
+      - ./secrets/redis_password.txt:/run/secrets/redis_password:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          if [ -f /run/secrets/redis_password ]; then
+            password=$$(head -n 1 /run/secrets/redis_password | tr -d '\015\012')
+            REDISCLI_AUTH="$$password" redis-cli --no-auth-warning ping | grep -q PONG
+          else
+            redis-cli ping | grep -q PONG
+          fi
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 6G
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
   bridgebeats-pds:
     image: ghcr.io/bluesky-social/pds:latest
@@ -55,27 +109,27 @@ services:
     networks:
       - internal
     volumes:
-      - bridgebeats-data:/pds
+      - ./data/pds:/pds
     environment:
-      - PDS_HOSTNAME=${PDS_HOSTNAME:-pds.bridgebeats.link}
+      - PDS_HOSTNAME=${PDS_HOSTNAME:-}
       - PDS_JWT_SECRET=${PDS_JWT_SECRET:-}
       - PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=${PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX:-}
       - PDS_ADMIN_PASSWORD=${PDS_ADMIN_PASSWORD:-}
       - PDS_DATA_DIRECTORY=/pds
       - PDS_BLOBSTORE_DISK_LOCATION=/pds/blocks
       - PDS_EMAIL_SMTP_URL=${PDS_EMAIL_SMTP_URL:-smtp://username:clientsecret@smtp.azurecomm.net:587/}
-      - PDS_EMAIL_FROM_ADDRESS=${PDS_EMAIL_SMTP_URL:-}
+      - PDS_EMAIL_FROM_ADDRESS=${PDS_EMAIL_FROM_ADDRESS:-}
       - PDS_BLOB_UPLOAD_LIMIT=52428800
       - PDS_DID_PLC_URL=https://plc.directory
       - PDS_BSKY_APP_VIEW_URL=https://api.bsky.app
       - PDS_BSKY_APP_VIEW_DID=did:web:api.bsky.app
       - PDS_REPORT_SERVICE_URL=https://mod.bsky.app
-      - PDS_REPORT_SERVICE_DID=did:plc:ar7c4by46qjdydhdevvrndac
+      - PDS_REPORT_SERVICE_DID=${PDS_REPORT_SERVICE_DID:-}
       - PDS_CRAWLERS=https://bsky.network
       - LOG_ENABLED=true
 
   bridgebeats-caddy:
-    image: ${DOCKERHUB_USERNAME}/caddy-cloudflare:develop
+    image: tsmarvin/caddy-cloudflare:develop
     container_name: bridgebeats-caddy
     restart: unless-stopped
     ports:
@@ -94,16 +148,12 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - bridgebeats-caddy-data:/data/caddy
       - bridgebeats-caddy-config:/config/caddy
-      - bridgebeats-caddy-logs:/var/log/caddy
+      - ./logs/caddy:/var/log/caddy
 
 volumes:
-  bridgebeats-data:
-    driver: local
   bridgebeats-caddy-data:
     driver: local
   bridgebeats-caddy-config:
-    driver: local
-  bridgebeats-caddy-logs:
     driver: local
 
 networks:

@@ -1,0 +1,12 @@
+@model BridgeBeats.Web.Models.ErrorViewModel
+@{
+    ViewData["Title"] = "Error";
+}
+
+<div class="container py-4">
+    <div class="alert alert-danger" role="alert">
+        <h4 class="alert-heading">Error</h4>
+        <p class="mb-0">@(Model?.Message ?? "An unexpected error occurred.")</p>
+    </div>
+    <a href="/" class="btn btn-primary">Return to Home</a>
+</div>

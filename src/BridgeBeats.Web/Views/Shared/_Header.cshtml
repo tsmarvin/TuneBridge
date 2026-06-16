@@ -59,7 +59,12 @@
             if (window.isAuthenticated) {
                 userArea.innerHTML = '<a href="/account/user" class="btn btn-sm btn-outline-secondary me-2">User</a><button class="btn btn-sm btn-outline-primary" id="logoutBtn">Logout</button>';
                 document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-                    try { await fetch('/account/logout', { method: 'POST', credentials: 'same-origin' }); } catch { }
+                    try {
+                        await safeFetch('/account/logout', {
+                            method: 'POST',
+                            credentials: 'same-origin'
+                        });
+                    } catch { }
                     location.reload();
                 });
                 // Show Playlists link for authenticated users (Apple Music is a sub-page)

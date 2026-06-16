@@ -1,37 +1,34 @@
 using BridgeBeats.Contracts.Constants;
+using BridgeBeats.Web.Logging;
 
 namespace BridgeBeats.Web.Middleware;
 
 /// <summary>
-/// Middleware to restrict access to the liveness endpoint to internal requests only (localhost and Docker network).
-/// Allows Aspire Dashboard and Caddy to access the liveness endpoint while blocking public access.
+/// Restricts the liveness endpoint (<see cref="BridgeBeats.Contracts.Constants.EndpointPaths.Alive"/>)
+/// to callers originating from internal networks, returning HTTP 403 for any external request.
 /// </summary>
-public class HealthEndpointAuthorizationMiddleware {
-    private readonly RequestDelegate _next;
-    private readonly ILogger<HealthEndpointAuthorizationMiddleware> _logger;
-
+/// <remarks>
+/// Requests to paths other than the liveness endpoint pass through untouched. A request is treated
+/// as internal when its remote IP is loopback or falls within an IPv4 private range (10.0.0.0/8,
+/// 172.16.0.0/12, or 192.168.0.0/16). All other callers receive a 403 response and a blocked-access
+/// warning is logged.
+/// </remarks>
+/// <param name="next">The next delegate in the request pipeline.</param>
+/// <param name="logger">Logger used to record blocked external-access attempts.</param>
+public partial class HealthEndpointAuthorizationMiddleware(
+    RequestDelegate next,
+    ILogger<HealthEndpointAuthorizationMiddleware> logger
+) {
     /// <summary>
-    /// Initializes a new instance of the <see cref="HealthEndpointAuthorizationMiddleware"/> class.
+    /// Allows the liveness endpoint through only for internal callers; external callers receive HTTP 403.
+    /// Any other path is forwarded to the next middleware unchanged.
     /// </summary>
-    /// <param name="next">The next middleware in the pipeline.</param>
-    /// <param name="logger">The logger instance.</param>
-    public HealthEndpointAuthorizationMiddleware(
-        RequestDelegate next,
-        ILogger<HealthEndpointAuthorizationMiddleware> logger
-    ) {
-        _next = next;
-        _logger = logger;
-    }
-
-    /// <summary>
-    /// Invokes the middleware to check health endpoint access authorization.
-    /// </summary>
-    /// <param name="context">The HTTP context.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <param name="context">The current HTTP context.</param>
+    /// <returns>A task that completes when the request has been forwarded or rejected.</returns>
     public async Task InvokeAsync( HttpContext context ) {
         // Only intercept requests to liveness endpoint
         if (!context.Request.Path.Equals( EndpointPaths.Alive, StringComparison.OrdinalIgnoreCase )) {
-            await _next( context );
+            await next( context );
             return;
         }
 
@@ -41,21 +38,33 @@ public class HealthEndpointAuthorizationMiddleware {
         // Allow localhost and Docker internal IPs (172.x.x.x, 10.x.x.x ranges)
         // Also allow requests from the same host (::1 for IPv6 localhost)
         if (IsInternalRequest( remoteIp )) {
-            await _next( context );
+            await next( context );
             return;
         }
 
         // Block external access
-        _logger.LogWarning( "Blocked external access to liveness endpoint from {IP}", remoteIp );
+        LogBlockedExternalAccess( logger, remoteIp );
         context.Response.StatusCode = 403;
         await context.Response.WriteAsync( "Forbidden: Liveness endpoint is not publicly accessible." );
     }
 
     /// <summary>
-    /// Determines if a request is from an internal source.
+    /// Logs a warning when an external caller is blocked from reaching the liveness endpoint.
     /// </summary>
-    /// <param name="ipAddress">The IP address to check.</param>
-    /// <returns>True if the request is internal, false otherwise.</returns>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="ip">The remote IP address that was blocked, or <c>null</c> if it could not be determined.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.Middleware.HealthEndpointAuthorizationMiddlewareBlockedExternalAccess,
+        Level = LogLevel.Warning,
+        Message = "Blocked external access to liveness endpoint from {IP}" )]
+    private static partial void LogBlockedExternalAccess( ILogger logger, string? ip );
+
+    /// <summary>
+    /// Determines whether the supplied IP address represents an internal caller (loopback or an
+    /// IPv4 private range). IPv6 addresses other than loopback are treated as external.
+    /// </summary>
+    /// <param name="ipAddress">The remote IP address as a string, or <c>null</c> when unavailable.</param>
+    /// <returns><c>true</c> if the address is loopback or in a private IPv4 range; otherwise <c>false</c>.</returns>
     private static bool IsInternalRequest( string? ipAddress ) {
         if (string.IsNullOrWhiteSpace( ipAddress )) {
             return false;

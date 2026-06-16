@@ -1,7 +1,6 @@
 @model BridgeBeats.Web.Models.MusicLookupViewModel
 @using BridgeBeats.Contracts.Enums
 @using Microsoft.AspNetCore.Html
-@using BridgeBeats.Services.Extensions
 @using System.Text.Json
 
 @if (!string.IsNullOrEmpty(Model.Message)) {
@@ -79,6 +78,18 @@
                             </a>
                         }
                     </div>
+                    @if (item.Result.IsPartial || item.Result.Messages is { Count: > 0 }) {
+                        <div class="alert alert-warning embed-partial-notice mb-0 mt-2" role="status">
+                            @if (item.Result.IsPartial) {
+                                <strong>Incomplete results</strong>
+                            }
+                            @if (item.Result.Messages is { Count: > 0 }) {
+                                foreach (var message in item.Result.Messages) {
+                                    <div>@message</div>
+                                }
+                            }
+                        </div>
+                    }
                 </div>
             </div>
         }

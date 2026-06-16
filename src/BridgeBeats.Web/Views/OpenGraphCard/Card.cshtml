@@ -1,10 +1,9 @@
 @model BridgeBeats.Contracts.DTOs.MediaLinkResult
-@using BridgeBeats.Services.Extensions
 @using BridgeBeats.Contracts.Enums
 @using Microsoft.AspNetCore.Html
 @{
     var metadata = ViewBag.Metadata as Dictionary<string, string>;
-    var baseUrl = ViewBag.BaseUrl as string;
+    var domain = ViewBag.Domain as string;
     var atProtoUri = ViewBag.ATProtoUri as string;
 
     // Extract information for display
@@ -412,8 +411,8 @@
         <div class="footer">
             <span>
                 Powered By<br/>
-                @if (!string.IsNullOrWhiteSpace(baseUrl)) {
-                    <a href="https://@baseUrl" target="_blank" rel="noopener noreferrer" class="footer-link">
+                @if (!string.IsNullOrWhiteSpace(domain)) {
+                    <a href="https://@domain" target="_blank" rel="noopener noreferrer" class="footer-link">
                         <img id="brandLogo" alt="BridgeBeats" height="50" width="125" src="/public/Icons/BridgeBeats_FullColor.svg" />
                     </a>
                 } else {

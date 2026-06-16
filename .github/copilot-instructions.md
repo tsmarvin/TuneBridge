@@ -31,7 +31,6 @@
 ### Testing Framework
 - **MSTest** - Primary testing framework
 - **Moq** - Mocking framework
-- **FluentAssertions** - Assertion library
 - **Microsoft.AspNetCore.Mvc.Testing** - Integration testing for web endpoints
 
 ### External APIs
@@ -161,7 +160,6 @@ BridgeBeats/
 ### Testing Practices
 - Use **MSTest** attributes: `[TestClass]`, `[TestMethod]`, `[TestInitialize]`, `[TestCleanup]`
 - Use **Moq** for mocking dependencies
-- Use **FluentAssertions** for readable assertions (e.g., `result.Should().NotBeNull()`)
 - Use **WebApplicationFactory** for integration testing web endpoints
 - Test both success and failure scenarios
 - Validate configuration at startup to catch issues early

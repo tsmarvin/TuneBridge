@@ -2,24 +2,25 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <RepositoryUrl>https://github.com/tsmarvin/BridgeBeats</RepositoryUrl>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DebugType>embedded</DebugType>
+    <Deterministic>true</Deterministic>
   </PropertyGroup>
 
   <!-- Shared package dependency for ATProto records - provides AtProtoRecord base class -->
   <ItemGroup>
-    <PackageReference Include="idunno.AtProto" Version="1.3.0" />
-    <PackageReference Include="idunno.Bluesky" Version="1.3.0" />
+    <PackageReference Include="idunno.AtProto" Version="2.0.0" />
+    <PackageReference Include="idunno.Bluesky" Version="2.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="BridgeBeats.Web" />
-    <InternalsVisibleTo Include="BridgeBeats.Infrastructure" />
-    <InternalsVisibleTo Include="BridgeBeats.Providers" />
-    <InternalsVisibleTo Include="BridgeBeats.Services" />
+    <InternalsVisibleTo Include="BridgeBeats.Core" />
     <InternalsVisibleTo Include="BridgeBeats.Tests" />
   </ItemGroup>
 

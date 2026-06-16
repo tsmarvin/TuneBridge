@@ -260,7 +260,7 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
           artist: 'Mac Miller',
           trackLink: 'https://music.apple.com/us/album/the-spins/1847746016?i=1847746223',
           isrc: 'USA2P2015959',
-          albumLink: 'https://music.apple.com/us/album/the-spins/1847746016',
+          albumLink: 'https://music.apple.com/us/album/k-i-d-s/1847744932',
           upc: '192641536007'
         }
       ],
@@ -302,7 +302,7 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
           artist: 'ZHU',
           trackLink: 'https://open.spotify.com/track/31ZdIGyNncuufUjNTp5ZY3',
           isrc: 'USSM11506936',
-          albumLink: 'https://open.spotify.com/album/6Xhb46t8f3z8FkuXQAj4UV?si=islit96FRP2QMyXRA0qTiw',
+          albumLink: 'https://open.spotify.com/album/6Xhb46t8f3z8FkuXQAj4UV',
           upc: '886445920345'
         }
       ],
@@ -418,10 +418,10 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
     // Handle form submission for all modes with server-side rendering
     lookupForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
+
       // Close keyboard on mobile devices
       document.activeElement?.blur();
-      
+
       const mode = (modeRadios.find(r => r.checked) || {}).value;
       const status = $('status');
       const result = $('result');
@@ -444,7 +444,7 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 
       try {
         let endpoint = '';
-        const formData = new FormData();
+        const formData = new FormData(lookupForm);
 
         switch (mode) {
           case 'url':
@@ -483,7 +483,7 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
             break;
         }
 
-        const res = await fetch(endpoint, {
+        const res = await safeFetch(endpoint, {
           method: 'POST',
           body: formData,
           credentials: 'same-origin'
@@ -506,28 +506,29 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
 
             while (true) {
               const { done, value } = await reader.read();
-              
+
               if (value) {
                 buffer += decoder.decode(value, { stream: !done });
-                
+
                 // Process complete HTML elements from buffer
                 let lastClosingDiv = buffer.lastIndexOf('</div>');
                 if (lastClosingDiv !== -1) {
                   const completeHTML = buffer.substring(0, lastClosingDiv + 6);
                   buffer = buffer.substring(lastClosingDiv + 6);
-                  
+
                   // Check for completion marker
                   const tempDiv = document.createElement('div');
                   tempDiv.innerHTML = completeHTML;
                   const completionMarker = tempDiv.querySelector('[data-stream-complete="true"]');
-                  
+
                   if (completionMarker) {
                     const processed = parseInt(completionMarker.getAttribute('data-processed') || '0');
                     const errors = parseInt(completionMarker.getAttribute('data-errors') || '0');
-                    
+                    const rateLimited = parseInt(completionMarker.getAttribute('data-rate-limited') || '0');
+
                     // Remove the completion marker from HTML
                     completionMarker.remove();
-                    
+
                     // Add remaining cards if any
                     if (tempDiv.children.length > 0) {
                       for (const child of Array.from(tempDiv.children)) {
@@ -539,19 +540,29 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
                         }
                       }
                     }
-                    
+
                     // Update summary
                     if (cardCount > 0) {
                       let message = `Found ${cardCount} result${cardCount > 1 ? 's' : ''}`;
                       if (errors > 0) {
                         message += ` (${errors} could not be matched)`;
                       }
+                      if (rateLimited > 0) {
+                        message += ` \u2014 ${rateLimited} track${rateLimited > 1 ? 's were' : ' was'} rate-limited and will be retried`;
+                      }
                       status.textContent = message;
-                      
+
                       // Initialize share buttons
                       if (typeof initializeShareButtons === 'function') {
                         setTimeout(initializeShareButtons, 100);
                       }
+                    } else if (rateLimited > 0) {
+                      status.textContent = 'Some providers are temporarily rate-limited. Please try again in a moment.';
+                      cardsContainer.innerHTML = `
+                        <div class="alert alert-warning">
+                          <strong>Rate Limited</strong><br/>
+                          One or more music providers are temporarily rate-limited. Please try again shortly.
+                        </div>`;
                     } else {
                       status.textContent = 'No matches found';
                       cardsContainer.innerHTML = `
@@ -560,7 +571,7 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
                           Try a different search or check that the link is valid and the content is available in your region.
                         </div>`;
                     }
-                    
+
                     break;
                   } else {
                     // Add cards to grid
@@ -568,14 +579,14 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
                       if (child.classList.contains('col')) {
                         gridContainer.appendChild(child);
                         cardCount++;
-                        
+
                         // Update progress
                         status.textContent = `Found ${cardCount} result${cardCount > 1 ? 's' : ''}...`;
                       } else if (child.classList.contains('alert')) {
                         cardsContainer.appendChild(child);
                       }
                     }
-                    
+
                     // Initialize share buttons for newly added cards
                     if (typeof initializeShareButtons === 'function') {
                       initializeShareButtons();
@@ -583,7 +594,7 @@ var cspNonce = Context.Items["CSPNonce"] as string ?? string.Empty;
                   }
                 }
               }
-              
+
               if (done) {
                 break;
               }

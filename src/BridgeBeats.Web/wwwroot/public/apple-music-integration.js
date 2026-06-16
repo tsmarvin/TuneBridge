@@ -138,7 +138,7 @@ async function processSelectedPlaylist() {
     resultsSummary.classList.add('d-none');
     cardsContainer.innerHTML = '';
     try {
-        const processResponse = await fetch('/applemusic/process-playlist', {
+        const processResponse = await safeFetch('/applemusic/process-playlist', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
@@ -175,7 +175,7 @@ async function processSelectedPlaylist() {
         resultsSection.classList.remove('d-none');
         cardsContainer.innerHTML = '<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3"></div>';
         const gridContainer = cardsContainer.querySelector('.row');
-        const streamResponse = await fetch('/applemusic/playlist-results-stream', {
+        const streamResponse = await safeFetch('/applemusic/playlist-results-stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
@@ -199,6 +199,7 @@ async function processSelectedPlaylist() {
                     const completionMarker = tempDiv.querySelector('[data-stream-complete="true"]');
                     if (completionMarker) {
                         const errors = parseInt(completionMarker.getAttribute('data-errors') || '0');
+                        const rateLimited = parseInt(completionMarker.getAttribute('data-rate-limited') || '0');
                         completionMarker.remove();
                         if (tempDiv.children.length > 0) {
                             for (const child of Array.from(tempDiv.children)) {
@@ -216,9 +217,13 @@ async function processSelectedPlaylist() {
                             resultsSummary.className = 'alert alert-success';
                             let message = `Found ${cardCount} result${cardCount > 1 ? 's' : ''} from ${processData.trackCount} tracks`;
                             if (errors > 0) message += ` (${errors} track${errors > 1 ? 's' : ''} could not be matched)`;
+                            if (rateLimited > 0) message += ` \u2014 ${rateLimited} track${rateLimited > 1 ? 's were' : ' was'} rate-limited and will be retried`;
                             resultsSummary.textContent = message;
                             if (typeof initializeShareButtons === 'function') setTimeout(initializeShareButtons, 100);
                             resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        } else if (rateLimited > 0) {
+                            resultsSummary.className = 'alert alert-warning';
+                            resultsSummary.textContent = 'Some providers are temporarily rate-limited. Please try again in a moment.';
                         } else {
                             resultsSummary.className = 'alert alert-warning';
                             resultsSummary.textContent = 'No matching results found for the tracks in this playlist.';
@@ -258,7 +263,7 @@ function initAuthorizationHandler() {
         error.classList.add('d-none');
         try {
             const userToken = await musicKitInstance.authorize();
-            const response = await fetch('/applemusic/store-token', {
+            const response = await safeFetch('/applemusic/store-token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',

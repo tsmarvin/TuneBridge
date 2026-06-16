@@ -3,26 +3,28 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Storage;
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Storage;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewEngines;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace BridgeBeats.Web.Controllers {
     /// <summary>
-    /// Controller for the main web application pages.
+    /// Serves the public site pages and browser-facing music-lookup flows: the home page, privacy and terms
+    /// pages, a health check, and lookup endpoints that resolve media links by URL, ISRC, UPC, or
+    /// title/artist and return rendered partials, streamed result cards, or JSON. Most services are optional
+    /// and the controller degrades gracefully when they are not configured.
     /// </summary>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="HomeController"/> class.
-    /// </remarks>
-    /// <param name="logger">The logger for recording diagnostic information.</param>
-    /// <param name="viewEngine">View engine for rendering partial views to strings.</param>
-    /// <param name="mediaLinkService">Optional music lookup service.</param>
-    /// <param name="cardService">Optional OpenGraph card service.</param>
-    /// <param name="cacheRepository">Optional cache repository for ATProto URIs.</param>
-    public class HomeController(
+    /// <param name="logger">Logger for lookup-stream and cache events.</param>
+    /// <param name="viewEngine">Composite view engine used to render result-card partials to HTML strings for streaming.</param>
+    /// <param name="mediaLinkService">Optional media-link service used to resolve lookups; when null, lookup endpoints report that the service is unavailable.</param>
+    /// <param name="cardService">Optional Open Graph card service used to store results and produce shareable card URLs.</param>
+    /// <param name="cacheRepository">Optional cache repository used to resolve the ATProto URI for a result.</param>
+    public partial class HomeController(
         ILogger<HomeController> logger,
         ICompositeViewEngine viewEngine,
         IMediaLinkService? mediaLinkService = null,
@@ -31,17 +33,23 @@ namespace BridgeBeats.Web.Controllers {
     ) : Controller {
 
         /// <summary>
-        /// Displays the home/index page.
+        /// Renders the home page.
         /// </summary>
-        /// <returns>The index view.</returns>
+        /// <returns>The default home view.</returns>
         public IActionResult Index( ) => View( );
 
         /// <summary>
-        /// Performs music lookup and displays results in a server-rendered view.
+        /// Resolves a media URL and renders the matching result cards as a partial view. Each result's primary
+        /// provider is selected, an Open Graph card is stored when the card service is enabled, and the ATProto
+        /// URI is resolved when available.
         /// </summary>
-        /// <param name="uri">Music URL(s) to look up.</param>
-        /// <returns>Partial view with lookup results.</returns>
+        /// <param name="uri">The media URL to resolve, bound from the form post.</param>
+        /// <returns>
+        /// HTTP POST. The <c>_LookupResults</c> partial view populated with results, or carrying a message when
+        /// the service is unavailable, the URI is missing, or no results are found. Requires a valid anti-forgery token.
+        /// </returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> LookupResults( string uri ) {
             if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
@@ -107,11 +115,15 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Performs ISRC lookup and displays results in a server-rendered view.
+        /// Resolves a recording by ISRC and renders the result as a partial view.
         /// </summary>
-        /// <param name="isrc">ISRC code to look up.</param>
-        /// <returns>Partial view with lookup results.</returns>
+        /// <param name="isrc">The ISRC to resolve, bound from the form post.</param>
+        /// <returns>
+        /// HTTP POST. The <c>_LookupResults</c> partial view with the result, or carrying a message when the
+        /// service is unavailable, the ISRC is missing, or no result is found. Requires a valid anti-forgery token.
+        /// </returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> LookupResultsByIsrc( string isrc ) {
             if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
@@ -130,11 +142,15 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Performs UPC lookup and displays results in a server-rendered view.
+        /// Resolves a release by UPC and renders the result as a partial view.
         /// </summary>
-        /// <param name="upc">UPC code to look up.</param>
-        /// <returns>Partial view with lookup results.</returns>
+        /// <param name="upc">The UPC to resolve, bound from the form post.</param>
+        /// <returns>
+        /// HTTP POST. The <c>_LookupResults</c> partial view with the result, or carrying a message when the
+        /// service is unavailable, the UPC is missing, or no result is found. Requires a valid anti-forgery token.
+        /// </returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> LookupResultsByUpc( string upc ) {
             if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
@@ -153,12 +169,16 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Performs title/artist lookup and displays results in a server-rendered view.
+        /// Resolves a track or album by title and artist and renders the result as a partial view.
         /// </summary>
-        /// <param name="title">Track or album title.</param>
-        /// <param name="artist">Artist name.</param>
-        /// <returns>Partial view with lookup results.</returns>
+        /// <param name="title">The title to resolve, bound from the form post.</param>
+        /// <param name="artist">The artist to resolve, bound from the form post.</param>
+        /// <returns>
+        /// HTTP POST. The <c>_LookupResults</c> partial view with the result, or carrying a message when the
+        /// service is unavailable, either field is missing, or no result is found. Requires a valid anti-forgery token.
+        /// </returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> LookupResultsByTitle( string title, string artist ) {
             if (mediaLinkService == null) {
                 return PartialView( "_LookupResults", new MusicLookupViewModel {
@@ -177,11 +197,13 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Helper method to create a view model from a MediaLinkResult.
+        /// Builds a single-item lookup view model from a resolved result, selecting the primary provider,
+        /// storing an Open Graph card when enabled, and resolving the ATProto URI. Falls back to a message when
+        /// there is no usable result.
         /// </summary>
-        /// <param name="result">The lookup result.</param>
-        /// <param name="noResultsMessage">Message to display when no results found.</param>
-        /// <returns>Partial view with the created view model.</returns>
+        /// <param name="result">The resolved media-link result, or null when nothing matched.</param>
+        /// <param name="noResultsMessage">The message to display when no usable result is present.</param>
+        /// <returns>The <c>_LookupResults</c> partial view populated with the item or the no-results message.</returns>
         private async Task<IActionResult> CreateViewModelFromResult(
             MediaLinkResult? result,
             string noResultsMessage
@@ -234,41 +256,43 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Attempts to retrieve the ATProto URI for a MediaLinkResult from the cache.
-        /// Tries multiple lookup strategies: input link, external ID (ISRC/UPC), and metadata.
+        /// Attempts to resolve the ATProto record URI for a result from the cache, swallowing cache errors so a
+        /// missing URI does not break the response.
         /// </summary>
-        /// <param name="result">The MediaLinkResult to find in cache.</param>
-        /// <returns>The ATProto URI if found in cache, otherwise null.</returns>
+        /// <param name="result">The media-link result whose ATProto URI is being resolved.</param>
+        /// <returns>The ATProto URI when available; otherwise <see langword="null"/>.</returns>
         private async Task<string?> GetATProtoUriFromCache( MediaLinkResult result ) {
             try {
                 return await ATProtoUriHelper.GetATProtoUriFromCacheAsync( result, cacheRepository );
             } catch (InvalidOperationException ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to invalid operation, continuing without it" );
+                LogCacheInvalidOp( ex );
             } catch (ArgumentException ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache due to argument error, continuing without it" );
+                LogCacheArgError( ex );
             } catch (Exception ex) {
-                logger.LogWarning( ex, "Failed to retrieve ATProto URI from cache, continuing without it" );
+                LogCacheError( ex );
             }
 
             return null;
         }
 
         /// <summary>
-        /// Displays the privacy policy page.
+        /// Renders the privacy policy page.
         /// </summary>
         /// <returns>The privacy view.</returns>
         public IActionResult Privacy( ) => View( );
 
         /// <summary>
-        /// Displays the terms of service page.
+        /// Renders the terms-of-service page.
         /// </summary>
-        /// <returns>The TOS view.</returns>
+        /// <returns>The terms-of-service view.</returns>
         public IActionResult Tos( ) => View( );
 
         /// <summary>
-        /// Health check endpoint for monitoring and load balancers.
+        /// Health-check endpoint reporting that the application is responsive.
         /// </summary>
-        /// <returns>HTTP 200 OK with a simple status message.</returns>
+        /// <returns>
+        /// HTTP GET at the configured health path. <c>200 OK</c> with a status and timestamp. Responses are not cached.
+        /// </returns>
         [HttpGet( EndpointPaths.Health )]
         [ResponseCache( Duration = 0, Location = ResponseCacheLocation.None, NoStore = true )]
         public IActionResult Health( ) {
@@ -276,13 +300,18 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Web-specific lookup endpoint that returns results with card URLs for display.
-        /// This endpoint performs the lookup server-side, stores all results in the card service,
-        /// and returns multiple card URLs for rendering.
+        /// Resolves a media URL for non-browser web clients, returning a JSON payload of result items (each with
+        /// an optional card URL and the underlying result) rather than rendered HTML. The endpoint accepts JSON
+        /// via <c>[FromBody]</c>, so CSRF protection is not applicable.
         /// </summary>
-        /// <param name="req">Request containing the music URL(s) to look up.</param>
-        /// <returns>JSON response with array of card URLs and results.</returns>
+        /// <param name="req">The request containing the media URL, bound from the JSON request body.</param>
+        /// <returns>
+        /// HTTP POST <c>/lookup/web</c>. <c>200 OK</c> with <c>hasResults</c> and the items, or a no-results
+        /// payload; <c>400 Bad Request</c> when the service is unavailable or the URI is missing. Anti-forgery
+        /// validation is ignored for this endpoint.
+        /// </returns>
         [HttpPost( "/lookup/web" )]
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> WebLookup( [FromBody] WebLookupRequest req ) {
             if (mediaLinkService == null) {
                 return BadRequest( new { error = "Music lookup service not available" } );
@@ -316,28 +345,18 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Request for web-specific lookup.
+        /// Resolves a media URL and streams rendered result-card HTML to the response as each result is
+        /// produced, flushing incrementally. Rate-limit messages are surfaced inline, and a trailing marker
+        /// element reports processed, error, and rate-limited counts.
         /// </summary>
-        /// <param name="Uri">Music URL(s) to look up (can contain multiple URLs).</param>
-        public record WebLookupRequest( string Uri );
-
-        /// <summary>
-        /// Individual result item with card URL and fallback data.
-        /// </summary>
-        /// <param name="CardUrl">URL to the stored OpenGraph card, if available.</param>
-        /// <param name="FallbackData">The raw result data for fallback display.</param>
-        public record WebLookupResultItem( string? CardUrl, MediaLinkResult FallbackData );
-
-        /// <summary>
-        /// Streams music lookup results progressively as they're retrieved.
-        /// Returns chunked HTML that can be appended to the DOM.
-        /// </summary>
-        /// <param name="uri">Music URL(s) to look up.</param>
-        /// <returns>Streamed partial views as chunks.</returns>
-        /// <response code="200">Results streamed successfully.</response>
-        /// <response code="400">Invalid or missing URI.</response>
-        /// <response code="503">Music lookup service not available.</response>
+        /// <param name="uri">The media URL to resolve, bound from the form post.</param>
+        /// <returns>
+        /// HTTP POST <c>/Home/LookupResultsStream</c>. Writes a chunked <c>text/html</c> stream directly to the
+        /// response; sets status <c>503</c> when the service is unavailable or <c>400</c> when the URI is missing
+        /// before writing an error fragment. Requires a valid anti-forgery token.
+        /// </returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         [Route( "/Home/LookupResultsStream" )]
         public async Task LookupResultsStream( string uri ) {
             if (mediaLinkService == null) {
@@ -358,12 +377,23 @@ namespace BridgeBeats.Web.Controllers {
 
             int processedCount = 0;
             int errorCount = 0;
+            int rateLimitCount = 0;
 
             try {
                 await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( uri )) {
                     try {
                         if (result.Results.Count == 0) {
-                            errorCount++;
+                            // Check if this is a rate-limited result with messages
+                            if (result.Messages is { Count: > 0 }) {
+                                rateLimitCount++;
+                                string warningHtml = "<div class=\"alert alert-warning\"><strong>Rate Limited</strong><br/>"
+                                    + string.Join( "<br/>", result.Messages )
+                                    + "</div>";
+                                await Response.WriteAsync( warningHtml );
+                                await Response.Body.FlushAsync( );
+                            } else {
+                                errorCount++;
+                            }
                             continue;
                         }
 
@@ -413,34 +443,37 @@ namespace BridgeBeats.Web.Controllers {
                         processedCount++;
 
                     } catch (Exception ex) {
-                        logger.LogError( ex, "Error processing individual result for URI: {Uri}", uri.SanitizeForLogging( ) );
+                        LogStreamResultError( ex, uri.SanitizeForLogging( ) );
                         errorCount++;
                     }
                 }
 
                 // Send completion status as a hidden data element
                 if (processedCount == 0 && errorCount > 0) {
-                    await Response.WriteAsync( "<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"" + errorCount + "\">No results found</div>" );
+                    await Response.WriteAsync( $"<div class=\"alert alert-warning\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\">No results found</div>" );
+                } else if (processedCount == 0 && rateLimitCount > 0) {
+                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\"></div>" );
                 } else if (processedCount == 0) {
-                    await Response.WriteAsync( "<div class=\"alert alert-info\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"0\">No results found</div>" );
+                    await Response.WriteAsync( "<div class=\"alert alert-info\" data-stream-complete=\"true\" data-processed=\"0\" data-errors=\"0\" data-rate-limited=\"0\">No results found</div>" );
                 } else if (errorCount > 0) {
-                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\"></div>" );
+                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount}\" data-rate-limited=\"{rateLimitCount}\"></div>" );
                 } else {
-                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\"></div>" );
+                    await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\" data-rate-limited=\"{rateLimitCount}\"></div>" );
                 }
 
             } catch (Exception ex) {
-                logger.LogError( ex, "Error during lookup stream for URI: {Uri}", uri.SanitizeForLogging( ) );
+                LogStreamError( ex, uri.SanitizeForLogging( ) );
                 await Response.WriteAsync( $"<div class=\"alert alert-danger\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount + 1}\">An error occurred during lookup: {ex.Message}</div>" );
             }
         }
 
         /// <summary>
-        /// Helper method to render a view to a string for streaming.
+        /// Renders a view to an HTML string using the supplied model, for streaming partial results to the client.
         /// </summary>
-        /// <param name="viewName">Name of the view to render.</param>
-        /// <param name="model">Model to pass to the view.</param>
-        /// <returns>Rendered HTML string.</returns>
+        /// <param name="viewName">The name of the view to render.</param>
+        /// <param name="model">The model to bind to the view.</param>
+        /// <returns>The rendered view as an HTML string.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the named view cannot be found.</exception>
         private async Task<string> RenderViewToStringAsync( string viewName, object model ) {
             ViewData.Model = model;
             using StringWriter sw = new( );
@@ -464,12 +497,104 @@ namespace BridgeBeats.Web.Controllers {
         }
 
         /// <summary>
-        /// Displays the error page.
+        /// Renders the error page with the current request id for correlation.
         /// </summary>
-        /// <returns>The error view with diagnostic information.</returns>
+        /// <returns>The error view populated with an <c>ErrorViewModel</c>. Responses are not cached.</returns>
         [ResponseCache( Duration = 0, Location = ResponseCacheLocation.None, NoStore = true )]
         public IActionResult Error( ) {
             return View( new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier } );
         }
+
+        /// <summary>
+        /// Resolves a recording by ISRC for authenticated browser clients and returns the result as JSON. Uses
+        /// cookie authentication and requires the antiforgery token in the <c>X-XSRF-TOKEN</c> header.
+        /// </summary>
+        /// <param name="req">The request containing the ISRC, bound from the JSON request body.</param>
+        /// <returns>
+        /// HTTP POST <c>/lookup/browser/isrc</c>. <c>200 OK</c> with the result or a result carrying a
+        /// no-results message; <c>400 Bad Request</c> when the service is unavailable or the ISRC is missing.
+        /// Requires <c>[Authorize]</c> and a valid anti-forgery token.
+        /// </returns>
+        [Authorize]
+        [HttpPost( "/lookup/browser/isrc" )]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BrowserLookupByIsrc( [FromBody] BrowserIsrcRequest req ) {
+            if (mediaLinkService == null) {
+                return BadRequest( new { error = "Music lookup service not available" } );
+            }
+
+            if (string.IsNullOrWhiteSpace( req.Isrc )) {
+                return BadRequest( new { error = "ISRC is required" } );
+            }
+
+            MediaLinkResult? result = await mediaLinkService.GetInfoByISRCAsync( req.Isrc );
+            return Ok( result ?? new MediaLinkResult { Messages = ["No results found for ISRC."] } );
+        }
+
+        /// <summary>
+        /// Resolves a release by UPC for authenticated browser clients and returns the result as JSON. Uses
+        /// cookie authentication and requires the antiforgery token in the <c>X-XSRF-TOKEN</c> header.
+        /// </summary>
+        /// <param name="req">The request containing the UPC, bound from the JSON request body.</param>
+        /// <returns>
+        /// HTTP POST <c>/lookup/browser/upc</c>. <c>200 OK</c> with the result or a result carrying a
+        /// no-results message; <c>400 Bad Request</c> when the service is unavailable or the UPC is missing.
+        /// Requires <c>[Authorize]</c> and a valid anti-forgery token.
+        /// </returns>
+        [Authorize]
+        [HttpPost( "/lookup/browser/upc" )]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BrowserLookupByUpc( [FromBody] BrowserUpcRequest req ) {
+            if (mediaLinkService == null) {
+                return BadRequest( new { error = "Music lookup service not available" } );
+            }
+
+            if (string.IsNullOrWhiteSpace( req.Upc )) {
+                return BadRequest( new { error = "UPC is required" } );
+            }
+
+            MediaLinkResult? result = await mediaLinkService.GetInfoByUPCAsync( req.Upc );
+            return Ok( result ?? new MediaLinkResult { Messages = ["No results found for UPC."] } );
+        }
+
+        /// <summary>
+        /// Resolves a track or album by title and artist for authenticated browser clients and returns the
+        /// result as JSON. Uses cookie authentication and requires the antiforgery token in the
+        /// <c>X-XSRF-TOKEN</c> header.
+        /// </summary>
+        /// <param name="req">The request containing the title and artist, bound from the JSON request body.</param>
+        /// <returns>
+        /// HTTP POST <c>/lookup/browser/title</c>. <c>200 OK</c> with the result or a result carrying a
+        /// no-results message; <c>400 Bad Request</c> when the service is unavailable or either field is missing.
+        /// Requires <c>[Authorize]</c> and a valid anti-forgery token.
+        /// </returns>
+        [Authorize]
+        [HttpPost( "/lookup/browser/title" )]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BrowserLookupByTitle( [FromBody] BrowserTitleRequest req ) {
+            if (mediaLinkService == null) {
+                return BadRequest( new { error = "Music lookup service not available" } );
+            }
+
+            if (string.IsNullOrWhiteSpace( req.Title ) || string.IsNullOrWhiteSpace( req.Artist )) {
+                return BadRequest( new { error = "Title and artist are required" } );
+            }
+
+            MediaLinkResult? result = await mediaLinkService.GetInfoAsync( req.Title, req.Artist );
+            return Ok( result ?? new MediaLinkResult { Messages = ["No results found."] } );
+        }
     }
+
+    /// <summary>Request payload for a browser ISRC lookup.</summary>
+    /// <param name="Isrc">The ISRC to resolve.</param>
+    public record BrowserIsrcRequest( string Isrc );
+
+    /// <summary>Request payload for a browser UPC lookup.</summary>
+    /// <param name="Upc">The UPC to resolve.</param>
+    public record BrowserUpcRequest( string Upc );
+
+    /// <summary>Request payload for a browser title/artist lookup.</summary>
+    /// <param name="Title">The title to resolve.</param>
+    /// <param name="Artist">The artist to resolve.</param>
+    public record BrowserTitleRequest( string Title, string Artist );
 }

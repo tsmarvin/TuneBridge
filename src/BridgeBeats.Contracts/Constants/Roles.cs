@@ -1,12 +1,13 @@
 namespace BridgeBeats.Contracts.Constants;
 
 /// <summary>
-/// Defines application role names for authorization.
+/// Authorization role names used in access-control policies across the solution.
 /// </summary>
 public static class Roles {
+
     /// <summary>
-    /// Role required to access the Aspire Dashboard.
-    /// This role is not assigned to any user by default and must be manually assigned via database edits.
+    /// Role name <c>"AspireDashboardAccess"</c> that gates access to the Aspire dashboard. The role
+    /// is created at startup but not assigned to any user by default; it must be assigned manually.
     /// </summary>
     public const string AspireDashboardAccess = "AspireDashboardAccess";
 }

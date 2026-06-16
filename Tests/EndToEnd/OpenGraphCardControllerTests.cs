@@ -6,17 +6,27 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests.EndToEnd;
 
 /// <summary>
-/// End-to-end tests for the web-specific lookup functionality.
+/// End-to-end tests for the web lookup endpoint (<c>/lookup/web</c>) that backs the Open Graph embed
+/// cards, running the real web app in-memory via <see cref="CustomWebApplicationFactory"/> against the
+/// shared Redis container. Covers single- and multi-URL lookups against live providers, empty-input
+/// validation, and the no-results path for unrecognized URLs.
 /// </summary>
 [TestClass]
 [DoNotParallelize] // Prevent parallel execution to avoid overwhelming external APIs with rate limits
 [TestCategory( "EndToEnd" )] // Mark as end-to-end tests
 public class WebLookupTests {
+    /// <summary>The shared web application factory hosting the app for this test class.</summary>
     private static CustomWebApplicationFactory? s_factory;
+    /// <summary>The HTTP client connected to the test host.</summary>
     private static HttpClient? s_client;
 
+    /// <summary>
+    /// Builds the test host with worker services disabled and external integrations blanked, creates a
+    /// client, and migrates the identity database.
+    /// </summary>
+    /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
-    public static async Task ClassInitialize( TestContext context ) {
+    public static async Task ClassInitialize( TestContext _ ) {
         // Load configuration from appsettings.json and user secrets
         IConfigurationRoot configuration = new ConfigurationBuilder()
             .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
@@ -29,10 +39,17 @@ public class WebLookupTests {
             .AsEnumerable()
             .Where( kv => kv.Value is not null )
             .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
-            .ToDictionary( kv => kv.Key, kv => kv.Value );
+            .ToDictionary( );
 
         // Force Discord token to null to prevent Discord service registration
-        configData["BridgeBeats:DiscordToken"] = null;
+        configData["BridgeBeats:DiscordToken"] = string.Empty;
+        // Disable worker services mode - use direct provider implementations
+        configData["BridgeBeats:Workers:UseWorkerServices"] = "false";
+        // Force ATProto credentials to empty to disable caching service
+        // The caching service requires background workers that are not running in the test environment
+        configData["BridgeBeats:ATProtoIdentifier"] = string.Empty;
+        configData["BridgeBeats:ATProtoPassword"] = string.Empty;
+        configData["BridgeBeats:ATProtoUserDID"] = string.Empty;
 
         s_factory = new CustomWebApplicationFactory( configData );
         s_client = s_factory.CreateClient( );
@@ -41,11 +58,18 @@ public class WebLookupTests {
         await s_factory.InitializeDatabasesAsync( );
     }
 
+    /// <summary>
+    /// Disposes the test host after the class completes.
+    /// </summary>
     [ClassCleanup]
     public static void ClassCleanup( ) {
         s_factory?.Dispose( );
     }
 
+    /// <summary>
+    /// Posts a single valid Spotify track URL and verifies 200 OK with <c>hasResults</c> true and an
+    /// <c>items</c> array (inconclusive when no results, signalling rate limiting).
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "Spotify" )]
@@ -81,6 +105,10 @@ public class WebLookupTests {
         Assert.AreEqual( JsonValueKind.Array, itemsElement.ValueKind );
     }
 
+    /// <summary>
+    /// Posts two URLs (Spotify and Apple Music) and verifies 200 OK with <c>hasResults</c> true and two
+    /// items (inconclusive when fewer items are returned, signalling rate limiting).
+    /// </summary>
     [TestMethod]
     [TestCategory( "Integration" )] // Requires real API credentials
     [TestCategory( "Spotify" )]
@@ -116,8 +144,16 @@ public class WebLookupTests {
         JsonElement items = data.GetProperty( "items" );
         int itemCount = items.GetArrayLength( );
         Assert.IsGreaterThan( 0, itemCount, "Should have at least one item" );
+        if (itemCount < 2) {
+            Assert.Inconclusive( "Expected 2 items but got fewer - possibly due to rate limiting" );
+        } else {
+            Assert.AreEqual( 2, itemCount, "Should have exactly 2 items" );
+        }
     }
 
+    /// <summary>
+    /// Posts an empty URI and verifies the endpoint returns 400 Bad Request.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task WebLookup_WithEmptyUri_ReturnsBadRequest( ) {
@@ -135,6 +171,10 @@ public class WebLookupTests {
         Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
     }
 
+    /// <summary>
+    /// Posts an unrecognized (non-music) URI and verifies the endpoint returns 200 OK with
+    /// <c>hasResults</c> false.
+    /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
     public async Task WebLookup_WithInvalidUri_ReturnsNoResults( ) {
@@ -157,5 +197,8 @@ public class WebLookupTests {
         Assert.IsFalse( hasResults, "Should have no results for invalid URL" );
     }
 
+    /// <summary>
+    /// The MSTest-injected test context, used here to obtain the per-test cancellation token.
+    /// </summary>
     public TestContext TestContext { get; set; } = null!;
 }

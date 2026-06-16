@@ -38,7 +38,7 @@
         const toolbar = document.createElement('div');
         toolbar.id = 'playlistToolbar';
         toolbar.className = 'playlist-toolbar';
-        
+
         // Build toolbar HTML based on auth status
         let toolbarHTML = `
             <div class="playlist-toolbar-content">
@@ -46,7 +46,7 @@
                     <span id="selectionCount">0</span> / ${playlistState.maxCards} selected
                 </div>
                 <div class="playlist-inputs`;
-        
+
         if (playlistState.isAuthenticated) {
             toolbarHTML += `">
                     <input type="text" id="playlistTitleInput" class="form-control form-control-sm mb-2" placeholder="Playlist name (optional)" maxlength="100" />
@@ -56,7 +56,7 @@
                     <input type="text" id="playlistTitleInput" class="form-control form-control-sm" placeholder="BridgeBeats" maxlength="100" readonly />
                     <small class="text-muted">Sign in to customize title and description</small>`;
         }
-        
+
         toolbarHTML += `
                 </div>
                 <div class="playlist-actions">
@@ -69,7 +69,7 @@
                 </div>
             </div>
         `;
-        
+
         toolbar.innerHTML = toolbarHTML;
 
         // Insert at the top of results section
@@ -162,18 +162,18 @@
         // Create checkbox overlay
         const checkbox = document.createElement('div');
         checkbox.className = 'card-selection-checkbox';
-        
+
         // Create input element safely
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.id = `select-${cardId}`;
         input.setAttribute('data-card-id', cardId);
         input.setAttribute('data-rkey', rkey);
-        
+
         // Create label element safely
         const label = document.createElement('label');
         label.setAttribute('for', `select-${cardId}`);
-        
+
         // Append elements
         checkbox.appendChild(input);
         checkbox.appendChild(label);
@@ -196,7 +196,7 @@
             // Don't toggle if clicking on links, buttons, or the checkbox itself
             // Images are now included for selection
             if (e.target.closest('button, .share-dropdown, .card-selection-checkbox')) return;
-            
+
             // If clicking a link, check if we should select instead
             if (e.target.closest('a')) {
                 // Prevent default link behavior in selection mode
@@ -240,7 +240,7 @@
                 // Max limit reached
                 const input = cardElement.querySelector('input[type="checkbox"]');
                 if (input) input.checked = false;
-                
+
                 // Show feedback in toolbar
                 const toolbar = document.getElementById('playlistToolbar');
                 if (toolbar) {
@@ -310,7 +310,7 @@
             }
 
             // Create playlist via API
-            const response = await fetch('/playlist/create', {
+            const response = await safeFetch('/playlist/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -336,13 +336,13 @@
                 // Copy to clipboard
                 try {
                     await navigator.clipboard.writeText(data.playlistUrl);
-                    
+
                     // Show success state on button
                     if (createBtn) {
                         createBtn.textContent = '✓ Link Copied!';
                         createBtn.classList.add('btn-success');
                         createBtn.classList.remove('btn-primary');
-                        
+
                         // Wait a moment before exiting
                         setTimeout(() => {
                             exitSelectionMode();
@@ -361,13 +361,13 @@
 
         } catch (error) {
             console.error('Error creating playlist:', error);
-            
+
             // Show error state
             if (createBtn) {
                 createBtn.textContent = '✗ Failed';
                 createBtn.classList.add('btn-danger');
                 createBtn.classList.remove('btn-primary');
-                
+
                 setTimeout(() => {
                     createBtn.textContent = originalText;
                     createBtn.classList.remove('btn-danger');

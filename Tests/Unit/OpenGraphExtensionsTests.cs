@@ -1,12 +1,20 @@
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
-using BridgeBeats.Services.LinkResolver;
+using BridgeBeats.Core.Domain.Extensions;
 
 namespace BridgeBeats.Tests.Unit;
 
+/// <summary>
+/// Tests the <c>ToOpenGraphMetadata</c> extension, which builds the OpenGraph meta-tag dictionary from a
+/// <see cref="MediaLinkResult"/>. Covers labeling the primary result's external id as ISRC for tracks and UPC for
+/// albums (and omitting it when absent), the per-provider <c>theme-color</c> chosen from the primary provider, and
+/// that provider links/URLs are kept out of the description.
+/// </summary>
 [TestClass]
 public class OpenGraphExtensionsTests {
-
+    /// <summary>
+    /// Verifies a track's external id is labeled <c>ISRC:</c> in the description, alongside the artist.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithTrackAndISRC_IncludesISRCInDescription( ) {
         // Arrange
@@ -36,6 +44,9 @@ public class OpenGraphExtensionsTests {
         Assert.Contains( "Artist: Shades, Alix Perez & Eprom", metadata["og:description"], "Description should contain artist" );
     }
 
+    /// <summary>
+    /// Verifies an album's external id is labeled <c>UPC:</c> in the description.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithAlbumAndUPC_IncludesUPCInDescription( ) {
         // Arrange
@@ -64,8 +75,11 @@ public class OpenGraphExtensionsTests {
         Assert.Contains( "UPC: 123456789012", metadata["og:description"], "Description should contain UPC for album" );
     }
 
+    /// <summary>
+    /// Verifies an Apple Music primary result yields the Apple Music red <c>theme-color</c> (<c>#D60017</c>).
+    /// </summary>
     [TestMethod]
-    public void ToOpenGraphMetadata_WithAppleMusicPrimary_HasBlueThemeColor( ) {
+    public void ToOpenGraphMetadata_WithAppleMusicPrimary_HasRedThemeColor( ) {
         // Arrange
         MediaLinkResult result = new( ) {
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
@@ -92,6 +106,9 @@ public class OpenGraphExtensionsTests {
         Assert.AreEqual( "#D60017", metadata["theme-color"], "Apple Music should have red theme color" );
     }
 
+    /// <summary>
+    /// Verifies a Spotify primary result yields the Spotify green <c>theme-color</c> (<c>#1ED760</c>).
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithSpotifyPrimary_HasGreenThemeColor( ) {
         // Arrange
@@ -120,6 +137,10 @@ public class OpenGraphExtensionsTests {
         Assert.AreEqual( "#1ED760", metadata["theme-color"], "Spotify should have green theme color" );
     }
 
+    /// <summary>
+    /// Verifies that when the primary result has no external id, the description omits both <c>ISRC:</c> and
+    /// <c>UPC:</c> but still includes the artist.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_WithoutExternalId_DoesNotIncludeISRCOrUPC( ) {
         // Arrange
@@ -150,6 +171,10 @@ public class OpenGraphExtensionsTests {
         Assert.Contains( "Artist: Test Artist", metadata["og:description"], "Description should still contain artist" );
     }
 
+    /// <summary>
+    /// Verifies the description never lists provider links: with multiple providers present it contains no
+    /// "Available on:" section and no URLs.
+    /// </summary>
     [TestMethod]
     public void ToOpenGraphMetadata_DoesNotIncludeProviderLinksInDescription( ) {
         // Arrange

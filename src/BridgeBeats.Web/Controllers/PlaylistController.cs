@@ -1,29 +1,49 @@
 using System.Security.Claims;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Infrastructure.Utilities;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Web.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BridgeBeats.Web.Controllers;
 
 /// <summary>
-/// Controller for managing and displaying playlists of music cards.
+/// Serves playlist pages and creation, rooted at <c>playlist</c>. Creates playlists from a set of card ids
+/// and rkeys, and renders a playlist's page or embeddable variant, regenerating missing cards from their
+/// rkeys when needed.
 /// </summary>
+/// <param name="playlistService">Optional playlist service used to create and retrieve playlists and to supply the public domain; when disabled, playlist actions report unavailability.</param>
+/// <param name="cardService">Optional Open Graph card service used to retrieve and re-store card results.</param>
+/// <param name="mediaLinkService">Optional media-link service used to regenerate a card from its ISRC or UPC rkey.</param>
+/// <param name="qrCodeService">Service that generates QR-code data URIs for embeddable playlists.</param>
+/// <param name="logger">Optional logger for card regeneration and mismatch warnings.</param>
 [Route( "playlist" )]
-public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCardService? cardService, IMediaLinkService? mediaLinkService, ILogger<PlaylistController>? logger = null ) : Controller {
+public partial class PlaylistController( IPlaylistService? playlistService, IOpenGraphCardService? cardService, IMediaLinkService? mediaLinkService, IQrCodeService qrCodeService, ILogger<PlaylistController>? logger = null ) : Controller {
 
+    /// <summary>Optional playlist service used to create and retrieve playlists and to supply the public domain.</summary>
     private readonly IPlaylistService? _playlistService = playlistService;
+    /// <summary>Optional Open Graph card service used to retrieve and re-store card results.</summary>
     private readonly IOpenGraphCardService? _cardService = cardService;
+    /// <summary>Optional media-link service used to regenerate a card from its ISRC or UPC rkey.</summary>
     private readonly IMediaLinkService? _mediaLinkService = mediaLinkService;
+    /// <summary>Service that generates QR-code data URIs for embeddable playlists.</summary>
+    private readonly IQrCodeService _qrCodeService = qrCodeService;
+    /// <summary>Optional logger for card regeneration and mismatch warnings.</summary>
     private readonly ILogger<PlaylistController>? _logger = logger;
 
     /// <summary>
-    /// Creates a new playlist from a list of card IDs.
+    /// Creates a playlist from the supplied card ids and matching rkeys (up to 20 cards). When the caller is
+    /// authenticated, the supplied title and description are stored and the playlist is associated with the
+    /// user; anonymous callers create an untitled, unowned playlist.
     /// </summary>
-    /// <param name="request">Request containing card IDs and optional metadata.</param>
-    /// <returns>JSON response with the playlist URL.</returns>
+    /// <param name="request">The creation payload (card ids, card rkeys, optional title and description) bound from the JSON request body.</param>
+    /// <returns>
+    /// HTTP POST <c>playlist/create</c>. <c>200 OK</c> with the playlist URL on success; <c>400 Bad Request</c>
+    /// when the service is unavailable, the cards are missing or exceed 20, the rkeys do not match the ids, or
+    /// an argument is invalid; <c>500</c> on an unexpected error. Requires a valid anti-forgery token.
+    /// </returns>
     [HttpPost( "create" )]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlaylist( [FromBody] CreatePlaylistRequest request ) {
         if (_playlistService?.IsEnabled != true) {
             return BadRequest( new { error = "Playlist service not available" } );
@@ -63,16 +83,21 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
         } catch (ArgumentException ex) {
             return BadRequest( new { error = ex.Message } );
         } catch (Exception ex) {
-            _logger?.LogError( ex, "Error creating playlist" );
+            LogCreateError( ex );
             return StatusCode( 500, new { error = "Failed to create playlist" } );
         }
     }
 
     /// <summary>
-    /// Displays a playlist card with all included music items.
+    /// Renders a playlist page for the given id. Each card is loaded from the card service or regenerated from
+    /// its <c>track:</c>/<c>album:</c> rkey via ISRC/UPC lookup, then projected into the view model using the
+    /// primary provider's details. Cards that cannot be loaded or regenerated are skipped.
     /// </summary>
-    /// <param name="id">The unique identifier of the playlist.</param>
-    /// <returns>An HTML page displaying the playlist.</returns>
+    /// <param name="id">The playlist id from the route.</param>
+    /// <returns>
+    /// HTTP GET <c>playlist/{id}</c>. The playlist view on success; <c>404 Not Found</c> when the service is
+    /// unavailable or the playlist is unknown or expired.
+    /// </returns>
     [HttpGet( "{id}" )]
     public async Task<IActionResult> Playlist( string id ) {
         if (_playlistService?.IsEnabled != true) {
@@ -92,10 +117,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
 
         // Ensure we have matching counts
         if (cardIds.Length != cardRkeys.Length) {
-            _logger?.LogWarning(
-                "Playlist {PlaylistId} has mismatched card IDs ({CardIdCount}) and rkeys ({RkeyCount})",
-                id.SanitizeForLogging( ), cardIds.Length, cardRkeys.Length
-            );
+            LogMismatchedCards( id.SanitizeForLogging( ), cardIds.Length, cardRkeys.Length );
         }
 
         for (int i = 0; i < Math.Min( cardIds.Length, cardRkeys.Length ); i++) {
@@ -121,17 +143,23 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
                     // If we successfully recreated the result, store it back in the card service
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
-                        _logger?.LogInformation( "Regenerated card {CardId} from rkey {Rkey} for playlist {PlaylistId}",
-                            cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( ) );
+                        if (_logger?.IsEnabled( LogLevel.Information ) == true) {
+                            string sanitizedCardId = cardId.SanitizeForLogging( );
+                            string sanitizedRkey = rkey.SanitizeForLogging( );
+                            string sanitizedId = id.SanitizeForLogging( );
+                            LogCardRegenerated( sanitizedCardId, sanitizedRkey, sanitizedId );
+                        }
                     }
                 }
             }
 
             if (result == null) {
-                _logger?.LogWarning(
-                    "Unable to load or regenerate card {CardId} (rkey: {Rkey}) for playlist {PlaylistId}",
-                    cardId.SanitizeForLogging( ), rkey.SanitizeForLogging( ), id.SanitizeForLogging( )
-                );
+                if (_logger?.IsEnabled( LogLevel.Warning ) == true) {
+                    string sanitizedCardId = cardId.SanitizeForLogging( );
+                    string sanitizedRkey = rkey.SanitizeForLogging( );
+                    string sanitizedId = id.SanitizeForLogging( );
+                    LogCardLoadFailed( sanitizedCardId, sanitizedRkey, sanitizedId );
+                }
                 continue;
             }
 
@@ -142,7 +170,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             if (primaryResult != null) {
                 items.Add( new PlaylistItemViewModel {
                     CardId = cardId,
-                    CardUrl = $"https://{_cardService?.BaseUrl}/card/{cardId}",
+                    CardUrl = $"https://{_cardService?.Domain}/card/{cardId}",
                     Result = result,
                     Title = primaryResult.Title ?? "Unknown Title",
                     Artist = primaryResult.Artist ?? "Unknown Artist",
@@ -157,20 +185,24 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             Title = playlist.Title ?? "BridgeBeats",
             Description = playlist.Description,
             Items = items,
-            BaseUrl = _playlistService.BaseUrl
+            Domain = _playlistService.Domain
         };
 
         return View( viewModel );
     }
 
     /// <summary>
-    /// Displays an embeddable compact playlist view.
-    /// This endpoint is designed for iframe embedding.
+    /// Renders the embeddable playlist view for the given id, optionally including a QR code that links to the
+    /// embed. Cards are loaded or regenerated the same way as the full playlist page.
     /// </summary>
-    /// <param name="id">The unique identifier of the playlist.</param>
-    /// <returns>A minimal HTML page with the playlist suitable for iframe embedding.</returns>
+    /// <param name="id">The playlist id from the route.</param>
+    /// <param name="qr">When true, generates and includes a QR-code data URI; bound from the query string. Defaults to false.</param>
+    /// <returns>
+    /// HTTP GET <c>playlist/{id}/embed</c>. The playlist view on success; <c>404 Not Found</c> when the
+    /// service is unavailable or the playlist is unknown or expired.
+    /// </returns>
     [HttpGet( "{id}/embed" )]
-    public async Task<IActionResult> Embed( string id ) {
+    public async Task<IActionResult> Embed( string id, [FromQuery] bool qr = false ) {
         if (_playlistService?.IsEnabled != true) {
             return NotFound( "Playlist service not available" );
         }
@@ -205,19 +237,21 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
 
                     if (result != null) {
                         _ = _cardService.StoreResult( result );
-                        _logger?.LogInformation(
-                            "Regenerated card {CardId} for playlist embed {PlaylistId}",
-                            cardId.SanitizeForLogging( ), id.SanitizeForLogging( )
-                        );
+                        if (_logger?.IsEnabled( LogLevel.Information ) == true) {
+                            string sanitizedCardId = cardId.SanitizeForLogging( );
+                            string sanitizedId = id.SanitizeForLogging( );
+                            LogEmbedCardRegenerated( sanitizedCardId, sanitizedId );
+                        }
                     }
                 }
             }
 
             if (result == null) {
-                _logger?.LogWarning(
-                    "Unable to load or regenerate card {CardId} for playlist embed {PlaylistId}",
-                    cardId.SanitizeForLogging( ), id.SanitizeForLogging( )
-                );
+                if (_logger?.IsEnabled( LogLevel.Warning ) == true) {
+                    string sanitizedCardId = cardId.SanitizeForLogging( );
+                    string sanitizedId = id.SanitizeForLogging( );
+                    LogEmbedCardLoadFailed( sanitizedCardId, sanitizedId );
+                }
                 continue;
             }
 
@@ -227,7 +261,7 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             if (primaryResult != null) {
                 items.Add( new PlaylistItemViewModel {
                     CardId = cardId,
-                    CardUrl = $"https://{_cardService?.BaseUrl}/card/{cardId}",
+                    CardUrl = $"https://{_cardService?.Domain}/card/{cardId}",
                     Result = result,
                     Title = primaryResult.Title ?? "Unknown Title",
                     Artist = primaryResult.Artist ?? "Unknown Artist",
@@ -237,39 +271,39 @@ public class PlaylistController( IPlaylistService? playlistService, IOpenGraphCa
             }
         }
 
+        // Generate QR code data URI if requested
+        string? qrCodeDataUri = null;
+        if (qr) {
+            string embedUrl = $"https://{_playlistService.Domain}/playlist/{id}/embed";
+            qrCodeDataUri = _qrCodeService.GenerateQrCodeDataUri( embedUrl );
+        }
+
         PlaylistViewModel viewModel = new( ) {
             PlaylistId = playlist.PlaylistId,
             Title = playlist.Title ?? "BridgeBeats Playlist",
             Description = playlist.Description,
             Items = items,
-            BaseUrl = _playlistService.BaseUrl
+            Domain = _playlistService.Domain,
+            QrCodeDataUri = qrCodeDataUri
         };
 
         return View( viewModel );
     }
 
     /// <summary>
-    /// Request model for creating a playlist.
+    /// Request payload for creating a playlist.
     /// </summary>
     public record CreatePlaylistRequest {
-        /// <summary>
-        /// List of card IDs to include in the playlist (max 20).
-        /// </summary>
+        /// <summary>The card ids to include in the playlist, in order (up to 20).</summary>
         public List<string> CardIds { get; init; } = [];
 
-        /// <summary>
-        /// List of original rkey values corresponding to CardIds (max 20).
-        /// </summary>
+        /// <summary>The rkeys corresponding to each card id, used to regenerate cards that are no longer cached.</summary>
         public List<string> CardRkeys { get; init; } = [];
 
-        /// <summary>
-        /// Optional title for the playlist.
-        /// </summary>
+        /// <summary>The optional playlist title; stored only for authenticated callers.</summary>
         public string? Title { get; init; }
 
-        /// <summary>
-        /// Optional description for the playlist.
-        /// </summary>
+        /// <summary>The optional playlist description; stored only for authenticated callers.</summary>
         public string? Description { get; init; }
     }
 }

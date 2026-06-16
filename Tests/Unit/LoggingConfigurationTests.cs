@@ -7,11 +7,17 @@ using Serilog.Core;
 namespace BridgeBeats.Tests.Unit;
 
 /// <summary>
-/// Unit tests for logging configuration validation.
-/// Tests Serilog file logging and OpenTelemetry configuration.
+/// Tests the Serilog and OpenTelemetry logging configuration: file sink creation and rotation/retention,
+/// reading the OTLP endpoint from configuration, combining file and OTLP sinks, console logging, and the
+/// health-check noise filter that excludes successful <c>/health</c> requests and the MVC/routing log noise they
+/// produce while still logging failed health checks and non-health traffic.
 /// </summary>
 [TestClass]
 public partial class LoggingConfigurationTests {
+    /// <summary>
+    /// Verifies a logger configured with a file sink at a configured path creates the log directory and writes
+    /// without error.
+    /// </summary>
     [TestMethod]
     public void ConfigureSerilog_WithDefaultFilePath_ShouldCreateLogger( ) {
         // Arrange
@@ -55,6 +61,10 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies a logger configured with daily rolling, a size limit, and a retained-file count produces at least
+    /// one log file in the configured directory.
+    /// </summary>
     [TestMethod]
     public void ConfigureSerilog_WithFileRotation_ShouldRespectRetentionPolicy( ) {
         // Arrange
@@ -64,7 +74,7 @@ public partial class LoggingConfigurationTests {
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["BridgeBeats:LogFilePath"] = logPath,
+                ["BridgeBeats:LogDirPath"] = logDir,
                 ["Logging:LogLevel:Default"] = "Information"
             };
 
@@ -102,6 +112,9 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies a configured OTLP endpoint is read back as a non-empty, absolute HTTP URI.
+    /// </summary>
     [TestMethod]
     public void OpenTelemetryConfiguration_WithValidEndpoint_ShouldNotThrow( ) {
         // Arrange
@@ -121,6 +134,9 @@ public partial class LoggingConfigurationTests {
         Assert.AreEqual( "http", uri!.Scheme, "OTLP endpoint should use HTTP scheme" );
     }
 
+    /// <summary>
+    /// Verifies an empty OTLP endpoint is read back as empty/whitespace, the signal the host uses to skip OTLP export.
+    /// </summary>
     [TestMethod]
     public void OpenTelemetryConfiguration_WithEmptyEndpoint_ShouldHandleGracefully( ) {
         // Arrange
@@ -140,6 +156,10 @@ public partial class LoggingConfigurationTests {
         Assert.IsTrue( string.IsNullOrWhiteSpace( otlpEndpoint ), "OTLP endpoint should be empty" );
     }
 
+    /// <summary>
+    /// Verifies a configuration carrying both a log directory and an OTLP endpoint exposes both values and supports
+    /// building a working file logger alongside OTLP export.
+    /// </summary>
     [TestMethod]
     public void LoggingConfiguration_ShouldSupportBothFileAndOpenTelemetry( ) {
         // Arrange
@@ -148,7 +168,7 @@ public partial class LoggingConfigurationTests {
 
         try {
             Dictionary<string, string?> config = new( ) {
-                ["BridgeBeats:LogFilePath"] = logPath,
+                ["BridgeBeats:LogDirPath"] = Path.GetDirectoryName(logPath)!,
                 ["Logging:LogLevel:Default"] = "Information",
                 ["OpenTelemetry:OtlpEndpoint"] = "http://aspire-dashboard:4317"
             };
@@ -158,10 +178,10 @@ public partial class LoggingConfigurationTests {
                 .Build( );
 
             // Act & Assert
-            string? filePath = configuration["BridgeBeats:LogFilePath"];
+            string? dirPath = configuration["BridgeBeats:LogDirPath"];
             string? otlpEndpoint = configuration["OpenTelemetry:OtlpEndpoint"];
 
-            Assert.IsFalse( string.IsNullOrWhiteSpace( filePath ), "Log File Path should be configured" );
+            Assert.IsFalse( string.IsNullOrWhiteSpace( dirPath ), "Log Dir Path should be configured" );
             Assert.IsFalse( string.IsNullOrWhiteSpace( otlpEndpoint ), "OTLP endpoint should be configured" );
 
             // Verify both can be configured simultaneously
@@ -190,6 +210,12 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies the health-check noise filter: a successful Information-level <c>/health</c> request and the MVC
+    /// controller-action and routing logs it generates are excluded, while a failed (500) health check, non-health
+    /// endpoints, and non-health controller actions are still logged. Asserts <c>/health</c> appears exactly once
+    /// (the failure).
+    /// </summary>
     [TestMethod]
     public void HealthCheckLoggingFilter_ShouldExcludeSuccessfulHealthChecks( ) {
         // Arrange
@@ -317,6 +343,9 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Verifies a logger writing to both console and file sinks records the message to the file.
+    /// </summary>
     [TestMethod]
     public void ConfigureSerilog_ShouldConfigureConsoleLogging( ) {
         // Arrange
@@ -347,6 +376,11 @@ public partial class LoggingConfigurationTests {
         }
     }
 
+    /// <summary>
+    /// Source-generated regex matching the literal <c>/health</c>, used to count how many times the health endpoint
+    /// appears in captured log output.
+    /// </summary>
+    /// <returns>A compiled <see cref="Regex"/> matching <c>/health</c>.</returns>
     [GeneratedRegex( "/health" )]
     private static partial Regex s_HealthEndpoint( );
 }

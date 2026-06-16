@@ -2,24 +2,33 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <RepositoryUrl>https://github.com/tsmarvin/BridgeBeats</RepositoryUrl>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DebugType>embedded</DebugType>
+    <Deterministic>true</Deterministic>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4">
+    <PackageReference Include="Aspire.Hosting.Testing" Version="13.4.3" />
+    <!-- Pin: overrides the vulnerable MessagePack 2.5.192 pulled in via Aspire.Hosting.Testing → StreamJsonRpc. -->
+    <PackageReference Include="MessagePack" Version="2.5.301" />
+    <PackageReference Include="coverlet.collector" Version="10.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.2" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageReference Include="MSTest.TestAdapter" Version="4.0.2" />
-    <PackageReference Include="MSTest.TestFramework" Version="4.0.2" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="4.2.3">
+      <TreatAsUsed>true</TreatAsUsed>
+    </PackageReference>
+    <PackageReference Include="MSTest.TestFramework" Version="4.2.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageReference Include="Moq" Version="4.20.72" />
-    <PackageReference Include="FluentAssertions" Version="8.8.0" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.12.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,11 +36,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\src\BridgeBeats.AppHost\BridgeBeats.AppHost.csproj">
+      <!--
+        Only used for Aspire distributed testing. ExcludeAssets prevents conflicts
+        with WebApplicationFactory-based tests that use BridgeBeats.Web.Program.
+        The AppHost is only loaded explicitly via DistributedApplicationTestingBuilder.
+      -->
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
     <ProjectReference Include="..\src\BridgeBeats.Contracts\BridgeBeats.Contracts.csproj" />
-    <ProjectReference Include="..\src\BridgeBeats.Infrastructure\BridgeBeats.Infrastructure.csproj" />
-    <ProjectReference Include="..\src\BridgeBeats.Providers\BridgeBeats.Providers.csproj" />
-    <ProjectReference Include="..\src\BridgeBeats.Services\BridgeBeats.Services.csproj" />
     <ProjectReference Include="..\src\BridgeBeats.Web\BridgeBeats.Web.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Worker.Discord\BridgeBeats.Worker.Discord.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Worker.SagaCoordinator\BridgeBeats.Worker.SagaCoordinator.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Worker.JetStreamWatcher\BridgeBeats.Worker.JetStreamWatcher.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Worker.Spotify\BridgeBeats.Worker.Spotify.csproj" />
+    <ProjectReference Include="..\src\BridgeBeats.Worker.CacheBootstrap\BridgeBeats.Worker.CacheBootstrap.csproj" />
   </ItemGroup>
 
 </Project>

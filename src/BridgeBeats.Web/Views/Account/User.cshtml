@@ -130,7 +130,11 @@
 </div>
 
 <!-- Account Deletion Modal -->
-<div id="deleteConfirmModal" class="modal modal-hidden" tabindex="-1" role="dialog" aria-labelledby="deleteConfirmModalTitle"
+<div id="deleteConfirmModal"
+     class="modal modal-hidden"
+     tabindex="-1"
+     role="dialog"
+     aria-labelledby="deleteConfirmModalTitle"
      aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
@@ -313,7 +317,7 @@
             downloadDataBtn.textContent = 'Downloading...';
 
             try {
-                const response = await fetch('/account/download-data', {
+                const response = await safeFetch('/account/download-data', {
                     method: 'POST',
                     credentials: 'same-origin'
                 });
@@ -366,7 +370,7 @@
             deleteAccountBtn.textContent = 'Deleting...';
 
             try {
-                const response = await fetch('/account/delete', {
+                const response = await safeFetch('/account/delete', {
                     method: 'POST',
                     credentials: 'same-origin'
                 });
@@ -401,7 +405,7 @@
             resetApiKeyBtn.textContent = 'Resetting...';
 
             try {
-                const response = await fetch('/account/regenerate-api-key', {
+                const response = await safeFetch('/account/regenerate-api-key', {
                     method: 'POST',
                     credentials: 'same-origin'
                 });
@@ -439,6 +443,9 @@
         }
 
         // Initialize
+        // Ensure modals are hidden on page load (fixes CSS race condition)
+        confirmModal.style.display = 'none';
+        deleteConfirmModal.style.display = 'none';
         loadUserInfo();
     </script>
 }

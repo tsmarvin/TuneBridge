@@ -4,95 +4,78 @@ using BridgeBeats.Contracts.Enums;
 namespace BridgeBeats.Contracts.Interfaces;
 
 /// <summary>
-/// Aggregates music metadata from multiple streaming providers (Apple Music, Spotify) and returns
-/// unified results. This service handles cross-platform lookups, deduplication, and link extraction
-/// to help users find the same song or album across different music services.
+/// Façade over cross-provider lookup that aggregates music metadata from the configured
+/// streaming providers and returns the unified in-memory <see cref="MediaLinkResult"/> for a
+/// request, hiding the orchestration and caching beneath.
 /// </summary>
 /// <remarks>
-/// The service queries all enabled providers in parallel and combines matching results based on
-/// external IDs (ISRC/UPC) to ensure the same track/album is identified across platforms.
+/// Implemented in <c>BridgeBeats.Core</c> by <c>CachingMediaLinkService</c> (which wraps the
+/// orchestrator and cache), with <c>DefaultMediaLinkService</c> and the shared
+/// <c>MediaLinkServiceBase</c> fanning out across the per-provider
+/// <see cref="IMusicLookupService"/> instances
+/// (<c>Domain/Services/LinkResolver/</c>). Enabled providers are queried in parallel and matching
+/// results are combined on external ids (ISRC/UPC) so the same track or album is identified
+/// across platforms. Single-result methods return <see langword="null"/> when nothing matched.
 /// </remarks>
 public interface IMediaLinkService {
+
     /// <summary>
-    /// Searches for a track or album by title and artist name across all configured music providers.
-    /// Results are deduplicated when the same content is found on multiple platforms.
+    /// Resolves a result by free-text title and artist, deduplicating content found on multiple
+    /// platforms.
     /// </summary>
-    /// <param name="title">The track or album title to search for.</param>
-    /// <param name="artist">The primary artist name. Should match the main credited artist for best results.</param>
+    /// <param name="title">The title to search for.</param>
+    /// <param name="artist">The primary artist name; the main credited artist gives the best match.</param>
     /// <returns>
-    /// A <see cref="MediaLinkResult"/> containing URLs for each provider where the content was found,
-    /// or null if no matches were found on any platform. The result includes metadata like artwork,
-    /// external IDs (ISRC/UPC), and market region information.
+    /// A task whose result is the aggregated <see cref="MediaLinkResult"/>, or
+    /// <see langword="null"/> when no match was found.
     /// </returns>
     Task<MediaLinkResult?> GetInfoAsync( string title, string artist );
 
     /// <summary>
-    /// Performs an exact lookup of a track using its ISRC (International Standard Recording Code),
-    /// a globally unique identifier for sound recordings. This is the most reliable way to match
-    /// tracks across platforms as ISRCs are standardized and consistent.
+    /// Resolves a result by ISRC (International Standard Recording Code), the most reliable
+    /// cross-platform match because ISRCs are standardized per recording.
     /// </summary>
-    /// <param name="isrc">
-    /// The 12-character ISRC code. Hyphens are optional and will be handled automatically.
-    /// </param>
+    /// <param name="isrc">The ISRC to resolve. Hyphens are optional and handled automatically.</param>
     /// <returns>
-    /// A <see cref="MediaLinkResult"/> with URLs from providers that have this specific recording,
-    /// or null if the ISRC is not found in any provider's catalog.
+    /// A task whose result is the aggregated <see cref="MediaLinkResult"/>, or
+    /// <see langword="null"/> when no match was found.
     /// </returns>
     Task<MediaLinkResult?> GetInfoByISRCAsync( string isrc );
 
     /// <summary>
-    /// Performs an exact lookup of an album using its UPC (Universal Product Code), which uniquely
-    /// identifies album releases. UPC lookups are more reliable than title searches for albums
-    /// with special editions, deluxe versions, or international releases.
+    /// Resolves a result by UPC (Universal Product Code), which identifies an album release more
+    /// reliably than a title search for special, deluxe, or international editions.
     /// </summary>
-    /// <param name="upc">
-    /// The UPC barcode number (typically 12-13 digits).
-    /// Leading zeros should be preserved for accurate matching.
-    /// </param>
+    /// <param name="upc">The UPC to resolve; preserve leading zeros for accurate matching.</param>
     /// <returns>
-    /// A <see cref="MediaLinkResult"/> with URLs from providers that carry this album release,
-    /// or null if the UPC is not recognized by any configured provider.
+    /// A task whose result is the aggregated <see cref="MediaLinkResult"/>, or
+    /// <see langword="null"/> when no match was found.
     /// </returns>
     Task<MediaLinkResult?> GetInfoByUPCAsync( string upc );
 
     /// <summary>
-    /// Parses text content for Apple Music and Spotify URLs, extracts track/album information from
-    /// each link, and returns unified results with cross-platform matches. This is the primary method
-    /// used by the Discord bot to process user-shared links and reply with multi-platform URLs.
+    /// Parses input content for supported music URLs, resolves each, and streams the aggregated
+    /// results as they become available. This is the primary path used by the Discord bot to turn
+    /// a shared link into multi-platform links.
     /// </summary>
-    /// <param name="content">
-    /// Free-form text that may contain one or more music service URLs. The method will automatically
-    /// detect and extract supported URL patterns (music.apple.com/*, open.spotify.com/*).
-    /// </param>
+    /// <param name="content">The raw input content to resolve, for example one or more provider URLs.</param>
     /// <returns>
-    /// An async enumerable yielding one <see cref="MediaLinkResult"/> per unique track/album found.
-    /// Results are streamed as they're discovered, allowing for progressive processing. Each result
-    /// contains the original URL plus equivalent URLs from other providers when available.
+    /// An asynchronous sequence of <see cref="MediaLinkResult"/> values, one per unique track or
+    /// album found; earlier items may be partial and later items more complete as additional
+    /// providers respond.
     /// </returns>
-    /// <remarks>
-    /// The method deduplicates multiple links to the same content and handles regional variations
-    /// of URLs (e.g., music.apple.com/us/* vs music.apple.com/gb/*).
-    /// </remarks>
     IAsyncEnumerable<MediaLinkResult> GetInfoAsync( string content );
 
     /// <summary>
-    /// Performs a lookup of a track or album using a provider-specific identifier.
-    /// This method queries the specified provider for the content ID and then attempts to find
-    /// matching content across all other configured providers.
+    /// Resolves a result starting from a single provider's native id, then matches the content
+    /// across the other configured providers.
     /// </summary>
-    /// <param name="providerId">
-    /// The provider-specific identifier for the track or album (e.g., Apple Music catalog ID,
-    /// Spotify track/album ID, Tidal track/album ID).
-    /// </param>
-    /// <param name="provider">
-    /// The music provider that the ID belongs to.
-    /// </param>
-    /// <param name="isAlbum">
-    /// True to look up an album, false to look up a track.
-    /// </param>
+    /// <param name="providerId">The provider-native id to start from.</param>
+    /// <param name="provider">The provider that <paramref name="providerId"/> belongs to.</param>
+    /// <param name="isAlbum"><see langword="true"/> when the id identifies an album; <see langword="false"/> for a track.</param>
     /// <returns>
-    /// A <see cref="MediaLinkResult"/> with URLs from all providers where the content was found,
-    /// or null if the provider ID is not found in the specified provider's catalog.
+    /// A task whose result is the aggregated <see cref="MediaLinkResult"/>, or
+    /// <see langword="null"/> when no match was found.
     /// </returns>
     Task<MediaLinkResult?> GetInfoByProviderIdAsync( string providerId, SupportedProviders provider, bool isAlbum );
 }

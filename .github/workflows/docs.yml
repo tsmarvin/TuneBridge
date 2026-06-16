@@ -20,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@2016bd2012dba4e32de620c46fe006a3ac9f0602  # v5.0.1
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2  # v5.3.0
         with:
           dotnet-version: '10.0.x'
 
@@ -31,7 +31,24 @@ jobs:
         run: dotnet tool install -g docfx
 
       - name: Copy README to docs index
+        # The README is the documentation site home page. It is copied into
+        # docs/ as a build artifact (docs/index.md is gitignored) so the source
+        # README is never modified.
         run: cp README.md docs/index.md
+
+      - name: Rewrite README links for the docs site
+        # Operates only on the generated copy (docs/index.md), never the source
+        # README, so repo-relative links keep working for GitHub browsing.
+        #  - docs/<guide>.md -> <guide>.md  (guides render flat in the site;
+        #    docfx rewrites .md -> .html and preserves #anchors)
+        #  - .github/* and LICENSE -> absolute GitHub URLs (these are repo-meta
+        #    files that are not rendered into the site)
+        run: |
+          sed -i \
+            -e 's|](docs/|](|g' \
+            -e 's|](.github/|](https://github.com/tsmarvin/BridgeBeats/blob/develop/.github/|g' \
+            -e 's|](LICENSE)|](https://github.com/tsmarvin/BridgeBeats/blob/develop/LICENSE)|g' \
+            docs/index.md
 
       - name: Build documentation
         run: docfx docs/docfx.json
@@ -40,7 +57,7 @@ jobs:
         run: touch _site/.nojekyll
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b  # v4.0.0
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
         with:
           path: '_site'
 
@@ -54,4 +71,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4.0.5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0
