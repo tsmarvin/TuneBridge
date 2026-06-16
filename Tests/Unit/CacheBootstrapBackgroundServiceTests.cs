@@ -81,7 +81,10 @@ public class CacheBootstrapBackgroundServiceTests {
         _settings = new CacheBootstrapSettings(
             s_testPdsUri,
             TestUserDid,
-            TimeSpan.FromHours( 6 )
+            TimeSpan.FromHours( 6 ),
+            CacheDays: 30,
+            RefreshInterval: TimeSpan.FromHours( 24 ),
+            MaxRecordsPerRun: 100
         );
     }
 
@@ -297,7 +300,12 @@ public class CacheBootstrapBackgroundServiceTests {
         TimeSpan interval = TimeSpan.FromHours( 12 );
 
         // Act
-        CacheBootstrapSettings settings = new( pdsUri, userDid, interval );
+        CacheBootstrapSettings settings = new(
+            pdsUri, userDid, interval,
+            CacheDays: 30,
+            RefreshInterval: TimeSpan.FromHours( 24 ),
+            MaxRecordsPerRun: 100
+        );
 
         // Assert
         Assert.AreEqual( pdsUri, settings.PdsUri );

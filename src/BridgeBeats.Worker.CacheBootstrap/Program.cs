@@ -1,4 +1,6 @@
+using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Extensions;
 using BridgeBeats.Core.Infrastructure.Cache;
 using BridgeBeats.Core.Infrastructure.Extensions;
@@ -64,7 +66,8 @@ public static class Program {
 
         // Read and validate credentials
         (string atProtoIdentifier, string atProtoPassword, string atProtoUserDID,
-            string atProtoPdsUri, int cacheDays, int bootstrapIntervalHours) =
+            string atProtoPdsUri, int cacheDays, int bootstrapIntervalHours,
+            int refreshIntervalHours, int maxRecordsPerRun) =
                 ValidateConfiguration( builder );
 
         // Register ATProto session manager and storage service (centralized authentication)
@@ -87,27 +90,50 @@ public static class Program {
         _ = builder.Services.AddSingleton( new CacheBootstrapSettings(
             new Uri( atProtoPdsUri ),
             atProtoUserDID,
-            TimeSpan.FromHours( bootstrapIntervalHours )
+            TimeSpan.FromHours( bootstrapIntervalHours ),
+            cacheDays,
+            TimeSpan.FromHours( refreshIntervalHours ),
+            maxRecordsPerRun
         ) );
         _ = builder.Services.AddHostedService<CacheBootstrapBackgroundService>( );
+
+        // Detect and register enabled providers for the stale-cache refresh sweep
+        HashSet<SupportedProviders> enabledProviders = DetectEnabledProviders( builder );
+        _ = builder.Services.AddSingleton( enabledProviders );
+
+        // Queue settings (required by the saga manager and provider queues)
+        _ = builder.Services.Configure<QueueSettings>(
+            builder.Configuration.GetSection( "BridgeBeats:Queue" )
+        );
+
+        // Queue infrastructure: deduplicator, rate-limit tracker, saga state manager
+        _ = builder.Services.AddQueueInfrastructure( );
+
+        // Per-provider queues and resolver (so the refresh sweep can enqueue to any provider)
+        _ = builder.Services.AddAllProviderQueues<QueuedLookupRequest>( );
+
+        // Stale-cache refresh sweep (runs independently of the bootstrap service)
+        _ = builder.Services.AddHostedService<StaleCacheRefreshBackgroundService>( );
     }
 
     /// <summary>
     /// Reads and validates the ATProto credentials and bootstrap settings from configuration. The PDS
-    /// URI, cache-retention days, and bootstrap interval fall back to defaults when unset; the user DID
-    /// is validated with
+    /// URI, cache-retention days, bootstrap interval, refresh interval, and max records per run fall
+    /// back to defaults when unset; the user DID is validated with
     /// <see cref="Core.Infrastructure.Storage.ATProtoUriHelper.ValidateDid(string, string)"/>.
     /// </summary>
     /// <param name="builder">The host application builder whose configuration is read.</param>
     /// <returns>
     /// A tuple of the ATProto identifier, app password, user DID, PDS URI, cache-retention days
-    /// (default 30), and bootstrap interval in hours (default 6).
+    /// (default 30), bootstrap interval in hours (default 6), stale-cache refresh interval in hours
+    /// (default 24), and max stale records per refresh run (default 100).
     /// </returns>
     /// <exception cref="InvalidOperationException">
     /// Thrown when any of the required ATProto credentials are missing or blank.
     /// </exception>
     private static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID,
-        string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours) ValidateConfiguration(
+        string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours,
+        int RefreshIntervalHours, int MaxRecordsPerRun) ValidateConfiguration(
             HostApplicationBuilder builder
     ) {
         string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
@@ -117,6 +143,8 @@ public static class Program {
             ?? "https://pds.bridgebeats.link";
         int cacheDays = builder.Configuration.GetValue("BridgeBeats:CacheDays", 30);
         int bootstrapIntervalHours = builder.Configuration.GetValue("BridgeBeats:BootstrapIntervalHours", 6);
+        int refreshIntervalHours = builder.Configuration.GetValue("BridgeBeats:RefreshIntervalHours", 24);
+        int maxRecordsPerRun = builder.Configuration.GetValue("BridgeBeats:MaxRecordsPerRun", 100);
 
         if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
             string.IsNullOrWhiteSpace( atProtoPassword ) ||
@@ -130,7 +158,48 @@ public static class Program {
         // Validate DID format (must start with did:plc: or did:web:)
         ATProtoUriHelper.ValidateDid( atProtoUserDID, "BridgeBeats:ATProtoUserDID" );
 
-        return (atProtoIdentifier, atProtoPassword, atProtoUserDID, atProtoPdsUri, cacheDays, bootstrapIntervalHours);
+        return (atProtoIdentifier, atProtoPassword, atProtoUserDID, atProtoPdsUri, cacheDays,
+            bootstrapIntervalHours, refreshIntervalHours, maxRecordsPerRun);
+    }
+
+    /// <summary>
+    /// Determines which providers are enabled for secondary fan-out by reading the
+    /// <c>BridgeBeats:EnabledProviders</c> CSV from configuration (set by the AppHost) and falling
+    /// back to detecting presence of per-provider credentials when the list is absent.
+    /// </summary>
+    /// <param name="builder">The host application builder whose configuration is read.</param>
+    /// <returns>The set of <see cref="SupportedProviders"/> enabled for queue-based re-lookups.</returns>
+    private static HashSet<SupportedProviders> DetectEnabledProviders( HostApplicationBuilder builder ) {
+        HashSet<SupportedProviders> enabledProviders = [];
+
+        string? enabledProvidersList = builder.Configuration["BridgeBeats:EnabledProviders"];
+        if (!string.IsNullOrWhiteSpace( enabledProvidersList )) {
+            foreach (string providerName in enabledProvidersList.Split(
+                ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries )) {
+                if (Enum.TryParse<SupportedProviders>( providerName, ignoreCase: true, out SupportedProviders provider )) {
+                    _ = enabledProviders.Add( provider );
+                }
+            }
+            return enabledProviders;
+        }
+
+        if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientId"] ) &&
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:SpotifyClientSecret"] )) {
+            _ = enabledProviders.Add( SupportedProviders.Spotify );
+        }
+
+        if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleTeamId"] ) &&
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyId"] ) &&
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyPath"] )) {
+            _ = enabledProviders.Add( SupportedProviders.AppleMusic );
+        }
+
+        if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:TidalClientId"] ) &&
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:TidalClientSecret"] )) {
+            _ = enabledProviders.Add( SupportedProviders.Tidal );
+        }
+
+        return enabledProviders;
     }
 
     /// <summary>
