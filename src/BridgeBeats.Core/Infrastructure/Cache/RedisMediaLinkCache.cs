@@ -233,23 +233,20 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
     }
 
     /// <summary>
-    /// Stores a result on the PDS and (re)builds its Redis lookup pointers.
+    /// Indexes an already-stored result by its <paramref name="recordUri"/>, (re)building all
+    /// Redis lookup pointers. Does NOT write the result body to the PDS.
     /// </summary>
-    /// <param name="result">The result to store and index.</param>
-    /// <param name="cancellationToken">Token forwarded to the PDS write.</param>
-    /// <returns>The PDS record URI the pointers reference.</returns>
-    /// <remarks>
-    /// Writes the body to the PDS first (creating/updating with a deterministic rkey), then clears
-    /// any stale lookup keys for the record and adds the current set of pointers. The PDS write is
-    /// the durable step; the Redis pointers are derived and can be rebuilt.
-    /// </remarks>
+    /// <param name="result">The result whose lookup keys are indexed.</param>
+    /// <param name="recordUri">The AT-URI of the already-stored PDS record.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>A task that completes when the Redis pointers have been (re)built.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="result"/> is null.</exception>
-    public async Task<string> CacheResultAsync( MediaLinkResult result, CancellationToken cancellationToken = default ) {
+    /// <exception cref="ArgumentException">Thrown when <paramref name="recordUri"/> is null, empty, or whitespace.</exception>
+    public async Task IndexResultAsync( MediaLinkResult result, string recordUri, CancellationToken cancellationToken = default ) {
         ArgumentNullException.ThrowIfNull( result );
+        ArgumentException.ThrowIfNullOrWhiteSpace( recordUri );
 
         try {
-            // Store on ATProto PDS first (creates/updates with deterministic rkey)
-            string recordUri = await _atprotoStorage.StoreMediaLinkResultAsync( result, cancellationToken );
             string rkey = RecordKeyGenerator.GenerateRkey( result );
 
             // Remove old lookup keys before adding new ones (explicit cleanup on refresh)
@@ -263,7 +260,6 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
                 string sanitizedRecordUri = recordUri.SanitizeForLogging( );
                 LogCachedResult( _logger, sanitizedRkey, sanitizedRecordUri );
             }
-            return recordUri;
         } catch (Exception ex) {
             LogCacheError( _logger, ex );
             throw;

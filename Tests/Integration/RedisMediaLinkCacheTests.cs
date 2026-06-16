@@ -87,29 +87,24 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies caching a track result writes the ISRC index key in Redis pointing at the stored record
-    /// URI.
+    /// Verifies indexing a track result writes the ISRC index key in Redis pointing at the record URI.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task CacheResultAsync_StoresLookupKeys_InRedis( ) {
+    public async Task IndexResultAsync_StoresLookupKeys_InRedis( ) {
         // Arrange
         MediaLinkResult result = CreateTestResult( "USRC12345678", false );
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:USRC12345678";
-
-        _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
 
         _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
         // Act
-        string cachedUri = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
-        // Assert
-        Assert.AreEqual( recordUri, cachedUri );
+        // Assert — body not re-stored inside the cache method
+        _mockAtProto.Verify( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
 
         // Verify ISRC key exists
         IDatabase db = s_redis!.GetDatabase( );
@@ -130,14 +125,10 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:ISRC999888777";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
-        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
         // Act
         (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
@@ -160,14 +151,10 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/album:123456789012";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
-        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
         // Act
         (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
@@ -192,14 +179,10 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:TESTISRC001";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
-        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
         // Act
         (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
@@ -222,14 +205,10 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:CARDTEST123";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
-        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
         // Get the card ID from the result
         string rkey = RecordKeyGenerator.GenerateRkey( result );
@@ -256,14 +235,10 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:PROVIDERTEST";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
-        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
         // Act
         (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
@@ -280,7 +255,7 @@ public class RedisMediaLinkCacheTests {
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task CacheResultAsync_CleansUpOldKeys_OnRefresh( ) {
+    public async Task IndexResultAsync_CleansUpOldKeys_OnRefresh( ) {
         // Arrange
         MediaLinkResult result1 = CreateTestResult( "REFRESHTEST1", false );
         result1.InputLinks.Add( "https://old.url/track1" );
@@ -288,14 +263,10 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:REFRESHTEST1";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result1 );
 
-        _ = await _cache.CacheResultAsync( result1, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result1, recordUri, TestContext.CancellationToken );
 
         // Verify old URL is cached
         IDatabase db = s_redis!.GetDatabase( );
@@ -303,7 +274,7 @@ public class RedisMediaLinkCacheTests {
         RedisValue oldValue = await db.StringGetAsync( $"lookup:url:{oldUrlHash}" );
         Assert.IsFalse( oldValue.IsNullOrEmpty, "Old URL should be cached" );
 
-        // Now cache the same result with a different URL (simulating refresh)
+        // Now index the same result with a different URL (simulating refresh)
         MediaLinkResult result2 = CreateTestResult( "REFRESHTEST1", false );
         result2.InputLinks.Add( "https://new.url/track1" );
 
@@ -311,7 +282,10 @@ public class RedisMediaLinkCacheTests {
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result2 );
 
-        _ = await _cache.CacheResultAsync( result2, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result2, recordUri, TestContext.CancellationToken );
+
+        // Assert — body not re-stored inside the cache method
+        _mockAtProto.Verify( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
 
         // Assert: Old URL key should be removed
         RedisValue oldValueAfterRefresh = await db.StringGetAsync( $"lookup:url:{oldUrlHash}" );
@@ -350,14 +324,10 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:STALETEST123";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
-        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
         // Act
         (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
@@ -381,14 +351,10 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:PARTIALTEST123";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
-        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
         // Act
         (MediaLinkResult cachedResult, string cachedUri, bool isStale)? lookupResult =
@@ -411,15 +377,11 @@ public class RedisMediaLinkCacheTests {
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:SKIPTEST123";
 
         _ = _mockAtProto
-            .Setup( s => s.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( recordUri );
-
-        _ = _mockAtProto
             .Setup( s => s.GetMediaLinkResultAsync( recordUri ) )
             .ReturnsAsync( result );
 
         // First call - should write to Redis
-        _ = await _cache.CacheResultAsync( result, TestContext.CancellationToken );
+        await _cache.IndexResultAsync( result, recordUri, TestContext.CancellationToken );
 
         // Get the ISRC key value and TTL after first write
         IDatabase db = s_redis!.GetDatabase( );

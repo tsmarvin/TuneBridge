@@ -243,12 +243,12 @@ public sealed partial class SagaCoordinatorBackgroundService(
                     // Write initial result as partial and notify waiters immediately
                     // while secondary lookups continue in the background
                     LogWaitingForSecondaryLookups( _logger, sagaId );
-                    await WritePartialResultAsync( saga, ct );
+                    await WriteResultAsync( saga, terminal: false, ct );
                     return;
                 }
             }
 
-            await WriteFinalResultAsync( saga, ct );
+            await WriteResultAsync( saga, terminal: true, ct );
         } catch (Exception ex) {
             LogFailedToProcessSaga( _logger, ex, sagaId );
         }
@@ -294,20 +294,20 @@ public sealed partial class SagaCoordinatorBackgroundService(
                         // Write initial result as partial and notify waiters immediately
                         // while secondary lookups continue in the background
                         LogWaitingForSecondaryLookups( _logger, sagaId );
-                        await WritePartialResultAsync( saga, ct );
+                        await WriteResultAsync( saga, terminal: false, ct );
                         return;
                     }
                 }
 
                 if (string.IsNullOrEmpty( saga.FinalResultUri )) {
-                    await WriteFinalResultAsync( saga, ct );
+                    await WriteResultAsync( saga, terminal: true, ct );
                 }
                 return;
             }
 
             // If saga is partial, handle partial result
             if (saga.IsPartial && string.IsNullOrEmpty( saga.PartialResultUri )) {
-                await WritePartialResultAsync( saga, ct );
+                await WriteResultAsync( saga, terminal: false, ct );
             }
         } catch (Exception ex) {
             LogFailedLookupCompletion( _logger, ex, sagaId );
@@ -360,7 +360,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
                             // Write initial result as partial and notify waiters immediately
                             // while secondary lookups continue in the background
                             LogWaitingForSecondaryLookups( _logger, saga.SagaId );
-                            await WritePartialResultAsync( saga, ct );
+                            await WriteResultAsync( saga, terminal: false, ct );
                             continue;
                         }
                     }
@@ -368,12 +368,12 @@ public sealed partial class SagaCoordinatorBackgroundService(
                     // Check if saga is partial and needs partial result written first
                     if (saga.IsPartial && string.IsNullOrEmpty( saga.PartialResultUri )) {
                         LogWritingPartialDuringPolling( _logger, saga.SagaId );
-                        await WritePartialResultAsync( saga, ct );
+                        await WriteResultAsync( saga, terminal: false, ct );
                     }
 
                     // Write final result
                     LogFinalizingDuringPolling( _logger, saga.SagaId );
-                    await WriteFinalResultAsync( saga, ct );
+                    await WriteResultAsync( saga, terminal: true, ct );
                 } catch (Exception ex) {
                     LogFailedDuringPolling( _logger, ex, saga.SagaId );
                     // Continue with next saga - don't fail the entire polling cycle
@@ -387,155 +387,205 @@ public sealed partial class SagaCoordinatorBackgroundService(
     }
 
     /// <summary>
-    /// Finalizes a saga. Combines the provider results; if none succeeded, releases the dedup lock with
-    /// no URI and deletes the saga. Otherwise writes the combined result to the ATProto PDS, records the
-    /// returned record URI on the saga, clears its partial flag, caches the result, and releases the
-    /// dedup lock with the final record URI so waiters receive it. On a write failure the dedup lock is
-    /// still released (with no URI) so callers are never left blocked.
+    /// Writes the saga result to the ATProto PDS. Drives both the terminal (all-providers-complete)
+    /// and non-terminal (partial, while secondaries are still outstanding) paths through a single
+    /// unified sequence: combine → generation CAS → PDS write → record URI → cache → release dedup.
     /// </summary>
-    /// <param name="saga">The saga to finalize.</param>
+    /// <remarks>
+    /// <para>
+    /// The write-generation compare-and-set ensures each provider-count level is written at most once,
+    /// bounding total PDS writes to the number of providers. When the CAS fails (stored generation
+    /// already at or above the requested generation) the method returns immediately with no write.
+    /// </para>
+    /// <para>
+    /// On the terminal path, <see cref="ISagaStateManager.TryClaimFinalizeAsync"/> provides the
+    /// exactly-once guarantee for post-write bookkeeping (URI recording, partial-flag clear, dedup
+    /// release). On the non-terminal path the write-generation CAS alone prevents double writes and
+    /// no finalize claim is used.
+    /// </para>
+    /// <para>
+    /// On a pre-durability PDS write failure, the write generation is reset to its prior value so
+    /// the next trigger can re-advance and re-write. After the durability line the generation is
+    /// retained and the finalize claim (terminal path) is not released, preventing re-entrant writes
+    /// against an already-recorded URI.
+    /// </para>
+    /// </remarks>
+    /// <param name="saga">The saga to write a result for.</param>
+    /// <param name="terminal">
+    /// <see langword="true"/> when every provider has reported in and the result is final;
+    /// <see langword="false"/> when secondary lookups are still outstanding.
+    /// </param>
     /// <param name="ct">A token that cancels the operation.</param>
-    /// <returns>A task that completes when finalization (or its failure cleanup) is done.</returns>
-    private async Task WriteFinalResultAsync( LookupSagaState saga, CancellationToken ct ) {
-        LogAssemblingFinalResult( _logger, saga.SagaId, saga.ProviderStates.Count );
+    /// <returns>A task that completes when the write (or its failure cleanup) is done.</returns>
+    private async Task WriteResultAsync( LookupSagaState saga, bool terminal, CancellationToken ct ) {
+        if (terminal) {
+            LogAssemblingFinalResult( _logger, saga.SagaId, saga.ProviderStates.Count );
+        } else if (_logger.IsEnabled( LogLevel.Information )) {
+            int completedCount = saga.ProviderStates.Count( kv => kv.Value.IsComplete );
+            int totalCount = saga.ProviderStates.Count;
+            LogAssemblingPartialResult( _logger, saga.SagaId, completedCount, totalCount );
+        }
 
-        // Combine results from all successful providers
-        MediaLinkResult? finalResult = _resultCombiner.CombineResults( saga );
+        MediaLinkResult? finalResult = _resultCombiner.CombineResults( saga, allowIncomplete: !terminal );
 
         if (finalResult is null) {
-            LogNoSuccessfulResults( _logger, saga.SagaId );
-
-            // Release the deduplication lock with null to indicate failure
-            await _deduplicator.ReleaseAsync( saga.LookupKey, null, ct );
-
-            // Delete the saga
-            _ = await _sagaManager.DeleteAsync( saga.SagaId, ct );
-            return;
-        }
-
-        // Atomically claim the exclusive right to finalize this saga. Exactly one concurrent
-        // handler wins; losers return silently so only one PDS write occurs.
-        bool claimed = await _sagaManager.TryClaimFinalizeAsync( saga.SagaId, ct );
-        if (!claimed) {
-            LogFinalizationClaimLost( _logger, saga.SagaId );
-            return;
-        }
-
-        bool uriRecorded = false;
-
-        try {
-            // Write to ATProto
-            string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( finalResult, ct );
-
-            LogWroteFinalToAtProto( _logger, saga.SagaId, recordUri );
-
-            // Update saga with final result URI. The durability line: once this returns the URI is
-            // durably stored. A failure after this point must NOT release the claim — re-entering
-            // would issue a second PDS write against an already-recorded URI.
-            await _sagaManager.SetFinalResultUriAsync( saga.SagaId, recordUri, ct );
-            uriRecorded = true;
-
-            // Clear the partial flag - the saga now represents a complete result
-            await _sagaManager.SetIsPartialAsync( saga.SagaId, false, ct );
-
-            // Update Redis cache
-            _ = await _cacheRepository.CacheResultAsync( finalResult, ct );
-
-            LogCachedFinalResult( _logger, saga.SagaId );
-
-            // Release the deduplication lock with the result URI
-            await _deduplicator.ReleaseAsync( saga.LookupKey, recordUri, ct );
-
-            LogSuccessfullyFinalized( _logger, saga.SagaId, finalResult.Results.Count );
-        } catch (OperationCanceledException) {
-            // Before the durability line: release the claim so the next host restart can re-finalize.
-            // After the durability line: retain the claim — re-entering would issue a second PDS write
-            // against a URI that is already recorded. The dedup lock is never released here in either
-            // case (the saga is healthy; no premature empty completion).
-            if (!uriRecorded) {
-                await _sagaManager.ReleaseFinalizeClaimAsync( saga.SagaId, CancellationToken.None );
-            }
-            throw;
-        } catch (Exception ex) {
-            LogFailedToWriteFinal( _logger, ex, saga.SagaId );
-
-            // Only release the claim and dedup lock when the URI has not yet been durably recorded.
-            // If the URI is already recorded, retaining the claim prevents a re-entrant PDS write;
-            // releasing the dedup lock with null here would hand waiters an empty result for a saga
-            // that succeeded — a clean lock timeout is strictly better in that case.
-            if (!uriRecorded) {
-                await _sagaManager.ReleaseFinalizeClaimAsync( saga.SagaId, ct );
+            if (terminal) {
+                // Complete saga with zero successes: release waiters and discard the saga.
+                LogNoSuccessfulResults( _logger, saga.SagaId );
                 await _deduplicator.ReleaseAsync( saga.LookupKey, null, ct );
+                _ = await _sagaManager.DeleteAsync( saga.SagaId, ct );
+            } else {
+                // No successful results yet on the non-terminal path: nothing to write.
+                // More providers are still outstanding; wait for the next trigger.
+                LogNoSuccessfulPartialResults( _logger, saga.SagaId );
+            }
+            return;
+        }
+
+        if (terminal) {
+            // Terminal path: gated by the finalize claim only. The generation CAS is not
+            // used here because the generation counts successful providers, and a saga that
+            // completes via the last leg failing has the same generation it had when the
+            // previous partial was written — the CAS would refuse to advance and the saga
+            // would never finalize. The finalize claim (HSETNX) provides the single-winner
+            // guarantee for this path.
+            bool claimed = await _sagaManager.TryClaimFinalizeAsync( saga.SagaId, ct );
+            if (!claimed) {
+                LogFinalizationClaimLost( _logger, saga.SagaId );
+                return;
+            }
+
+            bool uriRecorded = false;
+
+            try {
+                string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( finalResult, ct );
+
+                LogWroteFinalToAtProto( _logger, saga.SagaId, recordUri );
+
+                // Durability line: once this returns the URI is durably stored. A failure after
+                // this point must NOT release the claim — re-entering would issue a second PDS
+                // write against an already-recorded URI.
+                await _sagaManager.SetFinalResultUriAsync( saga.SagaId, recordUri, ct );
+                uriRecorded = true;
+
+                // Clear the partial flag before releasing waiters so the waiter's isFinal read
+                // is already authoritative by the time it wakes.
+                await _sagaManager.SetIsPartialAsync( saga.SagaId, false, ct );
+
+                await _deduplicator.ReleaseAsync( saga.LookupKey, recordUri, ct );
+
+                LogSuccessfullyFinalized( _logger, saga.SagaId, finalResult.Results.Count );
+
+                // Best-effort: index after releasing waiters so a cache failure never delays
+                // wakeup. Swallow all exceptions — the result is already durably written.
+                try {
+                    await _cacheRepository.IndexResultAsync( finalResult, recordUri, ct );
+                    LogCachedFinalResult( _logger, saga.SagaId );
+                } catch (Exception indexEx) {
+                    LogPostReleaseIndexFailed( _logger, indexEx, saga.SagaId );
+                }
+            } catch (OperationCanceledException) {
+                // Before the durability line: release the claim so the next host restart can
+                // re-finalize. After the durability line: retain the claim — re-entering would
+                // issue a second PDS write against an already-recorded URI. The dedup lock is
+                // not released here in either case.
+                if (!uriRecorded) {
+                    await _sagaManager.ReleaseFinalizeClaimAsync( saga.SagaId, CancellationToken.None );
+                }
+                throw;
+            } catch (Exception ex) {
+                LogFailedToWriteFinal( _logger, ex, saga.SagaId );
+
+                // Only release the claim before the durability line. After the URI is recorded,
+                // retaining the claim prevents a re-entrant PDS write; releasing the dedup lock
+                // with null would hand waiters an empty result for a saga that succeeded.
+                if (!uriRecorded) {
+                    await _sagaManager.ReleaseFinalizeClaimAsync( saga.SagaId, ct );
+                    await _deduplicator.ReleaseAsync( saga.LookupKey, null, ct );
+                }
+            }
+        } else {
+            // Non-terminal (partial) path: gated by the write-generation CAS. This bounds the
+            // total partial writes to ≤ the number of distinct successful-provider-count levels
+            // observed, which is ≤ the number of providers N.
+            int generation = finalResult.Results.Count;
+
+            if (!await _sagaManager.TryAdvanceWriteGenerationAsync( saga.SagaId, generation, ct )) {
+                return;
+            }
+
+            finalResult.IsPartial = true;
+            finalResult.RateLimitedProviders = saga.RateLimitInfo?.Select( r => r.Provider ).ToList( );
+
+            bool uriRecorded = false;
+
+            try {
+                string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( finalResult, ct );
+
+                LogWrotePartialToAtProto( _logger, saga.SagaId, recordUri );
+
+                await _sagaManager.SetPartialResultUriAsync( saga.SagaId, recordUri, ct );
+                uriRecorded = true;
+
+                await _deduplicator.ReleaseAsync( saga.LookupKey, recordUri, ct );
+
+                LogSuccessfullyWrotePartial( _logger, saga.SagaId, finalResult.Results.Count );
+
+                // Best-effort: index after releasing waiters so a cache failure never delays
+                // wakeup. Swallow all exceptions — the result is already durably written.
+                try {
+                    await _cacheRepository.IndexResultAsync( finalResult, recordUri, ct );
+                } catch (Exception indexEx) {
+                    LogPostReleaseIndexFailed( _logger, indexEx, saga.SagaId );
+                }
+            } catch (OperationCanceledException) {
+                // Before the durability line: reset the generation so the next trigger can
+                // re-advance and re-write. After the durability line: retain — re-entering
+                // would issue a second partial write against a URI that is already recorded.
+                // The dedup lock is not released in either case.
+                if (!uriRecorded) {
+                    await _sagaManager.ResetWriteGenerationAsync( saga.SagaId, generation, generation - 1, CancellationToken.None );
+                }
+                throw;
+            } catch (Exception ex) {
+                LogFailedToWritePartial( _logger, ex, saga.SagaId );
+
+                // Only reset the generation before the durability line. After the URI is
+                // recorded, retaining the generation prevents a re-entrant duplicate partial
+                // write.
+                if (!uriRecorded) {
+                    await _sagaManager.ResetWriteGenerationAsync( saga.SagaId, generation, generation - 1, ct );
+                }
             }
         }
     }
 
     /// <summary>
-    /// Test-only entry point that delegates directly to <see cref="WriteFinalResultAsync"/> so
-    /// integration tests can drive the finalize claim path without running the full
-    /// <see cref="ExecuteAsync"/> polling loop. Not used in production code paths.
+    /// Test-only entry point that delegates directly to <see cref="WriteResultAsync"/> for the
+    /// terminal (final-result) path, so integration tests can drive the finalize claim path without
+    /// running the full <see cref="ExecuteAsync"/> polling loop. Not used in production code paths.
     /// </summary>
     /// <param name="saga">The saga to finalize.</param>
     /// <param name="ct">A token that cancels the operation.</param>
     /// <returns>A task that completes when finalization (or its failure cleanup) is done.</returns>
     internal Task InvokeFinalizeForTestAsync( LookupSagaState saga, CancellationToken ct )
-        => WriteFinalResultAsync( saga, ct );
+        => WriteResultAsync( saga, terminal: true, ct );
 
     /// <summary>
-    /// Writes an interim partial result for a saga whose providers have not all completed (for example
-    /// while secondary lookups are still in flight). Combines whatever provider results exist so far,
-    /// marks the result partial, records which providers were rate-limited, persists it to the PDS,
-    /// caches it, records the partial-result URI on the saga, and notifies waiters so they receive a
-    /// best-effort answer rather than blocking. Does nothing if no provider result is available yet.
+    /// Test-only entry point that delegates directly to <see cref="WriteResultAsync"/>, parameterized
+    /// by <paramref name="terminal"/>, so tests can drive both the final-result and partial-result
+    /// write paths without running the full <see cref="ExecuteAsync"/> polling loop. Not used in
+    /// production code paths.
     /// </summary>
-    /// <param name="saga">The saga to write a partial result for.</param>
+    /// <param name="saga">The saga to write a result for.</param>
+    /// <param name="terminal">
+    /// <see langword="true"/> to exercise the final-result path; <see langword="false"/> for the
+    /// partial-result path.
+    /// </param>
     /// <param name="ct">A token that cancels the operation.</param>
-    /// <returns>A task that completes when the partial result has been written (or skipped).</returns>
-    private async Task WritePartialResultAsync( LookupSagaState saga, CancellationToken ct ) {
-        if (_logger.IsEnabled( LogLevel.Debug )) {
-            int completedCount = saga.ProviderStates.Count( kv => kv.Value.IsComplete );
-            int totalCount = saga.ProviderStates.Count;
-            LogAssemblingPartialResult(
-                _logger,
-                saga.SagaId,
-                completedCount,
-                totalCount
-            );
-        }
-
-        // Combine results from completed providers (may be partial)
-        MediaLinkResult? partialResult = _resultCombiner.CombineResults( saga, allowIncomplete: true );
-
-        if (partialResult is null) {
-            LogNoSuccessfulPartialResults( _logger, saga.SagaId );
-            return;
-        }
-
-        // Mark the result as partial
-        partialResult.IsPartial = true;
-        partialResult.RateLimitedProviders = saga.RateLimitInfo?.Select( r => r.Provider ).ToList( );
-
-        try {
-            // Write partial result to ATProto
-            string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( partialResult, ct );
-
-            LogWrotePartialToAtProto( _logger, saga.SagaId, recordUri );
-
-            // Update saga with partial result URI
-            await _sagaManager.SetPartialResultUriAsync( saga.SagaId, recordUri, ct );
-
-            // Update Redis cache with partial result (can be refreshed later)
-            _ = await _cacheRepository.CacheResultAsync( partialResult, ct );
-
-            // Release the deduplication lock with the partial result URI
-            // This allows waiting clients to receive partial results immediately
-            await _deduplicator.ReleaseAsync( saga.LookupKey, recordUri, ct );
-
-            LogSuccessfullyWrotePartial( _logger, saga.SagaId, partialResult.Results.Count );
-        } catch (Exception ex) {
-            LogFailedToWritePartial( _logger, ex, saga.SagaId );
-        }
-    }
+    /// <returns>A task that completes when the write (or its failure cleanup) is done.</returns>
+    internal Task InvokeWriteForTestAsync( LookupSagaState saga, bool terminal, CancellationToken ct )
+        => WriteResultAsync( saga, terminal, ct );
 
     /// <summary>
     /// Publishes a saga id to the literal <c>saga:completed</c> Pub/Sub channel so the coordinator
@@ -1253,6 +1303,16 @@ public sealed partial class SagaCoordinatorBackgroundService(
         Level = LogLevel.Warning,
         Message = "Failed to enqueue any secondary lookups for saga {SagaId} with external ID {ExternalId}; deferring finalization so waiters receive a partial result and the lookup is retried after the saga expires" )]
     private static partial void LogNoSecondariesEnqueued( ILogger logger, string sagaId, string externalId );
+
+    /// <summary>Logs that cache indexing failed after the result was written and waiters were released; the failure is non-fatal.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown during indexing.</param>
+    /// <param name="sagaId">The saga whose post-release cache indexing failed.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.PostReleaseIndexFailed,
+        Level = LogLevel.Warning,
+        Message = "Post-release cache indexing failed for saga {SagaId}; result is written and waiters are released" )]
+    private static partial void LogPostReleaseIndexFailed( ILogger logger, Exception ex, string sagaId );
 
     #endregion
 }

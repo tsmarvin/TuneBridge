@@ -82,13 +82,15 @@ public interface IMediaLinkCacheRepository {
     Task<(MediaLinkResult result, string recordUri, bool isStale)?> TryGetCachedResultByCardIdAsync( string cardId );
 
     /// <summary>
-    /// Stores or updates (upserts) a finished result, indexing it under all of its lookup keys,
-    /// and returns the AT-URI of the backing record.
+    /// Indexes an already-stored result by its <paramref name="recordUri"/>, (re)building all
+    /// Redis lookup pointers for the result. Does NOT write the result body to the PDS; the caller
+    /// is responsible for the durable PDS write and passes the resulting URI here.
     /// </summary>
-    /// <param name="result">The <see cref="MediaLinkResult"/> to cache.</param>
+    /// <param name="result">The <see cref="MediaLinkResult"/> whose lookup keys are indexed.</param>
+    /// <param name="recordUri">The AT-URI (<c>at://…</c>) of the already-stored PDS record.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
-    /// <returns>A task whose result is the AT-URI (<c>at://…</c>) of the cached record.</returns>
-    Task<string> CacheResultAsync( MediaLinkResult result, CancellationToken cancellationToken = default );
+    /// <returns>A task that completes when the Redis pointers have been (re)built.</returns>
+    Task IndexResultAsync( MediaLinkResult result, string recordUri, CancellationToken cancellationToken = default );
 
     /// <summary>
     /// Registers additional input-link aliases for a record that is already cached, so future

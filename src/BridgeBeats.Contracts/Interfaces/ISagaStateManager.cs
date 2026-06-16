@@ -212,6 +212,40 @@ public interface ISagaStateManager {
     Task ReleaseFinalizeClaimAsync( string sagaId, CancellationToken cancellationToken = default );
 
     /// <summary>
+    /// Atomically advances the saga's write generation to <paramref name="generation"/> only when
+    /// the stored generation is strictly less than <paramref name="generation"/>. Guards against
+    /// redundant PDS writes: exactly one concurrent handler wins per generation level, so the
+    /// total number of writes is bounded by the number of providers.
+    /// </summary>
+    /// <param name="sagaId">The saga id to advance.</param>
+    /// <param name="generation">The generation to advance to; typically the number of provider results in the combined result.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>
+    /// A task whose result is <see langword="true"/> when this caller advanced the generation (and
+    /// must perform the PDS write), or <see langword="false"/> when the stored generation was
+    /// already at or above <paramref name="generation"/> and the write should be skipped.
+    /// </returns>
+    Task<bool> TryAdvanceWriteGenerationAsync( string sagaId, int generation, CancellationToken cancellationToken = default );
+
+    /// <summary>
+    /// Conditionally resets the saga's write generation from <paramref name="advancedTo"/> back to
+    /// <paramref name="priorGeneration"/>, used exclusively on the non-terminal pre-durability PDS
+    /// write failure path so the next retry can re-advance and re-write. The reset is a conditional
+    /// compare-and-set: it only takes effect when the stored generation still equals
+    /// <paramref name="advancedTo"/>, so a concurrent handler that has already advanced further is
+    /// not regressed. Must not be called after a successful write.
+    /// </summary>
+    /// <param name="sagaId">The saga id whose write generation should be reset.</param>
+    /// <param name="advancedTo">
+    /// The generation this caller previously advanced to; the stored value must equal this for the
+    /// reset to take effect.
+    /// </param>
+    /// <param name="priorGeneration">The generation to restore; typically <c>advancedTo - 1</c>.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>A task that completes when the conditional reset attempt has been made.</returns>
+    Task ResetWriteGenerationAsync( string sagaId, int advancedTo, int priorGeneration, CancellationToken cancellationToken = default );
+
+    /// <summary>
     /// Seeds the saga with an initial, not-yet-complete provider state for each of the given
     /// providers at the start of a saga, so the set of providers that must complete is known.
     /// </summary>

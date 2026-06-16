@@ -62,6 +62,15 @@ public sealed record LookupSagaState {
     [JsonPropertyName( "isPartial" )]
     public bool IsPartial { get; init; }
 
+    /// <summary>
+    /// The highest provider-count already durably written to the PDS for this saga. Guards
+    /// against redundant writes: a write for generation <c>k</c> proceeds only when the stored
+    /// generation is strictly less than <c>k</c>, ensuring each provider-count level is written
+    /// at most once and the write count is bounded by the number of providers.
+    /// </summary>
+    [JsonPropertyName( "writeGeneration" )]
+    public int WriteGeneration { get; init; }
+
     /// <summary>The provider that seeded this lookup (the source URL's provider), when known.</summary>
     [JsonPropertyName( "initialProvider" )]
     [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]

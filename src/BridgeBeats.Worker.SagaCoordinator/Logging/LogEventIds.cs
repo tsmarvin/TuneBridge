@@ -167,4 +167,7 @@ public static class LogEventIds {
 
     /// <summary>The finalize claim for a saga was already held by another handler; this handler is skipping finalization.</summary>
     public const int FinalizationClaimLost = 5054;
+
+    /// <summary>Post-release cache indexing failed; the result is already written and waiters are released, so the failure is swallowed.</summary>
+    public const int PostReleaseIndexFailed = 5055;
 }
