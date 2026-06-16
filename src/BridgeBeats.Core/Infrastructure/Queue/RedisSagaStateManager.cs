@@ -574,13 +574,13 @@ public sealed partial class RedisSagaStateManager(
     /// <paramref name="generation"/> and the write should be skipped.
     /// </returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
-    public async Task<bool> TryAdvanceWriteGenerationAsync( string sagaId, int generation, CancellationToken ct = default ) {
-        ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+public async Task<bool> TryAdvanceWriteGenerationAsync( string sagaId, int generation, CancellationToken ct = default ) {
+    ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+    ArgumentOutOfRangeException.ThrowIfLessThan( generation, 1 );
 
-        string key = GetSagaKey( sagaId );
-        IDatabase db = _redis.GetDatabase( );
-        TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
-
+    string key = GetSagaKey( sagaId );
+    IDatabase db = _redis.GetDatabase( );
+    TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
         RedisResult result = await db.ScriptEvaluateAsync(
             AdvanceWriteGenerationScript,
             keys: [key],
@@ -632,13 +632,15 @@ public sealed partial class RedisSagaStateManager(
     /// <param name="ct">A cancellation token (not currently observed).</param>
     /// <returns>A task that completes when the conditional reset attempt has been made and the TTL optionally refreshed.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
-    public async Task ResetWriteGenerationAsync( string sagaId, int advancedTo, int priorGeneration, CancellationToken ct = default ) {
-        ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+public async Task ResetWriteGenerationAsync( string sagaId, int advancedTo, int priorGeneration, CancellationToken ct = default ) {
+    ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+    ArgumentOutOfRangeException.ThrowIfLessThan( advancedTo, 1 );
+    ArgumentOutOfRangeException.ThrowIfLessThan( priorGeneration, 0 );
+    ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual( priorGeneration, advancedTo );
 
-        string key = GetSagaKey( sagaId );
-        IDatabase db = _redis.GetDatabase( );
-        TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
-
+    string key = GetSagaKey( sagaId );
+    IDatabase db = _redis.GetDatabase( );
+    TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
         RedisResult result = await db.ScriptEvaluateAsync(
             ResetWriteGenerationScript,
             keys: [key],
