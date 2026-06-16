@@ -1838,6 +1838,14 @@ public class SagaCoordinatorBackgroundServiceTests {
             s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never
         );
+
+        // Assert - dedup must never be released with null on this path; releasing null would hand
+        // waiters an empty completion for a saga whose result was already recorded
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( It.IsAny<string>( ), null, It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Post-URI failure must not release the dedup lock with null"
+        );
     }
 
     /// <summary>
@@ -2351,6 +2359,14 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Never,
             "Non-terminal write must not release a finalize claim it never held"
         );
+
+        // Assert - dedup must never be released with null on this path; releasing null would hand
+        // waiters an empty completion for a saga whose result was already recorded
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( It.IsAny<string>( ), null, It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Post-URI failure on the non-terminal path must not release the dedup lock with null"
+        );
     }
 
     /// <summary>
@@ -2543,6 +2559,207 @@ public class SagaCoordinatorBackgroundServiceTests {
         _atProtoStorageMock.Verify(
             a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that when <c>IndexResultAsync</c> throws after the durability line on the terminal
+    /// path, the deduplicator is still released with the non-null record URI and the method
+    /// completes without propagating the exception. The result is already durably written; cache
+    /// indexing is best-effort and must not interrupt waiter wakeup or bubble out.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_WhenIndexFailsAfterDurability_StillReleasesDedupAndDoesNotThrow( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "cache indexing failed" ) );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act — must complete without throwing even though IndexResultAsync fails
+        await service.InvokeWriteForTestAsync( completeSaga, terminal: true, cts.Token );
+
+        // Assert - dedup released with the non-null URI; the null sentinel must never reach waiters
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( TestLookupKey, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "Dedup must be released with the record URI even when post-release indexing fails"
+        );
+
+        // Assert - URI was durably stored before the release
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert - finalize claim was never returned; it is retained to prevent re-entrant writes
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Post-release index failure must not release the finalize claim"
+        );
+    }
+
+    /// <summary>
+    /// Verifies that when <c>IndexResultAsync</c> throws after the durability line on the
+    /// non-terminal path, the deduplicator is still released with the non-null record URI and the
+    /// method completes without propagating the exception. The partial result is already durably
+    /// written; cache indexing is best-effort and must not interrupt waiter wakeup or bubble out.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WritePartial_WhenIndexFailsAfterDurability_StillReleasesDedupAndDoesNotThrow( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState partialSaga = CreateCompleteSaga( ) with { IsPartial = true };
+
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.SetPartialResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "cache indexing failed" ) );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act — must complete without throwing even though IndexResultAsync fails
+        await service.InvokeWriteForTestAsync( partialSaga, terminal: false, cts.Token );
+
+        // Assert - dedup released with the non-null URI; the null sentinel must never reach waiters
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( TestLookupKey, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "Dedup must be released with the record URI even when post-release indexing fails"
+        );
+
+        // Assert - write generation was not reset; the durability line was crossed
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Post-release index failure must not reset the write generation"
+        );
+
+        // Assert - finalize claim was never acquired or released on the non-terminal path
+        _sagaManagerMock.Verify(
+            s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not call TryClaimFinalizeAsync"
+        );
+    }
+
+    /// <summary>
+    /// Verifies that when <c>IndexResultAsync</c> throws <see cref="OperationCanceledException"/>
+    /// after the durability line on the terminal path, the deduplicator is still released with the
+    /// non-null record URI and the method completes without propagating the exception. The result is
+    /// already durably written; an OCE from best-effort cache indexing must not interrupt waiter
+    /// wakeup or bubble to the outer rethrowing <c>catch (OperationCanceledException)</c>.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Finalize_WhenIndexCanceledAfterDurability_StillReleasesDedupAndDoesNotThrow( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new OperationCanceledException( ) );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act — must complete without throwing even though IndexResultAsync is canceled
+        await service.InvokeWriteForTestAsync( completeSaga, terminal: true, cts.Token );
+
+        // Assert - dedup released with the non-null URI; an OCE from indexing must not suppress waiter wakeup
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( TestLookupKey, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "Dedup must be released with the record URI even when post-release indexing is canceled"
+        );
+
+        // Assert - finalize claim was never returned; it is retained to prevent re-entrant writes
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Post-release OCE from indexing must not release the finalize claim"
+        );
+    }
+
+    /// <summary>
+    /// Verifies that when <c>IndexResultAsync</c> throws <see cref="OperationCanceledException"/>
+    /// after the durability line on the non-terminal path, the deduplicator is still released with
+    /// the non-null record URI and the method completes without propagating the exception. An OCE
+    /// from best-effort cache indexing must not interrupt waiter wakeup or bubble out.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WritePartial_WhenIndexCanceledAfterDurability_StillReleasesDedupAndDoesNotThrow( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState partialSaga = CreateCompleteSaga( ) with { IsPartial = true };
+
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _sagaManagerMock
+            .Setup( s => s.SetPartialResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new OperationCanceledException( ) );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act — must complete without throwing even though IndexResultAsync is canceled
+        await service.InvokeWriteForTestAsync( partialSaga, terminal: false, cts.Token );
+
+        // Assert - dedup released with the non-null URI; an OCE from indexing must not suppress waiter wakeup
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( TestLookupKey, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "Dedup must be released with the record URI even when post-release indexing is canceled"
+        );
+
+        // Assert - write generation was not reset; the durability line was crossed
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Post-release OCE from indexing must not reset the write generation"
+        );
+
+        // Assert - finalize claim was never acquired or released on the non-terminal path
+        _sagaManagerMock.Verify(
+            s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not call TryClaimFinalizeAsync"
         );
     }
 

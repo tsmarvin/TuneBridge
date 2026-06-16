@@ -346,12 +346,13 @@ public class SagaWriteGenerationIntegrationTests {
     }
 
     /// <summary>
-    /// Positive control: sequential handlers for distinct generations 1 then 2 each produce one
-    /// write. This distinguishes the duplicate-suppression mechanism from accidental total suppression.
+    /// Verifies that sequential advances through distinct generations 0→1→2 are each accepted by
+    /// the strict-less-than CAS. Each new generation is strictly greater than the stored value, so
+    /// <c>TryAdvanceWriteGenerationAsync</c> returns <see langword="true"/> for both calls.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task SequentialDistinctGenerations_EachProduceOnePdsWrite( ) {
+    public async Task SequentialDistinctGenerations_AreEachAcceptedByTheCas( ) {
         // Arrange - seed the saga
         _ = await _sagaManager.GetOrCreateAsync(
             TestSagaId, TestLookupKey, LookupRequestType.IsrcLookup, "USRC99999002",

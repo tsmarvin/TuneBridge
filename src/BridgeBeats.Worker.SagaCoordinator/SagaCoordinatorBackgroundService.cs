@@ -468,15 +468,22 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 await _sagaManager.SetFinalResultUriAsync( saga.SagaId, recordUri, ct );
                 uriRecorded = true;
 
+                // Clear the partial flag before releasing waiters so the waiter's isFinal read
+                // is already authoritative by the time it wakes.
                 await _sagaManager.SetIsPartialAsync( saga.SagaId, false, ct );
-
-                await _cacheRepository.IndexResultAsync( finalResult, recordUri, ct );
-
-                LogCachedFinalResult( _logger, saga.SagaId );
 
                 await _deduplicator.ReleaseAsync( saga.LookupKey, recordUri, ct );
 
                 LogSuccessfullyFinalized( _logger, saga.SagaId, finalResult.Results.Count );
+
+                // Best-effort: index after releasing waiters so a cache failure never delays
+                // wakeup. Swallow all exceptions — the result is already durably written.
+                try {
+                    await _cacheRepository.IndexResultAsync( finalResult, recordUri, ct );
+                    LogCachedFinalResult( _logger, saga.SagaId );
+                } catch (Exception indexEx) {
+                    LogPostReleaseIndexFailed( _logger, indexEx, saga.SagaId );
+                }
             } catch (OperationCanceledException) {
                 // Before the durability line: release the claim so the next host restart can
                 // re-finalize. After the durability line: retain the claim — re-entering would
@@ -520,11 +527,17 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 await _sagaManager.SetPartialResultUriAsync( saga.SagaId, recordUri, ct );
                 uriRecorded = true;
 
-                await _cacheRepository.IndexResultAsync( finalResult, recordUri, ct );
-
                 await _deduplicator.ReleaseAsync( saga.LookupKey, recordUri, ct );
 
                 LogSuccessfullyWrotePartial( _logger, saga.SagaId, finalResult.Results.Count );
+
+                // Best-effort: index after releasing waiters so a cache failure never delays
+                // wakeup. Swallow all exceptions — the result is already durably written.
+                try {
+                    await _cacheRepository.IndexResultAsync( finalResult, recordUri, ct );
+                } catch (Exception indexEx) {
+                    LogPostReleaseIndexFailed( _logger, indexEx, saga.SagaId );
+                }
             } catch (OperationCanceledException) {
                 // Before the durability line: reset the generation so the next trigger can
                 // re-advance and re-write. After the durability line: retain — re-entering
@@ -1290,6 +1303,16 @@ public sealed partial class SagaCoordinatorBackgroundService(
         Level = LogLevel.Warning,
         Message = "Failed to enqueue any secondary lookups for saga {SagaId} with external ID {ExternalId}; deferring finalization so waiters receive a partial result and the lookup is retried after the saga expires" )]
     private static partial void LogNoSecondariesEnqueued( ILogger logger, string sagaId, string externalId );
+
+    /// <summary>Logs that cache indexing failed after the result was written and waiters were released; the failure is non-fatal.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown during indexing.</param>
+    /// <param name="sagaId">The saga whose post-release cache indexing failed.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.PostReleaseIndexFailed,
+        Level = LogLevel.Warning,
+        Message = "Post-release cache indexing failed for saga {SagaId}; result is written and waiters are released" )]
+    private static partial void LogPostReleaseIndexFailed( ILogger logger, Exception ex, string sagaId );
 
     #endregion
 }
