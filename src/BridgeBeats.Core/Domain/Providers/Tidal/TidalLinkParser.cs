@@ -169,10 +169,10 @@ namespace BridgeBeats.Providers.Tidal {
                 .Replace( "{trackId}", trackId );
 
         /// <summary>Template for the ISRC-filtered tracks request, side-loading albums and artists.</summary>
-        private const string TracksIsrcURI = "tracks?filter%5Bisrc%5D={isrc}&countryCode={storefront}&include=albums&include=artists";
+        private const string TracksIsrcURI = "tracks?filter%5Bisrc%5D={isrc}&countryCode={storefront}&include=albums,artists";
 
         /// <summary>Template for the UPC-filtered albums request, side-loading artists and cover art.</summary>
-        private const string AlbumsUpcURI = "albums?filter%5BbarcodeId%5D={upc}&countryCode={storefront}&include=artists&include=coverArt";
+        private const string AlbumsUpcURI = "albums?filter%5BbarcodeId%5D={upc}&countryCode={storefront}&include=artists,coverArt";
 
         /// <summary>Template for the artist search request, side-loading matching artist resources.</summary>
         private const string ArtistSearchURI = "searchResults/{artist}?countryCode={storefront}&explicitFilter=include&include=artists";
@@ -184,10 +184,10 @@ namespace BridgeBeats.Providers.Tidal {
         private const string ArtistTrackRelationshipsUri = "artists/{artistId}/relationships/tracks?countryCode={storefront}&collapseBy=FINGERPRINT&include=tracks";
 
         /// <summary>Template for the track-by-id request, side-loading albums and artists.</summary>
-        private const string TrackIdUri = "tracks/{trackId}?countryCode={storefront}&include=albums&include=artists";
+        private const string TrackIdUri = "tracks/{trackId}?countryCode={storefront}&include=albums,artists";
 
         /// <summary>Template for the album-by-id request, side-loading artists and cover art.</summary>
-        private const string AlbumIdUri = "albums/{albumId}?countryCode={storefront}&include=artists&include=coverArt";
+        private const string AlbumIdUri = "albums/{albumId}?countryCode={storefront}&include=artists,coverArt";
 
     }
 }

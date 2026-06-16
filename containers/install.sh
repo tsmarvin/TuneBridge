@@ -131,101 +131,68 @@ secret_has_content() {
     return 1
 }
 
-# Generate a random string using available methods
+# Generate a cryptographically secure random string using openssl
 generate_random_string() {
-    if command -v openssl &> /dev/null; then
-        openssl rand -base64 32
-    elif [[ -f /dev/urandom ]]; then
-        head -c 32 /dev/urandom | base64
-    else
-        # Fallback - not cryptographically secure but better than nothing
-        echo "REPLACE_WITH_RANDOM_VALUE_$(date +%s)_$$"
-    fi
+    openssl rand -base64 32
 }
 
 # Generate an ES256 (P-256) signing key in JWK format
 generate_es256_jwk() {
-    if command -v openssl &> /dev/null; then
-        # Generate an EC P-256 key pair with openssl
-        local privkey
-        privkey=$(openssl ecparam -genkey -name prime256v1 -noout 2>/dev/null)
+    # Generate an EC P-256 key pair with openssl
+    local privkey
+    privkey=$(openssl ecparam -genkey -name prime256v1 -noout 2>/dev/null)
 
-        # Export key parameters
-        local params
-        params=$(echo "$privkey" | openssl ec -text -noout 2>/dev/null)
+    # Export key parameters as human-readable text
+    local params
+    params=$(echo "$privkey" | openssl ec -text -noout 2>/dev/null)
 
-        # Use a small inline Python/Python3 script to parse and emit JWK
-        if command -v python3 &> /dev/null; then
-            echo "$privkey" | python3 -c "
-import sys, json, hashlib, base64, uuid
-from subprocess import run, PIPE
+    # Extract the private-key hex lines (between "priv:" and "pub:") and strip colons
+    local priv_hex
+    priv_hex=$(echo "$params" \
+        | awk '/^priv:/{found=1; next} /^pub:/{found=0} found{print}' \
+        | tr -d ' :\n')
 
-pem = sys.stdin.read()
-# Use openssl to get the raw key bytes
-result = run(['openssl', 'ec', '-text', '-noout'], input=pem, capture_output=True, text=True)
-lines = result.stdout.strip().split('\n')
+    # Extract the public-key hex lines (between "pub:" and "ASN1 OID:") and strip colons
+    local pub_hex
+    pub_hex=$(echo "$params" \
+        | awk '/^pub:/{found=1; next} /^ASN1 OID:/{found=0} found{print}' \
+        | tr -d ' :\n')
 
-# Parse the hex bytes from openssl output
-hex_bytes = ''
-in_priv = False
-in_pub = False
-priv_hex = ''
-pub_hex = ''
-for line in lines:
-    line = line.strip()
-    if 'priv:' in line:
-        in_priv = True
-        in_pub = False
-        continue
-    elif 'pub:' in line:
-        in_priv = False
-        in_pub = True
-        continue
-    elif 'ASN1 OID:' in line or 'NIST CURVE:' in line:
-        in_priv = False
-        in_pub = False
-        continue
-    if in_priv:
-        priv_hex += line.replace(':', '')
-    if in_pub:
-        pub_hex += line.replace(':', '')
-
-priv_bytes = bytes.fromhex(priv_hex)
-pub_bytes = bytes.fromhex(pub_hex)
-
-# Public key is 04 || x || y (uncompressed)
-if pub_bytes[0] == 0x04:
-    x = pub_bytes[1:33]
-    y = pub_bytes[33:65]
-else:
-    sys.exit(1)
-
-# Ensure d is exactly 32 bytes (pad with leading zeros if needed)
-d = priv_bytes[-32:] if len(priv_bytes) >= 32 else priv_bytes.rjust(32, b'\x00')
-
-def b64url(b):
-    return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
-
-jwk = {
-    'kty': 'EC',
-    'crv': 'P-256',
-    'x': b64url(x),
-    'y': b64url(y),
-    'd': b64url(d),
-    'kid': uuid.uuid4().hex,
-    'alg': 'ES256',
-    'use': 'sig'
-}
-print(json.dumps(jwk))
-"
-        else
-            echo '{}' # Placeholder if python3 not available
-            echo "[WARN] python3 not found - ATProto OAuth key needs manual generation" >&2
-        fi
-    else
-        echo '{}' # Placeholder if openssl not available
-        echo "[WARN] openssl not found - ATProto OAuth key needs manual generation" >&2
+    # Validate the public key starts with 04 (uncompressed point prefix)
+    if [ "${pub_hex:0:2}" != "04" ]; then
+        echo "[WARN] openssl ec output format unexpected - ATProto OAuth key needs manual generation" >&2
+        return 1
     fi
+
+    # Slice x and y from the uncompressed public key (04 || x[32] || y[32])
+    # Each coordinate is 32 bytes = 64 hex chars; skip the leading "04" (2 hex chars)
+    local x_hex="${pub_hex:2:64}"
+    local y_hex="${pub_hex:66:64}"
+
+    # Left-pad d to exactly 32 bytes (64 hex chars) with leading zeros
+    # openssl may emit fewer than 32 bytes when the leading byte(s) are zero
+    local d_hex
+    d_hex=$(printf '%064s' "$priv_hex" | tr ' ' '0')
+    # Take the rightmost 64 hex chars in case openssl emitted more than 32 bytes
+    d_hex="${d_hex: -64}"
+
+    # base64url-encode a hex string: convert hex pairs to \xNN escapes, emit binary via
+    # printf, then encode with openssl base64 (no line-wrap) and apply URL-safe charset.
+    # Input is strictly validated hex [0-9a-f] — no % characters, safe as printf format.
+    b64url_from_hex() {
+        local hex_escapes
+        hex_escapes=$(printf '%s' "$1" | sed 's/\(..\)/\\x\1/g')
+        printf "$hex_escapes" | openssl base64 -A | tr '+/' '-_' | tr -d '='
+    }
+
+    local x_b64 y_b64 d_b64 kid
+    x_b64=$(b64url_from_hex "$x_hex")
+    y_b64=$(b64url_from_hex "$y_hex")
+    d_b64=$(b64url_from_hex "$d_hex")
+    kid=$(openssl rand -hex 16)
+
+    printf '{"kty":"EC","crv":"P-256","x":"%s","y":"%s","d":"%s","kid":"%s","alg":"ES256","use":"sig"}\n' \
+        "$x_b64" "$y_b64" "$d_b64" "$kid"
 }
 
 # Get environment variable names from a file
@@ -287,11 +254,11 @@ else
     missing_deps+=("curl or wget - Required for downloading files")
 fi
 
-# Check for openssl (optional but recommended)
+# Check for openssl (required for generating secure secrets and the ATProto OAuth signing key)
 if command -v openssl &> /dev/null; then
     echo "[OK] openssl: available (for generating secure random secrets)"
 else
-    warnings+=("openssl not found - Will use fallback for generating random secrets")
+    missing_deps+=("openssl - Required for generating secure secrets and the ATProto OAuth signing key. Install via your package manager, e.g. apt-get install -y openssl")
 fi
 
 # Report missing dependencies

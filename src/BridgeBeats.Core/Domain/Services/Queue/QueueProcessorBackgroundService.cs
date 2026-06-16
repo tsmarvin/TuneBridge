@@ -245,16 +245,16 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
     /// <param name="ct">Cancels the lookup; checked before dispatch.</param>
     /// <returns>The provider result, or <see langword="null"/> when the provider found no match.</returns>
     /// <remarks>
-    /// <see cref="LookupRequestType.ArtistAlbumLookup"/> and <see cref="LookupRequestType.AlbumTrackLookup"/>
-    /// intentionally throw <see cref="NotImplementedException"/>: they are intra-provider sub-steps, not
-    /// top-level queueable requests, so they are not supported as a dispatch target here. Any other
+    /// Title+artist lookup types (<see cref="LookupRequestType.ArtistLookup"/>,
+    /// <see cref="LookupRequestType.SongLookup"/>, <see cref="LookupRequestType.AlbumLookup"/>,
+    /// <see cref="LookupRequestType.ArtistAlbumLookup"/>, and <see cref="LookupRequestType.AlbumTrackLookup"/>)
+    /// all resolve through <see cref="IMusicLookupService.GetInfoAsync(string, string)"/>, which performs
+    /// the artist-to-album and album-to-track expansion internally. The request must carry non-null
+    /// <see cref="QueuedLookupRequest.Title"/> and <see cref="QueuedLookupRequest.Artist"/> values; a
+    /// request missing either falls through to the <see cref="InvalidOperationException"/> arm. Any other
     /// unrecognized type, or a search type missing its title/artist, throws
     /// <see cref="InvalidOperationException"/>.
     /// </remarks>
-    /// <exception cref="NotImplementedException">
-    /// Thrown for <see cref="LookupRequestType.ArtistAlbumLookup"/> and
-    /// <see cref="LookupRequestType.AlbumTrackLookup"/>, which are not supported as standalone requests.
-    /// </exception>
     /// <exception cref="InvalidOperationException">Thrown for an unsupported lookup type or missing required parameters.</exception>
     private async Task<MusicLookupResult?> PerformLookupAsync( QueuedLookupRequest request, CancellationToken ct ) {
         // Check for cancellation before performing the lookup
@@ -273,8 +273,10 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
                 await _lookupService.GetInfoAsync( request.Title, request.Artist ),
             LookupRequestType.AlbumLookup when request is { Title: not null, Artist: not null } =>
                 await _lookupService.GetInfoAsync( request.Title, request.Artist ),
-            LookupRequestType.ArtistAlbumLookup => throw new NotImplementedException( ),
-            LookupRequestType.AlbumTrackLookup => throw new NotImplementedException( ),
+            LookupRequestType.ArtistAlbumLookup when request is { Title: not null, Artist: not null } =>
+                await _lookupService.GetInfoAsync( request.Title, request.Artist ),
+            LookupRequestType.AlbumTrackLookup when request is { Title: not null, Artist: not null } =>
+                await _lookupService.GetInfoAsync( request.Title, request.Artist ),
             _ => throw new InvalidOperationException(
                             $"Unsupported lookup type {request.LookupType} or missing required parameters"
                         )

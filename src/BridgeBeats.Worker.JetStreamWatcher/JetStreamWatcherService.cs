@@ -66,9 +66,10 @@ public sealed partial class JetStreamWatcherService(
 
     /// <summary>
     /// Establishes one Jetstream connection and processes records until cancellation or disconnect.
-    /// Subscribes to the post and repost collections, dispatches each created record to the post or
-    /// repost handler, then polls connection state every 500 ms and closes cleanly when the loop
-    /// ends. Known benign parser errors are suppressed (see <see cref="IsExpectedParsingError"/>).
+    /// Subscribes to the post and repost collections, dispatches each created record through
+    /// <see cref="HandleCommitRecordAsync"/>, then polls connection state every 500 ms and closes
+    /// cleanly when the loop ends. Known benign parser errors are suppressed (see
+    /// <see cref="IsExpectedParsingError"/>).
     /// </summary>
     /// <param name="stoppingToken">Signals host shutdown.</param>
     /// <returns>A task that completes when the connection closes.</returns>
@@ -84,24 +85,7 @@ public sealed partial class JetStreamWatcherService(
                 string.Equals( commitEvent.Commit.Operation, "create", StringComparison.OrdinalIgnoreCase ) &&
                 commitEvent.Commit.Record is not null
             ) {
-                try {
-                    string collection = commitEvent.Commit.Collection.ToString( );
-
-                    if (collection == "app.bsky.feed.post") {
-                        await ProcessPostAsync( commitEvent.Commit.Record, blueskyAgent, stoppingToken );
-                    } else if (collection == "app.bsky.feed.repost") {
-                        await ProcessRepostAsync( commitEvent.Commit.Record, blueskyAgent, stoppingToken );
-                    }
-                } catch (JsonException) {
-                    // Skip records that can't be deserialized - this is expected for some record types
-                } catch (OperationCanceledException) {
-                    // Shutdown in progress
-                } catch (Exception ex) {
-                    // Log unexpected errors but continue processing
-                    if (!IsExpectedParsingError( ex )) {
-                        LogRecordProcessingError( logger, ex );
-                    }
-                }
+                await HandleCommitRecordAsync( commitEvent.Commit.Record, commitEvent.Commit.Collection.ToString( ), blueskyAgent, stoppingToken );
             }
         };
 
@@ -116,6 +100,40 @@ public sealed partial class JetStreamWatcherService(
 
         await jetStream.CloseAsync( cancellationToken: stoppingToken );
         LogDisconnected( logger );
+    }
+
+    /// <summary>
+    /// Dispatches a single committed record to the appropriate handler based on its collection, skipping
+    /// malformed or unrecognized records cleanly. Known benign parsing errors are swallowed silently;
+    /// unexpected errors are logged at Warning so they are visible above the file-sink floor.
+    /// </summary>
+    /// <param name="record">The raw record document from the commit event.</param>
+    /// <param name="collection">The collection name (e.g. <c>app.bsky.feed.post</c>).</param>
+    /// <param name="blueskyAgent">The agent used to hydrate quoted posts and reposts.</param>
+    /// <param name="cancellationToken">Signals host shutdown.</param>
+    /// <returns>A task that completes when the record has been processed or skipped.</returns>
+    internal async Task HandleCommitRecordAsync(
+        JsonDocument record,
+        string collection,
+        BlueskyAgent blueskyAgent,
+        CancellationToken cancellationToken
+    ) {
+        try {
+            if (collection == "app.bsky.feed.post") {
+                await ProcessPostAsync( record, blueskyAgent, cancellationToken );
+            } else if (collection == "app.bsky.feed.repost") {
+                await ProcessRepostAsync( record, blueskyAgent, cancellationToken );
+            }
+        } catch (JsonException) {
+            // Skip records that can't be deserialized - this is expected for some record types
+        } catch (OperationCanceledException) {
+            // Shutdown in progress
+        } catch (Exception ex) {
+            // Log unexpected errors but continue processing
+            if (!IsExpectedParsingError( ex )) {
+                LogRecordProcessingError( logger, ex );
+            }
+        }
     }
 
     /// <summary>
@@ -188,8 +206,19 @@ public sealed partial class JetStreamWatcherService(
         BlueskyAgent blueskyAgent,
         CancellationToken cancellationToken
     ) {
-        JsonElement repostSubject = record.RootElement.GetProperty( "subject" );
+        if (!record.RootElement.TryGetProperty( "subject", out JsonElement repostSubject )) {
+            return;
+        }
+
+        if (repostSubject.ValueKind != JsonValueKind.Object) {
+            return;
+        }
+
         if (!repostSubject.TryGetProperty( "uri", out JsonElement uriElement )) {
+            return;
+        }
+
+        if (uriElement.ValueKind != JsonValueKind.String) {
             return;
         }
 
@@ -476,7 +505,7 @@ public sealed partial class JetStreamWatcherService(
     /// <param name="ex">The processing exception.</param>
     [LoggerMessage(
         EventId = LogEventIds.RecordProcessingError,
-        Level = LogLevel.Debug,
+        Level = LogLevel.Warning,
         Message = "Error processing Jetstream record" )]
     private static partial void LogRecordProcessingError( ILogger logger, Exception ex );
 

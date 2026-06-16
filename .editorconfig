@@ -176,7 +176,6 @@ dotnet_style_prefer_simplified_interpolation = true:suggestion
 dotnet_style_namespace_match_folder = true:suggestion
 dotnet_diagnostic.CA1838.severity = suggestion
 dotnet_diagnostic.CA1848.severity = suggestion
-dotnet_diagnostic.CA1873.severity = suggestion
 dotnet_diagnostic.CA5350.severity = error
 dotnet_diagnostic.CA5351.severity = error
 dotnet_diagnostic.CA5359.severity = warning

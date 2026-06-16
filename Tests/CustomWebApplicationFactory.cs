@@ -30,6 +30,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     private readonly Dictionary<string, string?> _configData;
     /// <summary>Filesystem path of this instance's isolated SQLite identity database.</summary>
     private readonly string _identityDbPath;
+    /// <summary>ATProto environment variables overridden for this factory, with their prior process values, restored on dispose to prevent cross-test contamination.</summary>
+    private readonly List<(string Name, string? PriorValue)> _atProtoEnvRestore;
 
     /// <summary>
     /// Creates a factory with the default test configuration and no overrides.
@@ -69,13 +71,23 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
             ["Aspire:StackExchange:Redis:ConnectionString"] = redisConnectionString,
         };
 
-        // CRITICAL: Set environment variables for ATProto settings to ensure they override user secrets.
-        // The WebApplicationFactory's ConfigureAppConfiguration runs AFTER the app binds configuration,
-        // but environment variables are loaded via AddEnvironmentVariables() which runs during app startup.
-        // This ensures test overrides take effect before DID validation runs.
-        Environment.SetEnvironmentVariable( "BridgeBeats__ATProtoIdentifier", "" );
-        Environment.SetEnvironmentVariable( "BridgeBeats__ATProtoPassword", "" );
-        Environment.SetEnvironmentVariable( "BridgeBeats__ATProtoUserDID", "" );
+        // Force the three ATProto settings empty so the host does not pick up a developer's
+        // local user-secret credentials (which would trip DID validation during service
+        // registration). These must be environment variables: the host binds AppSettings and
+        // runs ATProto validation during eager service registration, before this factory's
+        // in-memory configuration is applied, so the in-memory overlay would land too late.
+        // Prior values are captured and restored in Dispose to keep the override scoped to
+        // this factory's lifetime.
+        string[] atProtoKeys = [
+            "BridgeBeats__ATProtoIdentifier",
+            "BridgeBeats__ATProtoPassword",
+            "BridgeBeats__ATProtoUserDID",
+        ];
+        _atProtoEnvRestore = [];
+        foreach (string key in atProtoKeys) {
+            _atProtoEnvRestore.Add( (key, Environment.GetEnvironmentVariable( key )) );
+            Environment.SetEnvironmentVariable( key, "" );
+        }
 
         // Merge overrides onto defaults (overrides win), EXCEPT for critical test infrastructure keys
         // that must always use the test container connection
@@ -259,13 +271,20 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     }
 
     /// <summary>
-    /// Disposes the test host and deletes this instance's SQLite identity database file.
+    /// Disposes the test host, restores ATProto environment variables to their pre-construction
+    /// values, and deletes this instance's SQLite identity database file.
     /// </summary>
     /// <param name="disposing"><c>true</c> when called from <c>Dispose</c> rather than a finalizer.</param>
     protected override void Dispose( bool disposing ) {
         base.Dispose( disposing );
 
         if (disposing) {
+            // Restore the ATProto env vars captured in the constructor so this factory does
+            // not leak empty ATProto settings into other tests in the same process.
+            foreach ((string name, string? priorValue) in _atProtoEnvRestore) {
+                Environment.SetEnvironmentVariable( name, priorValue );
+            }
+
             // Clean up temp database files
             TryDeleteFile( _identityDbPath );
         }

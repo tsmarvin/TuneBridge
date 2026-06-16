@@ -33,6 +33,9 @@ public class StatisticsServiceTests {
     /// <summary>Statistics settings (PDS URI, user DID, refresh interval, cache TTL) under test.</summary>
     private StatisticsSettings _settings = null!;
 
+    /// <summary>MSTest-injected context; provides per-test cancellation tokens.</summary>
+    public TestContext TestContext { get; set; } = null!;
+
     /// <summary>Test PDS URI the service enumerates records from.</summary>
     private static readonly Uri s_testPdsUri = new( "https://pds.test.example" );
     /// <summary>Test user DID whose repository is enumerated.</summary>
@@ -354,6 +357,150 @@ public class StatisticsServiceTests {
             URL = "https://open.spotify.com/album/test"
         } );
         return (atUri, result);
+    }
+
+    /// <summary>
+    /// Verifies that two successive periodic refreshes (with a non-trivial simulated compute
+    /// duration) both proceed without the second being skipped. This test is designed to
+    /// discriminate between the fixed START-anchored expiry and the old COMPLETION-anchored expiry.
+    ///
+    /// Timing (all relative to the first refresh START):
+    /// <list type="bullet">
+    ///   <item>t=0ms: first refresh starts; <c>refreshStart</c> is captured.</item>
+    ///   <item>t≈100ms: first refresh completes (simulated 100 ms compute delay).</item>
+    ///   <item>Fixed code: <c>_cacheExpiry = refreshStart + 150ms = t150</c>.</item>
+    ///   <item>Old (buggy) code: <c>_cacheExpiry = completion + 150ms ≈ t250</c>.</item>
+    ///   <item>t≈160ms: second refresh fires (60 ms post-completion wait).</item>
+    ///   <item>t160 &gt; t150 (fixed expiry) → fixed code recomputes (correct).</item>
+    ///   <item>t160 &lt; t250 (old expiry) → old code would still see cache as fresh and skip (bug).</item>
+    /// </list>
+    ///
+    /// If the production code were reverted to completion-anchored expiry, the second refresh at
+    /// t≈160 ms would find <c>now &lt; _cacheExpiry</c> (160 &lt; 250) and skip, making
+    /// <c>countAfterSecond == 1</c> rather than 2, causing the assertion below to fail.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task RefreshStatisticsAsync_TwoSuccessivePeriodicRefreshes_NeitherSkipped( ) {
+        // Arrange
+        // CacheDuration = 150ms, ComputeDelay = 100ms, PostCompleteWait = 60ms.
+        // This places the second call at ~t160ms, inside the discriminating window (t150, t250)
+        // where fixed and old code diverge: fixed sees an expired cache (recomputes), old sees a
+        // fresh cache (skips).
+        const int CacheDurationMs = 150;
+        const int ComputeDelayMs = 100;
+        const int PostCompleteWaitMs = 60;
+
+        StatisticsSettings fastSettings = new(
+            s_testPdsUri,
+            TestUserDid,
+            TimeSpan.FromMilliseconds( CacheDurationMs ),
+            TimeSpan.Zero
+        );
+
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( SimulatedSlowEnumerable );
+
+        StatisticsService service = new(
+            _atProtoStorageMock.Object,
+            _redisMock.Object,
+            fastSettings,
+            _loggerMock.Object
+        );
+
+        // Act: first refresh (non-forced, simulates periodic tick 1)
+        _ = await service.RefreshStatisticsAsync( false, CancellationToken.None );
+        int countAfterFirst = _atProtoStorageMock.Invocations.Count( i =>
+            i.Method.Name == nameof( IATProtoStorageService.ListAllRecordsAsync ) );
+
+        // Wait PostCompleteWaitMs after completion (~t160ms from start) — inside the
+        // discriminating window (t150ms fixed expiry, t250ms old completion-anchored expiry).
+        await Task.Delay( PostCompleteWaitMs, TestContext.CancellationToken );
+
+        // Second refresh (non-forced, simulates periodic tick 2)
+        _ = await service.RefreshStatisticsAsync( false, CancellationToken.None );
+        int countAfterSecond = _atProtoStorageMock.Invocations.Count( i =>
+            i.Method.Name == nameof( IATProtoStorageService.ListAllRecordsAsync ) );
+
+        // Assert: both ticks must have resulted in a recompute; the second must not be skipped.
+        Assert.AreEqual( 1, countAfterFirst,
+            "First periodic refresh must enumerate records (not skipped)" );
+        Assert.AreEqual( 2, countAfterSecond,
+            "Second periodic refresh must enumerate records; completion-anchored expiry would still show cache as fresh (~t250ms) at the second call (~t160ms) and skip it" );
+
+        return;
+
+        async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> SimulatedSlowEnumerable( ) {
+            await Task.Delay( ComputeDelayMs, CancellationToken.None );
+            yield break;
+        }
+    }
+
+    /// <summary>
+    /// Verifies that a forced refresh (manual trigger) bypasses the fresh-cache skip guard even
+    /// when the computed expiry would still be in the future, confirming that the start-anchored
+    /// expiry fix preserves the manual-coalescing behavior.
+    /// </summary>
+    [TestMethod]
+    public async Task RefreshStatisticsAsync_ForcedRefreshWhileFresh_AlwaysRecomputes( ) {
+        // Arrange: use a very long cache duration so the cache stays fresh
+        StatisticsSettings longCacheSettings = new(
+            s_testPdsUri,
+            TestUserDid,
+            TimeSpan.FromHours( 24 ),
+            TimeSpan.Zero
+        );
+
+        SetupEmptyRecordList( );
+        StatisticsService service = new(
+            _atProtoStorageMock.Object,
+            _redisMock.Object,
+            longCacheSettings,
+            _loggerMock.Object
+        );
+
+        // First refresh populates cache
+        _ = await service.RefreshStatisticsAsync( false, CancellationToken.None );
+
+        // Force refresh while still fresh
+        _ = await service.RefreshStatisticsAsync( true, CancellationToken.None );
+
+        // Assert: both calls enumerate records — forced bypass is preserved
+        _atProtoStorageMock.Verify(
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Exactly( 2 ) );
+    }
+
+    /// <summary>
+    /// Verifies that when the cache has not yet expired, a non-forced refresh is skipped as
+    /// intended (the manual-coalescing guard remains intact after the expiry-anchor fix).
+    /// </summary>
+    [TestMethod]
+    public async Task RefreshStatisticsAsync_NonForcedRefreshWhileFresh_IsSkipped( ) {
+        // Arrange: long cache duration so the second non-forced call sees a fresh cache
+        StatisticsSettings longCacheSettings = new(
+            s_testPdsUri,
+            TestUserDid,
+            TimeSpan.FromHours( 24 ),
+            TimeSpan.Zero
+        );
+
+        SetupEmptyRecordList( );
+        StatisticsService service = new(
+            _atProtoStorageMock.Object,
+            _redisMock.Object,
+            longCacheSettings,
+            _loggerMock.Object
+        );
+
+        _ = await service.RefreshStatisticsAsync( false, CancellationToken.None );
+        _ = await service.RefreshStatisticsAsync( false, CancellationToken.None );
+
+        // Assert: second non-forced call inside the cache window is skipped — only one enumerate
+        _atProtoStorageMock.Verify(
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once );
     }
 
     /// <summary>
