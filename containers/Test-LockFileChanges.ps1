@@ -161,9 +161,13 @@ function Test-LockEntryDifferent {
         return $false
     }
 
-    $backupJson = $BackupEntry | ConvertTo-Json -Compress
-    $currentJson = $CurrentEntry | ConvertTo-Json -Compress
-    return $backupJson -ne $currentJson
+    # Fallback: compare the stable identity fields directly. Key order from
+    # ConvertFrom-Json -AsHashtable is nondeterministic, so a whole-object JSON
+    # string compare can report a false difference for identical entries.
+    foreach ($field in @('type', 'requested', 'resolved', 'contentHash')) {
+        if ($BackupEntry[$field] -ne $CurrentEntry[$field]) { return $true }
+    }
+    return $false
 }
 
 # Read and parse both lock files

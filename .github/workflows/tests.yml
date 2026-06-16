@@ -40,7 +40,11 @@ jobs:
           for lockfile in $(find . -name "packages.lock.json" ! -name "*.backup"); do
             backup="${lockfile}.backup"
             if [ -f "$backup" ]; then
-              pwsh containers/Test-LockFileChanges.ps1 -BackupPath "$backup" -CurrentPath "$lockfile" -ToPlatform "linux-x64"
+              from_rid=$(grep -oE '"net[0-9.]+/(linux|win|osx)-(x64|x86|arm64|arm)"' "$backup" \
+                | head -n1 | sed -E 's#.*/([a-z0-9-]+)"#\1#')
+              [ -z "$from_rid" ] && from_rid="linux-x64"
+              pwsh containers/Test-LockFileChanges.ps1 -BackupPath "$backup" -CurrentPath "$lockfile" \
+                -FromPlatform "$from_rid" -ToPlatform "linux-x64"
               rm -f "$backup"
             fi
           done

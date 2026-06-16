@@ -4,7 +4,10 @@
     BridgeBeats Installation Script for Windows
 
 .DESCRIPTION
-    This script downloads and configures BridgeBeats for Docker deployment.
+    This script downloads and configures BridgeBeats for Docker deployment on Windows.
+    Linux and macOS hosts must use install.sh instead — it sets the required file ownership
+    and permissions that this Windows installer does not apply.
+
     It validates dependencies, downloads configuration files, sets up secrets,
     and prepares the environment for running BridgeBeats via Docker Compose.
 
@@ -342,6 +345,18 @@ if (Test-Path $logsDir) {
     Write-Ok "Created logs directory: $logsDir"
 }
 
+$dataDirs = @(
+    (Join-Path $Directory 'data\app'),
+    (Join-Path $Directory 'data\dp-keys'),
+    (Join-Path $Directory 'data\redis'),
+    (Join-Path $Directory 'data\pds'),
+    (Join-Path $Directory 'logs\caddy')
+)
+foreach ($d in $dataDirs) {
+    if (-not (Test-Path $d)) { New-Item -Path $d -ItemType Directory -Force | Out-Null }
+}
+Write-Ok 'Data directories present: data\{app,dp-keys,redis,pds}, logs\caddy'
+
 # =============================================================================
 # Check for Existing Containers
 # =============================================================================
@@ -452,9 +467,8 @@ if ($containersExist) {
 # =============================================================================
 Write-Section 'Setting Up Secrets'
 
-# TODO: Test and implement proper Windows ACL permissions for secrets folder
-# The secrets directory should have restricted access similar to Linux (chmod 700)
-# Consider using Set-Acl to restrict access to the current user and container service account
+# On Windows, the secrets directory inherits the current user's profile ACL.
+# Linux-style ownership and mode-700 permission hardening is handled by install.sh on Linux hosts.
 
 if (Test-Path $secretsDir) {
     Write-Ok "Secrets directory already exists: $secretsDir"

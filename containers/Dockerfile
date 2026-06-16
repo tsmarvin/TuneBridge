@@ -22,8 +22,8 @@ RUN DOTNET_RID="linux-x64"; \
     if [ "$TARGETARCH" = "arm64" ]; then DOTNET_RID="linux-arm64"; fi; \
     mkdir -p /build/publish/tools/dcp && \
     mkdir -p /build/publish/tools/dashboard && \
-    DCP_PACKAGE_DIR=$(ls -d /root/.nuget/packages/aspire.hosting.orchestration.${DOTNET_RID}/* | head -n 1) && \
-    DASHBOARD_PACKAGE_DIR=$(ls -d /root/.nuget/packages/aspire.dashboard.sdk.${DOTNET_RID}/* | head -n 1) && \
+    DCP_PACKAGE_DIR=$(ls -d /root/.nuget/packages/aspire.hosting.orchestration.${DOTNET_RID}/* | sort -V | tail -n 1) && \
+    DASHBOARD_PACKAGE_DIR=$(ls -d /root/.nuget/packages/aspire.dashboard.sdk.${DOTNET_RID}/* | sort -V | tail -n 1) && \
     cp -r "${DCP_PACKAGE_DIR}/tools"/* /build/publish/tools/dcp/ && \
     cp -r "${DASHBOARD_PACKAGE_DIR}/tools"/* /build/publish/tools/dashboard/ && \
     chmod +x /build/publish/tools/dcp/dcp

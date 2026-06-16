@@ -579,6 +579,221 @@ public class QueueProcessorBackgroundServiceTests {
         _lookupServiceMock.Verify( l => l.GetInfoAsync( "Test Song", "Test Artist" ), Times.Once );
     }
 
+    /// <summary>
+    /// A <see cref="LookupRequestType.ArtistLookup"/> request routes to <c>GetInfoAsync(title, artist)</c>,
+    /// drawing the title and artist from the request.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task PerformLookup_WithArtistLookup_ShouldCallGetInfoAsyncWithTitleArtist( ) {
+        // Arrange
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.ArtistLookup, "ignored" ) with {
+            Title = "Test Album",
+            Artist = "Test Artist"
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+
+        SetupNotRateLimited( );
+        _ = _lookupServiceMock.Setup( l => l.GetInfoAsync( "Test Album", "Test Artist" ) )
+            .ReturnsAsync( CreateLookupResult( ) );
+        SetupSagaNotComplete( request.SagaId );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert: ArtistLookup arm routes to GetInfoAsync(title, artist)
+        _lookupServiceMock.Verify( l => l.GetInfoAsync( "Test Album", "Test Artist" ), Times.Once );
+        // Negative discriminator: URI lookup is not called
+        _lookupServiceMock.Verify( l => l.GetInfoAsync( It.IsAny<string>( ) ), Times.Never );
+    }
+
+    /// <summary>
+    /// A <see cref="LookupRequestType.ArtistAlbumLookup"/> request with title and artist present
+    /// routes to <c>GetInfoAsync(title, artist)</c>, which performs the artist-to-album expansion
+    /// internally. This verifies that the arm dispatches through the title+artist path and does not
+    /// throw.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task PerformLookup_WithArtistAlbumLookupAndTitleArtist_ShouldCallGetInfoAsyncWithTitleArtist( ) {
+        // Arrange
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.ArtistAlbumLookup, "ignored" ) with {
+            Title = "Test Album",
+            Artist = "Test Artist"
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+
+        SetupNotRateLimited( );
+        _ = _lookupServiceMock.Setup( l => l.GetInfoAsync( "Test Album", "Test Artist" ) )
+            .ReturnsAsync( CreateLookupResult( ) );
+        SetupSagaNotComplete( request.SagaId );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act: test failed before implementation (threw NotImplementedException); passes after
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert: dispatches to GetInfoAsync(title, artist) — does not error-path
+        _lookupServiceMock.Verify( l => l.GetInfoAsync( "Test Album", "Test Artist" ), Times.Once );
+        // Discriminator: single-arg URI overload must not be called (only title+artist overload is used)
+        _lookupServiceMock.Verify( l => l.GetInfoAsync( It.IsAny<string>( ) ), Times.Never );
+        _sagaManagerMock.Verify(
+            s => s.UpdateProviderStateAsync(
+                request.SagaId,
+                It.Is<ProviderLookupState>( state => state.IsSuccess ),
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once );
+    }
+
+    /// <summary>
+    /// A <see cref="LookupRequestType.AlbumTrackLookup"/> request with title and artist present
+    /// routes to <c>GetInfoAsync(title, artist)</c>, which performs the album-to-track expansion
+    /// internally. This verifies that the arm dispatches through the title+artist path and does not
+    /// throw.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task PerformLookup_WithAlbumTrackLookupAndTitleArtist_ShouldCallGetInfoAsyncWithTitleArtist( ) {
+        // Arrange
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.AlbumTrackLookup, "ignored" ) with {
+            Title = "Test Track",
+            Artist = "Test Artist"
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+
+        SetupNotRateLimited( );
+        _ = _lookupServiceMock.Setup( l => l.GetInfoAsync( "Test Track", "Test Artist" ) )
+            .ReturnsAsync( CreateLookupResult( ) );
+        SetupSagaNotComplete( request.SagaId );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act: test failed before implementation (threw NotImplementedException); passes after
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert: dispatches to GetInfoAsync(title, artist) — does not error-path
+        _lookupServiceMock.Verify( l => l.GetInfoAsync( "Test Track", "Test Artist" ), Times.Once );
+        // Discriminator: single-arg URI overload must not be called (only title+artist overload is used)
+        _lookupServiceMock.Verify( l => l.GetInfoAsync( It.IsAny<string>( ) ), Times.Never );
+        _sagaManagerMock.Verify(
+            s => s.UpdateProviderStateAsync(
+                request.SagaId,
+                It.Is<ProviderLookupState>( state => state.IsSuccess ),
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once );
+    }
+
+    /// <summary>
+    /// A <see cref="LookupRequestType.ArtistAlbumLookup"/> request missing title or artist falls
+    /// through to the <see cref="InvalidOperationException"/> arm, records a failed provider state,
+    /// and does not call any lookup method.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task PerformLookup_WithArtistAlbumLookupMissingTitleArtist_ShouldRecordFailedState( ) {
+        // Arrange: no Title or Artist on the request
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.ArtistAlbumLookup, "some-value" ) with {
+            AttemptCount = 1  // below max so it goes through HandleProcessingExceptionAsync
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+
+        SetupNotRateLimited( );
+        SetupSagaNotComplete( request.SagaId );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert: falls through to error handling — IsSuccess == false, ErrorMessage != null
+        _sagaManagerMock.Verify(
+            s => s.UpdateProviderStateAsync(
+                request.SagaId,
+                It.Is<ProviderLookupState>( state =>
+                    !state.IsSuccess &&
+                    state.ErrorMessage != null
+                ),
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once );
+        // The lookup service is never called
+        _lookupServiceMock.Verify( l => l.GetInfoAsync( It.IsAny<string>( ), It.IsAny<string>( ) ), Times.Never );
+    }
+
+    /// <summary>
+    /// A <see cref="LookupRequestType.AlbumTrackLookup"/> request missing title or artist falls
+    /// through to the <see cref="InvalidOperationException"/> arm and records a failed provider state.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task PerformLookup_WithAlbumTrackLookupMissingTitleArtist_ShouldRecordFailedState( ) {
+        // Arrange: no Title or Artist on the request
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.AlbumTrackLookup, "some-value" ) with {
+            AttemptCount = 1
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+
+        SetupNotRateLimited( );
+        SetupSagaNotComplete( request.SagaId );
+
+        int callCount = 0;
+        _ = _queueMock.Setup( q => q.DequeueAsync( It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+
+        // Act
+        using CancellationTokenSource cts = new( );
+        Task serviceTask = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        // Assert: falls through to error handling
+        _sagaManagerMock.Verify(
+            s => s.UpdateProviderStateAsync(
+                request.SagaId,
+                It.Is<ProviderLookupState>( state =>
+                    !state.IsSuccess &&
+                    state.ErrorMessage != null
+                ),
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once );
+        _lookupServiceMock.Verify( l => l.GetInfoAsync( It.IsAny<string>( ), It.IsAny<string>( ) ), Times.Never );
+    }
+
     #endregion
 
     #region Rate Limit Exception Handling Tests

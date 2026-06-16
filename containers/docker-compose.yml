@@ -10,7 +10,7 @@ services:
       - internal
     environment:
       - DOMAIN=${DOMAIN:-bridgebeats.link}
-      - NODE_NUMBER=${NODE_NUMBER:-100}
+      - NODE_NUMBER=${NODE_NUMBER:-0}
       - DEFAULT_LOGLEVEL=${DEFAULT_LOGLEVEL:-Information}
       - HOSTING_DEFAULT_LOGLEVEL=${HOSTING_DEFAULT_LOGLEVEL:-Information}
       - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}

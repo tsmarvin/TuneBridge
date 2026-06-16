@@ -129,10 +129,11 @@ public sealed partial class StatisticsService(
                     LogRefreshingStatistics( logger, pdsUriString, settings.UserDid );
                 }
 
+                DateTimeOffset refreshStart = DateTimeOffset.UtcNow;
                 LookupStatistics stats = await ComputeStatisticsAsync(cancellationToken);
 
                 _cachedStats = stats;
-                _cacheExpiry = DateTimeOffset.UtcNow + settings.CacheDuration;
+                _cacheExpiry = refreshStart + settings.CacheDuration;
 
                 LogStatisticsRefreshed( logger, stats.TotalRecords, _cacheExpiry );
 

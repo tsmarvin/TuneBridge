@@ -20,6 +20,22 @@ curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/contain
 iwr -useb https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.ps1 | iex
 ```
 
+**Reviewing the installer before running it.** The one-liners above download and execute a script in a single step. To inspect it first:
+
+```bash
+curl -fsSL -o install.sh https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.sh
+less install.sh   # review
+bash install.sh   # run after review
+```
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.ps1 -OutFile install.ps1
+# review install.ps1, then:
+.\install.ps1
+```
+
+Piping straight to `bash`/`iex` runs unreviewed remote code as your user. Prefer the reviewed flow on hosts you do not control. If signed releases with published checksums become available, verify the checksum before executing.
+
 ### Installation Options
 
 Customize the installation with parameters:
@@ -210,7 +226,7 @@ NODE_NUMBER=0
 NODE_NUMBER=1
 ```
 
-> **Verify:** multi-shard Discord operation depends on the node-number wiring in `src/BridgeBeats.AppHost/Program.cs` and the Discord worker. The single-host compose stack runs one instance (default `NODE_NUMBER=100`); confirm shard assignment before deploying multiple Discord-connected instances.
+> **Verify:** multi-shard Discord operation depends on the node-number wiring in `src/BridgeBeats.AppHost/Program.cs` and the Discord worker. The single-host compose stack runs one instance (default `NODE_NUMBER=0`); confirm shard assignment before deploying multiple Discord-connected instances.
 
 ## Security Considerations
 

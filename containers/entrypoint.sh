@@ -115,7 +115,7 @@ RESILIENCE_ATTEMPT_TIMEOUT_SECONDS="${RESILIENCE_ATTEMPT_TIMEOUT_SECONDS:-120}"
 escape_bs() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
 
 # 0) Create required directories
-mkdir -p /app/data/logs
+mkdir -p "$LOG_DIR_PATH"
 mkdir -p "$DATA_PROTECTION_KEY_PATH"
 
 # 1) Remove existing appsettings.json from /src/BridgeBeats.Web/ if present
