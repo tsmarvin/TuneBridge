@@ -1,0 +1,286 @@
+using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Queue;
+using Microsoft.Extensions.Logging;
+using Moq;
+using StackExchange.Redis;
+
+namespace BridgeBeats.Tests.Integration;
+
+/// <summary>
+/// Integration tests for <see cref="RedisRateLimitTracker"/> against a real Redis instance (the shared
+/// Testcontainers Redis). Verifies storing and reading per-provider, per-endpoint rate-limit state with
+/// TTL, that already-expired limits are not stored, clearing, listing all rate-limited endpoints for a
+/// provider, cross-provider isolation, and automatic expiry. Requires Docker to be running on the host
+/// machine.
+/// </summary>
+[TestClass]
+[TestCategory( "Integration" )]
+[TestCategory( "Docker" )]
+public class RedisRateLimitTrackerTests {
+
+    /// <summary>The shared Redis connection used by the tracker under test.</summary>
+    private static IConnectionMultiplexer? s_redis;
+
+    /// <summary>Mock logger captured for the tracker under test.</summary>
+    private Mock<ILogger<RedisRateLimitTracker>> _mockLogger = null!;
+    /// <summary>The tracker under test, recreated for each test.</summary>
+    private RedisRateLimitTracker _tracker = null!;
+
+    /// <summary>The MSTest-injected test context.</summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Requires the shared Redis container and opens a connection to it for the test class.
+    /// </summary>
+    /// <param name="_">The MSTest class context (unused).</param>
+    [ClassInitialize]
+    public static async Task ClassInitialize( TestContext _ ) {
+        SharedTestInfrastructure.RequireRedis( );
+        s_redis = await ConnectionMultiplexer.ConnectAsync( SharedTestInfrastructure.RedisConnectionString );
+    }
+
+    /// <summary>
+    /// Closes and disposes the Redis connection after the class completes.
+    /// </summary>
+    [ClassCleanup]
+    public static async Task ClassCleanup( ) {
+        if (s_redis is not null) {
+            await s_redis.CloseAsync( );
+            s_redis.Dispose( );
+        }
+    }
+
+    /// <summary>
+    /// Clears leftover <c>ratelimit:*</c> keys and constructs a fresh tracker before each test.
+    /// </summary>
+    [TestInitialize]
+    public async Task TestInitialize( ) {
+        // Clear only rate limit-related keys before each test
+        IDatabase db = s_redis!.GetDatabase( );
+        IServer server = s_redis.GetServer( s_redis.GetEndPoints( )[0] );
+        await foreach (RedisKey key in server.KeysAsync( pattern: "ratelimit:*" )) {
+            _ = await db.KeyDeleteAsync( key );
+        }
+
+        _mockLogger = new Mock<ILogger<RedisRateLimitTracker>>( );
+
+        _tracker = new RedisRateLimitTracker(
+            s_redis,
+            _mockLogger.Object
+        );
+    }
+
+    /// <summary>
+    /// Verifies the state for an endpoint with no stored limit reports not rate limited with no
+    /// retry-after or time-remaining.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task GetStateAsync_ReturnsNotRateLimited_WhenNoEntry( ) {
+        // Act
+        RateLimitState state = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            TestContext.CancellationToken
+        );
+
+        // Assert
+        Assert.IsFalse( state.IsRateLimited );
+        Assert.IsNull( state.RetryAfter );
+        Assert.IsNull( state.TimeRemaining );
+    }
+
+    /// <summary>
+    /// Verifies setting a future rate limit stores it so the state reports rate limited with a
+    /// retry-after close to the supplied value.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task SetRateLimitedAsync_StoresRateLimitWithTtl( ) {
+        // Arrange
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddSeconds( 30 );
+
+        // Act
+        await _tracker.SetRateLimitedAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            retryAfter,
+            TestContext.CancellationToken
+        );
+
+        // Assert
+        RateLimitState state = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            TestContext.CancellationToken
+        );
+
+        Assert.IsTrue( state.IsRateLimited );
+        Assert.IsNotNull( state.RetryAfter );
+        Assert.IsNotNull( state.TimeRemaining );
+
+        // RetryAfter should be close to what we set (within a second due to timing)
+        TimeSpan diff = (retryAfter - state.RetryAfter.Value).Duration( );
+        Assert.IsLessThan( TimeSpan.FromSeconds( 1 ), diff, $"RetryAfter diff was {diff}" );
+    }
+
+    /// <summary>
+    /// Verifies setting a rate limit whose retry-after is already in the past stores nothing, so the
+    /// state reports not rate limited.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task SetRateLimitedAsync_DoesNotStore_WhenAlreadyExpired( ) {
+        // Arrange
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddSeconds( -10 );
+
+        // Act
+        await _tracker.SetRateLimitedAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            retryAfter,
+            TestContext.CancellationToken
+        );
+
+        // Assert - should not be stored
+        RateLimitState state = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            TestContext.CancellationToken
+        );
+
+        Assert.IsFalse( state.IsRateLimited );
+    }
+
+    /// <summary>
+    /// Verifies clearing a stored rate limit removes it so the state reports not rate limited.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ClearAsync_RemovesRateLimit( ) {
+        // Arrange
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddMinutes( 5 );
+        await _tracker.SetRateLimitedAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            retryAfter,
+            TestContext.CancellationToken
+        );
+
+        // Verify it's set
+        RateLimitState stateBefore = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            TestContext.CancellationToken
+        );
+        Assert.IsTrue( stateBefore.IsRateLimited );
+
+        // Act
+        await _tracker.ClearAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            TestContext.CancellationToken
+        );
+
+        // Assert
+        RateLimitState stateAfter = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            TestContext.CancellationToken
+        );
+        Assert.IsFalse( stateAfter.IsRateLimited );
+    }
+
+    /// <summary>
+    /// Verifies listing all rate-limited endpoints returns only the endpoints stored for the requested
+    /// provider.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task GetAllRateLimitedAsync_ReturnsAllEndpointsForProvider( ) {
+        // Arrange
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddMinutes( 5 );
+
+        await _tracker.SetRateLimitedAsync( SupportedProviders.Spotify, "/v1/search", retryAfter, TestContext.CancellationToken );
+        await _tracker.SetRateLimitedAsync( SupportedProviders.Spotify, "/v1/tracks", retryAfter.AddMinutes( 1 ), TestContext.CancellationToken );
+        await _tracker.SetRateLimitedAsync( SupportedProviders.AppleMusic, "/v1/catalog", retryAfter, TestContext.CancellationToken );
+
+        // Act
+        IReadOnlyList<RateLimitedEndpoint> spotifyEndpoints =
+            await _tracker.GetAllRateLimitedAsync( SupportedProviders.Spotify, TestContext.CancellationToken );
+
+        IReadOnlyList<RateLimitedEndpoint> appleEndpoints =
+            await _tracker.GetAllRateLimitedAsync( SupportedProviders.AppleMusic, TestContext.CancellationToken );
+
+        // Assert
+        Assert.HasCount( 2, spotifyEndpoints );
+        Assert.HasCount( 1, appleEndpoints );
+
+        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/search", spotifyEndpoints );
+        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/tracks", spotifyEndpoints );
+        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/catalog", appleEndpoints );
+    }
+
+    /// <summary>
+    /// Verifies a rate limit set for one provider's endpoint does not leak into the same endpoint path on
+    /// other providers.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task DifferentProviders_HaveIsolatedRateLimits( ) {
+        // Arrange
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddMinutes( 5 );
+
+        await _tracker.SetRateLimitedAsync( SupportedProviders.Spotify, "/search", retryAfter, TestContext.CancellationToken );
+
+        // Act
+        RateLimitState spotifyState = await _tracker.GetStateAsync( SupportedProviders.Spotify, "/search", TestContext.CancellationToken );
+        RateLimitState appleState = await _tracker.GetStateAsync( SupportedProviders.AppleMusic, "/search", TestContext.CancellationToken );
+        RateLimitState tidalState = await _tracker.GetStateAsync( SupportedProviders.Tidal, "/search", TestContext.CancellationToken );
+
+        // Assert - only Spotify should be rate limited
+        Assert.IsTrue( spotifyState.IsRateLimited );
+        Assert.IsFalse( appleState.IsRateLimited );
+        Assert.IsFalse( tidalState.IsRateLimited );
+    }
+
+    /// <summary>
+    /// Verifies a short-lived rate limit expires on its own via Redis TTL so the state reports not rate
+    /// limited after the window elapses.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task RateLimit_ExpiresAutomatically( ) {
+        // Arrange - set a very short TTL
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddMilliseconds( 500 );
+
+        await _tracker.SetRateLimitedAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            retryAfter,
+            TestContext.CancellationToken
+        );
+
+        // Verify it's set
+        RateLimitState stateBefore = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            TestContext.CancellationToken
+        );
+        Assert.IsTrue( stateBefore.IsRateLimited );
+
+        // Wait for expiration
+        await Task.Delay( 600, TestContext.CancellationToken );
+
+        // Act
+        RateLimitState stateAfter = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            TestContext.CancellationToken
+        );
+
+        // Assert - should be expired
+        Assert.IsFalse( stateAfter.IsRateLimited );
+    }
+}

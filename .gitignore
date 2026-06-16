@@ -22,6 +22,7 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+publish/
 
 # .NET Core
 project.lock.json
@@ -52,3 +53,58 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Local Development Feature Documentation
+docs/projects/*
+
+# Github Personal Configurations
+.github/agents/*
+
+# Visual Studio Code Configuration
+.vscode/*
+
+# Visual Studio Configuration
+.vs/*
+
+# Launch Settings
+**/Properties/launchSettings.json
+
+# Apple Private Keys
+*.[Pp]8
+
+# SQLite Database Files
+*.db
+*.db-shm
+*.db-wal
+
+# DocFX output
+_site/
+docs/api/
+docs/index.md
+obj/.cache/
+
+# Docker and environment files
+.env
+docker-compose.override.yml
+
+# Aspire publish output
+aspire-output/
+
+# Secrets directory
+secrets/
+
+/data/
+.claude/
+projects/
+
+# Caddy data
+caddy-data/
+caddy-config/
+caddy-logs/
+
+# macOS file
+.DS_Store
+
+# EF Core BuildHost directories
+**/BuildHost-net472/
+**/BuildHost-netcore/

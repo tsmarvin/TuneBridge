@@ -1,0 +1,53 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../src",
+          "files": [ "**.csproj" ]
+        }
+      ],
+      "dest": "api",
+      "disableGitFeatures": false,
+      "disableDefaultFilter": false
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [ "**.{md,yml}" ],
+        "src": "."
+      }
+    ],
+    "resource": [
+      {
+        "files": [ "images/**" ],
+        "src": "."
+      },
+      {
+        "files": [ "favicon.ico" ],
+        "src": "../src/BridgeBeats.Web/wwwroot",
+        "dest": "."
+      },
+      {
+        "files": [ "public/**" ],
+        "src": "../src/BridgeBeats.Web/wwwroot",
+        "dest": "."
+      }
+    ],
+    "globalMetadataFiles": [],
+    "fileMetadataFiles": [],
+    "template": [ "default", "modern" ],
+    "postProcessors": [],
+    "keepFileLink": false,
+    "disableGitFeatures": false,
+    "dest": "../_site",
+    "globalMetadata": {
+      "_appTitle": "BridgeBeats",
+      "_appName": "BridgeBeats API Documentation",
+      "_appFooter": "Copyright © Taylor Marvin (2025)",
+      "_enableSearch": true,
+      "_appFaviconPath": "favicon.ico"
+    }
+  }
+}

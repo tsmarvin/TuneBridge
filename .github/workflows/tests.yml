@@ -1,0 +1,124 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+permissions: read-all
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2  # v5.3.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: |
+          # Backup lock files before restore
+          find . -name "packages.lock.json" -exec cp {} {}.backup \;
+
+          # Restore with force-evaluate for linux-x64
+          dotnet restore --force-evaluate -r linux-x64
+
+          # Validate lock file changes
+          for lockfile in $(find . -name "packages.lock.json" ! -name "*.backup"); do
+            backup="${lockfile}.backup"
+            if [ -f "$backup" ]; then
+              from_rid=$(grep -oE '"net[0-9.]+/(linux|win|osx)-(x64|x86|arm64|arm)"' "$backup" \
+                | head -n1 | sed -E 's#.*/([a-z0-9-]+)"#\1#')
+              [ -z "$from_rid" ] && from_rid="linux-x64"
+              pwsh containers/Test-LockFileChanges.ps1 -BackupPath "$backup" -CurrentPath "$lockfile" \
+                -FromPlatform "$from_rid" -ToPlatform "linux-x64"
+              rm -f "$backup"
+            fi
+          done
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Setup test configuration
+        run: |
+          # Write Apple Private Key to file if available
+          if [ -n "${{ secrets.APPLEPRIVATEKEY }}" ]; then
+            mkdir -p /tmp/test-keys
+            echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
+          fi
+
+          # Create appsettings.json for tests (with empty DiscordToken to disable Discord bot in tests)
+          # Tests look for src/BridgeBeats.Web/appsettings.json relative to test output dir, so create src/BridgeBeats.Web/ subdir there
+          mkdir -p Tests/bin/Release/net10.0/src/BridgeBeats.Web
+          sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
+              -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
+              -e 's/"{AppleKeyId}"/"${{ secrets.APPLEKEYID }}"/g' \
+              -e 's|"{AppleKeyPath}"|"/tmp/test-keys/apple_key.p8"|g' \
+              -e 's/"{SpotifyClientId}"/"${{ secrets.SPOTIFYCLIENTID }}"/g' \
+              -e 's/"{SpotifyClientSecret}"/"${{ secrets.SPOTIFYCLIENTSECRET }}"/g' \
+              -e 's/"{TidalClientId}"/"${{ secrets.TIDALCLIENTID }}"/g' \
+              -e 's/"{TidalClientSecret}"/"${{ secrets.TIDALCLIENTSECRET }}"/g' \
+              -e 's/"{DiscordToken}"/""/g' \
+              -e 's/"{ApiKeySalt}"/"test_api_key_salt_for_ci"/g' \
+              -e 's/{CardCacheExpirationHours}/1/g' \
+              -e 's/{CardCacheCleanupInterval}/500/g' \
+              -e 's/"{Default_LogLevel}"/"Information"/g' \
+              -e 's/"{Hosting_LogLevel}"/"Information"/g' \
+              -e 's/"{Allowed_Hosts}"/"*"/g' \
+              src/BridgeBeats.Web/appsettings.transform.json > Tests/bin/Release/net10.0/src/BridgeBeats.Web/appsettings.json
+          cp -f Tests/bin/Release/net10.0/src/BridgeBeats.Web/appsettings.json src/BridgeBeats.Web/appsettings.json
+
+      - name: Run Unit Tests
+        run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
+
+      - name: Run Integration Tests
+        run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration-test-results.trx" --logger "console;verbosity=detailed"
+
+      - name: Guard — at least one integration test must have executed
+        # Docker-less CI skips all Testcontainer tests via Assert.Inconclusive, so dotnet test
+        # exits 0 with every test Inconclusive (not-run). This step fails the workflow when
+        # executed=0, catching any situation where an all-Inconclusive test class would
+        # otherwise silently pass the integration lane.
+        run: |
+          TRX=$(find . -name "integration-test-results.trx" | head -1)
+          if [ -z "$TRX" ]; then
+            echo "ERROR: no integration-test-results.trx file found — dotnet test may not have run."; exit 1
+          fi
+          if [ ! -f "$TRX" ]; then
+            echo "ERROR: integration-test-results.trx path does not exist: $TRX"; exit 1
+          fi
+          EXECUTED=$(grep -oP 'executed="\K[0-9]+' "$TRX" | head -1)
+          if ! [[ "$EXECUTED" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: could not parse executed count from $TRX (got: '$EXECUTED')"; exit 1
+          fi
+          echo "Integration tests executed: $EXECUTED"
+          [ "$EXECUTED" -gt 0 ] || { echo "ERROR: zero integration tests executed — all tests skipped (Inconclusive). Fix the test suite or integration environment."; exit 1; }
+
+      - name: Run End-to-End Tests
+        run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~EndToEnd" --logger "trx;LogFileName=e2e-test-results.trx" --logger "console;verbosity=detailed"
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        if: always()
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf /tmp/test-keys

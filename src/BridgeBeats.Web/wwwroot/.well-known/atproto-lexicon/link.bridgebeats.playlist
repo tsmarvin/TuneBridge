@@ -1,0 +1,94 @@
+{
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1,
+  "id": "link.bridgebeats.playlist",
+  "description": "User-created playlist aggregating tracks across music service providers with per-provider substitution support.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A playlist of tracks with optional per-provider substitutions for cross-platform sharing.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "title",
+          "createdBy",
+          "updatedAt",
+          "lookupRepository",
+          "tracks"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Display name of the playlist.",
+            "maxLength": 300,
+            "maxGraphemes": 100
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description or notes for the playlist.",
+            "maxLength": 3000,
+            "maxGraphemes": 1000
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the user who created this playlist."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "ISO 8601 UTC timestamp of when this playlist was last updated."
+          },
+          "lookupRepository": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the repository containing the link.bridgebeats.lookup records referenced by tracks. Defaults to the BridgeBeats server DID."
+          },
+          "tracks": {
+            "type": "array",
+            "description": "Ordered list of track record keys (rkeys) referencing link.bridgebeats.lookup records. Each entry must have a valid ISRC.",
+            "items": {
+              "type": "string",
+              "maxLength": 18,
+              "description": "Record key (rkey) for a link.bridgebeats.lookup track record in format 'track:{ISRC}'."
+            },
+            "minLength": 1,
+            "maxLength": 16384
+          },
+          "substitutions": {
+            "type": "ref",
+            "ref": "#substitutionMap",
+            "description": "Optional per-provider track substitutions. When playing on a specific provider, substitute the track at the given index with an alternative."
+          }
+        }
+      }
+    },
+    "substitutionMap": {
+      "type": "object",
+      "description": "Map of provider names to their track substitutions. Each provider maps track indices to alternative track rkeys.",
+      "properties": {
+        "appleMusic": {
+          "type": "ref",
+          "ref": "#indexSubstitutions",
+          "description": "Track substitutions for Apple Music."
+        },
+        "spotify": {
+          "type": "ref",
+          "ref": "#indexSubstitutions",
+          "description": "Track substitutions for Spotify."
+        },
+        "tidal": {
+          "type": "ref",
+          "ref": "#indexSubstitutions",
+          "description": "Track substitutions for Tidal."
+        }
+      }
+    },
+    "indexSubstitutions": {
+      "type": "object",
+      "description": "Map of track indices (as strings) to substitute track rkeys. Keys are zero-based index positions in the tracks array.",
+      "properties": {}
+    }
+  }
+}

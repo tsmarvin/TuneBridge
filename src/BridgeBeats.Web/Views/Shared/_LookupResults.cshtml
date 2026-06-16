@@ -1,0 +1,97 @@
+@model BridgeBeats.Web.Models.MusicLookupViewModel
+@using BridgeBeats.Contracts.Enums
+@using Microsoft.AspNetCore.Html
+@using System.Text.Json
+
+@if (!string.IsNullOrEmpty(Model.Message)) {
+    <div class="alert alert-info">@Model.Message</div>
+} else if (Model.Items.Any()) {
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        @foreach (var item in Model.Items) {
+            var providerClass = $"provider-{item.PrimaryProvider.ToString().ToLowerInvariant()}";
+            <div class="col">
+                <div class="embed-card h-100 @providerClass">
+                    <div class="embed-header-top">
+                        <div class="embed-title-row">
+                            @if (!string.IsNullOrWhiteSpace(item.CardUrl)) {
+                                <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer" class="embed-title">
+                                    @(item.PrimaryResult.Title ?? "Unknown Title")
+                                </a>
+                            } else {
+                                <div class="embed-title">@(item.PrimaryResult.Title ?? "Unknown Title")</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(item.CardUrl)) {
+                                <div class="share-dropdown">
+                                    <button class="share-button" type="button" aria-expanded="false" aria-haspopup="true" title="Share">
+                                        <img src="/public/Share_arrow.png" alt="Share" class="share-arrow-icon" />
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li>
+                                            <button class="dropdown-item copy-link-btn" type="button" data-url="@item.CardUrl">
+                                                <span class="dropdown-icon">📋</span> Copy Link
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item copy-embed-btn" type="button" data-url="@item.CardUrl" data-title="@Html.Raw(JsonSerializer.Serialize(item.PrimaryResult.Title ?? "Music Link"))">
+                                                <span class="dropdown-icon">🖼️</span> Copy Embed
+                                            </button>
+                                        </li>
+                                        @if (!string.IsNullOrWhiteSpace(item.ATProtoUri)) {
+                                            <li>
+                                                <button class="dropdown-item copy-atproto-btn" type="button" data-uri="@item.ATProtoUri">
+                                                    <span class="dropdown-icon">🔗</span> Copy ATProto URI
+                                                </button>
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="embed-header">
+                        @if (!string.IsNullOrWhiteSpace(item.PrimaryResult.ArtUrl)) {
+                            @if (!string.IsNullOrWhiteSpace(item.CardUrl)) {
+                                <a href="@item.CardUrl" target="_blank" rel="noopener noreferrer">
+                                    <img src="@item.PrimaryResult.ArtUrl" alt="@item.PrimaryResult.Title artwork" class="embed-image" />
+                                </a>
+                            } else {
+                                <img src="@item.PrimaryResult.ArtUrl" alt="@item.PrimaryResult.Title artwork" class="embed-image" />
+                            }
+                        }
+                        <div class="embed-content">
+                            <div class="embed-info">
+                                Artist: @(item.PrimaryResult.Artist ?? "Unknown")
+                                @if (!string.IsNullOrWhiteSpace(item.PrimaryResult.ExternalId)) {
+                                    var idType = item.PrimaryResult.IsAlbum == true ? "UPC" : "ISRC";
+                                    <text><br /></text>@idType<text>: </text>@item.PrimaryResult.ExternalId
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <div class="embed-providers">
+                        @foreach (var providerResult in item.Result.Results) {
+                            <a href="@providerResult.Value.URL" target="_blank" rel="noopener noreferrer" class="provider-button">
+                                <span class="provider-icon provider-icon-@providerResult.Key.ToString().ToLowerInvariant()">
+                                    @providerResult.Key.GetProviderLogo( )
+                                </span>
+                                <span class="visually-hidden">@providerResult.Key.GetDescription( )</span>
+                            </a>
+                        }
+                    </div>
+                    @if (item.Result.IsPartial || item.Result.Messages is { Count: > 0 }) {
+                        <div class="alert alert-warning embed-partial-notice mb-0 mt-2" role="status">
+                            @if (item.Result.IsPartial) {
+                                <strong>Incomplete results</strong>
+                            }
+                            @if (item.Result.Messages is { Count: > 0 }) {
+                                foreach (var message in item.Result.Messages) {
+                                    <div>@message</div>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}

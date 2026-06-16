@@ -1,0 +1,23 @@
+@{
+    ViewData["Title"] = "Apple Music Integration";
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="card-title mb-0">Apple Music Integration</h2>
+            <a href="/playlists" class="btn btn-outline-secondary">
+                Back to Playlists
+            </a>
+        </div>
+
+        <div id="appleMusicContent">
+            @await Html.PartialAsync("../AppleMusic/_AppleMusicContent")
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js" async></script>
+    <script src="~/public/apple-music-integration.js"></script>
+}

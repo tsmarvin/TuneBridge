@@ -1,0 +1,288 @@
+@model BridgeBeats.Contracts.DTOs.LookupStatistics
+@using BridgeBeats.Contracts.Constants
+@{
+    ViewData["Title"] = "Statistics";
+}
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">Collection Statistics</h1>
+        @if (User.IsInRole( Roles.AspireDashboardAccess ))
+        {
+            <form asp-action="Refresh" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-secondary btn-sm" title="Refresh statistics">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </form>
+        }
+    </div>
+
+    <p class="text-muted mb-4 d-flex align-items-center gap-2">
+        <span>Statistics generated at @Model.GeneratedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</span>
+        @if (ViewBag.IsRefreshing == true)
+        {
+            <span class="badge bg-info">
+                <i class="bi bi-arrow-repeat spin"></i> Refreshing...
+            </span>
+        }
+    </p>
+
+    <!-- Overview Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-muted">Total Records</h5>
+                    <p class="display-4 mb-0">@Model.TotalRecords.ToString("N0")</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-muted">Albums</h5>
+                    <p class="display-4 mb-0">@Model.AlbumCount.ToString("N0")</p>
+                    @if (Model.TotalRecords > 0)
+                    {
+                        <small class="text-muted">@((Model.AlbumCount * 100.0 / Model.TotalRecords).ToString("F1"))%</small>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-muted">Tracks</h5>
+                    <p class="display-4 mb-0">@Model.TrackCount.ToString("N0")</p>
+                    @if (Model.TotalRecords > 0)
+                    {
+                        <small class="text-muted">@((Model.TrackCount * 100.0 / Model.TotalRecords).ToString("F1"))%</small>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Provider Breakdown -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Provider Breakdown</h5>
+                </div>
+                <div class="card-body">
+                    @if (Model.ProviderCounts.Count > 0)
+                    {
+                        <table class="table table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Provider</th>
+                                    <th class="text-end">Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var (provider, count) in Model.ProviderCounts)
+                                {
+                                    <tr>
+                                        <td>@provider</td>
+                                        <td class="text-end">@count.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No provider data available.</p>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Date Range -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Date Range</h5>
+                </div>
+                <div class="card-body">
+                    @if (Model.EarliestLookup.HasValue && Model.LatestLookup.HasValue)
+                    {
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Earliest</dt>
+                            <dd class="col-sm-8">@Model.EarliestLookup.Value.ToString("yyyy-MM-dd HH:mm:ss") UTC</dd>
+                            <dt class="col-sm-4">Latest</dt>
+                            <dd class="col-sm-8">@Model.LatestLookup.Value.ToString("yyyy-MM-dd HH:mm:ss") UTC</dd>
+                        </dl>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No timestamp data available.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cache Bootstrap Status -->
+    <div class="row g-4 mt-2">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Cache Bootstrap Status</h5>
+                    @if (Model.CacheBootstrapStatus?.IsRunning == true)
+                    {
+                        <span class="badge bg-success">
+                            <i class="bi bi-arrow-repeat spin"></i> Running
+                        </span>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (Model.CacheBootstrapStatus != null)
+                    {
+                        var status = Model.CacheBootstrapStatus;
+                        <div class="row">
+                            <div class="col-md-6">
+                                <dl class="row mb-0">
+                                    <dt class="col-sm-5">Last Run</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.LastRunTime.HasValue)
+                                        {
+                                            @status.LastRunTime.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                                            <span class="text-muted">UTC</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Never</span>
+                                        }
+                                    </dd>
+                                    <dt class="col-sm-5">Next Scheduled</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.NextScheduledRun.HasValue)
+                                        {
+                                            @status.NextScheduledRun.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                                            <span class="text-muted">UTC</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </dd>
+                                    <dt class="col-sm-5">Duration</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.LastDurationSeconds.HasValue)
+                                        {
+                                            var duration = TimeSpan.FromSeconds(status.LastDurationSeconds.Value);
+                                            @(duration.TotalMinutes >= 1 ? $"{duration.TotalMinutes:F1} min" : $"{duration.TotalSeconds:F0} sec")
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </dd>
+                                </dl>
+                            </div>
+                            <div class="col-md-6">
+                                <dl class="row mb-0">
+                                    <dt class="col-sm-5">Redis Keys</dt>
+                                    <dd class="col-sm-7">@(status.RedisKeyCount?.ToString("N0") ?? "—")</dd>
+                                    <dt class="col-sm-5">Last Success</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.LastSuccessCount.HasValue)
+                                        {
+                                            <span class="text-success">@status.LastSuccessCount.Value.ToString("N0")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </dd>
+                                    <dt class="col-sm-5">Last Errors</dt>
+                                    <dd class="col-sm-7">
+                                        @if (status.LastErrorCount.HasValue)
+                                        {
+                                            if (status.LastErrorCount.Value > 0)
+                                            {
+                                                <span class="text-danger">@status.LastErrorCount.Value.ToString("N0")</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-success">0</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </dd>
+                                </dl>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">Cache bootstrap status unavailable.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Entries -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Recent Entries</h5>
+        </div>
+        <div class="card-body">
+            @if (Model.RecentEntries.Count > 0)
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Artist</th>
+                                <th>Title</th>
+                                <th>Date</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in Model.RecentEntries)
+                            {
+                                <tr>
+                                    <td>
+                                        <span class="badge @(entry.IsAlbum ? "bg-primary" : "bg-secondary")">
+                                            @(entry.IsAlbum ? "Album" : "Track")
+                                        </span>
+                                    </td>
+                                    <td>@entry.Artist</td>
+                                    <td>@entry.Title</td>
+                                    <td>
+                                        @if (entry.LookedUpAt.HasValue)
+                                        {
+                                            @entry.LookedUpAt.Value.ToString("yyyy-MM-dd HH:mm")
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(entry.CardId))
+                                        {
+                                            <a href="/card/@entry.CardId" class="btn btn-outline-primary btn-sm" title="View card">
+                                                View
+                                            </a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted mb-0">No recent entries available.</p>
+            }
+        </div>
+    </div>
+</div>

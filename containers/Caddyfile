@@ -1,0 +1,125 @@
+# Caddyfile for BridgeBeats
+{
+    # Global options
+    admin off
+    # Persist data for certificates
+    storage file_system /data/caddy
+    email {$CADDY_ADMIN_EMAIL}
+}
+
+# Default site configuration
+{$DOMAIN}, www.{$DOMAIN}, {$SHORT_DOMAIN}, www.{$SHORT_DOMAIN} {
+    # Enable logging
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+
+    # Security headers
+    header {
+        # Enable HSTS (HTTP Strict Transport Security)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+
+        # X-Frame-Options removed - frame-ancestors in CSP (set by app) provides better control
+        # See src/Configuration/StartupExtensions.cs for CSP configuration
+
+        # XSS protection (legacy browsers)
+        X-XSS-Protection "1; mode=block"
+
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # Content Security Policy is handled by the application middleware
+        # CSP headers are set in src/Configuration/StartupExtensions.cs with nonce support
+
+        # Permissions policy - Deny access to sensitive browser features
+        Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+
+        # Remove server identification
+        -Server
+        -X-Powered-By
+    }
+
+    # Reverse proxy to BridgeBeats application
+    reverse_proxy bridgebeats:10000 {
+        # Health check endpoint
+        health_uri /health
+        health_interval 10s
+        health_timeout 5s
+
+        # Pass real client IP
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+
+        # Timeouts - increased read timeout to 10 minutes to accommodate retry-after delays
+        transport http {
+            read_timeout 600s
+            write_timeout 30s
+            dial_timeout 5s
+        }
+    }
+
+    # Custom error pages (optional)
+    handle_errors {
+        @5xx expression `{err.status_code} >= 500 && {err.status_code} < 600`
+        handle @5xx {
+            respond "Service temporarily unavailable. Please try again later." 503
+        }
+    }
+}
+
+dashboard.{$DOMAIN} {
+    log {
+        output file /var/log/caddy/dashboard-access.log
+        format json
+    }
+
+    # Use Cloudflare DNS challenge for dashboard subdomain certificates
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    # Security headers - do not override dashboard CSP
+    header {
+        Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload'
+        X-Content-Type-Options 'nosniff'
+        X-XSS-Protection '1; mode=block'
+        Referrer-Policy 'strict-origin-when-cross-origin'
+        Permissions-Policy 'geolocation=(), microphone=(), camera=(), payment=()'
+        -Server
+        -X-Powered-By
+    }
+
+    # Forward auth check - verify user has AspireDashboardAccess role
+    forward_auth bridgebeats:10000 {
+        uri /api/dashboard/authorize
+    }
+
+    # Proxy to Aspire Dashboard at root path
+    reverse_proxy bridgebeats:18888 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+
+        transport http {
+            read_timeout 30s
+            write_timeout 30s
+            dial_timeout 5s
+        }
+    }
+}
+
+
+*.{$PDS_HOSTNAME}, {$PDS_HOSTNAME} {
+    # Use Cloudflare DNS challenge for wildcard certificate
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy bridgebeats-pds:3000
+}
