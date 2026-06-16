@@ -86,6 +86,9 @@ public sealed partial class RedisSagaStateManager(
     /// <summary>Core hash field: single-winner marker that finalization has been claimed. Literal: <c>"finalizeClaimed"</c>.</summary>
     private const string FieldFinalizeClaimed = "finalizeClaimed";
 
+    /// <summary>Core hash field: the highest provider-count already durably written to the PDS. Literal: <c>"writeGeneration"</c>.</summary>
+    private const string FieldWriteGeneration = "writeGeneration";
+
     // Hash field names for provider state
 
     /// <summary>Provider hash field: whether the provider has finished. Literal: <c>"isComplete"</c>.</summary>
@@ -244,6 +247,7 @@ public sealed partial class RedisSagaStateManager(
         _ = fields.TryGetValue( FieldInitialProvider, out string? initialProviderStr );
         _ = fields.TryGetValue( FieldRateLimitInfo, out string? rateLimitInfoJson );
         _ = fields.TryGetValue( FieldOriginPriority, out string? originPriorityStr );
+        _ = fields.TryGetValue( FieldWriteGeneration, out string? writeGenerationStr );
 
         DateTimeOffset createdAt = !string.IsNullOrEmpty( createdAtStr )
             ? DateTimeOffset.Parse( createdAtStr )
@@ -267,6 +271,10 @@ public sealed partial class RedisSagaStateManager(
                 ? parsedPriority
                 : QueuePriority.Background;
 
+        // Pre-existing sagas that have no writeGeneration field default to 0, so the first
+        // write against them advances normally.
+        _ = int.TryParse( writeGenerationStr, out int writeGeneration );
+
         // Load provider states
         Dictionary<SupportedProviders, ProviderLookupState> providerStates = await LoadProviderStatesAsync( db, sagaId );
 
@@ -282,7 +290,8 @@ public sealed partial class RedisSagaStateManager(
             IsPartial = isPartial,
             InitialProvider = initialProvider,
             RateLimitInfo = rateLimitInfo,
-            OriginPriority = originPriority
+            OriginPriority = originPriority,
+            WriteGeneration = writeGeneration
         };
     }
 
@@ -548,6 +557,101 @@ public sealed partial class RedisSagaStateManager(
         _ = await db.KeyExpireAsync( key, ttl );
 
         LogFinalizeClaimReleased( _logger, sagaId );
+    }
+
+    /// <summary>
+    /// Atomically advances the write generation to <paramref name="generation"/> only when the
+    /// stored generation is strictly less than <paramref name="generation"/>, using a Lua
+    /// compare-and-set so the advancement is exactly one winner per generation level even under
+    /// concurrent callers. Refreshes the saga TTL after a successful advance.
+    /// </summary>
+    /// <param name="sagaId">The saga to advance.</param>
+    /// <param name="generation">The generation to advance to.</param>
+    /// <param name="ct">A cancellation token (not currently observed).</param>
+    /// <returns>
+    /// <see langword="true"/> when this caller advanced the generation (and must perform the PDS
+    /// write); <see langword="false"/> when the stored generation was already at or above
+    /// <paramref name="generation"/> and the write should be skipped.
+    /// </returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
+    public async Task<bool> TryAdvanceWriteGenerationAsync( string sagaId, int generation, CancellationToken ct = default ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+
+        string key = GetSagaKey( sagaId );
+        IDatabase db = _redis.GetDatabase( );
+        TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
+
+        RedisResult result = await db.ScriptEvaluateAsync(
+            AdvanceWriteGenerationScript,
+            keys: [key],
+            values: [FieldWriteGeneration, generation]
+        );
+
+        bool advanced = (int)result == 1;
+
+        if (advanced) {
+            _ = await db.KeyExpireAsync( key, ttl );
+            LogWriteGenerationAdvanced( _logger, sagaId, generation );
+        }
+
+        return advanced;
+    }
+
+    /// <summary>
+    /// Lua script that advances the write-generation field only when the stored value is strictly
+    /// less than the requested generation. Returns 1 on advance, 0 when the stored value is
+    /// already at or above the requested generation.
+    /// </summary>
+    private const string AdvanceWriteGenerationScript =
+        "local cur = tonumber(redis.call('hget', KEYS[1], ARGV[1]) or '0'); " +
+        "if cur < tonumber(ARGV[2]) then redis.call('hset', KEYS[1], ARGV[1], ARGV[2]); return 1 " +
+        "else return 0 end";
+
+    /// <summary>
+    /// Lua script that resets the write-generation field from <c>ARGV[2]</c> back to <c>ARGV[3]</c>
+    /// only when the stored value still equals <c>ARGV[2]</c> (the value this caller advanced to).
+    /// Returns 1 when the reset took effect, 0 when a concurrent handler has already advanced
+    /// beyond the caller's generation and the reset is skipped to avoid clobbering a later write.
+    /// </summary>
+    private const string ResetWriteGenerationScript =
+        "local cur = tonumber(redis.call('hget', KEYS[1], ARGV[1]) or '0'); " +
+        "if cur == tonumber(ARGV[2]) then redis.call('hset', KEYS[1], ARGV[1], ARGV[3]); return 1 " +
+        "else return 0 end";
+
+    /// <summary>
+    /// Conditionally resets the write generation from <paramref name="advancedTo"/> back to
+    /// <paramref name="priorGeneration"/> after a non-terminal pre-durability PDS write failure,
+    /// so the next retry can re-advance and re-write. The reset only takes effect when the stored
+    /// generation still equals <paramref name="advancedTo"/>; if a concurrent handler has already
+    /// advanced the generation further, the stored value is left untouched. Refreshes the TTL on
+    /// a successful reset.
+    /// </summary>
+    /// <param name="sagaId">The saga whose write generation should be reset.</param>
+    /// <param name="advancedTo">The generation this caller advanced to; the stored value must equal this for the reset to take effect.</param>
+    /// <param name="priorGeneration">The generation to restore; typically <c>advancedTo - 1</c>.</param>
+    /// <param name="ct">A cancellation token (not currently observed).</param>
+    /// <returns>A task that completes when the conditional reset attempt has been made and the TTL optionally refreshed.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="sagaId"/> is null or whitespace.</exception>
+    public async Task ResetWriteGenerationAsync( string sagaId, int advancedTo, int priorGeneration, CancellationToken ct = default ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
+
+        string key = GetSagaKey( sagaId );
+        IDatabase db = _redis.GetDatabase( );
+        TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
+
+        RedisResult result = await db.ScriptEvaluateAsync(
+            ResetWriteGenerationScript,
+            keys: [key],
+            values: [FieldWriteGeneration, advancedTo, priorGeneration]
+        );
+
+        bool reset = (int)result == 1;
+
+        if (reset) {
+            _ = await db.KeyExpireAsync( key, ttl );
+        }
+
+        LogWriteGenerationReset( _logger, sagaId, advancedTo, priorGeneration, reset );
     }
 
     /// <summary>
@@ -951,6 +1055,28 @@ public sealed partial class RedisSagaStateManager(
         Level = LogLevel.Debug,
         Message = "Finalize claim released for saga {SagaId}" )]
     internal static partial void LogFinalizeClaimReleased( ILogger logger, string sagaId );
+
+    /// <summary>Logs that the write generation was advanced for a saga.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="generation">The generation advanced to.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerWriteGenerationAdvanced,
+        Level = LogLevel.Debug,
+        Message = "Write generation advanced to {Generation} for saga {SagaId}" )]
+    internal static partial void LogWriteGenerationAdvanced( ILogger logger, string sagaId, int generation );
+
+    /// <summary>Logs the outcome of a conditional write-generation reset attempt after a pre-durability failure.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="sagaId">The saga id.</param>
+    /// <param name="advancedTo">The generation this caller had advanced to (the expected stored value).</param>
+    /// <param name="priorGeneration">The generation to restore.</param>
+    /// <param name="reset">Whether the conditional reset succeeded (false means a concurrent handler advanced further).</param>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerWriteGenerationReset,
+        Level = LogLevel.Debug,
+        Message = "Write generation conditional reset from {AdvancedTo} to {PriorGeneration} for saga {SagaId}: reset={Reset}" )]
+    internal static partial void LogWriteGenerationReset( ILogger logger, string sagaId, int advancedTo, int priorGeneration, bool reset );
 
     #endregion
 }

@@ -138,8 +138,8 @@ public class SagaFinalizeClaimIntegrationTests {
 
         Mock<IMediaLinkCacheRepository> cacheMock = new( );
         _ = cacheMock
-            .Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( "at://cached" );
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         Mock<IRequestDeduplicator> deduplicatorMock = new( );
         Mock<IProviderQueueResolver<QueuedLookupRequest>> queueResolverMock = new( );
@@ -159,6 +159,12 @@ public class SagaFinalizeClaimIntegrationTests {
         _ = sagaMgrWrapper
             .Setup( s => s.ReleaseFinalizeClaimAsync( TestSagaId, It.IsAny<CancellationToken>( ) ) )
             .Returns( ( string _, CancellationToken ct ) => _sagaManager.ReleaseFinalizeClaimAsync( TestSagaId, ct ) );
+        _ = sagaMgrWrapper
+            .Setup( s => s.TryAdvanceWriteGenerationAsync( TestSagaId, It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( ( string _, int gen, CancellationToken ct ) => _sagaManager.TryAdvanceWriteGenerationAsync( TestSagaId, gen, ct ) );
+        _ = sagaMgrWrapper
+            .Setup( s => s.ResetWriteGenerationAsync( TestSagaId, It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( ( string _, int advTo, int prior, CancellationToken ct ) => _sagaManager.ResetWriteGenerationAsync( TestSagaId, advTo, prior, ct ) );
         _ = sagaMgrWrapper
             .Setup( s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( Task.CompletedTask );

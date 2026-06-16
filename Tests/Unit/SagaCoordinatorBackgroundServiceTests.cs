@@ -85,6 +85,11 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _sagaManagerMock
             .Setup( s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( true );
+
+        // By default the write-generation CAS advances (first call wins per generation)
+        _ = _sagaManagerMock
+            .Setup( s => s.TryAdvanceWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( true );
     }
 
     #region Constructor Tests
@@ -273,8 +278,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - Start and quickly cancel after one poll cycle
         using CancellationTokenSource cts = new( );
@@ -356,8 +361,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         using CancellationTokenSource cts = new( );
@@ -385,7 +390,7 @@ public class SagaCoordinatorBackgroundServiceTests {
 
         // Assert - Should have cached the result
         _cacheRepositoryMock.Verify(
-            c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
 
@@ -421,8 +426,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         using CancellationTokenSource cts = new( );
@@ -476,8 +481,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 return callCount == 1 ? throw new InvalidOperationException( "Simulated write failure" ) : TestRecordUri;
             } );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         using CancellationTokenSource cts = new( );
@@ -577,8 +582,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         using CancellationTokenSource cts = new( );
@@ -646,8 +651,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - start the service, then simulate a saga completion event via Pub/Sub
         using CancellationTokenSource cts = new( );
@@ -729,8 +734,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - start the service, then simulate a saga completion event via Pub/Sub
         using CancellationTokenSource cts = new( );
@@ -839,8 +844,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - start the service, then simulate a saga completion event via Pub/Sub
         using CancellationTokenSource cts = new( );
@@ -944,8 +949,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - start the service, then simulate a saga completion event via Pub/Sub
         using CancellationTokenSource cts = new( );
@@ -1027,8 +1032,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - start the service, then simulate a saga completion event via Pub/Sub
         using CancellationTokenSource cts = new( );
@@ -1132,8 +1137,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - start the service, then simulate a saga completion event via Pub/Sub
         using CancellationTokenSource cts = new( );
@@ -1204,8 +1209,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - start the service, then simulate a saga completion event via Pub/Sub
         using CancellationTokenSource cts = new( );
@@ -1308,8 +1313,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         using CancellationTokenSource cts = new( );
@@ -1378,8 +1383,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - polling runs immediately on startup
         using CancellationTokenSource cts = new( );
@@ -1415,12 +1420,13 @@ public class SagaCoordinatorBackgroundServiceTests {
     #region Finalize Claim Tests
 
     /// <summary>
-    /// Verifies that a handler that loses the finalize claim performs no PDS write and does not
-    /// call SetFinalResultUriAsync. The loser must be completely silent.
+    /// Verifies that a terminal handler that loses the finalize claim performs no PDS write and
+    /// does not call SetFinalResultUriAsync or ResetWriteGenerationAsync. The terminal path is
+    /// gated by the claim only (not the generation CAS), so the loser is completely silent.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task Finalize_WhenClaimLost_DoesNotWrite( ) {
+    public async Task Finalize_WhenClaimLost_IsCompletelySilent( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
         LookupSagaState completeSaga = CreateCompleteSaga( );
@@ -1432,7 +1438,7 @@ public class SagaCoordinatorBackgroundServiceTests {
             ) )
             .ReturnsAsync( [completeSaga] );
 
-        // The claim is already held by another handler
+        // Finalize claim is already held by a concurrent handler
         _ = _sagaManagerMock
             .Setup( s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( false );
@@ -1466,6 +1472,75 @@ public class SagaCoordinatorBackgroundServiceTests {
             d => d.ReleaseAsync( It.IsAny<string>( ), It.IsAny<string?>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never
         );
+
+        // Assert - No generation reset: the terminal path does not advance the generation, so
+        // there is nothing to roll back when the claim is lost.
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a non-terminal handler that loses the write-generation CAS (the generation was
+    /// already advanced by a concurrent handler to the same level) performs no PDS write and is
+    /// completely silent. The non-terminal path is gated by the CAS; the terminal path uses the
+    /// finalize claim instead.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WriteResult_NonTerminal_WhenGenerationCasLost_IsCompletelySilent( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        string resultJson = """{"isrc":"USRC12345678","trackName":"Test Song","artistName":"Test Artist","url":"https://open.spotify.com/track/abc123"}""";
+        LookupSagaState partialSaga = new( ) {
+            SagaId = TestSagaId,
+            LookupKey = TestLookupKey,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = "USRC12345678",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes( -1 ),
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: true,
+                    ResultJson: resultJson,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: null
+                )
+            },
+            FinalResultUri = null,
+            IsPartial = true
+        };
+
+        // The generation was already advanced by a concurrent handler
+        _ = _sagaManagerMock
+            .Setup( s => s.TryAdvanceWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( false );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act - drive via the parameterized write entry point
+        await service.InvokeWriteForTestAsync( partialSaga, terminal: false, cts.Token );
+
+        // Assert - No PDS write (the loser must be completely silent)
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - No partial URI recorded
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - Finalize claim never acquired on the non-terminal path
+        _sagaManagerMock.Verify(
+            s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
     }
 
     /// <summary>
@@ -1489,8 +1564,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         using CancellationTokenSource cts = new( );
@@ -1524,8 +1599,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies that a failed PDS write releases the finalize claim so the next poll cycle can
-    /// retry. The dedup lock is released with null to unblock waiters.
+    /// Verifies that a failed PDS write on the terminal path releases the finalize claim so the next
+    /// poll cycle can retry, and releases the dedup lock with null to unblock waiters. The generation
+    /// is NOT reset on the terminal path because the terminal path never advances the generation.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1558,7 +1634,14 @@ public class SagaCoordinatorBackgroundServiceTests {
             // Expected
         }
 
-        // Assert - Claim released so the next poll can retry
+        // Assert - Generation NOT reset: the terminal path never advances the generation,
+        // so there is nothing to roll back after a PDS write failure.
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
+        // Assert - Claim released so the next poll can re-finalize
         _sagaManagerMock.Verify(
             s => s.ReleaseFinalizeClaimAsync( completeSaga.SagaId, It.IsAny<CancellationToken>( ) ),
             Times.Once
@@ -1670,8 +1753,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act
         using CancellationTokenSource cts = new( );
@@ -1698,15 +1781,14 @@ public class SagaCoordinatorBackgroundServiceTests {
 
     /// <summary>
     /// Verifies that a failure occurring after the final result URI has been durably recorded does
-    /// NOT release the finalize claim. Retaining the claim prevents a re-entrant PDS write against
-    /// a URI that was already written. Pairs with
+    /// NOT reset the write generation or release the finalize claim. Retaining both prevents a
+    /// re-entrant PDS write against a URI that was already written. Pairs with
     /// <see cref="Finalize_WhenPdsWriteFails_ReleasesClaimAndDedup"/> (pre-URI failure) as a
-    /// discriminator: together they prove the release is conditioned on the durability line, not
-    /// unconditional.
+    /// discriminator: together they prove the release is conditioned on the durability line.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task Finalize_WhenFailureAfterUriRecorded_DoesNotReleaseClaim( ) {
+    public async Task Finalize_WhenFailureAfterUriRecorded_DoesNotResetGenerationOrReleaseClaim( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
         LookupSagaState completeSaga = CreateCompleteSaga( );
@@ -1745,6 +1827,12 @@ public class SagaCoordinatorBackgroundServiceTests {
             // Expected
         }
 
+        // Assert - No generation reset after the durability line
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
         // Assert - A failure after the URI is recorded must retain the claim (no release)
         _sagaManagerMock.Verify(
             s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
@@ -1754,9 +1842,10 @@ public class SagaCoordinatorBackgroundServiceTests {
 
     /// <summary>
     /// Verifies that a cancellation mid-finalize (before the PDS write returns) releases the
-    /// finalize claim so the next host restart can re-finalize, but does NOT release the dedup lock
-    /// with a null URI (which would hand waiters a stale empty completion for a healthy saga) and
-    /// does NOT delete the saga.
+    /// finalize claim so the next host restart can re-finalize, but does NOT reset the write
+    /// generation (the terminal path never advances it), does NOT release the dedup lock with a
+    /// null URI (which would hand waiters a stale empty completion for a healthy saga), and does
+    /// NOT delete the saga.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1793,6 +1882,12 @@ public class SagaCoordinatorBackgroundServiceTests {
             // Expected
         }
 
+        // Assert - Generation NOT reset: the terminal path never advances the generation.
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
         // Assert - Claim must be released so the next host can re-finalize
         _sagaManagerMock.Verify(
             s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
@@ -1814,14 +1909,14 @@ public class SagaCoordinatorBackgroundServiceTests {
 
     /// <summary>
     /// Verifies that a cancellation arriving after the final result URI is durably recorded does NOT
-    /// release the finalize claim. Retaining the claim prevents a re-entrant PDS write against an
-    /// already-recorded URI. The dedup lock is also never released here. Pairs with
-    /// <see cref="Finalize_WhenCancelledMidFinalize_ReleasesClaimButNotDedup"/> (pre-URI cancellation
-    /// → claim released) to prove the cancellation catch is conditioned on the durability line.
+    /// reset the write generation or release the finalize claim. Retaining both prevents a re-entrant
+    /// PDS write against an already-recorded URI. The dedup lock is also never released here. Pairs
+    /// with <see cref="Finalize_WhenCancelledMidFinalize_ReleasesClaimButNotDedup"/>
+    /// (pre-URI cancellation → claim released) to prove the release is conditioned on the durability line.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task Finalize_WhenCancelledAfterUriRecorded_DoesNotReleaseClaim( ) {
+    public async Task Finalize_WhenCancelledAfterUriRecorded_DoesNotResetGenerationOrReleaseClaim( ) {
         // Arrange
         SagaCoordinatorBackgroundService service = CreateService( );
         LookupSagaState completeSaga = CreateCompleteSaga( );
@@ -1860,6 +1955,12 @@ public class SagaCoordinatorBackgroundServiceTests {
             // Expected
         }
 
+        // Assert - No generation reset after the durability line
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
+        );
+
         // Assert - Claim must NOT be released; releasing would allow a re-entrant PDS write against
         // a URI that is already recorded
         _sagaManagerMock.Verify(
@@ -1877,6 +1978,378 @@ public class SagaCoordinatorBackgroundServiceTests {
         _sagaManagerMock.Verify(
             s => s.DeleteAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
             Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Verifies the generation-bounded write count for an N=3 saga. The non-terminal (partial)
+    /// path is CAS-gated: calling it with result counts 1, 2, 3 produces three writes (one per
+    /// distinct generation level), and two redundant calls at generation 3 are silently dropped
+    /// by the CAS. The terminal write uses the finalize claim instead of the CAS.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WriteResult_GenerationBoundedWrites_ProducesOneWritePerDistinctGeneration( ) {
+        // Arrange - N=3 provider saga with results at counts 1, 2, 3
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        // Set up mock to advance generation monotonically using a local counter
+        int storedGeneration = 0;
+        _ = _sagaManagerMock
+            .Setup( s => s.TryAdvanceWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( string _, int gen, CancellationToken _ ) => {
+                if (gen > storedGeneration) {
+                    storedGeneration = gen;
+                    return true;
+                }
+                return false;
+            } );
+
+        // Build three sagas representing distinct generations k=1, k=2, k=3
+        string spotifyJson = """{"isrc":"USRC12345678","trackName":"Test Song","artistName":"Test Artist","url":"https://open.spotify.com/track/abc123"}""";
+        string appleMusicJson = """{"isrc":"USRC12345678","trackName":"Test Song","artistName":"Test Artist","url":"https://music.apple.com/album/1"}""";
+        string tidalJson = """{"isrc":"USRC12345678","trackName":"Test Song","artistName":"Test Artist","url":"https://tidal.com/track/1"}""";
+
+        LookupSagaState sagaGen1 = new( ) {
+            SagaId = TestSagaId,
+            LookupKey = TestLookupKey,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = "USRC12345678",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes( -5 ),
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify, IsComplete: true, IsSuccess: true,
+                    ResultJson: spotifyJson, CompletedAt: DateTimeOffset.UtcNow, ErrorMessage: null )
+            },
+            FinalResultUri = null,
+            IsPartial = false
+        };
+
+        LookupSagaState sagaGen2 = sagaGen1 with {
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify, IsComplete: true, IsSuccess: true,
+                    ResultJson: spotifyJson, CompletedAt: DateTimeOffset.UtcNow, ErrorMessage: null ),
+                [SupportedProviders.AppleMusic] = new(
+                    Provider: SupportedProviders.AppleMusic, IsComplete: true, IsSuccess: true,
+                    ResultJson: appleMusicJson, CompletedAt: DateTimeOffset.UtcNow, ErrorMessage: null )
+            }
+        };
+
+        LookupSagaState sagaGen3 = sagaGen1 with {
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify, IsComplete: true, IsSuccess: true,
+                    ResultJson: spotifyJson, CompletedAt: DateTimeOffset.UtcNow, ErrorMessage: null ),
+                [SupportedProviders.AppleMusic] = new(
+                    Provider: SupportedProviders.AppleMusic, IsComplete: true, IsSuccess: true,
+                    ResultJson: appleMusicJson, CompletedAt: DateTimeOffset.UtcNow, ErrorMessage: null ),
+                [SupportedProviders.Tidal] = new(
+                    Provider: SupportedProviders.Tidal, IsComplete: true, IsSuccess: true,
+                    ResultJson: tidalJson, CompletedAt: DateTimeOffset.UtcNow, ErrorMessage: null )
+            }
+        };
+
+        // Also set up the claim mock to only allow the first terminal winner through
+        bool claimHeld = false;
+        _ = _sagaManagerMock
+            .Setup( s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( ( string _, CancellationToken _ ) => {
+                bool won = !claimHeld;
+                claimHeld = true;
+                return Task.FromResult( won );
+            } );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act - invoke 5 times:
+        //   k=1 non-terminal: CAS advances, partial write
+        //   k=2 non-terminal: CAS advances, partial write
+        //   k=3 terminal (first): claim won, final write
+        //   k=3 terminal (dup):   claim lost, no write
+        //   k=3 terminal (dup):   claim lost, no write
+        await service.InvokeWriteForTestAsync( sagaGen1, terminal: false, cts.Token );
+        await service.InvokeWriteForTestAsync( sagaGen2, terminal: false, cts.Token );
+        await service.InvokeWriteForTestAsync( sagaGen3, terminal: true, cts.Token );
+        await service.InvokeWriteForTestAsync( sagaGen3, terminal: true, cts.Token );
+        await service.InvokeWriteForTestAsync( sagaGen3, terminal: true, cts.Token );
+
+        // Assert - exactly 3 PDS writes (two partial at k=1, k=2; one terminal at k=3)
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Exactly( 3 ),
+            "Expected exactly two partial writes (k=1, k=2) and one terminal write (k=3)"
+        );
+    }
+
+    /// <summary>
+    /// Verifies the non-terminal write path: <c>terminal=false</c> sets <c>IsPartial=true</c> on
+    /// the combined result, calls <c>SetPartialResultUriAsync</c> (not <c>SetFinalResultUriAsync</c>),
+    /// and never calls <c>SetIsPartialAsync(false)</c> or <c>TryClaimFinalizeAsync</c>.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WriteResult_NonTerminal_WritesPartialAndDoesNotClaimFinalize( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        string resultJson = """{"isrc":"USRC12345678","trackName":"Test Song","artistName":"Test Artist","url":"https://open.spotify.com/track/abc123"}""";
+        LookupSagaState partialSaga = new( ) {
+            SagaId = TestSagaId,
+            LookupKey = TestLookupKey,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = "USRC12345678",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes( -1 ),
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: true,
+                    ResultJson: resultJson,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: null
+                )
+            },
+            FinalResultUri = null,
+            IsPartial = true
+        };
+
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act - non-terminal write
+        await service.InvokeWriteForTestAsync( partialSaga, terminal: false, cts.Token );
+
+        // Assert - the combined result written to PDS carries IsPartial=true
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync(
+                It.Is<MediaLinkResult>( r => r.IsPartial ),
+                It.IsAny<CancellationToken>( )
+            ),
+            Times.Once,
+            "Non-terminal write must produce a result with IsPartial=true"
+        );
+
+        // Assert - partial URI stored, not final URI
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not set the final result URI"
+        );
+
+        // Assert - the finalize claim is never acquired on the non-terminal path
+        _sagaManagerMock.Verify(
+            s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not call TryClaimFinalizeAsync"
+        );
+
+        // Assert - IsPartial flag is never cleared on the non-terminal path
+        _sagaManagerMock.Verify(
+            s => s.SetIsPartialAsync( It.IsAny<string>( ), false, It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not clear the IsPartial flag"
+        );
+    }
+
+    /// <summary>
+    /// Verifies the terminal write path: <c>terminal=true</c> clears <c>IsPartial</c> (calls
+    /// <c>SetIsPartialAsync(false)</c>) exactly once after recording the final URI. This is the
+    /// positive control that distinguishes the two write paths.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WriteResult_Terminal_ClearsIsPartialAfterFinalUri( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+        LookupSagaState completeSaga = CreateCompleteSaga( );
+
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act - terminal write
+        await service.InvokeWriteForTestAsync( completeSaga, terminal: true, cts.Token );
+
+        // Assert - IsPartial cleared exactly once after the final URI
+        _sagaManagerMock.Verify(
+            s => s.SetIsPartialAsync( TestSagaId, false, It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "Terminal write must clear the IsPartial flag once"
+        );
+
+        // Assert - final URI recorded (not partial)
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Terminal write must not call SetPartialResultUriAsync"
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a PDS write failure on the non-terminal path resets the write generation
+    /// but does NOT release the finalize claim (which was never acquired on the non-terminal
+    /// path). The dedup lock is also not released with null on the non-terminal failure path.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WriteResult_NonTerminal_WhenPdsWriteFails_ResetsGenerationAndDoesNotReleaseClaim( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        string resultJson = """{"isrc":"USRC12345678","trackName":"Test Song","artistName":"Test Artist","url":"https://open.spotify.com/track/abc123"}""";
+        LookupSagaState partialSaga = new( ) {
+            SagaId = TestSagaId,
+            LookupKey = TestLookupKey,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = "USRC12345678",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes( -1 ),
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: true,
+                    ResultJson: resultJson,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: null
+                )
+            },
+            FinalResultUri = null,
+            IsPartial = true
+        };
+
+        // PDS write fails before the durability line
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "PDS unavailable" ) );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act
+        await service.InvokeWriteForTestAsync( partialSaga, terminal: false, cts.Token );
+
+        // Assert - generation conditionally reset so the next trigger can re-advance and retry
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( TestSagaId, It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "Non-terminal pre-durability failure must reset the write generation"
+        );
+
+        // Assert - finalize claim NEVER acquired or released on the non-terminal path
+        _sagaManagerMock.Verify(
+            s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not call TryClaimFinalizeAsync"
+        );
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not release a finalize claim it never held"
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a failure occurring after the partial result URI has been durably recorded
+    /// (<c>SetPartialResultUriAsync</c> succeeds) does NOT reset the write generation. Retaining
+    /// the generation prevents a re-entrant duplicate partial write against a URI that was already
+    /// written. Pairs with <see cref="WriteResult_NonTerminal_WhenPdsWriteFails_ResetsGenerationAndDoesNotReleaseClaim"/>
+    /// (pre-durability failure → generation reset) as a discriminator: together they prove the
+    /// reset is conditioned on the durability line.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WriteResult_NonTerminal_WhenFailureAfterPartialUriRecorded_DoesNotResetGeneration( ) {
+        // Arrange
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        string resultJson = """{"isrc":"USRC12345678","trackName":"Test Song","artistName":"Test Artist","url":"https://open.spotify.com/track/abc123"}""";
+        LookupSagaState partialSaga = new( ) {
+            SagaId = TestSagaId,
+            LookupKey = TestLookupKey,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = "USRC12345678",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes( -1 ),
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: true,
+                    ResultJson: resultJson,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: null
+                )
+            },
+            FinalResultUri = null,
+            IsPartial = true
+        };
+
+        // PDS write succeeds and returns a URI
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        // SetPartialResultUriAsync succeeds — partial URI durably recorded (uriRecorded = true)
+        _ = _sagaManagerMock
+            .Setup( s => s.SetPartialResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        // The first post-durability step throws — simulates a failure after the durability line
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "cache indexing failed" ) );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act
+        await service.InvokeWriteForTestAsync( partialSaga, terminal: false, cts.Token );
+
+        // Assert - generation must NOT be reset after the durability line; retaining it prevents
+        // a re-entrant duplicate partial write
+        _sagaManagerMock.Verify(
+            s => s.ResetWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal post-durability failure must not reset the write generation"
+        );
+
+        // Assert - finalize claim NEVER acquired or released on the non-terminal path
+        _sagaManagerMock.Verify(
+            s => s.TryClaimFinalizeAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not call TryClaimFinalizeAsync"
+        );
+        _sagaManagerMock.Verify(
+            s => s.ReleaseFinalizeClaimAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal write must not release a finalize claim it never held"
         );
     }
 
@@ -1905,8 +2378,8 @@ public class SagaCoordinatorBackgroundServiceTests {
         _ = _atProtoStorageMock.Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( TestRecordUri );
 
-        _ = _cacheRepositoryMock.Setup( c => c.CacheResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( TestRecordUri );
+        _ = _cacheRepositoryMock.Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         // Act - polling processes both sagas
         using CancellationTokenSource cts = new( );
@@ -1924,6 +2397,152 @@ public class SagaCoordinatorBackgroundServiceTests {
         _atProtoStorageMock.Verify(
             a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
             Times.Exactly( 2 )
+        );
+    }
+
+    /// <summary>
+    /// Regression guard: a saga that becomes complete with its final leg FAILING (so the successful
+    /// provider count, the generation, does not grow) must still finalize. The terminal write is
+    /// gated by the finalize claim only; it must NOT be skipped by the CAS even when the generation
+    /// is unchanged from the previous partial write.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Terminal_WhenCompletedViaFailingLeg_StillFinalizes( ) {
+        // Arrange — Spotify succeeded (generation=1 partial written), Tidal failed.
+        // The saga is now complete but the successful count (generation) stayed at 1.
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        string spotifyJson = """{"isrc":"USRC12345678","trackName":"Test Song","artistName":"Test Artist","url":"https://open.spotify.com/track/abc123"}""";
+        LookupSagaState completedViaFailure = new( ) {
+            SagaId = TestSagaId,
+            LookupKey = TestLookupKey,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = "USRC12345678",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes( -2 ),
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: true,
+                    ResultJson: spotifyJson,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: null
+                ),
+                [SupportedProviders.Tidal] = new(
+                    Provider: SupportedProviders.Tidal,
+                    IsComplete: true,
+                    IsSuccess: false,
+                    ResultJson: null,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: "Rate limited"
+                )
+            },
+            FinalResultUri = null,
+            IsPartial = true
+        };
+
+        _ = _atProtoStorageMock
+            .Setup( a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( TestRecordUri );
+
+        _ = _cacheRepositoryMock
+            .Setup( c => c.IndexResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act — drive the terminal write directly
+        await service.InvokeWriteForTestAsync( completedViaFailure, terminal: true, cts.Token );
+
+        // Assert — final URI recorded (saga finalized despite unchanged generation)
+        _sagaManagerMock.Verify(
+            s => s.SetFinalResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "Terminal write must call SetFinalResultUriAsync even when the generation did not grow"
+        );
+
+        // Assert — partial flag cleared
+        _sagaManagerMock.Verify(
+            s => s.SetIsPartialAsync( TestSagaId, false, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        // Assert — generation CAS was never consulted on the terminal path
+        _sagaManagerMock.Verify(
+            s => s.TryAdvanceWriteGenerationAsync( It.IsAny<string>( ), It.IsAny<int>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Terminal write must not call TryAdvanceWriteGenerationAsync"
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a non-terminal <see cref="SagaCoordinatorBackgroundService.InvokeWriteForTestAsync"/>
+    /// with a null combine result (no successful results yet) does NOT delete the saga and does NOT
+    /// release the dedup lock. More providers are still outstanding; the saga must survive to receive
+    /// their results.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WriteResult_NonTerminal_WhenNullCombineResult_DoesNotDeleteOrRelease( ) {
+        // Arrange — saga with only a failed provider; combiner returns null for allowIncomplete=true
+        SagaCoordinatorBackgroundService service = CreateService( );
+
+        LookupSagaState sagaWithNoSuccesses = new( ) {
+            SagaId = TestSagaId,
+            LookupKey = TestLookupKey,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = "USRC12345678",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes( -1 ),
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    Provider: SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: false,
+                    ResultJson: null,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: "Rate limited"
+                ),
+                [SupportedProviders.Tidal] = new(
+                    Provider: SupportedProviders.Tidal,
+                    IsComplete: false,
+                    IsSuccess: false,
+                    ResultJson: null,
+                    CompletedAt: null,
+                    ErrorMessage: null
+                )
+            },
+            FinalResultUri = null,
+            IsPartial = false
+        };
+
+        _ = _sagaManagerMock
+            .Setup( s => s.DeleteAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( true );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        // Act — non-terminal write with no successful results yet
+        await service.InvokeWriteForTestAsync( sagaWithNoSuccesses, terminal: false, cts.Token );
+
+        // Assert — saga must NOT be deleted: more providers are still in flight
+        _sagaManagerMock.Verify(
+            s => s.DeleteAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal null combine must not delete the saga"
+        );
+
+        // Assert — dedup lock must NOT be released: the saga is still live
+        _deduplicatorMock.Verify(
+            d => d.ReleaseAsync( It.IsAny<string>( ), It.IsAny<string?>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Non-terminal null combine must not release the deduplication lock"
+        );
+
+        // Assert — no PDS write
+        _atProtoStorageMock.Verify(
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never
         );
     }
 

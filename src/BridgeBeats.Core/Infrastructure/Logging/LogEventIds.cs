@@ -471,6 +471,16 @@ public static class LogEventIds {
             /// </summary>
             public const int RedisSagaStateManagerFinalizeClaimReleased = 1318;
 
+            /// <summary>
+            /// EventId for <see cref="RedisSagaStateManager.LogWriteGenerationAdvanced"/>.
+            /// </summary>
+            public const int RedisSagaStateManagerWriteGenerationAdvanced = 1319;
+
+            /// <summary>
+            /// EventId for <see cref="RedisSagaStateManager.LogWriteGenerationReset"/>.
+            /// </summary>
+            public const int RedisSagaStateManagerWriteGenerationReset = 1320;
+
             // RedisRequestDeduplicator (1350-1374)
 
             /// <summary>
