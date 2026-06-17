@@ -381,10 +381,16 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// </summary>
         /// <param name="requestUri">The API endpoint URI.</param>
         /// <param name="endpointKey">The endpoint key for rate limit tracking.</param>
-        /// <returns>The response body on success, or <see langword="null"/> on a non-429 failure status.</returns>
+        /// <returns>The response body on success, or <see langword="null"/> on any non-2xx status other than 400 (including 401, 403, 404, 5xx, and all others).</returns>
         /// <exception cref="Contracts.Exceptions.RetryAfterExceededException">
         /// Thrown when the response is HTTP 429; the <c>Retry-After</c> delta (or 30 seconds when absent)
         /// is carried on the exception.
+        /// </exception>
+        /// <exception cref="Contracts.Exceptions.SpotifyBulkRejectedException">
+        /// Thrown when the response is HTTP 400 Bad Request. A 400 indicates a malformed or otherwise
+        /// unacceptable id in the batch; re-enqueueing each item individually isolates the poison id.
+        /// All other non-2xx responses (including 401, 403, 404, and 5xx) return <see langword="null"/>
+        /// so the caller's batch back-off path handles them.
         /// </exception>
         private async Task<string?> NewBulkMusicApiRequest( string requestUri, string endpointKey ) {
             using HttpClient client = await CreateAuthenticatedClientAsync( );
@@ -407,7 +413,21 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                 );
             }
 
-            LogBulkRequestFailed( Logger, endpointKey, (int)response.StatusCode );
+            // Only a 400 Bad Request indicates a malformed id; other failures fall through to
+            // the batch back-off path. 401/403 are request-wide auth failures that individual
+            // retries cannot resolve; 404 and 5xx are similarly not id-specific. Returning null
+            // routes all of those to the existing cooldown + rebatch path, unchanged.
+            int statusCode = (int)response.StatusCode;
+            if (statusCode == 400) {
+                LogBulkRequestFailed( Logger, endpointKey, statusCode );
+                throw new Contracts.Exceptions.SpotifyBulkRejectedException(
+                    statusCode,
+                    new Uri( client.BaseAddress!, requestUri ),
+                    SupportedProviders.Spotify
+                );
+            }
+
+            LogBulkRequestFailed( Logger, endpointKey, statusCode );
             return null;
         }
 

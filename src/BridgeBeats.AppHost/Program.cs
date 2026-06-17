@@ -101,9 +101,13 @@ IResourceBuilder<ParameterResource> resilienceAttemptTimeoutSeconds = builder.Ad
 
 // Stale-cache refresh parameters — optional; fall back to the worker's code defaults when unset.
 IResourceBuilder<ParameterResource> refreshIntervalHours = builder.AddParameter( "RefreshIntervalHours",
-    () => config["Parameters:RefreshIntervalHours"] ?? "24" );
+    () => config["Parameters:RefreshIntervalHours"] ?? "6" );
 IResourceBuilder<ParameterResource> maxRecordsPerRun = builder.AddParameter( "MaxRecordsPerRun",
-    () => config["Parameters:MaxRecordsPerRun"] ?? "100" );
+    () => config["Parameters:MaxRecordsPerRun"] ?? "500" );
+IResourceBuilder<ParameterResource> refreshEnqueuePacingSeconds = builder.AddParameter( "RefreshEnqueuePacingSeconds",
+    () => config["Parameters:RefreshEnqueuePacingSeconds"] ?? "8" );
+IResourceBuilder<ParameterResource> tidalRefreshMinIntervalSeconds = builder.AddParameter( "TidalRefreshMinIntervalSeconds",
+    () => config["Parameters:TidalRefreshMinIntervalSeconds"] ?? "6" );
 
 // Redis is added as a connection-string resource only: Aspire does NOT provision it here. An external
 // Redis must already exist and ConnectionStrings:redis must be set. Every component references this
@@ -346,7 +350,9 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
         .WithEnvironment( "BridgeBeats__RefreshIntervalHours", refreshIntervalHours )
-        .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun );
+        .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun )
+        .WithEnvironment( "BridgeBeats__RefreshEnqueuePacingSeconds", refreshEnqueuePacingSeconds )
+        .WithEnvironment( "BridgeBeats__TidalRefreshMinIntervalSeconds", tidalRefreshMinIntervalSeconds );
 } else {
     _ = builder.AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( "cache-bootstrap" )
         .WithReference( redis )
@@ -359,7 +365,9 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
         .WithEnvironment( "BridgeBeats__RefreshIntervalHours", refreshIntervalHours )
-        .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun );
+        .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun )
+        .WithEnvironment( "BridgeBeats__RefreshEnqueuePacingSeconds", refreshEnqueuePacingSeconds )
+        .WithEnvironment( "BridgeBeats__TidalRefreshMinIntervalSeconds", tidalRefreshMinIntervalSeconds );
 }
 
 // Main Web Application. In production, service discovery uses resource names for endpoint resolution.

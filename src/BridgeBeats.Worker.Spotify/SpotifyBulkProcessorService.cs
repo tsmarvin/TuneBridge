@@ -24,11 +24,14 @@ namespace BridgeBeats.Worker.Spotify;
 /// in batches. The loop polls every 500ms and flushes a stream when its depth reaches the per-batch
 /// maximum or when its oldest queued item exceeds the configured linger window
 /// (<see cref="ShouldFlush"/>). On success it drives the same saga update and completion-publish path
-/// as the per-message queue processor. Failure handling has three distinct shapes: a rate-limit
+/// as the per-message queue processor. Failure handling has four distinct shapes: a rate-limit
 /// (<see cref="RetryAfterExceededException"/>) marks affected sagas partial and requeues the whole
-/// batch; an empty result dictionary is treated as a request-level failure that arms an exponential
-/// per-stream cooldown and requeues the batch; and an absent key within a non-empty result is a
-/// per-id partial that requeues only that message.
+/// batch; a deterministic 4xx rejection (<see cref="SpotifyBulkRejectedException"/>) re-enqueues
+/// each item individually at Interactive priority so the per-message processor resolves them as
+/// single-id lookups (isolating any poison id); an empty result dictionary is treated as a
+/// transient request-level failure that arms an exponential per-stream cooldown and requeues the
+/// batch; and an absent key within a non-empty result is a per-id partial that requeues only that
+/// message.
 /// </remarks>
 public sealed partial class SpotifyBulkProcessorService : BackgroundService {
 
@@ -46,6 +49,16 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
 
     /// <summary>Spotify bulk lookup service that performs the multi-id API calls.</summary>
     private readonly ISpotifyBulkLookupService _lookupService;
+
+    /// <summary>
+    /// The Spotify request queue used to re-enqueue individual items at Interactive priority when
+    /// the bulk API rejects an entire batch with a 4xx response. The decorated queue passes
+    /// Interactive-priority SongIdLookup and AlbumIdLookup requests straight through to the inner
+    /// (generic priority) queue, so a re-enqueue at Interactive does not feed back into the bulk
+    /// streams. A future change that makes the decorator batch Interactive requests would silently
+    /// break this fallback and must update this path accordingly.
+    /// </summary>
+    private readonly IRequestQueue<QueuedLookupRequest> _requestQueue;
 
     /// <summary>Logger for this service's structured log events.</summary>
     private readonly ILogger<SpotifyBulkProcessorService> _logger;
@@ -98,6 +111,12 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     /// <param name="rateLimitTracker">Tracker for per-endpoint rate-limit state.</param>
     /// <param name="sagaManager">Manager for saga state.</param>
     /// <param name="lookupService">Spotify bulk lookup service.</param>
+    /// <param name="requestQueue">
+    /// The Spotify request queue used to re-enqueue items individually at Interactive priority when
+    /// the bulk API rejects an entire batch with a 4xx. Must be the queue registered for
+    /// <see cref="SupportedProviders.Spotify"/> (the <c>SpotifyBulkQueueDecorator</c>-wrapped instance
+    /// registered by <c>AddQueueProcessor</c>).
+    /// </param>
     /// <param name="logger">Logger for the service.</param>
     /// <param name="batchSettings">Bound batch settings supplying the linger window and base cooldown.</param>
     /// <exception cref="ArgumentNullException">Thrown when any required dependency or <paramref name="batchSettings"/> is <see langword="null"/>.</exception>
@@ -107,6 +126,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         IRateLimitTracker rateLimitTracker,
         ISagaStateManager sagaManager,
         ISpotifyBulkLookupService lookupService,
+        IRequestQueue<QueuedLookupRequest> requestQueue,
         ILogger<SpotifyBulkProcessorService> logger,
         IOptions<SpotifyBatchSettings> batchSettings
     ) {
@@ -115,6 +135,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         _rateLimitTracker = rateLimitTracker ?? throw new ArgumentNullException( nameof( rateLimitTracker ) );
         _sagaManager = sagaManager ?? throw new ArgumentNullException( nameof( sagaManager ) );
         _lookupService = lookupService ?? throw new ArgumentNullException( nameof( lookupService ) );
+        _requestQueue = requestQueue ?? throw new ArgumentNullException( nameof( requestQueue ) );
         _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
         ArgumentNullException.ThrowIfNull( batchSettings );
         int lingerMs = batchSettings.Value.LingerMs;
@@ -292,11 +313,14 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     /// <returns>A task that completes once the batch has been resolved, applied, or requeued.</returns>
     /// <remarks>
     /// Messages are grouped by track id so duplicates share one API result. An empty result
-    /// dictionary is treated as a request-level failure: it arms the exponential track-id cooldown
-    /// and requeues the whole batch. A present-but-<see langword="null"/> result records a
+    /// dictionary is treated as a transient request-level failure: it arms the exponential track-id
+    /// cooldown and requeues the whole batch. A present-but-<see langword="null"/> result records a
     /// not-found provider state; an absent key requeues only that message. A
-    /// <see cref="RetryAfterExceededException"/> is routed to <see cref="HandleBulkRateLimitAsync"/>,
-    /// and any other exception requeues the whole batch.
+    /// <see cref="RetryAfterExceededException"/> is routed to <see cref="HandleBulkRateLimitAsync"/>.
+    /// A <see cref="SpotifyBulkRejectedException"/> (deterministic 4xx) re-enqueues each item
+    /// individually at Interactive priority and acknowledges the original bulk-stream messages so
+    /// the per-message processor handles them as single-id lookups. Any other exception requeues
+    /// the whole batch.
     /// </remarks>
     internal async Task ProcessBulkTrackLookupsAsync( CancellationToken ct ) {
         LogProcessingBulkTracks( _logger );
@@ -364,6 +388,8 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
             LogTrackLookupsSuccess( _logger, messages.Count );
         } catch (RetryAfterExceededException ex) {
             await HandleBulkRateLimitAsync( messages, SpotifyConstants.BulkTracksEndpoint, ex, ct );
+        } catch (SpotifyBulkRejectedException ex) {
+            await HandleBulkRejectionAsync( messages, ex, ct );
         } catch (Exception ex) {
             LogTrackLookupsError( _logger, ex );
             await RequeueAllAsync( messages, ct );
@@ -380,7 +406,8 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
     /// Mirrors <see cref="ProcessBulkTrackLookupsAsync"/> for albums: messages are grouped by album
     /// id, an empty result dictionary arms the album-id cooldown and requeues the batch, an absent
     /// key requeues only that message, a rate limit routes to <see cref="HandleBulkRateLimitAsync"/>,
-    /// and any other exception requeues the whole batch.
+    /// a deterministic 4xx routes to <see cref="HandleBulkRejectionAsync"/>, and any other exception
+    /// requeues the whole batch.
     /// </remarks>
     internal async Task ProcessBulkAlbumLookupsAsync( CancellationToken ct ) {
         LogProcessingBulkAlbums( _logger );
@@ -443,6 +470,8 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
             LogAlbumLookupsSuccess( _logger, messages.Count );
         } catch (RetryAfterExceededException ex) {
             await HandleBulkRateLimitAsync( messages, SpotifyConstants.BulkAlbumsEndpoint, ex, ct );
+        } catch (SpotifyBulkRejectedException ex) {
+            await HandleBulkRejectionAsync( messages, ex, ct );
         } catch (Exception ex) {
             LogAlbumLookupsError( _logger, ex );
             await RequeueAllAsync( messages, ct );
@@ -573,6 +602,46 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
 
         // Requeue all messages (with AttemptCount increment via RequeueAsync)
         await RequeueAllAsync( messages, ct );
+    }
+
+    /// <summary>
+    /// Handles a deterministic 4xx bulk rejection by re-enqueueing each message individually at
+    /// Interactive priority, then acknowledging the original bulk-stream messages.
+    /// </summary>
+    /// <param name="messages">The messages whose bulk batch was rejected by the API.</param>
+    /// <param name="ex">The exception carrying the HTTP status code of the rejection.</param>
+    /// <param name="ct">Token used to stop early.</param>
+    /// <returns>A task that completes once all items are re-enqueued and acknowledged.</returns>
+    /// <remarks>
+    /// A 4xx rejection is data-dependent: the batch contains at least one id the API cannot
+    /// accept. Re-enqueueing individually at Interactive lets the per-message processor
+    /// resolve each id with a single-id call so the poison id is isolated without penalizing
+    /// the remaining ids. AttemptCount is carried unchanged — the 4xx is a route change, not
+    /// a failed lookup attempt. No cooldown is armed and no saga state is written; the
+    /// per-message processor owns those on the next attempt. ArmRequestFailureCooldown is
+    /// intentionally NOT called on this path.
+    /// </remarks>
+    internal async Task HandleBulkRejectionAsync(
+        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> messages,
+        SpotifyBulkRejectedException ex,
+        CancellationToken ct
+    ) {
+        LogBulkBatchRejected( _logger, ex.HttpStatusCode, messages.Count );
+
+        foreach (QueuedMessage<QueuedLookupRequest> message in messages) {
+            if (ct.IsCancellationRequested) { break; }
+            try {
+                // Re-enqueue the original payload unchanged (preserves SagaId, LookupType,
+                // LookupValue, OriginPriority, AttemptCount) at Interactive priority so the
+                // SpotifyBulkQueueDecorator passes it straight through to the inner queue.
+                await _requestQueue.EnqueueAsync( message.Payload, QueuePriority.Interactive, ct );
+
+                // Acknowledge the original bulk-stream message now that a replacement is enqueued.
+                await _batchHelper.AcknowledgeAsync( message.MessageId );
+            } catch (Exception itemEx) {
+                LogRequeueError( _logger, itemEx, message.MessageId );
+            }
+        }
     }
 
     /// <summary>
@@ -986,6 +1055,16 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         Level = LogLevel.Error,
         Message = "Failed to publish rate-limit sentinel for saga {SagaId}" )]
     private static partial void LogBulkPublishRateLimitSentinelError( ILogger logger, Exception ex, string sagaId );
+
+    /// <summary>Logs that the bulk endpoint returned a deterministic 4xx and each item is being re-enqueued individually.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="statusCode">The HTTP status code returned by the bulk endpoint.</param>
+    /// <param name="count">The number of items being re-enqueued.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.BulkBatchRejected,
+        Level = LogLevel.Warning,
+        Message = "Bulk batch rejected with HTTP {StatusCode}; re-enqueueing {Count} items as individual lookups" )]
+    private static partial void LogBulkBatchRejected( ILogger logger, int statusCode, int count );
 
     #endregion
 }

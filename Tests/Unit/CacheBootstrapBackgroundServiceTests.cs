@@ -84,7 +84,9 @@ public class CacheBootstrapBackgroundServiceTests {
             TimeSpan.FromHours( 6 ),
             CacheDays: 30,
             RefreshInterval: TimeSpan.FromHours( 24 ),
-            MaxRecordsPerRun: 100
+            MaxRecordsPerRun: 100,
+            RefreshEnqueuePacing: TimeSpan.FromSeconds( 8 ),
+            TidalRefreshMinInterval: TimeSpan.FromSeconds( 6 )
         );
     }
 
@@ -304,7 +306,9 @@ public class CacheBootstrapBackgroundServiceTests {
             pdsUri, userDid, interval,
             CacheDays: 30,
             RefreshInterval: TimeSpan.FromHours( 24 ),
-            MaxRecordsPerRun: 100
+            MaxRecordsPerRun: 100,
+            RefreshEnqueuePacing: TimeSpan.FromSeconds( 8 ),
+            TidalRefreshMinInterval: TimeSpan.FromSeconds( 6 )
         );
 
         // Assert

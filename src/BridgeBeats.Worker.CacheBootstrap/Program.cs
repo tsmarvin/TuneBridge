@@ -67,7 +67,8 @@ public static class Program {
         // Read and validate credentials
         (string atProtoIdentifier, string atProtoPassword, string atProtoUserDID,
             string atProtoPdsUri, int cacheDays, int bootstrapIntervalHours,
-            int refreshIntervalHours, int maxRecordsPerRun) =
+            int refreshIntervalHours, int maxRecordsPerRun,
+            int refreshEnqueuePacingSeconds, int tidalRefreshMinIntervalSeconds) =
                 ValidateConfiguration( builder );
 
         // Register ATProto session manager and storage service (centralized authentication)
@@ -93,7 +94,9 @@ public static class Program {
             TimeSpan.FromHours( bootstrapIntervalHours ),
             cacheDays,
             TimeSpan.FromHours( refreshIntervalHours ),
-            maxRecordsPerRun
+            maxRecordsPerRun,
+            TimeSpan.FromSeconds( refreshEnqueuePacingSeconds ),
+            TimeSpan.FromSeconds( tidalRefreshMinIntervalSeconds )
         ) );
         _ = builder.Services.AddHostedService<CacheBootstrapBackgroundService>( );
 
@@ -126,14 +129,16 @@ public static class Program {
     /// <returns>
     /// A tuple of the ATProto identifier, app password, user DID, PDS URI, cache-retention days
     /// (default 30), bootstrap interval in hours (default 6), stale-cache refresh interval in hours
-    /// (default 24), and max stale records per refresh run (default 100).
+    /// (default 6), max stale records per refresh run (default 500), global enqueue pacing in
+    /// seconds (default 8), and Tidal minimum enqueue interval in seconds (default 6).
     /// </returns>
     /// <exception cref="InvalidOperationException">
     /// Thrown when any of the required ATProto credentials are missing or blank.
     /// </exception>
     private static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID,
         string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours,
-        int RefreshIntervalHours, int MaxRecordsPerRun) ValidateConfiguration(
+        int RefreshIntervalHours, int MaxRecordsPerRun,
+        int RefreshEnqueuePacingSeconds, int TidalRefreshMinIntervalSeconds) ValidateConfiguration(
             HostApplicationBuilder builder
     ) {
         string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
@@ -143,8 +148,12 @@ public static class Program {
             ?? "https://pds.bridgebeats.link";
         int cacheDays = builder.Configuration.GetValue("BridgeBeats:CacheDays", 30);
         int bootstrapIntervalHours = builder.Configuration.GetValue("BridgeBeats:BootstrapIntervalHours", 6);
-        int refreshIntervalHours = builder.Configuration.GetValue("BridgeBeats:RefreshIntervalHours", 24);
-        int maxRecordsPerRun = builder.Configuration.GetValue("BridgeBeats:MaxRecordsPerRun", 100);
+        int refreshIntervalHours = builder.Configuration.GetValue("BridgeBeats:RefreshIntervalHours", 6);
+        int maxRecordsPerRun = builder.Configuration.GetValue("BridgeBeats:MaxRecordsPerRun", 500);
+        int rawPacingSeconds = builder.Configuration.GetValue("BridgeBeats:RefreshEnqueuePacingSeconds", 8);
+        int refreshEnqueuePacingSeconds = rawPacingSeconds > 0 ? rawPacingSeconds : 8;
+        int rawTidalSeconds = builder.Configuration.GetValue("BridgeBeats:TidalRefreshMinIntervalSeconds", 6);
+        int tidalRefreshMinIntervalSeconds = rawTidalSeconds > 0 ? rawTidalSeconds : 6;
 
         if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
             string.IsNullOrWhiteSpace( atProtoPassword ) ||
@@ -159,7 +168,8 @@ public static class Program {
         ATProtoUriHelper.ValidateDid( atProtoUserDID, "BridgeBeats:ATProtoUserDID" );
 
         return (atProtoIdentifier, atProtoPassword, atProtoUserDID, atProtoPdsUri, cacheDays,
-            bootstrapIntervalHours, refreshIntervalHours, maxRecordsPerRun);
+            bootstrapIntervalHours, refreshIntervalHours, maxRecordsPerRun,
+            refreshEnqueuePacingSeconds, tidalRefreshMinIntervalSeconds);
     }
 
     /// <summary>

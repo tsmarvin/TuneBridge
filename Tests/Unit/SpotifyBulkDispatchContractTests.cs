@@ -44,6 +44,8 @@ public class SpotifyBulkDispatchContractTests {
     private Mock<ISagaStateManager> _sagaManagerMock = null!;
     /// <summary>Mock bulk lookup service supplying batch track/album results.</summary>
     private Mock<ISpotifyBulkLookupService> _lookupServiceMock = null!;
+    /// <summary>Mock request queue used to verify Interactive re-enqueues on the 4xx rejection path.</summary>
+    private Mock<IRequestQueue<QueuedLookupRequest>> _requestQueueMock = null!;
     /// <summary>Mock logger for the batch queue helper.</summary>
     private Mock<ILogger<SpotifyBatchQueueHelper>> _helperLoggerMock = null!;
     /// <summary>Mock logger for the bulk processor service.</summary>
@@ -81,8 +83,16 @@ public class SpotifyBulkDispatchContractTests {
         _rateLimitTrackerMock = new Mock<IRateLimitTracker>( );
         _sagaManagerMock = new Mock<ISagaStateManager>( );
         _lookupServiceMock = new Mock<ISpotifyBulkLookupService>( );
+        _requestQueueMock = new Mock<IRequestQueue<QueuedLookupRequest>>( );
         _helperLoggerMock = new Mock<ILogger<SpotifyBatchQueueHelper>>( );
         _serviceLoggerMock = new Mock<ILogger<SpotifyBulkProcessorService>>( );
+
+        // EnqueueAsync succeeds by default (no-op for the fallback path mock)
+        _ = _requestQueueMock.Setup( q => q.EnqueueAsync(
+                It.IsAny<QueuedLookupRequest>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         _ = _redisMock.Setup( r => r.GetDatabase( It.IsAny<int>( ), It.IsAny<object>( ) ) )
             .Returns( _dbMock.Object );
@@ -286,6 +296,14 @@ public class SpotifyBulkDispatchContractTests {
             It.IsAny<CancellationToken>( ) ),
             Times.Never,
             "Empty-dict (request failure) must not write saga state for any message" );
+
+        // Negative control: the 5xx/empty-dict path must NOT re-enqueue via the Interactive queue
+        _requestQueueMock.Verify( q => q.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Empty-dict (transient request failure) must not trigger Interactive re-enqueue; only 4xx does" );
     }
 
     /// <summary>
@@ -995,6 +1013,7 @@ public class SpotifyBulkDispatchContractTests {
             _rateLimitTrackerMock.Object,
             _sagaManagerMock.Object,
             _lookupServiceMock.Object,
+            _requestQueueMock.Object,
             _serviceLoggerMock.Object,
             options
         );
@@ -1289,5 +1308,351 @@ public class SpotifyBulkDispatchContractTests {
             It.IsAny<CancellationToken>( ) ),
             Times.Never,
             "Empty-dict (request failure) on the album path must not write saga state" );
+
+        // Negative control: the empty-dict path must NOT re-enqueue via the Interactive queue
+        _requestQueueMock.Verify( q => q.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Empty-dict on the album path must not trigger Interactive re-enqueue" );
+    }
+
+    // ──── 4xx bulk-rejection tests ────────────────────────────────────────────
+
+    /// <summary>
+    /// Verifies the processor-tier contract for an auth failure represented as an empty-dict result:
+    /// when <see cref="ISpotifyBulkLookupService.GetTracksByIdsAsync"/> returns an empty dictionary
+    /// (the shape a 401 produces after the lookup service translates it), the bulk processor takes
+    /// the cooldown-and-rebatch path (XADD) and does NOT re-enqueue at Interactive priority. A 401
+    /// is a request-wide credential failure; re-routing individual items cannot resolve it.
+    /// </summary>
+    /// <remarks>
+    /// This test pins the PROCESSOR-tier contract: that an empty-dict result routes to
+    /// cooldown+rebatch, not Interactive re-enqueue. It stubs
+    /// <see cref="ISpotifyBulkLookupService"/> at the interface boundary and does not drive
+    /// the real HTTP status mapping inside <c>NewBulkMusicApiRequest</c>. The HTTP-level
+    /// assertion that a 401 produces an empty dict (not a throw) is covered by
+    /// <see cref="SpotifyBulkStatusMappingTests"/>.
+    /// </remarks>
+    [TestMethod]
+    public async Task ProcessBulkTracks_WhenLookupReturnsEmptyDict_BulkAuth401_ShouldTakeCooldownRebatchPathNotInteractive( ) {
+        // Arrange — lookup service returns empty dict (simulates a 401 auth failure: NewBulkMusicApiRequest
+        // returns null → GetTracksByIdsAsync returns empty dict, not SpotifyBulkRejectedException)
+        _ = _lookupServiceMock.Setup( s => s.GetTracksByIdsAsync( It.IsAny<IEnumerable<string>>( ) ) )
+            .ReturnsAsync( [] );
+
+        SpotifyBulkProcessorService service = CreateService( );
+
+        // Act
+        await service.ProcessBulkTrackLookupsAsync( TestContext.CancellationToken );
+
+        // Assert — rebatch path fires (XADD)
+        _dbMock.Verify( d => d.StreamAddAsync(
+            (RedisKey)TrackStream,
+            It.IsAny<NameValueEntry[]>( ),
+            It.IsAny<RedisValue?>( ),
+            It.IsAny<long?>( ),
+            It.IsAny<bool>( ),
+            It.IsAny<long?>( ),
+            It.IsAny<StreamTrimMode>( ),
+            It.IsAny<CommandFlags>( ) ),
+            Times.AtLeastOnce,
+            "Auth failure (empty dict) must take the cooldown+rebatch path (XADD)" );
+
+        // Negative control: Interactive re-enqueue must NOT fire for an auth failure
+        _requestQueueMock.Verify( q => q.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "A 401 auth failure (empty dict) must not trigger Interactive re-enqueue; only HTTP 400 does" );
+    }
+
+    /// <summary>
+    /// Verifies the processor-tier contract for an authorization failure represented as an
+    /// empty-dict result: when <see cref="ISpotifyBulkLookupService.GetTracksByIdsAsync"/> returns
+    /// an empty dictionary (the shape a 403 produces after the lookup service translates it), the
+    /// bulk processor takes the cooldown-and-rebatch path (XADD) and does NOT re-enqueue at
+    /// Interactive priority.
+    /// </summary>
+    /// <remarks>
+    /// This test pins the PROCESSOR-tier contract: that an empty-dict result routes to
+    /// cooldown+rebatch, not Interactive re-enqueue. It stubs
+    /// <see cref="ISpotifyBulkLookupService"/> at the interface boundary and does not drive
+    /// the real HTTP status mapping inside <c>NewBulkMusicApiRequest</c>. The HTTP-level
+    /// assertion that a 403 produces an empty dict (not a throw) is covered by
+    /// <see cref="SpotifyBulkStatusMappingTests"/>.
+    /// </remarks>
+    [TestMethod]
+    public async Task ProcessBulkTracks_WhenLookupReturnsEmptyDict_BulkAuth403_ShouldTakeCooldownRebatchPathNotInteractive( ) {
+        // Arrange — lookup service returns empty dict (simulates a 403 authorization failure)
+        _ = _lookupServiceMock.Setup( s => s.GetTracksByIdsAsync( It.IsAny<IEnumerable<string>>( ) ) )
+            .ReturnsAsync( [] );
+
+        SpotifyBulkProcessorService service = CreateService( );
+
+        // Act
+        await service.ProcessBulkTrackLookupsAsync( TestContext.CancellationToken );
+
+        // Assert — rebatch path fires (XADD)
+        _dbMock.Verify( d => d.StreamAddAsync(
+            (RedisKey)TrackStream,
+            It.IsAny<NameValueEntry[]>( ),
+            It.IsAny<RedisValue?>( ),
+            It.IsAny<long?>( ),
+            It.IsAny<bool>( ),
+            It.IsAny<long?>( ),
+            It.IsAny<StreamTrimMode>( ),
+            It.IsAny<CommandFlags>( ) ),
+            Times.AtLeastOnce,
+            "Authorization failure (empty dict) must take the cooldown+rebatch path (XADD)" );
+
+        // Negative control: Interactive re-enqueue must NOT fire for an authorization failure
+        _requestQueueMock.Verify( q => q.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "A 403 authorization failure (empty dict) must not trigger Interactive re-enqueue; only HTTP 400 does" );
+    }
+
+    /// <summary>
+    /// Verifies the 4xx track batch rejection contract: when the lookup service throws
+    /// <see cref="SpotifyBulkRejectedException"/> (deterministic 4xx), every message is
+    /// re-enqueued individually at Interactive priority and the original bulk-stream messages
+    /// are acknowledged. No saga state is written and no cooldown is armed.
+    /// </summary>
+    /// <remarks>Test was red before HandleBulkRejectionAsync existed; green after.</remarks>
+    [TestMethod]
+    public async Task ProcessBulkTracks_WhenBulkRejected4xx_ShouldReenqueueAllAtInteractiveAndAck( ) {
+        const int ExpectedCount = 1; // one message from default XREADGROUP setup
+
+        // Arrange — lookup service throws the 4xx rejection exception
+        _ = _lookupServiceMock.Setup( s => s.GetTracksByIdsAsync( It.IsAny<IEnumerable<string>>( ) ) )
+            .ThrowsAsync( new SpotifyBulkRejectedException( 400, null, SupportedProviders.Spotify ) );
+
+        List<QueuedLookupRequest> capturedRequests = [];
+        List<QueuePriority> capturedPriorities = [];
+        _ = _requestQueueMock.Setup( q => q.EnqueueAsync(
+                It.IsAny<QueuedLookupRequest>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( QueuedLookupRequest r, QueuePriority p, CancellationToken _ ) => {
+                capturedRequests.Add( r );
+                capturedPriorities.Add( p );
+            } )
+            .Returns( Task.CompletedTask );
+
+        SpotifyBulkProcessorService service = CreateService( );
+
+        // Act
+        await service.ProcessBulkTrackLookupsAsync( TestContext.CancellationToken );
+
+        // Assert — each message is re-enqueued at Interactive priority
+        _requestQueueMock.Verify( q => q.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ),
+            Times.Exactly( ExpectedCount ),
+            "Every message in the rejected batch must be re-enqueued at Interactive priority" );
+
+        Assert.HasCount( ExpectedCount, capturedRequests, "Re-enqueue count must match message count" );
+        Assert.AreEqual( QueuePriority.Interactive, capturedPriorities[0], "Re-enqueue priority must be Interactive" );
+
+        // Assert — original bulk-stream messages are acknowledged (XACK + XDEL)
+        _dbMock.Verify( d => d.StreamAcknowledgeAsync(
+            TrackStream,
+            It.IsAny<RedisValue>( ),
+            It.IsAny<RedisValue>( ),
+            It.IsAny<CommandFlags>( ) ),
+            Times.Exactly( ExpectedCount ),
+            "Each original bulk-stream message must be ACKed after re-enqueueing" );
+
+        // Assert — no saga state written on the 4xx path
+        _sagaManagerMock.Verify( m => m.UpdateProviderStateAsync(
+            It.IsAny<string>( ),
+            It.IsAny<ProviderLookupState>( ),
+            It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "4xx rejection must not write saga state" );
+
+        // Assert — cooldown not armed: no stream re-add (RequeueAllAsync not called)
+        _dbMock.Verify( d => d.StreamAddAsync(
+            (RedisKey)TrackStream,
+            It.IsAny<NameValueEntry[]>( ),
+            It.IsAny<RedisValue?>( ),
+            It.IsAny<long?>( ),
+            It.IsAny<bool>( ),
+            It.IsAny<long?>( ),
+            It.IsAny<StreamTrimMode>( ),
+            It.IsAny<CommandFlags>( ) ),
+            Times.Never,
+            "4xx rejection must not re-add items to the bulk stream" );
+    }
+
+    /// <summary>
+    /// Verifies the album-path parity for 4xx rejection: when the album lookup service throws
+    /// <see cref="SpotifyBulkRejectedException"/>, every album message is re-enqueued at
+    /// Interactive and acknowledged, and no saga state is written.
+    /// </summary>
+    /// <remarks>Test was red before HandleBulkRejectionAsync existed; green after.</remarks>
+    [TestMethod]
+    public async Task ProcessBulkAlbums_WhenBulkRejected4xx_ShouldReenqueueAllAtInteractiveAndAck( ) {
+        const string TestAlbumId = "6WdSsBrH5QtofaTTqgwxOV";
+        const int ExpectedCount = 1;
+
+        // Arrange — album stream at threshold
+        _ = _dbMock.Setup( d => d.StreamLengthAsync( AlbumStream, It.IsAny<CommandFlags>( ) ) )
+            .ReturnsAsync( SpotifyConstants.MaxAlbumsPerBatchLookup );
+        _ = _dbMock.Setup( d => d.StreamLengthAsync( TrackStream, It.IsAny<CommandFlags>( ) ) )
+            .ReturnsAsync( 0L );
+
+        QueuedLookupRequest albumRequest = new( ) {
+            RequestId = Guid.NewGuid( ).ToString( "N" ),
+            Provider = SupportedProviders.Spotify,
+            LookupType = LookupRequestType.AlbumIdLookup,
+            LookupValue = TestAlbumId,
+            SagaId = TestSagaId,
+            IsAlbum = true,
+            OriginPriority = QueuePriority.Bulk,
+            AttemptCount = 0
+        };
+        StreamEntry albumEntry = BuildStreamEntryFromRequest( albumRequest );
+
+        _ = _dbMock.Setup( d => d.StreamReadGroupAsync(
+                AlbumStream,
+                It.IsAny<RedisValue>( ),
+                It.IsAny<RedisValue>( ),
+                It.IsAny<RedisValue?>( ),
+                It.IsAny<int?>( ),
+                It.IsAny<bool>( ),
+                It.IsAny<TimeSpan?>( ),
+                It.IsAny<CommandFlags>( ) ) )
+            .ReturnsAsync( [albumEntry] );
+
+        _ = _lookupServiceMock.Setup( s => s.GetAlbumsByIdsAsync( It.IsAny<IEnumerable<string>>( ) ) )
+            .ThrowsAsync( new SpotifyBulkRejectedException( 400, null, SupportedProviders.Spotify ) );
+
+        SpotifyBulkProcessorService service = CreateService( );
+
+        // Act
+        await service.ProcessBulkAlbumLookupsAsync( TestContext.CancellationToken );
+
+        // Assert — re-enqueued at Interactive
+        _requestQueueMock.Verify( q => q.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ),
+            Times.Exactly( ExpectedCount ),
+            "Every album message in the rejected batch must be re-enqueued at Interactive priority" );
+
+        // Assert — original album-stream message acknowledged
+        _dbMock.Verify( d => d.StreamAcknowledgeAsync(
+            AlbumStream,
+            It.IsAny<RedisValue>( ),
+            It.IsAny<RedisValue>( ),
+            It.IsAny<CommandFlags>( ) ),
+            Times.Exactly( ExpectedCount ),
+            "Each original album bulk-stream message must be ACKed after re-enqueueing" );
+
+        // Assert — no saga state written
+        _sagaManagerMock.Verify( m => m.UpdateProviderStateAsync(
+            It.IsAny<string>( ),
+            It.IsAny<ProviderLookupState>( ),
+            It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "4xx album rejection must not write saga state" );
+    }
+
+    /// <summary>
+    /// Verifies that AttemptCount is NOT incremented on the 4xx re-enqueue path. The 4xx is a
+    /// route change (batch → individual), not a failed attempt; good ids must not be penalized
+    /// by having their retry count consumed.
+    /// </summary>
+    /// <remarks>
+    /// Contrasts with the empty-dict (5xx/transient) path where <c>RequeueAsync</c> increments
+    /// AttemptCount as part of the re-add. Test was red before HandleBulkRejectionAsync preserved
+    /// the original payload unchanged; green after.
+    /// </remarks>
+    [TestMethod]
+    public async Task ProcessBulkTracks_WhenBulkRejected4xx_ShouldNotIncrementAttemptCount( ) {
+        const int OriginalAttemptCount = 2;
+
+        // Arrange — message with a non-zero attempt count
+        QueuedLookupRequest request = CreateRequest( TestTrackId, attemptCount: OriginalAttemptCount );
+        StreamEntry entry = BuildStreamEntryFromRequest( request );
+
+        _ = _dbMock.Setup( d => d.StreamReadGroupAsync(
+                TrackStream,
+                It.IsAny<RedisValue>( ),
+                It.IsAny<RedisValue>( ),
+                It.IsAny<RedisValue?>( ),
+                It.IsAny<int?>( ),
+                It.IsAny<bool>( ),
+                It.IsAny<TimeSpan?>( ),
+                It.IsAny<CommandFlags>( ) ) )
+            .ReturnsAsync( [entry] );
+
+        _ = _lookupServiceMock.Setup( s => s.GetTracksByIdsAsync( It.IsAny<IEnumerable<string>>( ) ) )
+            .ThrowsAsync( new SpotifyBulkRejectedException( 400, null, SupportedProviders.Spotify ) );
+
+        QueuedLookupRequest? capturedRequest = null;
+        _ = _requestQueueMock.Setup( q => q.EnqueueAsync(
+                It.IsAny<QueuedLookupRequest>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( QueuedLookupRequest r, QueuePriority _, CancellationToken _ ) => capturedRequest = r )
+            .Returns( Task.CompletedTask );
+
+        SpotifyBulkProcessorService service = CreateService( );
+
+        // Act
+        await service.ProcessBulkTrackLookupsAsync( TestContext.CancellationToken );
+
+        // Assert — AttemptCount carried unchanged
+        Assert.IsNotNull( capturedRequest, "EnqueueAsync must have been called with the re-enqueued request" );
+        Assert.AreEqual(
+            OriginalAttemptCount,
+            capturedRequest.AttemptCount,
+            "AttemptCount must be preserved unchanged on a 4xx re-enqueue (route change, not a failed attempt)" );
+    }
+
+    /// <summary>
+    /// Characterizes the current behavior for a valid 200 response with an empty track body: the
+    /// processor takes the cooldown-and-rebatch path (empty-dict branch). This characterizes
+    /// CURRENT behavior — the empty-200 case is a known out-of-scope gap and is not asserted as
+    /// correct.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessBulkTracks_WhenLookupServiceReturnsEmptyDict_TakesCooldownRebatchPath( ) {
+        // Arrange — lookup service returns empty dict (no exception: could be empty-200 or 5xx)
+        _ = _lookupServiceMock.Setup( s => s.GetTracksByIdsAsync( It.IsAny<IEnumerable<string>>( ) ) )
+            .ReturnsAsync( [] );
+
+        SpotifyBulkProcessorService service = CreateService( );
+
+        // Act
+        await service.ProcessBulkTrackLookupsAsync( TestContext.CancellationToken );
+
+        // Characterize: takes the rebatch (XADD) path, not the Interactive re-enqueue path
+        _dbMock.Verify( d => d.StreamAddAsync(
+            (RedisKey)TrackStream,
+            It.IsAny<NameValueEntry[]>( ),
+            It.IsAny<RedisValue?>( ),
+            It.IsAny<long?>( ),
+            It.IsAny<bool>( ),
+            It.IsAny<long?>( ),
+            It.IsAny<StreamTrimMode>( ),
+            It.IsAny<CommandFlags>( ) ),
+            Times.AtLeastOnce,
+            "Empty-dict takes the cooldown+rebatch path (current behavior characterization)" );
+
+        _requestQueueMock.Verify( q => q.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "Empty-dict must not trigger Interactive re-enqueue (current behavior characterization)" );
     }
 }
