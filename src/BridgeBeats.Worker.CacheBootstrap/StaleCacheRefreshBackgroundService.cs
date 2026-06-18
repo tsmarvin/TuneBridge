@@ -1,18 +1,21 @@
+using System.Globalization;
 using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Domain.Utilities;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Worker.CacheBootstrap.Logging;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Worker.CacheBootstrap;
 
 /// <summary>
-/// Periodically selects the oldest stale or expired cached media-link records and bulk-enqueues them
-/// for re-lookup, keeping the cache from drifting permanently out of date for records that are never
-/// re-requested by users. Runs on a configurable interval with the first tick deferred until after one
-/// full interval; does not run immediately at startup.
+/// Periodically selects the oldest stale cached media-link records and bulk-enqueues them for
+/// re-lookup, keeping the cache from drifting permanently out of date for records that are never
+/// re-requested by users. The sweep schedule is durable across restarts via a Redis last-run
+/// marker; a fixed startup grace period prevents hammering the PDS scan on rapid restart cycles.
 /// </summary>
 /// <remarks>
 /// The service operates as an independent failure domain from
@@ -21,12 +24,12 @@ namespace BridgeBeats.Worker.CacheBootstrap;
 /// <see langword="true"/> it skips that pass to avoid compounding a degraded-cache window. A missing
 /// or unreadable status is treated as not-running, so the sweep proceeds. Per-record failures are
 /// counted and skipped; the remaining records are still enqueued. A fatal error during a pass is
-/// logged and the loop continues to the next tick.
+/// logged and the loop continues to the next scheduled pass.
 /// </remarks>
 /// <param name="atProtoStorage">Streams every stored record from the user's ATProto PDS.</param>
 /// <param name="sagaManager">Creates and initializes sagas for re-lookup jobs.</param>
 /// <param name="queueResolver">Resolves the per-provider queue used to enqueue re-lookup requests.</param>
-/// <param name="redis">The Redis connection used to read the bootstrap status document.</param>
+/// <param name="redis">The Redis connection used to read the bootstrap status and durable schedule marker.</param>
 /// <param name="enabledProviders">The set of providers that participate in re-lookups.</param>
 /// <param name="settings">Configuration: PDS URI, user DID, cache freshness window, refresh interval, and max records per run.</param>
 /// <param name="logger">The logger for this service.</param>
@@ -40,22 +43,74 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     ILogger<StaleCacheRefreshBackgroundService> logger
 ) : BackgroundService {
 
+    /// <summary>Redis key that records the UTC instant the most recent refresh pass started.</summary>
+    private const string LastRunMarkerKey = "cache:refresh:last-run";
+
+    /// <summary>Fixed grace period at startup before the first scan is allowed to run.</summary>
+    private static readonly TimeSpan s_startupGrace = TimeSpan.FromSeconds( 120 );
+
+    /// <summary>Upper bound of the per-pass uniform jitter applied to de-synchronize the sweep from the bootstrap scan.</summary>
+    private static readonly TimeSpan s_maxJitter = TimeSpan.FromSeconds( 300 );
+
     /// <summary>Serializer options used when reading the bootstrap status document from Redis.</summary>
     private static readonly JsonSerializerOptions s_jsonReadOptions = new( ) { PropertyNameCaseInsensitive = true };
 
     /// <summary>
-    /// Waits one full refresh interval, then loops: on each tick selects the oldest stale records
-    /// and bulk-enqueues them for re-lookup. Cancellation ends the loop cleanly; per-tick errors are
-    /// logged and do not stop the loop.
+    /// Startup grace duration used by <see cref="ExecuteAsync"/>. Defaults to
+    /// <see cref="s_startupGrace"/> (120 s). Tests set this to <see cref="TimeSpan.Zero"/> to drive
+    /// <see cref="ExecuteAsync"/> without waiting.
+    /// </summary>
+    internal TimeSpan _startupGrace = s_startupGrace;
+
+    /// <summary>
+    /// Maximum per-pass jitter used by <see cref="ExecuteAsync"/>. Defaults to
+    /// <see cref="s_maxJitter"/> (300 s). Tests set this to <see cref="TimeSpan.Zero"/> to make
+    /// schedule waits deterministic.
+    /// </summary>
+    internal TimeSpan _maxJitter = s_maxJitter;
+
+    /// <summary>
+    /// Waits a fixed startup grace, then loops on the durable schedule: reads the last-run marker
+    /// to determine elapsed time, waits the remainder plus jitter, writes the marker before
+    /// selection, and runs the refresh pass. Cancellation ends the loop cleanly; per-pass errors
+    /// are logged and do not stop the loop.
     /// </summary>
     /// <param name="stoppingToken">Signals when the host is shutting down.</param>
     /// <returns>A task that completes when the service stops.</returns>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
-        using PeriodicTimer timer = new( settings.RefreshInterval );
+        try {
+            await Task.Delay( _startupGrace, stoppingToken );
+        } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+            LogRefreshShuttingDown( logger );
+            return;
+        }
 
         while (!stoppingToken.IsCancellationRequested) {
             try {
-                _ = await timer.WaitForNextTickAsync( stoppingToken );
+                DateTimeOffset? lastRun = await ReadLastRunMarkerAsync( );
+                TimeSpan elapsed = lastRun.HasValue
+                    ? DateTimeOffset.UtcNow - lastRun.Value
+                    : TimeSpan.MaxValue;
+
+                // A future-dated marker (e.g. clock skew or an invalid write) would produce a
+                // negative elapsed, making the wait exceed a full interval and stalling the sweep.
+                // Clamp so any future-dated marker is treated as due-now.
+                if (elapsed < TimeSpan.Zero) {
+                    elapsed = TimeSpan.MaxValue;
+                }
+
+                TimeSpan jitter = TimeSpan.FromMilliseconds(
+                    Random.Shared.NextDouble( ) * _maxJitter.TotalMilliseconds );
+
+                TimeSpan wait = elapsed >= settings.RefreshInterval
+                    ? jitter
+                    : (settings.RefreshInterval - elapsed) + jitter;
+
+                if (wait > TimeSpan.Zero) {
+                    await Task.Delay( wait, stoppingToken );
+                }
+
+                await WriteLastRunMarkerAsync( );
                 await RunRefreshPassAsync( stoppingToken );
             } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
                 break;
@@ -94,19 +149,28 @@ public sealed partial class StaleCacheRefreshBackgroundService(
 
         LogRefreshStarting( logger, selected.Count );
 
-        SupportedProviders firstProvider = enabledProviders.First( );
         int enqueued = 0;
         int skipped = 0;
         int errors = 0;
 
         foreach ((string atUri, MediaLinkResult result) in selected) {
             try {
-                bool didEnqueue = await EnqueueRecordAsync( atUri, result, firstProvider, cancellationToken );
+                IReadOnlyList<RefreshLeg> legs = DeriveRefreshLegs( result, enabledProviders );
+
+                if (legs.Count == 0) {
+                    LogRefreshRecordSkipped( logger, atUri );
+                    skipped++;
+                    continue;
+                }
+
+                bool didEnqueue = await EnqueueRecordAsync( atUri, result, legs, cancellationToken );
                 if (didEnqueue) {
                     enqueued++;
                 } else {
                     skipped++;
                 }
+            } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                throw;
             } catch (Exception ex) {
                 errors++;
                 LogRefreshEnqueueError( logger, ex, atUri );
@@ -118,9 +182,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
 
     /// <summary>
     /// Streams the PDS and returns the oldest stale records (up to
-    /// <see cref="CacheBootstrapSettings.MaxRecordsPerRun"/>). A record is stale when it is partial
-    /// or its <see cref="MediaLinkResult.LookedUpAt"/> is older than the configured cache window. The
-    /// selection uses a size-bounded sorted set so the full corpus is never materialized in memory.
+    /// <see cref="CacheBootstrapSettings.MaxRecordsPerRun"/>). A record is stale when its
+    /// <see cref="MediaLinkResult.LookedUpAt"/> is older than the configured cache window (age-only;
+    /// partial-ness is not a staleness trigger). The selection uses a size-bounded sorted set so the
+    /// full corpus is never materialized in memory.
     /// </summary>
     /// <param name="cancellationToken">A token that cancels the enumeration.</param>
     /// <returns>The oldest stale records, sorted oldest-first.</returns>
@@ -128,7 +193,7 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         CancellationToken cancellationToken
     ) {
         int maxN = settings.MaxRecordsPerRun;
-        DateTime expirationDate = DateTime.UtcNow.AddDays( -settings.CacheDays );
+        DateTime utcNow = DateTime.UtcNow;
 
         // A SortedSet sorted ascending by (LookedUpAt, AtUri): the Max entry is the newest stale
         // record and is evicted when the set exceeds maxN, leaving only the oldest maxN entries.
@@ -138,8 +203,7 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         try {
             await foreach ((string atUri, MediaLinkResult result) in
                 atProtoStorage.ListAllRecordsAsync( settings.PdsUri, settings.UserDid, cancellationToken )) {
-                bool isStale = result.IsPartial || result.LookedUpAt < expirationDate;
-                if (!isStale) {
+                if (!CacheFreshness.IsStale( result.LookedUpAt, settings.CacheDays, utcNow )) {
                     continue;
                 }
 
@@ -161,110 +225,266 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     }
 
     /// <summary>
-    /// Derives the lookup parameters for a single stale record and enqueues one re-lookup request.
-    /// Returns <see langword="true"/> when the request was enqueued and <see langword="false"/> when
-    /// the record carries no usable lookup identifier and was skipped.
+    /// Seeds one saga keyed on the record's external id, initializes exactly the enqueued-leg
+    /// providers, and enqueues every leg to its own provider queue. Individual leg enqueue failures
+    /// are handled per-leg: the failing leg is marked complete-as-failed in the saga so the saga
+    /// can still reach <see cref="LookupSagaState.IsComplete"/> via the coordinator poll backstop.
     /// </summary>
-    /// <param name="atUri">The AT-URI of the record being refreshed.</param>
+    /// <param name="atUri">The AT-URI of the record being refreshed (used for logging).</param>
     /// <param name="result">The stale media-link result.</param>
-    /// <param name="firstProvider">The provider queue to enqueue the request to.</param>
+    /// <param name="legs">The pre-derived non-empty leg list from <see cref="DeriveRefreshLegs"/>.</param>
     /// <param name="cancellationToken">A token that cancels the operation.</param>
     /// <returns>
-    /// <see langword="true"/> when the record was enqueued; <see langword="false"/> when it was
-    /// skipped because no lookup identifier could be derived.
+    /// <see langword="true"/> when the record was dispatched and the saga left finalizable
+    /// (individual legs may have failed and been marked complete-as-failed); <see langword="false"/>
+    /// when the leg list is empty.
     /// </returns>
     private async Task<bool> EnqueueRecordAsync(
         string atUri,
         MediaLinkResult result,
-        SupportedProviders firstProvider,
+        IReadOnlyList<RefreshLeg> legs,
         CancellationToken cancellationToken
     ) {
-        (LookupRequestType lookupType, string lookupKey, string lookupValue, bool isAlbum,
-            string? title, string? artist) = DeriveEntryParams( result );
-
-        if (string.IsNullOrWhiteSpace( lookupKey )) {
+        if (legs.Count == 0) {
             LogRefreshRecordSkipped( logger, atUri );
             return false;
         }
 
-        string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+        // Determine saga identity from the record's external id so this saga dedups with an
+        // interactive lookup for the same entity and the coordinator's secondary fan-out is
+        // suppressed (the IsrcLookup/UpcLookup origin type is the suppression key).
+        string sagaLookupKey;
+        LookupRequestType sagaLookupType;
+        string sagaLookupValue;
+
+        if (TryResolveAnchor( result, out string recordExternalId, out bool recordIsAlbum, out _, out _ )
+            && !string.IsNullOrEmpty( recordExternalId )) {
+            if (recordIsAlbum) {
+                sagaLookupValue = recordExternalId;
+                sagaLookupKey = $"{LookupRequestType.UpcLookup}:{sagaLookupValue}";
+                sagaLookupType = LookupRequestType.UpcLookup;
+            } else {
+                sagaLookupValue = recordExternalId.ToUpperInvariant( );
+                sagaLookupKey = $"{LookupRequestType.IsrcLookup}:{sagaLookupValue}";
+                sagaLookupType = LookupRequestType.IsrcLookup;
+            }
+        } else {
+            // No external id: key the saga on the first native leg in deterministic provider order
+            // so the id is stable across passes for the same record.
+            RefreshLeg firstLeg = legs
+                .OrderBy( l => (int)l.Provider )
+                .First( );
+            sagaLookupKey = LookupKeyBuilder.TypedKey( firstLeg.LookupType, firstLeg.Provider, firstLeg.LookupValue );
+            sagaLookupType = firstLeg.LookupType;
+            sagaLookupValue = firstLeg.LookupValue;
+        }
+
+        string sagaId = ISagaStateManager.GenerateSagaId( sagaLookupKey );
 
         _ = await sagaManager.GetOrCreateAsync(
             sagaId,
-            lookupKey,
-            lookupType,
-            lookupValue,
+            sagaLookupKey,
+            sagaLookupType,
+            sagaLookupValue,
             originPriority: QueuePriority.Bulk,
             cancellationToken: cancellationToken
         );
 
-        await sagaManager.InitializeProviderStatesAsync( sagaId, enabledProviders, cancellationToken );
+        // Initialize exactly the providers we are enqueuing legs for — the mode-B fix.
+        await sagaManager.InitializeProviderStatesAsync(
+            sagaId,
+            legs.Select( l => l.Provider ).Distinct( ),
+            cancellationToken
+        );
 
-        QueuedLookupRequest request = new( ) {
-            RequestId = Guid.NewGuid( ).ToString( "N" ),
-            Provider = firstProvider,
-            LookupType = lookupType,
-            LookupValue = lookupValue,
-            SagaId = sagaId,
-            IsAlbum = isAlbum,
-            Title = title,
-            Artist = artist,
-            OriginPriority = QueuePriority.Bulk
-        };
+        foreach (RefreshLeg leg in legs) {
+            QueuedLookupRequest request = new( ) {
+                RequestId = Guid.NewGuid( ).ToString( "N" ),
+                Provider = leg.Provider,
+                LookupType = leg.LookupType,
+                LookupValue = leg.LookupValue,
+                SagaId = sagaId,
+                IsAlbum = leg.IsAlbum,
+                Title = leg.Title,
+                Artist = leg.Artist,
+                OriginPriority = QueuePriority.Bulk
+            };
 
-        IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( firstProvider );
-        await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
+            IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( leg.Provider );
+            try {
+                await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
+            } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                throw;
+            } catch (Exception ex) {
+                LogRefreshLegEnqueueFailed( logger, ex, atUri, leg.Provider );
+                await sagaManager.UpdateProviderStateAsync(
+                    sagaId,
+                    new ProviderLookupState(
+                        Provider: leg.Provider,
+                        IsComplete: true,
+                        IsSuccess: false,
+                        ResultJson: null,
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        ErrorMessage: $"Refresh leg enqueue failed: {ex.Message}"
+                    ),
+                    cancellationToken
+                );
+            }
+        }
 
         return true;
     }
 
     /// <summary>
-    /// Derives lookup type, key, value, album flag, and optional metadata from a stale record's
-    /// provider results. Uses external-id precedence: the first result with a non-empty
-    /// <see cref="MusicLookupResult.ExternalId"/> drives an ISRC or UPC lookup; when none has an
-    /// external id but any has both <see cref="MusicLookupResult.Title"/> and
-    /// <see cref="MusicLookupResult.Artist"/>, a song-title lookup is used; otherwise the record is
-    /// un-enqueuable and an empty <c>lookupKey</c> is returned.
+    /// Decomposes a stale record into the set of provider legs that will refresh it: a native-id
+    /// leg for each present provider whose URL yields a parseable native id, plus an external-id
+    /// fallback leg for every enabled provider that is missing from the record or whose URL is
+    /// unparseable. Returns an empty list when no leg can be derived (record is skipped).
     /// </summary>
-    /// <param name="result">The stale <see cref="MediaLinkResult"/> whose provider results are inspected.</param>
+    /// <param name="record">The stale record to decompose.</param>
+    /// <param name="providers">The set of enabled providers.</param>
     /// <returns>
-    /// A tuple of lookup type, lookup key (empty string when no identifier is derivable), lookup
-    /// value, album flag, and optional title/artist metadata.
+    /// The ordered leg list, or an empty list when the record has no parseable URL and no external
+    /// id to fall back on.
     /// </returns>
-    internal static (LookupRequestType LookupType, string LookupKey, string LookupValue, bool IsAlbum,
-        string? Title, string? Artist) DeriveEntryParams( MediaLinkResult result ) {
+    internal static IReadOnlyList<RefreshLeg> DeriveRefreshLegs(
+        MediaLinkResult record,
+        IReadOnlyCollection<SupportedProviders> providers
+    ) {
+        List<RefreshLeg> legs = [];
 
-        // External-id path: first result with a non-empty ExternalId wins
-        foreach (MusicLookupResult providerResult in result.Results.Values) {
-            if (!string.IsNullOrWhiteSpace( providerResult.ExternalId )) {
+        _ = TryResolveAnchor( record, out string recordExternalId, out bool recordIsAlbum,
+            out string? anchorTitle, out string? anchorArtist );
+
+        // Step 2: native-id leg per present provider that is still enabled.
+        // Providers absent from enabledProviders are skipped entirely: no native leg is emitted
+        // and no fallback is registered — the provider drops off the record on the next write.
+        foreach ((SupportedProviders provider, MusicLookupResult providerResult) in record.Results) {
+            if (!providers.Contains( provider )) {
+                continue;
+            }
+
+            string? id = ProviderUrlParser.ExtractId( provider, providerResult.URL ?? string.Empty );
+            if (!string.IsNullOrWhiteSpace( id )) {
                 bool isAlbum = providerResult.IsAlbum ?? false;
-                if (isAlbum) {
-                    string normalizedUpc = providerResult.ExternalId.Trim( );
-                    string lookupKey = $"{LookupRequestType.UpcLookup}:{normalizedUpc}";
-                    return (LookupRequestType.UpcLookup, lookupKey, normalizedUpc, true,
-                        providerResult.Title, providerResult.Artist);
+                legs.Add( new RefreshLeg(
+                    provider,
+                    isAlbum ? LookupRequestType.AlbumIdLookup : LookupRequestType.SongIdLookup,
+                    id.Trim( ),
+                    isAlbum,
+                    providerResult.Title,
+                    providerResult.Artist
+                ) );
+            }
+        }
+
+        // Step 3: track which providers got a native-id leg.
+        HashSet<SupportedProviders> covered = [.. legs.Select( l => l.Provider )];
+
+        // Step 4: external-id fallback for missing and unparseable-present providers.
+        foreach (SupportedProviders provider in providers) {
+            if (covered.Contains( provider )) {
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty( recordExternalId )) {
+                LookupRequestType fallbackType;
+                string fallbackValue;
+                if (recordIsAlbum) {
+                    fallbackType = LookupRequestType.UpcLookup;
+                    fallbackValue = recordExternalId;
                 } else {
-                    string normalizedIsrc = providerResult.ExternalId.Trim( ).ToUpperInvariant( );
-                    string lookupKey = $"{LookupRequestType.IsrcLookup}:{normalizedIsrc}";
-                    return (LookupRequestType.IsrcLookup, lookupKey, normalizedIsrc, false,
-                        providerResult.Title, providerResult.Artist);
+                    fallbackType = LookupRequestType.IsrcLookup;
+                    fallbackValue = recordExternalId.ToUpperInvariant( );
                 }
+                legs.Add( new RefreshLeg(
+                    provider,
+                    fallbackType,
+                    fallbackValue,
+                    recordIsAlbum,
+                    anchorTitle,
+                    anchorArtist
+                ) );
+            }
+            // If recordExternalId is blank, no fallback can be emitted for this provider.
+        }
+
+        // Step 5: empty list means no usable identifier; caller logs and counts the skip.
+        return legs;
+    }
+
+    /// <summary>
+    /// Resolves the record-level external id and album discriminant from the first provider result
+    /// that carries a non-blank <see cref="MusicLookupResult.ExternalId"/>, matching the precedence
+    /// <c>RecordKeyGenerator.GenerateRkey</c> uses. Returns <see langword="true"/> when an anchor
+    /// was found.
+    /// </summary>
+    private static bool TryResolveAnchor(
+        MediaLinkResult record,
+        out string recordExternalId,
+        out bool recordIsAlbum,
+        out string? anchorTitle,
+        out string? anchorArtist
+    ) {
+        foreach (MusicLookupResult r in record.Results.Values) {
+            if (!string.IsNullOrWhiteSpace( r.ExternalId )) {
+                recordExternalId = r.ExternalId.Trim( );
+                recordIsAlbum = r.IsAlbum ?? false;
+                anchorTitle = r.Title;
+                anchorArtist = r.Artist;
+                return true;
             }
         }
 
-        // Metadata fallback: first result with non-empty Title and Artist
-        foreach (MusicLookupResult providerResult in result.Results.Values) {
-            if (!string.IsNullOrWhiteSpace( providerResult.Title ) &&
-                !string.IsNullOrWhiteSpace( providerResult.Artist )) {
-                string lookupKey = $"{LookupRequestType.SongLookup}:{providerResult.Title.Trim( ).ToUpperInvariant( )}:{providerResult.Artist.Trim( ).ToUpperInvariant( )}";
-                string lookupValue = $"{providerResult.Title}|{providerResult.Artist}";
-                return (LookupRequestType.SongLookup, lookupKey, lookupValue, false,
-                    providerResult.Title, providerResult.Artist);
-            }
-        }
+        recordExternalId = string.Empty;
+        recordIsAlbum = false;
+        anchorTitle = null;
+        anchorArtist = null;
+        return false;
+    }
 
-        // No usable identifier — skip this record
-        return (LookupRequestType.SongLookup, string.Empty, string.Empty, false, null, null);
+    /// <summary>
+    /// Reads the durable last-run marker from Redis. Returns <see langword="null"/> when the key is
+    /// absent or the read fails (treated as due-now by the caller).
+    /// </summary>
+    private async Task<DateTimeOffset?> ReadLastRunMarkerAsync( ) {
+        try {
+            IDatabase db = redis.GetDatabase( );
+            RedisValue value = await db.StringGetAsync( LastRunMarkerKey );
+            if (value.IsNullOrEmpty) {
+                return null;
+            }
+
+            if (DateTimeOffset.TryParse(
+                    value.ToString( ),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out DateTimeOffset parsed )) {
+                return parsed;
+            }
+
+            return null;
+        } catch (Exception ex) {
+            LogRefreshMarkerReadError( logger, ex );
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Writes the current UTC instant as the durable last-run marker. A write failure is logged at
+    /// Warning and the pass proceeds; on the next start the stale marker causes the service to treat
+    /// itself as due-now, which may produce one extra pass.
+    /// </summary>
+    private async Task WriteLastRunMarkerAsync( ) {
+        try {
+            IDatabase db = redis.GetDatabase( );
+            _ = await db.StringSetAsync(
+                LastRunMarkerKey,
+                DateTimeOffset.UtcNow.ToString( "O" )
+            );
+        } catch (Exception ex) {
+            LogRefreshMarkerWriteError( logger, ex );
+        }
     }
 
     /// <summary>
@@ -306,6 +526,19 @@ public sealed partial class StaleCacheRefreshBackgroundService(
             return cmp != 0 ? cmp : string.Compare( x.AtUri, y.AtUri, StringComparison.Ordinal );
         }
     }
+
+    /// <summary>
+    /// A worker-internal record struct describing one provider leg of a refresh operation. Never
+    /// serialized and never crosses a process boundary.
+    /// </summary>
+    internal readonly record struct RefreshLeg(
+        SupportedProviders Provider,
+        LookupRequestType LookupType,
+        string LookupValue,
+        bool IsAlbum,
+        string? Title,
+        string? Artist
+    );
 
     #region LoggerMessage Methods
 
@@ -374,6 +607,24 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         Level = LogLevel.Warning,
         Message = "Failed to read bootstrap status from Redis; treating as not-running and proceeding" )]
     private static partial void LogRefreshStatusReadError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshMarkerWriteError,
+        Level = LogLevel.Warning,
+        Message = "Failed to write durable last-run marker to Redis; pass will proceed and marker may be stale" )]
+    private static partial void LogRefreshMarkerWriteError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshMarkerReadError,
+        Level = LogLevel.Warning,
+        Message = "Failed to read durable last-run marker from Redis; treating as due-now and running" )]
+    private static partial void LogRefreshMarkerReadError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshLegEnqueueFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to enqueue refresh leg for {AtUri} to {Provider}; leg marked complete-as-failed in saga" )]
+    private static partial void LogRefreshLegEnqueueFailed( ILogger logger, Exception ex, string atUri, SupportedProviders provider );
 
     #endregion
 }

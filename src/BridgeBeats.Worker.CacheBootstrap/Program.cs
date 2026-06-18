@@ -126,7 +126,7 @@ public static class Program {
     /// <returns>
     /// A tuple of the ATProto identifier, app password, user DID, PDS URI, cache-retention days
     /// (default 30), bootstrap interval in hours (default 6), stale-cache refresh interval in hours
-    /// (default 24), and max stale records per refresh run (default 100).
+    /// (default 6), and max stale records per refresh run (default 500).
     /// </returns>
     /// <exception cref="InvalidOperationException">
     /// Thrown when any of the required ATProto credentials are missing or blank.
@@ -143,8 +143,8 @@ public static class Program {
             ?? "https://pds.bridgebeats.link";
         int cacheDays = builder.Configuration.GetValue("BridgeBeats:CacheDays", 30);
         int bootstrapIntervalHours = builder.Configuration.GetValue("BridgeBeats:BootstrapIntervalHours", 6);
-        int refreshIntervalHours = builder.Configuration.GetValue("BridgeBeats:RefreshIntervalHours", 24);
-        int maxRecordsPerRun = builder.Configuration.GetValue("BridgeBeats:MaxRecordsPerRun", 100);
+        int refreshIntervalHours = builder.Configuration.GetValue("BridgeBeats:RefreshIntervalHours", 6);
+        int maxRecordsPerRun = builder.Configuration.GetValue("BridgeBeats:MaxRecordsPerRun", 500);
 
         if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
             string.IsNullOrWhiteSpace( atProtoPassword ) ||

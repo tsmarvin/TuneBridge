@@ -227,6 +227,13 @@ public class SpotifyBulkFlushTests {
     /// Verifies that a song-id lookup at interactive priority is delegated to the inner queue and is
     /// never written to a bulk stream.
     /// </summary>
+    /// <remarks>
+    /// This passthrough is load-bearing for the 4xx bulk-rejection fallback. When
+    /// <see cref="SpotifyBulkProcessorService"/> handles a <c>SpotifyBulkRejectedException</c>, it
+    /// re-enqueues each item at Interactive priority through the decorator. If the decorator were ever
+    /// changed to batch Interactive SongIdLookup requests into the bulk stream, the fallback would
+    /// silently loop instead of resolving items individually.
+    /// </remarks>
     [TestMethod]
     public async Task Decorator_SongIdLookup_WithInteractivePriority_DelegatesToInnerQueue( ) {
         // Arrange — SongIdLookup with explicitly Interactive priority
@@ -265,6 +272,13 @@ public class SpotifyBulkFlushTests {
     /// Verifies that an album-id lookup at interactive priority is delegated to the inner queue and
     /// is never written to a bulk stream.
     /// </summary>
+    /// <remarks>
+    /// This passthrough is load-bearing for the 4xx bulk-rejection fallback. When
+    /// <see cref="SpotifyBulkProcessorService"/> handles a <c>SpotifyBulkRejectedException</c>, it
+    /// re-enqueues each item at Interactive priority through the decorator. If the decorator were ever
+    /// changed to batch Interactive AlbumIdLookup requests into the bulk stream, the fallback would
+    /// silently loop instead of resolving items individually.
+    /// </remarks>
     [TestMethod]
     public async Task Decorator_AlbumIdLookup_WithInteractivePriority_DelegatesToInnerQueue( ) {
         // Arrange
@@ -826,6 +840,7 @@ public class SpotifyBulkFlushTests {
             _rateLimitTrackerMock.Object,
             _sagaManagerMock.Object,
             _lookupServiceMock.Object,
+            _innerQueueMock.Object,
             _serviceLoggerMock.Object,
             options );
     }

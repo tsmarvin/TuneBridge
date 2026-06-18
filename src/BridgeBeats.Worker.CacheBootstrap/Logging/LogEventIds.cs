@@ -91,6 +91,15 @@ public static class LogEventIds {
     /// <summary>Reading the bootstrap status document from Redis failed during a refresh pass.</summary>
     public const int RefreshStatusReadError = 5530;
 
+    /// <summary>Writing the durable last-run marker to Redis failed; the pass proceeds.</summary>
+    public const int RefreshMarkerWriteError = 5531;
+
+    /// <summary>Reading the durable last-run marker from Redis failed; treating as due-now and running.</summary>
+    public const int RefreshMarkerReadError = 5532;
+
+    /// <summary>Enqueuing one provider leg of a refresh record failed; the leg is marked complete-as-failed in the saga.</summary>
+    public const int RefreshLegEnqueueFailed = 5533;
+
     #endregion
 
     #region Program Startup (5550-5574)
