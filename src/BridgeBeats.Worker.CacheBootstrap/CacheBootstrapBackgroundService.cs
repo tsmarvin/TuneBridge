@@ -15,7 +15,7 @@ namespace BridgeBeats.Worker.CacheBootstrap;
 /// </summary>
 /// <remarks>
 /// Each run streams every <see cref="Contracts.DTOs.MediaLinkResult"/> record from the user's PDS via
-/// <see cref="Contracts.Interfaces.IATProtoStorageService.ListAllRecordsAsync(System.Uri, string, System.Threading.CancellationToken)"/>
+/// <see cref="Contracts.Interfaces.IATProtoStorageService.ListAllRecordsAsync(System.Uri, string, System.Threading.CancellationToken, bool)"/>
 /// and re-registers each record's input-link to record-URI pointers through
 /// <see cref="Contracts.Interfaces.IMediaLinkCacheRepository.AddInputLinksAsync(string, Contracts.DTOs.MediaLinkResult)"/>.
 /// Before-and-after Redis key counts are recorded, and a

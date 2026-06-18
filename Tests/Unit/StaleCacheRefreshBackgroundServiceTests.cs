@@ -120,7 +120,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await executeTask;
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Never
         );
     }
@@ -153,8 +153,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
             .ReturnsAsync( true );
 
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
                 listCallOrder = System.Threading.Interlocked.Increment( ref callCounter );
                 _ = listCalled.TrySetResult( );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
@@ -191,8 +191,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
                 _ = listCalled.TrySetResult( );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
             } );
@@ -210,7 +210,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.StopAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.AtLeastOnce
         );
     }
@@ -229,8 +229,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
                 _ = listCalled.TrySetResult( );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
             } );
@@ -248,7 +248,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.StopAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.AtLeastOnce
         );
     }
@@ -269,8 +269,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
                 _ = listCalled.TrySetResult( );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
             } );
@@ -288,7 +288,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.StopAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.AtLeastOnce
         );
     }
@@ -315,7 +315,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Never
         );
         _queueMock.Verify(
@@ -342,7 +342,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Once
         );
         _queueMock.Verify(
@@ -367,7 +367,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Once
         );
     }
@@ -1367,8 +1367,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
         TaskCompletionSource secondCallTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
 
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
                 int count = System.Threading.Interlocked.Increment( ref listCallCount );
                 if (count == 1) {
                     throw new InvalidOperationException( "Fatal pass error" );
@@ -1712,7 +1712,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( records.ToAsyncEnumerable( ) );
     }
 

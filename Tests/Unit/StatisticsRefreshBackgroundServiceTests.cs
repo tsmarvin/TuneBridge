@@ -59,7 +59,7 @@ public class StatisticsRefreshBackgroundServiceTests {
             .ReturnsAsync( RedisValue.Null );
 
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
 
         // Short CacheDuration so the periodic timer fires during tests; zero StartupDelay.
@@ -82,7 +82,7 @@ public class StatisticsRefreshBackgroundServiceTests {
         // Arrange
         int refreshCount = 0;
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( ( ) => {
                 _ = Interlocked.Increment( ref refreshCount );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
@@ -147,7 +147,7 @@ public class StatisticsRefreshBackgroundServiceTests {
         // Arrange
         int refreshCount = 0;
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( ( ) => {
                 _ = Interlocked.Increment( ref refreshCount );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
@@ -215,7 +215,7 @@ public class StatisticsRefreshBackgroundServiceTests {
         // Arrange — ALL ListAllRecordsAsync calls throw so both the startup refresh and every
         // loop-phase iteration enter their respective catch branches.
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( ThrowingEnumerable );
 
         Mock<ILogger<StatisticsRefreshBackgroundService>> loggerMock = new( );

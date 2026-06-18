@@ -348,7 +348,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
         };
 
         _ = _atProtoStorageMock
-            .Setup( a => a.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( a => a.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( new List<(string, MediaLinkResult)> { (AtUri, firstRecord) }.ToAsyncEnumerable( ) );
 
         List<QueuedLookupRequest> firstPassLegs = [];
@@ -386,7 +386,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
         // Apple is absent from partialRecord.Results (the lookup failed and was not written back).
 
         _ = _atProtoStorageMock
-            .Setup( a => a.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( a => a.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( new List<(string, MediaLinkResult)> { (AtUri, partialRecord) }.ToAsyncEnumerable( ) );
 
         // ── Step 3: Second pass — record is stale again; Apple must get a fallback leg. ───────

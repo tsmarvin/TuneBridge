@@ -117,6 +117,51 @@ public static class LogEventIds {
             /// </summary>
             public const int ATProtoStorageServiceCarCommitVersionUnexpected = 1085;
 
+            /// <summary>
+            /// EventId logged per re-download attempt before the retry wait, with the attempt number
+            /// and the classified fault. Part of the CAR fetch+parse retry (1086-1087).
+            /// </summary>
+            public const int ATProtoStorageServiceCarRetryAttempt = 1086;
+
+            /// <summary>
+            /// EventId logged once when all 3 CAR fetch+parse attempts are exhausted, before the
+            /// CarParseException propagates to the caller.
+            /// </summary>
+            public const int ATProtoStorageServiceCarRetryExhausted = 1087;
+
+            /// <summary>
+            /// EventId logged when a full-collection read is served from the fresh in-process CAR
+            /// cache without a network download — logged at both the pre-lock fast read and the
+            /// under-lock awaiter-reuse serve.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheHit = 1088;
+
+            /// <summary>
+            /// EventId logged under the lock when a confirmed miss, expiry, or forced-refresh will
+            /// trigger a fresh download. Carries a flag indicating whether the miss was forced.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheMiss = 1089;
+
+            /// <summary>
+            /// EventId logged when the single-flight download begins under the lock — one per actual
+            /// download, pairing with ATProtoStorageServiceCarCacheRefreshComplete to bound the
+            /// populate duration in logs.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheRefreshStart = 1090;
+
+            /// <summary>
+            /// EventId logged when an accepted transfer is committed to the cache after a successful
+            /// download+parse. Carries the record count and the new cache timestamp.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheRefreshComplete = 1091;
+
+            /// <summary>
+            /// EventId logged when the field overwrite replaces a previously-expired cache entry —
+            /// distinguishes a true expiry-replace from a cold first populate. Not logged on the
+            /// initial populate.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheEvict = 1092;
+
             // RedisATProtoSessionManager (1100-1149)
 
             /// <summary>

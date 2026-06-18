@@ -158,8 +158,8 @@ public class CacheBootstrapBackgroundServiceTests {
         // Arrange: signal when ListAllRecordsAsync is called (first run completed when it returns)
         TaskCompletionSource listCalledTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Callback<Uri, string, CancellationToken>( ( _, _, _ ) => listCalledTcs.TrySetResult( ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Callback<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => listCalledTcs.TrySetResult( ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
 
         CacheBootstrapBackgroundService service = CreateService( );
@@ -263,8 +263,8 @@ public class CacheBootstrapBackgroundServiceTests {
         // Arrange: signal when ListAllRecordsAsync is called with the expected parameters
         TaskCompletionSource listCalledTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( s_testPdsUri, TestUserDid, It.IsAny<CancellationToken>( ) ) )
-            .Callback<Uri, string, CancellationToken>( ( _, _, _ ) => listCalledTcs.TrySetResult( ) )
+            .Setup( x => x.ListAllRecordsAsync( s_testPdsUri, TestUserDid, It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Callback<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => listCalledTcs.TrySetResult( ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
 
         CacheBootstrapBackgroundService service = CreateService( );
@@ -279,7 +279,7 @@ public class CacheBootstrapBackgroundServiceTests {
 
         // Assert - Verify correct PDS URI and DID were passed
         _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( s_testPdsUri, TestUserDid, It.IsAny<CancellationToken>( ) ),
+            x => x.ListAllRecordsAsync( s_testPdsUri, TestUserDid, It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.AtLeastOnce( )
         );
     }
@@ -332,7 +332,7 @@ public class CacheBootstrapBackgroundServiceTests {
     /// <summary>Configures the storage mock to return an empty record stream.</summary>
     private void SetupEmptyRecordList( ) {
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
     }
 
@@ -340,7 +340,7 @@ public class CacheBootstrapBackgroundServiceTests {
     /// <param name="records">The records the bootstrap pass should enumerate.</param>
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( records.ToAsyncEnumerable( ) );
     }
 
@@ -540,7 +540,7 @@ public class CacheBootstrapBackgroundServiceTests {
             .ReturnsAsync( true );
 
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Throws( new InvalidOperationException( "Simulated CAR parse failure" ) );
 
         CacheBootstrapBackgroundService service = CreateService( );

@@ -104,7 +104,7 @@ public class StatisticsServiceTests {
         Assert.AreEqual( 0, result.TotalRecords );
         Assert.AreEqual( DateTimeOffset.MinValue, result.GeneratedAt );
         _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Never( )
         );
     }
@@ -126,7 +126,7 @@ public class StatisticsServiceTests {
 
         Assert.AreEqual( 1, result.TotalRecords );
         _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Once( )
         );
     }
@@ -153,7 +153,7 @@ public class StatisticsServiceTests {
     public async Task TriggerRefresh_WhenAlreadyRefreshing_ReturnsFalse( ) {
         TaskCompletionSource<bool> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( BlockingSequence( gate.Task ) );
 
         StatisticsService service = CreateService( );
@@ -195,7 +195,7 @@ public class StatisticsServiceTests {
         _ = await service.RefreshStatisticsAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Once( )
         );
     }
@@ -213,7 +213,7 @@ public class StatisticsServiceTests {
         _ = await service.RefreshStatisticsAsync( true, CancellationToken.None );
 
         _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Exactly( 2 )
         );
     }
@@ -258,7 +258,7 @@ public class StatisticsServiceTests {
     /// </summary>
     private void SetupEmptyRecordList( ) {
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( AsyncEnumerable.Empty<(string, MediaLinkResult)>( ) );
     }
 
@@ -269,7 +269,7 @@ public class StatisticsServiceTests {
     /// <param name="records">The AT-URI / result pairs to surface during enumeration.</param>
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( records.ToAsyncEnumerable( ) );
     }
 
@@ -399,7 +399,7 @@ public class StatisticsServiceTests {
         );
 
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( SimulatedSlowEnumerable );
 
         StatisticsService service = new(
@@ -468,7 +468,7 @@ public class StatisticsServiceTests {
 
         // Assert: both calls enumerate records — forced bypass is preserved
         _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Exactly( 2 ) );
     }
 
@@ -499,7 +499,7 @@ public class StatisticsServiceTests {
 
         // Assert: second non-forced call inside the cache window is skipped — only one enumerate
         _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Once );
     }
 
@@ -537,7 +537,7 @@ public class StatisticsServiceTests {
 
         // Verify that ATProto storage was NOT called (live status does not trigger a refresh)
         _atProtoStorageMock.Verify(
-            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Never( )
         );
     }
