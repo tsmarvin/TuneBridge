@@ -505,9 +505,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             TimeSpan.FromHours( 6 ),
             CacheDays: 30,
             RefreshInterval: TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: 500,
-            RefreshEnqueuePacing: TimeSpan.Zero,
-            TidalRefreshMinInterval: TimeSpan.Zero
+            MaxRecordsPerRun: 500
         );
 
         Mock<IConnectionMultiplexer> redisMock = new( );

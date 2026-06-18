@@ -31,7 +31,7 @@ namespace BridgeBeats.Worker.CacheBootstrap;
 /// <param name="queueResolver">Resolves the per-provider queue used to enqueue re-lookup requests.</param>
 /// <param name="redis">The Redis connection used to read the bootstrap status and durable schedule marker.</param>
 /// <param name="enabledProviders">The set of providers that participate in re-lookups.</param>
-/// <param name="settings">Configuration: PDS URI, user DID, cache freshness window, refresh interval, max records per run, and pacing intervals.</param>
+/// <param name="settings">Configuration: PDS URI, user DID, cache freshness window, refresh interval, and max records per run.</param>
 /// <param name="logger">The logger for this service.</param>
 public sealed partial class StaleCacheRefreshBackgroundService(
     IATProtoStorageService atProtoStorage,
@@ -92,6 +92,13 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                     ? DateTimeOffset.UtcNow - lastRun.Value
                     : TimeSpan.MaxValue;
 
+                // A future-dated marker (e.g. clock skew or an invalid write) would produce a
+                // negative elapsed, making the wait exceed a full interval and stalling the sweep.
+                // Clamp so any future-dated marker is treated as due-now.
+                if (elapsed < TimeSpan.Zero) {
+                    elapsed = TimeSpan.MaxValue;
+                }
+
                 TimeSpan jitter = TimeSpan.FromMilliseconds(
                     Random.Shared.NextDouble( ) * _maxJitter.TotalMilliseconds );
 
@@ -118,7 +125,7 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     /// <summary>
     /// Performs one stale-cache refresh pass: checks whether the bootstrap is running (skips if so),
     /// streams the PDS to identify the oldest stale records up to the configured maximum, and
-    /// bulk-enqueues each one through the two-layer pacer. Per-record failures are counted and skipped.
+    /// bulk-enqueues each one. Per-record failures are counted and skipped.
     /// </summary>
     /// <param name="cancellationToken">A token that cancels the pass.</param>
     /// <returns>A task that completes when the pass finishes or aborts.</returns>
@@ -146,9 +153,6 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         int skipped = 0;
         int errors = 0;
 
-        // Carries the two mutable pacer states across records in the pass.
-        PassPacerState pacer = new( );
-
         foreach ((string atUri, MediaLinkResult result) in selected) {
             try {
                 IReadOnlyList<RefreshLeg> legs = DeriveRefreshLegs( result, enabledProviders );
@@ -159,7 +163,7 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                     continue;
                 }
 
-                bool didEnqueue = await EnqueueRecordAsync( atUri, result, legs, pacer, cancellationToken );
+                bool didEnqueue = await EnqueueRecordAsync( atUri, result, legs, cancellationToken );
                 if (didEnqueue) {
                     enqueued++;
                 } else {
@@ -222,15 +226,13 @@ public sealed partial class StaleCacheRefreshBackgroundService(
 
     /// <summary>
     /// Seeds one saga keyed on the record's external id, initializes exactly the enqueued-leg
-    /// providers, and enqueues every leg to its own provider queue through the two-layer pacer.
-    /// Returns <see langword="true"/> when all legs were enqueued; <see langword="false"/> when the
-    /// leg list is empty (the record carries no usable identifier and was already logged/counted as
-    /// skipped by the caller).
+    /// providers, and enqueues every leg to its own provider queue. Returns <see langword="true"/>
+    /// when all legs were enqueued; <see langword="false"/> when the leg list is empty (the record
+    /// carries no usable identifier and was already logged/counted as skipped by the caller).
     /// </summary>
     /// <param name="atUri">The AT-URI of the record being refreshed (used for logging).</param>
     /// <param name="result">The stale media-link result.</param>
     /// <param name="legs">The pre-derived non-empty leg list from <see cref="DeriveRefreshLegs"/>.</param>
-    /// <param name="pacer">Shared pass-wide pacer state (global drip + Tidal gate).</param>
     /// <param name="cancellationToken">A token that cancels the operation.</param>
     /// <returns>
     /// <see langword="true"/> when all legs were enqueued; <see langword="false"/> when the leg list
@@ -240,7 +242,6 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         string atUri,
         MediaLinkResult result,
         IReadOnlyList<RefreshLeg> legs,
-        PassPacerState pacer,
         CancellationToken cancellationToken
     ) {
         if (legs.Count == 0) {
@@ -296,23 +297,6 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         );
 
         foreach (RefreshLeg leg in legs) {
-            // Global drip: one leg per RefreshEnqueuePacing interval across the whole pass.
-            // The very first leg of the pass is released immediately; every subsequent leg waits.
-            if (pacer.AnyLegEnqueued && settings.RefreshEnqueuePacing > TimeSpan.Zero) {
-                await Task.Delay( settings.RefreshEnqueuePacing, cancellationToken );
-            }
-
-            // Tidal burst-0 gate: Tidal legs may not be released faster than TidalRefreshMinInterval.
-            // nextTidalReleaseAt is a pass-wide ceiling; no accumulation (credit is not carried forward).
-            if (leg.Provider == SupportedProviders.Tidal
-                && settings.TidalRefreshMinInterval > TimeSpan.Zero) {
-                TimeSpan tidalWait = pacer.NextTidalReleaseAt - DateTimeOffset.UtcNow;
-                if (tidalWait > TimeSpan.Zero) {
-                    await Task.Delay( tidalWait, cancellationToken );
-                }
-                pacer.NextTidalReleaseAt = DateTimeOffset.UtcNow + settings.TidalRefreshMinInterval;
-            }
-
             QueuedLookupRequest request = new( ) {
                 RequestId = Guid.NewGuid( ).ToString( "N" ),
                 Provider = leg.Provider,
@@ -327,7 +311,6 @@ public sealed partial class StaleCacheRefreshBackgroundService(
 
             IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( leg.Provider );
             await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
-            pacer.AnyLegEnqueued = true;
         }
 
         return true;
@@ -537,25 +520,6 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         string? Title,
         string? Artist
     );
-
-    /// <summary>
-    /// Mutable pass-wide state for the two-layer enqueue pacer. Allocated once per pass and
-    /// threaded through all <see cref="EnqueueRecordAsync"/> calls so both counters are shared
-    /// across records (async methods cannot take ref parameters).
-    /// </summary>
-    private sealed class PassPacerState {
-        /// <summary>
-        /// Set to <see langword="true"/> after the first leg of the pass is enqueued. The global
-        /// drip delay is skipped before the very first leg.
-        /// </summary>
-        public bool AnyLegEnqueued { get; set; }
-
-        /// <summary>
-        /// Earliest instant the next Tidal leg may be released. Initialized to the pass start time
-        /// so the first Tidal leg is always released immediately.
-        /// </summary>
-        public DateTimeOffset NextTidalReleaseAt { get; set; } = DateTimeOffset.UtcNow;
-    }
 
     #region LoggerMessage Methods
 

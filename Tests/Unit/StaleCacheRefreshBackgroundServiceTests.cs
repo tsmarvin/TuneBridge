@@ -174,31 +174,47 @@ public class StaleCacheRefreshBackgroundServiceTests {
     }
 
     /// <summary>
-    /// When the marker is absent, the service treats elapsed time as infinite (due-now) and runs
-    /// without waiting for a full interval.
+    /// When the marker is absent, the service treats elapsed time as infinite (due-now): driving
+    /// <c>ExecuteAsync</c> via <c>StartAsync</c> with zero grace and jitter and a 6-hour interval,
+    /// <c>ListAllRecordsAsync</c> fires within 5 seconds because no schedule wait is imposed.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task Schedule_NoMarker_TreatsAsDueNow( ) {
-        // Marker absent — StringGetAsync returns Null for cache:refresh:last-run
         _ = _redisDatabaseMock
             .Setup( d => d.StringGetAsync( "cache:refresh:last-run", It.IsAny<CommandFlags>( ) ) )
             .ReturnsAsync( RedisValue.Null );
 
-        SetupRecordList( [] );
-        StaleCacheRefreshBackgroundService service = CreateService( );
+        TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+                _ = listCalled.TrySetResult( );
+                return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
+            } );
 
-        // Drive one pass directly — it should run without delay.
-        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        _settings = MakeSettings( refreshInterval: TimeSpan.FromHours( 6 ) );
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        service._startupGrace = TimeSpan.Zero;
+        service._maxJitter = TimeSpan.Zero;
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+        _ = service.StartAsync( cts.Token );
+
+        await listCalled.Task.WaitAsync( TimeSpan.FromSeconds( 5 ), TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
             s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Once
+            Times.AtLeastOnce
         );
     }
 
     /// <summary>
-    /// When the marker read throws, the service treats it as due-now and proceeds.
+    /// When the marker read throws, the service treats it as due-now (fail-toward-running) and
+    /// proceeds: driving <c>ExecuteAsync</c> via <c>StartAsync</c> with zero grace and jitter and
+    /// a 6-hour interval, <c>ListAllRecordsAsync</c> fires within 5 seconds despite the exception.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -207,15 +223,69 @@ public class StaleCacheRefreshBackgroundServiceTests {
             .Setup( d => d.StringGetAsync( "cache:refresh:last-run", It.IsAny<CommandFlags>( ) ) )
             .ThrowsAsync( new RedisConnectionException( ConnectionFailureType.UnableToConnect, "test" ) );
 
-        SetupRecordList( [] );
-        StaleCacheRefreshBackgroundService service = CreateService( );
+        TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+                _ = listCalled.TrySetResult( );
+                return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
+            } );
 
-        // Even though the marker read throws, RunRefreshPassAsync should still execute.
-        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        _settings = MakeSettings( refreshInterval: TimeSpan.FromHours( 6 ) );
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        service._startupGrace = TimeSpan.Zero;
+        service._maxJitter = TimeSpan.Zero;
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+        _ = service.StartAsync( cts.Token );
+
+        await listCalled.Task.WaitAsync( TimeSpan.FromSeconds( 5 ), TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
             s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Once
+            Times.AtLeastOnce
+        );
+    }
+
+    /// <summary>
+    /// A future-dated marker (e.g. clock skew) must be treated as due-now, not cause an
+    /// over-long wait. Driving <c>ExecuteAsync</c> with zero grace and jitter and a 6-hour
+    /// interval, a marker set one hour in the future fires the pass promptly rather than stalling
+    /// for approximately 7 hours.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Schedule_FutureDatedMarker_TreatsAsDueNow( ) {
+        string futureMarker = DateTimeOffset.UtcNow.AddHours( 1 ).ToString( "O" );
+        _ = _redisDatabaseMock
+            .Setup( d => d.StringGetAsync( "cache:refresh:last-run", It.IsAny<CommandFlags>( ) ) )
+            .ReturnsAsync( (RedisValue)futureMarker );
+
+        TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+                _ = listCalled.TrySetResult( );
+                return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
+            } );
+
+        _settings = MakeSettings( refreshInterval: TimeSpan.FromHours( 6 ) );
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        service._startupGrace = TimeSpan.Zero;
+        service._maxJitter = TimeSpan.Zero;
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+        _ = service.StartAsync( cts.Token );
+
+        await listCalled.Task.WaitAsync( TimeSpan.FromSeconds( 5 ), TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        _atProtoStorageMock.Verify(
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            Times.AtLeastOnce
         );
     }
 
@@ -1389,8 +1459,6 @@ public class StaleCacheRefreshBackgroundServiceTests {
         string devBranch  = source.Substring( devIdx );
 
         string[] requiredEnvVars = [
-            "BridgeBeats__RefreshEnqueuePacingSeconds",
-            "BridgeBeats__TidalRefreshMinIntervalSeconds",
             "BridgeBeats__RefreshIntervalHours",
             "BridgeBeats__MaxRecordsPerRun",
         ];
@@ -1411,8 +1479,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
     #region Settings Binding Tests
 
     /// <summary>
-    /// Settings with unset env falls back to 6h interval, 500 max records, 8s pacing, 6s Tidal
-    /// interval (the new defaults verified via the settings record constructor).
+    /// Settings with unset env falls back to 6h interval and 500 max records
+    /// (the defaults verified via the settings record constructor).
     /// </summary>
     [TestMethod]
     public void Settings_DefaultValues_MatchSpecifiedDefaults( ) {
@@ -1420,14 +1488,10 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         Assert.AreEqual( TimeSpan.FromHours( 6 ), defaults.RefreshInterval );
         Assert.AreEqual( 500, defaults.MaxRecordsPerRun );
-        Assert.AreEqual( TimeSpan.FromSeconds( 8 ), defaults.RefreshEnqueuePacing );
-        Assert.AreEqual( TimeSpan.FromSeconds( 6 ), defaults.TidalRefreshMinInterval );
     }
 
     /// <summary>
-    /// Non-positive pacing values are coerced to their defaults in Program.cs; here we verify the
-    /// settings record itself stores whatever is passed, and the test documents the coercion
-    /// contract.
+    /// The settings record stores exactly the values it is constructed with.
     /// </summary>
     [TestMethod]
     public void Settings_StoresProvidedValues( ) {
@@ -1437,319 +1501,49 @@ public class StaleCacheRefreshBackgroundServiceTests {
             BootstrapInterval: TimeSpan.FromHours( 6 ),
             CacheDays: 30,
             RefreshInterval: TimeSpan.FromHours( 12 ),
-            MaxRecordsPerRun: 250,
-            RefreshEnqueuePacing: TimeSpan.FromSeconds( 5 ),
-            TidalRefreshMinInterval: TimeSpan.FromSeconds( 3 )
+            MaxRecordsPerRun: 250
         );
 
         Assert.AreEqual( TimeSpan.FromHours( 12 ), settings.RefreshInterval );
         Assert.AreEqual( 250, settings.MaxRecordsPerRun );
-        Assert.AreEqual( TimeSpan.FromSeconds( 5 ), settings.RefreshEnqueuePacing );
-        Assert.AreEqual( TimeSpan.FromSeconds( 3 ), settings.TidalRefreshMinInterval );
     }
 
     #endregion
 
-    #region Pacer Tests
+    #region No-Drip Regression Guard
 
     /// <summary>
-    /// The global drip releases legs in the leg-list order and gates subsequent legs behind the
-    /// configured interval. Proved deterministically: RefreshEnqueuePacing is set to 30 seconds
-    /// (well above any CI scheduling jitter), cancellation fires after the first leg lands, and
-    /// the assertion confirms that only one leg was released before the drip blocked the rest.
-    /// Mutation proof: setting RefreshEnqueuePacing to Zero causes all three legs to release before
-    /// cancellation fires, making the count assertion fail.
+    /// A multi-record pass enqueues every leg without any artificial inter-leg delay: all 6 legs
+    /// (2 records × 3 providers) are enqueued, and the entire pass completes within 5 seconds.
+    /// The wall-clock bound is a re-introduction guard, not a performance benchmark; it would be
+    /// exceeded if any per-leg delay were restored.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task Pacer_GlobalDrip_ReleasesOneLegPerInterval_InOrder( ) {
+    public async Task RunRefreshPass_MultiRecord_EnqueuesAllLegsWithoutDelay( ) {
         _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic, SupportedProviders.Tidal];
 
-        // 30-second pacing: far above any CI scheduling jitter. The second and third legs block in
-        // the drip delay; the test cancels 50 ms after the first leg lands.
-        _settings = new CacheBootstrapSettings(
-            s_testPdsUri, TestUserDid,
-            BootstrapInterval: TimeSpan.FromHours( 6 ),
-            CacheDays: 30,
-            RefreshInterval: TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: 500,
-            RefreshEnqueuePacing: TimeSpan.FromSeconds( 30 ),
-            TidalRefreshMinInterval: TimeSpan.Zero
-        );
-
-        SetupRecordList( [("at://three-provider", MakeThreeProviderRecord( isrc: "TESTISRC" ))] );
-
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
-        List<SupportedProviders> enqueuedProviders = [];
-
-        _ = _queueMock
-            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
-            .Callback<QueuedLookupRequest, QueuePriority, CancellationToken>( ( r, _, _ ) => {
-                enqueuedProviders.Add( r.Provider );
-                if (enqueuedProviders.Count == 1) {
-                    // Cancel 50 ms after the first leg lands; the second leg is waiting its 30 s drip delay.
-                    cts.CancelAfter( TimeSpan.FromMilliseconds( 50 ) );
-                }
-            } )
-            .Returns( Task.CompletedTask );
+        SetupRecordList( [
+            ("at://rec1", MakeThreeProviderRecord( isrc: "ISRC_ONE" )),
+            ("at://rec2", MakeThreeProviderRecord( isrc: "ISRC_TWO" ))
+        ] );
 
         StaleCacheRefreshBackgroundService service = CreateService( );
 
-        _ = await Assert.ThrowsAsync<OperationCanceledException>(
-            async ( ) => await service.RunRefreshPassAsync( cts.Token )
-        );
-
-        // Only the first leg was released before the 30 s drip delay blocked the rest.
-        // With RefreshEnqueuePacing = Zero (mutation), all three legs release before cancellation
-        // fires and the count would be 3, failing this assertion.
-        Assert.HasCount( 1, enqueuedProviders,
-            "Only the first leg must be released before the drip delay blocks the rest." );
-
-        // The leg that got through must be the first in leg-list order (Spotify).
-        // DeriveRefreshLegs iterates record.Results in insertion order; MakeThreeProviderRecord
-        // inserts Spotify first.
-        Assert.AreEqual( SupportedProviders.Spotify, enqueuedProviders[0],
-            "The first released leg must be Spotify (leg-list order: Spotify → AppleMusic → Tidal)." );
-    }
-
-    /// <summary>
-    /// The Tidal gate blocks the second consecutive Tidal leg until the configured minimum interval
-    /// elapses. Proved deterministically: TidalRefreshMinInterval is set to 30 seconds (well above
-    /// any CI scheduling jitter), cancellation fires 50 ms after the first Tidal leg lands, and the
-    /// assertion confirms that only one leg was released before the gate blocked the second.
-    /// Mutation proof: removing the Tidal gate causes the second Tidal leg to release before
-    /// cancellation fires, making the count assertion fail.
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task Pacer_TidalGate_ConsecutiveTidalLegs_SpacedByTidalInterval( ) {
-        _enabledProviders = [SupportedProviders.Tidal];
-
-        // 30-second Tidal interval: far above any CI scheduling jitter. The second Tidal leg blocks
-        // in the gate delay; the test cancels 50 ms after the first leg lands.
-        _settings = new CacheBootstrapSettings(
-            s_testPdsUri, TestUserDid,
-            BootstrapInterval: TimeSpan.FromHours( 6 ),
-            CacheDays: 30,
-            RefreshInterval: TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: 500,
-            RefreshEnqueuePacing: TimeSpan.Zero,
-            TidalRefreshMinInterval: TimeSpan.FromSeconds( 30 )
-        );
-
-        // Two stale Tidal-only records; each yields one Tidal native-id leg.
-        // tidalRecord1 is older (-60 days) so it is selected and processed first.
-        MediaLinkResult tidalRecord1 = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
-        tidalRecord1.Results[SupportedProviders.Tidal] = new MusicLookupResult {
-            URL = "https://tidal.com/browse/track/11111111",
-            ExternalId = "ISRC1",
-            IsAlbum = false
-        };
-        MediaLinkResult tidalRecord2 = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -50 ) };
-        tidalRecord2.Results[SupportedProviders.Tidal] = new MusicLookupResult {
-            URL = "https://tidal.com/browse/track/22222222",
-            ExternalId = "ISRC2",
-            IsAlbum = false
-        };
-        SetupRecordList( [("at://tidal1", tidalRecord1), ("at://tidal2", tidalRecord2)] );
-
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
-        int tidalLegCount = 0;
+        cts.CancelAfter( TimeSpan.FromSeconds( 5 ) );
 
-        _ = _queueMock
-            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
-            .Callback<QueuedLookupRequest, QueuePriority, CancellationToken>( ( _, _, _ ) => {
-                int count = System.Threading.Interlocked.Increment( ref tidalLegCount );
-                if (count == 1) {
-                    // Cancel 50 ms after the first Tidal leg lands; the second leg is waiting its 30 s gate delay.
-                    cts.CancelAfter( TimeSpan.FromMilliseconds( 50 ) );
-                }
-            } )
-            .Returns( Task.CompletedTask );
-
-        StaleCacheRefreshBackgroundService service = CreateService( );
-
-        _ = await Assert.ThrowsAsync<OperationCanceledException>(
-            async ( ) => await service.RunRefreshPassAsync( cts.Token )
-        );
-
-        // Only the first Tidal leg was released before the 30 s gate delay blocked the second.
-        // With the Tidal gate removed (mutation), both legs release before cancellation fires
-        // and the count would be 2, failing this assertion.
-        Assert.AreEqual( 1, tidalLegCount,
-            "Only the first Tidal leg must be released before the gate delay blocks the second." );
-    }
-
-    /// <summary>
-    /// Non-Tidal legs (Spotify, Apple Music) pass only the global drip gate — the Tidal minimum
-    /// interval is not consulted for them. This is the provider-scoping negative control.
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task Pacer_NonTidalLegs_NotSubjectToTidalGate( ) {
-        _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic];
-
-        _settings = new CacheBootstrapSettings(
-            s_testPdsUri, TestUserDid,
-            BootstrapInterval: TimeSpan.FromHours( 6 ),
-            CacheDays: 30,
-            RefreshInterval: TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: 500,
-            RefreshEnqueuePacing: TimeSpan.Zero,
-            TidalRefreshMinInterval: TimeSpan.FromSeconds( 60 ) // very long — would delay the pass if applied
-        );
-
-        // Two-provider record with no Tidal.
-        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
-        record.Results[SupportedProviders.Spotify] = new MusicLookupResult {
-            URL = "https://open.spotify.com/track/3SPOTID12345",
-            ExternalId = "TESTISRC",
-            IsAlbum = false
-        };
-        record.Results[SupportedProviders.AppleMusic] = new MusicLookupResult {
-            URL = "https://music.apple.com/us/album/x/1234567890?i=9876543210",
-            ExternalId = "TESTISRC",
-            IsAlbum = false
-        };
-        SetupRecordList( [("at://nontidal", record)] );
-
-        List<QueuedLookupRequest> captured = [];
-        _ = _queueMock
-            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
-            .Callback<QueuedLookupRequest, QueuePriority, CancellationToken>( ( r, _, _ ) => captured.Add( r ) )
-            .Returns( Task.CompletedTask );
-
-        // With no Tidal legs, even a 60s Tidal interval must not delay the pass.
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
-        cts.CancelAfter( TimeSpan.FromSeconds( 5 ) ); // fails if Tidal gate is mistakenly applied
-
-        StaleCacheRefreshBackgroundService service = CreateService( );
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew( );
         await service.RunRefreshPassAsync( cts.Token );
+        sw.Stop( );
 
-        Assert.HasCount( 2, captured, "Both non-Tidal legs must be enqueued without Tidal gate delay." );
-        Assert.IsTrue( captured.All( r => r.Provider != SupportedProviders.Tidal ),
-            "No Tidal legs should be present in this pass." );
-    }
+        _queueMock.Verify(
+            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Exactly( 6 ),
+            "2 records × 3 providers = 6 legs must all be enqueued" );
 
-    /// <summary>
-    /// Cancelling the host mid-drip while a leg is waiting its pacing interval causes the remaining
-    /// legs to be dropped cleanly. No exception propagates beyond the cancellation boundary.
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task Pacer_HostDeathMidDrip_DropsRemainder( ) {
-        _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic, SupportedProviders.Tidal];
-
-        // 100 ms pacing so the second leg's delay is long enough to be cancelled.
-        _settings = new CacheBootstrapSettings(
-            s_testPdsUri, TestUserDid,
-            BootstrapInterval: TimeSpan.FromHours( 6 ),
-            CacheDays: 30,
-            RefreshInterval: TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: 500,
-            RefreshEnqueuePacing: TimeSpan.FromMilliseconds( 100 ),
-            TidalRefreshMinInterval: TimeSpan.Zero
-        );
-
-        SetupRecordList( [("at://three-provider", MakeThreeProviderRecord( isrc: "TESTISRC" ))] );
-
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
-        int legCount = 0;
-
-        _ = _queueMock
-            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
-            .Callback<QueuedLookupRequest, QueuePriority, CancellationToken>( ( _, _, _ ) => {
-                int count = System.Threading.Interlocked.Increment( ref legCount );
-                if (count == 1) {
-                    // Cancel after the first leg is enqueued — the second leg is mid-drip.
-                    cts.CancelAfter( TimeSpan.FromMilliseconds( 10 ) );
-                }
-            } )
-            .Returns( Task.CompletedTask );
-
-        StaleCacheRefreshBackgroundService service = CreateService( );
-
-        // OperationCanceledException (or TaskCanceledException, its subtype) must propagate.
-        _ = await Assert.ThrowsAsync<OperationCanceledException>(
-            async ( ) => await service.RunRefreshPassAsync( cts.Token )
-        );
-
-        // Only the first leg was released before cancellation; the rest were dropped.
-        Assert.AreEqual( 1, legCount,
-            "Only the leg enqueued before cancellation must have been released; the rest are dropped." );
-    }
-
-    /// <summary>
-    /// A non-positive (zero or negative) RefreshEnqueuePacingSeconds value is coerced to the
-    /// default (8 s) by the actual production coercion guard in
-    /// <c>Program.ValidateConfiguration</c> (lines 153-156 of Program.cs). This test exercises the
-    /// real coercion path via reflection so that removing or changing the guard causes the test to
-    /// fail — unlike the previous version that re-implemented the same formula inline and therefore
-    /// could not detect a change to the production guard.
-    /// </summary>
-    [TestMethod]
-    public void Pacer_NonPositiveInterval_CoercedToDefault( ) {
-        // Invoke the private static ValidateConfiguration via reflection. The method reads from
-        // the HostApplicationBuilder's configuration and returns a named tuple that includes the
-        // coerced pacing values. InternalsVisibleTo grants test assembly access to internal members
-        // but not to private ones, so reflection is required here.
-        System.Reflection.MethodInfo validateMethod =
-            typeof( BridgeBeats.Worker.CacheBootstrap.Program )
-                .GetMethod( "ValidateConfiguration",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static )
-            ?? throw new InvalidOperationException(
-                "ValidateConfiguration not found on Program. If the method was renamed, update this test." );
-
-        // Zero pacing — must coerce to 8 s.
-        (int pacingZero, int tidalZero) = InvokeValidateConfiguration( validateMethod, pacingSeconds: 0, tidalSeconds: 0 );
-        Assert.AreEqual( 8, pacingZero,
-            "RefreshEnqueuePacingSeconds = 0 must coerce to the default 8 s." );
-        Assert.AreEqual( 6, tidalZero,
-            "TidalRefreshMinIntervalSeconds = 0 must coerce to the default 6 s." );
-
-        // Negative pacing — must coerce to 8 s.
-        (int pacingNeg, int tidalNeg) = InvokeValidateConfiguration( validateMethod, pacingSeconds: -1, tidalSeconds: -1 );
-        Assert.AreEqual( 8, pacingNeg,
-            "RefreshEnqueuePacingSeconds = -1 must coerce to the default 8 s." );
-        Assert.AreEqual( 6, tidalNeg,
-            "TidalRefreshMinIntervalSeconds = -1 must coerce to the default 6 s." );
-
-        // Positive values must pass through unchanged.
-        (int pacingPos, int tidalPos) = InvokeValidateConfiguration( validateMethod, pacingSeconds: 3, tidalSeconds: 2 );
-        Assert.AreEqual( 3, pacingPos,
-            "Positive RefreshEnqueuePacingSeconds must not be coerced." );
-        Assert.AreEqual( 2, tidalPos,
-            "Positive TidalRefreshMinIntervalSeconds must not be coerced." );
-    }
-
-    /// <summary>
-    /// Builds a minimal <see cref="HostApplicationBuilder"/> with valid ATProto credentials and the
-    /// given pacing values, then invokes <c>Program.ValidateConfiguration</c> via the supplied
-    /// reflection handle and returns the coerced (pacingSeconds, tidalSeconds) pair from the result tuple.
-    /// </summary>
-    private static (int PacingSeconds, int TidalSeconds) InvokeValidateConfiguration(
-        System.Reflection.MethodInfo validateMethod,
-        int pacingSeconds,
-        int tidalSeconds
-    ) {
-        HostApplicationBuilder builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder( );
-        builder.Configuration["BridgeBeats:ATProtoIdentifier"] = "test@example.com";
-        builder.Configuration["BridgeBeats:ATProtoPassword"] = "testpassword";
-        builder.Configuration["BridgeBeats:ATProtoUserDID"] = "did:plc:testuser123";
-        builder.Configuration["BridgeBeats:RefreshEnqueuePacingSeconds"] = pacingSeconds.ToString( );
-        builder.Configuration["BridgeBeats:TidalRefreshMinIntervalSeconds"] = tidalSeconds.ToString( );
-
-        object result = validateMethod.Invoke( null, [builder] )
-            ?? throw new InvalidOperationException( "ValidateConfiguration returned null." );
-
-        // The return type is a named tuple; read by position via ITuple or field names via reflection.
-        System.Runtime.CompilerServices.ITuple tuple = (System.Runtime.CompilerServices.ITuple)result;
-        // Tuple positions (0-based): 0=AtProtoIdentifier, 1=AtProtoPassword, 2=AtProtoUserDID,
-        // 3=AtProtoPdsUri, 4=CacheDays, 5=BootstrapIntervalHours, 6=RefreshIntervalHours,
-        // 7=MaxRecordsPerRun, 8=RefreshEnqueuePacingSeconds, 9=TidalRefreshMinIntervalSeconds.
-        int coercedPacing = (int)tuple[8]!;
-        int coercedTidal  = (int)tuple[9]!;
-        return (coercedPacing, coercedTidal);
+        Assert.IsLessThan( TimeSpan.FromSeconds( 5 ), sw.Elapsed,
+            "The pass must complete in under 5 seconds; any per-leg delay would exceed this bound." );
     }
 
     #endregion
@@ -1778,9 +1572,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
             BootstrapInterval: TimeSpan.FromHours( 6 ),
             CacheDays: cacheDays,
             RefreshInterval: refreshInterval ?? TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: maxRecordsPerRun,
-            RefreshEnqueuePacing: TimeSpan.FromSeconds( 8 ),
-            TidalRefreshMinInterval: TimeSpan.FromSeconds( 6 )
+            MaxRecordsPerRun: maxRecordsPerRun
         );
 
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
