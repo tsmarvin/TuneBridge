@@ -226,17 +226,18 @@ public sealed partial class StaleCacheRefreshBackgroundService(
 
     /// <summary>
     /// Seeds one saga keyed on the record's external id, initializes exactly the enqueued-leg
-    /// providers, and enqueues every leg to its own provider queue. Returns <see langword="true"/>
-    /// when all legs were enqueued; <see langword="false"/> when the leg list is empty (the record
-    /// carries no usable identifier and was already logged/counted as skipped by the caller).
+    /// providers, and enqueues every leg to its own provider queue. Individual leg enqueue failures
+    /// are handled per-leg: the failing leg is marked complete-as-failed in the saga so the saga
+    /// can still reach <see cref="LookupSagaState.IsComplete"/> via the coordinator poll backstop.
     /// </summary>
     /// <param name="atUri">The AT-URI of the record being refreshed (used for logging).</param>
     /// <param name="result">The stale media-link result.</param>
     /// <param name="legs">The pre-derived non-empty leg list from <see cref="DeriveRefreshLegs"/>.</param>
     /// <param name="cancellationToken">A token that cancels the operation.</param>
     /// <returns>
-    /// <see langword="true"/> when all legs were enqueued; <see langword="false"/> when the leg list
-    /// is empty.
+    /// <see langword="true"/> when the record was dispatched and the saga left finalizable
+    /// (individual legs may have failed and been marked complete-as-failed); <see langword="false"/>
+    /// when the leg list is empty.
     /// </returns>
     private async Task<bool> EnqueueRecordAsync(
         string atUri,
@@ -310,7 +311,25 @@ public sealed partial class StaleCacheRefreshBackgroundService(
             };
 
             IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( leg.Provider );
-            await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
+            try {
+                await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
+            } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                throw;
+            } catch (Exception ex) {
+                LogRefreshLegEnqueueFailed( logger, ex, atUri, leg.Provider );
+                await sagaManager.UpdateProviderStateAsync(
+                    sagaId,
+                    new ProviderLookupState(
+                        Provider: leg.Provider,
+                        IsComplete: true,
+                        IsSuccess: false,
+                        ResultJson: null,
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        ErrorMessage: $"Refresh leg enqueue failed: {ex.Message}"
+                    ),
+                    cancellationToken
+                );
+            }
         }
 
         return true;
@@ -600,6 +619,12 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         Level = LogLevel.Warning,
         Message = "Failed to read durable last-run marker from Redis; treating as due-now and running" )]
     private static partial void LogRefreshMarkerReadError( ILogger logger, Exception ex );
+
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshLegEnqueueFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to enqueue refresh leg for {AtUri} to {Provider}; leg marked complete-as-failed in saga" )]
+    private static partial void LogRefreshLegEnqueueFailed( ILogger logger, Exception ex, string atUri, SupportedProviders provider );
 
     #endregion
 }

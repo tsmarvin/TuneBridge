@@ -97,6 +97,9 @@ public static class LogEventIds {
     /// <summary>Reading the durable last-run marker from Redis failed; treating as due-now and running.</summary>
     public const int RefreshMarkerReadError = 5532;
 
+    /// <summary>Enqueuing one provider leg of a refresh record failed; the leg is marked complete-as-failed in the saga.</summary>
+    public const int RefreshLegEnqueueFailed = 5533;
+
     #endregion
 
     #region Program Startup (5550-5574)

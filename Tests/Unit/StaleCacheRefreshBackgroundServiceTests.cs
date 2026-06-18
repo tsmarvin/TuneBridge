@@ -2,9 +2,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Core.Domain.Utilities;
 using BridgeBeats.Worker.CacheBootstrap;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
@@ -84,6 +82,12 @@ public class StaleCacheRefreshBackgroundServiceTests {
             .Setup( m => m.InitializeProviderStatesAsync(
                 It.IsAny<string>( ),
                 It.IsAny<IEnumerable<SupportedProviders>>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+        _ = _sagaManagerMock
+            .Setup( m => m.UpdateProviderStateAsync(
+                It.IsAny<string>( ),
+                It.IsAny<ProviderLookupState>( ),
                 It.IsAny<CancellationToken>( ) ) )
             .Returns( Task.CompletedTask );
 
@@ -1397,6 +1401,137 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await cts.CancelAsync( );
 
         await executeTask; // must not throw
+    }
+
+    #endregion
+
+    #region Leg Enqueue Failure Tests
+
+    /// <summary>
+    /// When one provider's queue throws on EnqueueAsync, that provider's state is recorded as
+    /// complete-and-failed in the saga; the other legs are still enqueued; and SetIsPartialAsync
+    /// is never called.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task EnqueueRecordAsync_OneProviderQueueThrows_MarksFailedLegAndEnqueuesOthers( ) {
+        _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic];
+
+        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
+        record.Results[SupportedProviders.Spotify] = new MusicLookupResult {
+            URL = "https://open.spotify.com/track/3SPOTID12345",
+            ExternalId = "ISRC_TWOLEG",
+            IsAlbum = false
+        };
+        record.Results[SupportedProviders.AppleMusic] = new MusicLookupResult {
+            URL = "https://music.apple.com/us/album/x/1234567890?i=9876543210",
+            ExternalId = "ISRC_TWOLEG",
+            IsAlbum = false
+        };
+
+        SetupRecordList( [("at://two-leg", record)] );
+
+        Mock<IRequestQueue<QueuedLookupRequest>> spotifyQueue = new( );
+        Mock<IRequestQueue<QueuedLookupRequest>> appleQueue = new( );
+
+        _ = spotifyQueue
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "Simulated Spotify queue failure" ) );
+        _ = appleQueue
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        _ = _queueResolverMock.Setup( r => r.GetQueue( SupportedProviders.Spotify ) ).Returns( spotifyQueue.Object );
+        _ = _queueResolverMock.Setup( r => r.GetQueue( SupportedProviders.AppleMusic ) ).Returns( appleQueue.Object );
+
+        List<ProviderLookupState> recordedStates = [];
+        _ = _sagaManagerMock
+            .Setup( m => m.UpdateProviderStateAsync(
+                It.IsAny<string>( ),
+                It.IsAny<ProviderLookupState>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Callback<string, ProviderLookupState, CancellationToken>( ( _, state, _ ) => recordedStates.Add( state ) )
+            .Returns( Task.CompletedTask );
+
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+
+        // Spotify leg failed: state recorded as complete-as-failed.
+        ProviderLookupState? spotifyState = recordedStates.FirstOrDefault( s => s.Provider == SupportedProviders.Spotify );
+        Assert.IsNotNull( spotifyState, "A failed provider state must be recorded for the throwing provider" );
+        Assert.IsTrue( spotifyState.IsComplete, "Failed leg must be marked IsComplete=true" );
+        Assert.IsFalse( spotifyState.IsSuccess, "Failed leg must be marked IsSuccess=false" );
+
+        // Apple leg succeeded: EnqueueAsync called once, no UpdateProviderStateAsync for Apple.
+        appleQueue.Verify(
+            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once,
+            "The non-failing leg must still be enqueued" );
+        Assert.DoesNotContain( s => s.Provider == SupportedProviders.AppleMusic, recordedStates,
+            "A successful leg must not be recorded as failed" );
+
+        // SetIsPartialAsync must never be called.
+        _sagaManagerMock.Verify(
+            m => m.SetIsPartialAsync( It.IsAny<string>( ), It.IsAny<bool>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "SetIsPartialAsync must not be called when a leg fails; marking the provider complete-as-failed is sufficient" );
+    }
+
+    /// <summary>
+    /// When all provider queues throw on EnqueueAsync, all legs are marked complete-as-failed in
+    /// the saga; the method returns true (the record was dispatched — the saga will be finalized
+    /// via the coordinator poll backstop); and SetIsPartialAsync is never called.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task EnqueueRecordAsync_AllProviderQueuesThrow_AllLegsMarkedFailedAndReturnsTrue( ) {
+        _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic];
+
+        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
+        record.Results[SupportedProviders.Spotify] = new MusicLookupResult {
+            URL = "https://open.spotify.com/track/3SPOTID12345",
+            ExternalId = "ISRC_ALLTHROW",
+            IsAlbum = false
+        };
+        record.Results[SupportedProviders.AppleMusic] = new MusicLookupResult {
+            URL = "https://music.apple.com/us/album/x/1234567890?i=9876543210",
+            ExternalId = "ISRC_ALLTHROW",
+            IsAlbum = false
+        };
+
+        SetupRecordList( [("at://all-throw", record)] );
+
+        _ = _queueMock
+            .Setup( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "All queues down" ) );
+
+        List<ProviderLookupState> recordedStates = [];
+        _ = _sagaManagerMock
+            .Setup( m => m.UpdateProviderStateAsync(
+                It.IsAny<string>( ),
+                It.IsAny<ProviderLookupState>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Callback<string, ProviderLookupState, CancellationToken>( ( _, state, _ ) => recordedStates.Add( state ) )
+            .Returns( Task.CompletedTask );
+
+        StaleCacheRefreshBackgroundService service = CreateService( );
+
+        // RunRefreshPassAsync must complete without throwing and count the record as enqueued.
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+
+        // Both legs recorded as complete-as-failed.
+        Assert.HasCount( 2, recordedStates,
+            "All failing legs must have their provider state recorded" );
+        Assert.IsTrue( recordedStates.All( s => s.IsComplete ),
+            "All failing legs must be marked IsComplete=true" );
+        Assert.IsTrue( recordedStates.All( s => !s.IsSuccess ),
+            "All failing legs must be marked IsSuccess=false" );
+
+        // SetIsPartialAsync must never be called.
+        _sagaManagerMock.Verify(
+            m => m.SetIsPartialAsync( It.IsAny<string>( ), It.IsAny<bool>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never,
+            "SetIsPartialAsync must not be called when all legs fail" );
     }
 
     #endregion

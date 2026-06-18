@@ -381,7 +381,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// </summary>
         /// <param name="requestUri">The API endpoint URI.</param>
         /// <param name="endpointKey">The endpoint key for rate limit tracking.</param>
-        /// <returns>The response body on success, or <see langword="null"/> on any non-2xx status other than 400 (including 401, 403, 404, 5xx, and all others).</returns>
+        /// <returns>The response body on success, or <see langword="null"/> on any non-2xx status other than 400 and 429 (which throw — see exceptions below); 401, 403, 404, and 5xx return <see langword="null"/>.</returns>
         /// <exception cref="Contracts.Exceptions.RetryAfterExceededException">
         /// Thrown when the response is HTTP 429; the <c>Retry-After</c> delta (or 30 seconds when absent)
         /// is carried on the exception.
