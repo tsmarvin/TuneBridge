@@ -154,6 +154,9 @@ public static class LogEventIds {
         /// <summary>Refreshing statistics failed.</summary>
         public const int StatisticsControllerRefreshError = 4302;
 
+        /// <summary>A manual refresh request was suppressed by the per-admin throttle.</summary>
+        public const int StatisticsControllerRefreshThrottled = 4303;
+
         // AppleMusicController (4250-4274)
 
         /// <summary>Storing an Apple Music user token failed.</summary>
@@ -188,6 +191,22 @@ public static class LogEventIds {
 
         /// <summary>Processing an Apple Music song failed.</summary>
         public const int AppleMusicControllerProcessSongError = 4260;
+    }
+
+    /// <summary>
+    /// Event identifiers emitted by Web services (4400-4499).
+    /// </summary>
+    public static class Services {
+        // RedisStatisticsReader (4400-4424)
+
+        /// <summary>Reading the <c>status:statistics</c> Redis key failed.</summary>
+        public const int RedisStatisticsReaderStatusReadError = 4400;
+
+        /// <summary>Reading the <c>status:cache-bootstrap</c> Redis key failed.</summary>
+        public const int RedisStatisticsReaderBootstrapStatusReadError = 4401;
+
+        /// <summary>Publishing to the statistics-refresh Pub/Sub channel failed.</summary>
+        public const int RedisStatisticsReaderPublishError = 4402;
     }
 
     /// <summary>

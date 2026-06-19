@@ -1,6 +1,6 @@
-using BridgeBeats.Worker.CacheBootstrap.Logging;
+using BridgeBeats.Worker.Maintenance.Logging;
 
-namespace BridgeBeats.Worker.CacheBootstrap;
+namespace BridgeBeats.Worker.Maintenance;
 
 /// <summary>
 /// Source-generated structured-logging helpers for the CacheBootstrap startup path. These wrap the

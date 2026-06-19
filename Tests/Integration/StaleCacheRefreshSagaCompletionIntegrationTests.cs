@@ -5,7 +5,7 @@ using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Services.Queue;
 using BridgeBeats.Core.Domain.Utilities;
 using BridgeBeats.Core.Infrastructure.Queue;
-using BridgeBeats.Worker.CacheBootstrap;
+using BridgeBeats.Worker.Maintenance;
 using BridgeBeats.Worker.SagaCoordinator;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -505,7 +505,8 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             TimeSpan.FromHours( 6 ),
             CacheDays: 30,
             RefreshInterval: TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: 500
+            MaxRecordsPerRun: 500,
+            RefreshRetryInterval: TimeSpan.FromMinutes( 5 )
         );
 
         Mock<IConnectionMultiplexer> redisMock = new( );

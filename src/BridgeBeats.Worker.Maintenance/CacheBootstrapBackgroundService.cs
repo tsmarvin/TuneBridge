@@ -2,15 +2,19 @@ using System.Diagnostics;
 using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
-using BridgeBeats.Worker.CacheBootstrap.Logging;
+using BridgeBeats.Core.Domain.Services;
+using BridgeBeats.Worker.Maintenance.Interfaces;
+using BridgeBeats.Worker.Maintenance.Logging;
 using StackExchange.Redis;
 
-namespace BridgeBeats.Worker.CacheBootstrap;
+namespace BridgeBeats.Worker.Maintenance;
 
 /// <summary>
 /// Rebuilds the Redis lookup index from the ATProto PDS, which is the durable source of truth. Redis
 /// is treated as a disposable cache: after a flush or restart it may be empty, and this service
-/// re-hydrates it. It runs once at startup and then on a <see cref="System.Threading.PeriodicTimer"/>
+/// re-hydrates it. It also computes the <see cref="StatisticsStatus"/> snapshot as a second fold on
+/// the same record enumeration, so one CAR download feeds both the lookup-cache rebuild and statistics.
+/// It runs once at startup and then on a <see cref="System.Threading.PeriodicTimer"/>
 /// driven by <see cref="CacheBootstrapSettings.BootstrapInterval"/>.
 /// </summary>
 /// <remarks>
@@ -22,20 +26,34 @@ namespace BridgeBeats.Worker.CacheBootstrap;
 /// <see cref="Contracts.DTOs.CacheBootstrapStatus"/> document is written to Redis (under
 /// <see cref="Contracts.DTOs.CacheBootstrapStatus.RedisKey"/>, with a one-day TTL) so the Web layer
 /// can surface bootstrap progress. A single record that fails to cache is logged and skipped; the run
-/// continues.
+/// continues. Statistics are accumulated for every record regardless of whether the cache write
+/// succeeded, and published to <see cref="StatisticsStatus.RedisKey"/> at the end of each pass.
 /// </remarks>
 /// <param name="atProtoStorage">Streams the user's records from the ATProto PDS.</param>
 /// <param name="cacheRepository">Re-registers each record's input-link pointers into Redis.</param>
 /// <param name="redis">The Redis connection used to read key counts and publish status.</param>
 /// <param name="settings">The PDS, user DID, and run interval for the rebuild pass.</param>
+/// <param name="refreshTrigger">Coalescing guard shared with the subscriber service.</param>
 /// <param name="logger">The logger for this service.</param>
+/// <param name="statisticsRetryInterval">
+/// How long to wait before retrying a failed statistics pass. Defaults to 30 seconds when
+/// <see cref="TimeSpan.Zero"/> is supplied (the DI default for an unregistered <see cref="TimeSpan"/>).
+/// </param>
 public sealed partial class CacheBootstrapBackgroundService(
     IATProtoStorageService atProtoStorage,
     IMediaLinkCacheRepository cacheRepository,
     IConnectionMultiplexer redis,
     CacheBootstrapSettings settings,
-    ILogger<CacheBootstrapBackgroundService> logger
+    IStatisticsRefreshTrigger refreshTrigger,
+    ILogger<CacheBootstrapBackgroundService> logger,
+    TimeSpan statisticsRetryInterval = default
 ) : BackgroundService {
+
+    private static readonly TimeSpan s_defaultStatisticsRetryInterval = TimeSpan.FromSeconds( 30 );
+
+    /// <summary>The effective statistics retry interval: supplied value when non-zero, otherwise 30 s.</summary>
+    private TimeSpan StatisticsRetryInterval =>
+        statisticsRetryInterval > TimeSpan.Zero ? statisticsRetryInterval : s_defaultStatisticsRetryInterval;
 
     /// <summary>Serializer options used when writing the bootstrap status document to Redis.</summary>
     private static readonly JsonSerializerOptions s_jsonOptions = new( ) { WriteIndented = false };
@@ -70,6 +88,29 @@ public sealed partial class CacheBootstrapBackgroundService(
 
         LogBootstrapShuttingDown( logger );
     }
+
+    /// <summary>
+    /// Triggers an out-of-band statistics-refresh pass (driven by a manual Pub/Sub request). Uses the
+    /// coalescing guard: if a pass is already running the trigger is dropped and
+    /// <see cref="LogEventIds.RefreshCoalesced"/> (5581) is logged.
+    /// </summary>
+    /// <param name="cancellationToken">A token that cancels the pass if it starts.</param>
+    /// <returns>A task that completes when the triggered pass finishes (or was coalesced).</returns>
+    public async Task TriggerStatisticsRefreshAsync( CancellationToken cancellationToken ) {
+        if (!refreshTrigger.TryAcquire( )) {
+            LogRefreshCoalesced( logger );
+            return;
+        }
+        try {
+            await RunStatisticsPassAsync( forceRefresh: true, cancellationToken );
+        } finally {
+            refreshTrigger.Release( );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Bootstrap status helpers (bootstrap doc, one-day TTL, existing contract)
+    // -------------------------------------------------------------------------
 
     /// <summary>
     /// Writes the current bootstrap status to Redis under
@@ -109,10 +150,104 @@ public sealed partial class CacheBootstrapBackgroundService(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Statistics status helpers (statistics doc, NO TTL)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Writes the statistics status document to Redis under <see cref="StatisticsStatus.RedisKey"/>
+    /// with <strong>no expiry</strong>. The document is the page's only data source; a TTL would
+    /// re-strand the statistics page between worker cycles. Failures are logged and swallowed.
+    /// </summary>
+    /// <param name="status">The statistics status snapshot to publish.</param>
+    private async Task UpdateStatisticsStatusAsync( StatisticsStatus status ) {
+        try {
+            IDatabase db = redis.GetDatabase( );
+            string json = JsonSerializer.Serialize( status, s_jsonOptions );
+            _ = await db.StringSetAsync( StatisticsStatus.RedisKey, json );
+        } catch (Exception ex) {
+            LogStatisticsStatusUpdateError( logger, ex );
+        }
+    }
+
+    /// <summary>
+    /// Reads the last-published statistics status from Redis. Failures are logged and treated as no
+    /// status so a Redis hiccup does not affect the lifecycle writes.
+    /// </summary>
+    private async Task<StatisticsStatus?> GetStatisticsStatusAsync( ) {
+        try {
+            IDatabase db = redis.GetDatabase( );
+            RedisValue value = await db.StringGetAsync( StatisticsStatus.RedisKey );
+            return value.IsNullOrEmpty
+                ? null
+                : JsonSerializer.Deserialize<StatisticsStatus>( value.ToString( ), s_jsonReadOptions );
+        } catch (Exception ex) {
+            LogStatisticsStatusReadError( logger, ex );
+            return null;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Statistics status write helpers — single source for each lifecycle shape
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Reads the prior statistics status and writes an in-progress document that carries forward the
+    /// previous snapshot and error fields so a running indicator never clears the last known results.
+    /// </summary>
+    private async Task WriteRunningStatusAsync( ) {
+        StatisticsStatus? prior = await GetStatisticsStatusAsync( );
+        await UpdateStatisticsStatusAsync( new StatisticsStatus {
+            IsRunning = true,
+            Snapshot = prior?.Snapshot,
+            LastRunTime = prior?.LastRunTime,
+            LastError = prior?.LastError,
+            LastErrorTime = prior?.LastErrorTime,
+            NextScheduledRun = prior?.NextScheduledRun
+        } );
+    }
+
+    /// <summary>
+    /// Writes a healthy-completion document with the supplied snapshot. Clears any prior error fields.
+    /// </summary>
+    private async Task WriteHealthyStatusAsync( LookupStatistics snapshot ) {
+        await UpdateStatisticsStatusAsync( new StatisticsStatus {
+            IsRunning = false,
+            Snapshot = snapshot,
+            LastRunTime = DateTimeOffset.UtcNow,
+            NextScheduledRun = DateTimeOffset.UtcNow.Add( settings.BootstrapInterval ),
+            LastError = null,
+            LastErrorTime = null
+        } );
+    }
+
+    /// <summary>
+    /// Reads the prior statistics status and writes an error-completion document that carries forward
+    /// the previous snapshot and run-time fields. The <paramref name="sanitizedError"/> must already
+    /// be sanitized; no internal exception detail is written here.
+    /// </summary>
+    private async Task WriteErrorStatusAsync( string sanitizedError ) {
+        StatisticsStatus? prior = await GetStatisticsStatusAsync( );
+        await UpdateStatisticsStatusAsync( new StatisticsStatus {
+            IsRunning = false,
+            Snapshot = prior?.Snapshot,
+            LastRunTime = prior?.LastRunTime,
+            LastError = sanitizedError,
+            LastErrorTime = DateTimeOffset.UtcNow,
+            NextScheduledRun = DateTimeOffset.UtcNow.Add( settings.BootstrapInterval )
+        } );
+    }
+
+    // -------------------------------------------------------------------------
+    // Bootstrap pass
+    // -------------------------------------------------------------------------
+
     /// <summary>
     /// Performs one full cache-rebuild pass: marks the status in progress, measures the Redis key count,
     /// streams every record from the PDS and re-registers its input-link pointers, then records timing,
-    /// success/error counts, and the before/after key counts in the status document. A fatal error
+    /// success/error counts, and the before/after key counts in the status document. Simultaneously
+    /// folds each record into a <see cref="StatisticsAccumulator"/> as a second sink on the same
+    /// enumeration, then publishes the statistics snapshot at the end of the pass. A fatal error
     /// aborts the pass and is recorded; per-record failures are counted and skipped.
     /// </summary>
     /// <param name="cancellationToken">A token that cancels the pass.</param>
@@ -157,6 +292,7 @@ public sealed partial class CacheBootstrapBackgroundService(
         Stopwatch stopwatch = Stopwatch.StartNew( );
         int successCount = 0;
         int errorCount = 0;
+        StatisticsAccumulator accumulator = new( );
 
         try {
             await foreach ((string atUri, MediaLinkResult result) in
@@ -173,6 +309,9 @@ public sealed partial class CacheBootstrapBackgroundService(
                     errorCount++;
                     LogCacheRecordError( logger, ex, atUri );
                 }
+
+                // Fold this record into statistics regardless of whether the cache write succeeded.
+                accumulator.Add( atUri, result );
             }
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             LogBootstrapCancelled( logger );
@@ -224,7 +363,7 @@ public sealed partial class CacheBootstrapBackgroundService(
             keyCountAfter - keyCountBefore
         );
 
-        // Update status with completed run information
+        // Update bootstrap status with completed run information
         await UpdateStatusAsync( new CacheBootstrapStatus {
             IsRunning = false,
             LastRunTime = DateTimeOffset.UtcNow,
@@ -234,7 +373,163 @@ public sealed partial class CacheBootstrapBackgroundService(
             LastDurationSeconds = stopwatch.Elapsed.TotalSeconds,
             RedisKeyCount = keyCountAfter
         } );
+
+        // Publish statistics — guarded by the coalescing trigger so a concurrent manual refresh
+        // and the scheduled cycle cannot both write status:statistics simultaneously.
+        await ComputeAndPublishStatisticsAsync( accumulator, cancellationToken );
     }
+
+    // -------------------------------------------------------------------------
+    // Statistics pass — retry, coalescing guard, force-refresh variant
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Attempts to publish the statistics snapshot built from <paramref name="accumulator"/>. On the
+    /// happy path this is a single write. If the write or the build fails, logs the error, writes an
+    /// error status document first, waits <see cref="StatisticsRetryInterval"/>, then retries once by
+    /// re-reading the records from the PDS (which will be served from the shared CAR cache within the
+    /// 5-minute TTL). A second failure writes the final error document and returns, letting the
+    /// periodic timer serve as the backstop.
+    /// </summary>
+    /// <param name="accumulator">The already-folded accumulator from the bootstrap enumeration.</param>
+    /// <param name="cancellationToken">Cancels the wait and the retry.</param>
+    private async Task ComputeAndPublishStatisticsAsync(
+        StatisticsAccumulator accumulator,
+        CancellationToken cancellationToken ) {
+
+        if (!refreshTrigger.TryAcquire( )) {
+            LogRefreshCoalesced( logger );
+            return;
+        }
+
+        try {
+            await TryPublishStatisticsFromAccumulatorAsync( accumulator, cancellationToken );
+        } finally {
+            refreshTrigger.Release( );
+        }
+    }
+
+    /// <summary>
+    /// Writes the statistics snapshot built from <paramref name="accumulator"/>. On failure,
+    /// writes an error status doc, waits the retry interval, then retries once via a fresh
+    /// <see cref="RunStatisticsPassAsync"/> call. A second failure writes the final error doc.
+    /// </summary>
+    private async Task TryPublishStatisticsFromAccumulatorAsync(
+        StatisticsAccumulator accumulator,
+        CancellationToken cancellationToken ) {
+
+        if (logger.IsEnabled( LogLevel.Information )) {
+            LogPassStarting( logger );
+        }
+
+        await WriteRunningStatusAsync( );
+
+        try {
+            LookupStatistics snapshot = accumulator.Build( );
+            await WriteHealthyStatusAsync( snapshot );
+            LogPassCompleted( logger, snapshot.TotalRecords );
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (Exception ex) {
+            await HandleStatisticsPassFailureAndRetryAsync(
+                ex,
+                isFirstAttempt: true,
+                cancellationToken );
+        }
+    }
+
+    /// <summary>
+    /// Writes an error status document, waits the retry interval, then retries via a fresh
+    /// <see cref="RunStatisticsPassAsync"/>. A second failure writes the final error document.
+    /// </summary>
+    private async Task HandleStatisticsPassFailureAndRetryAsync(
+        Exception firstEx,
+        bool isFirstAttempt,
+        CancellationToken cancellationToken ) {
+
+        string sanitizedError = ClassifyStatisticsError( firstEx );
+        LogPassError( logger, firstEx, sanitizedError );
+
+        // Write error status BEFORE the retry wait so the page shows the error immediately.
+        await WriteErrorStatusAsync( sanitizedError );
+
+        if (!isFirstAttempt) {
+            // Second failure: fall back to the periodic window.
+            LogRetryExhausted( logger );
+            return;
+        }
+
+        // Wait the retry interval, observing the stopping token.
+        try {
+            await Task.Delay( StatisticsRetryInterval, cancellationToken );
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        }
+
+        // Retry once: re-read records (cache-served within the 5-min TTL, no second download).
+        try {
+            await RunStatisticsPassAsync( forceRefresh: false, cancellationToken );
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (Exception retryEx) {
+            await HandleStatisticsPassFailureAndRetryAsync(
+                retryEx,
+                isFirstAttempt: false,
+                cancellationToken );
+        }
+    }
+
+    /// <summary>
+    /// Runs a full statistics-only pass: enumerates all records (cache-served when within the
+    /// 5-minute TTL), folds them into a <see cref="StatisticsAccumulator"/>, and publishes the
+    /// snapshot. Called for the retry (no second download on the happy path) and for manual triggers.
+    /// </summary>
+    /// <param name="forceRefresh">
+    /// When <see langword="true"/>, bypasses the CAR cache TTL and forces a fresh download
+    /// (used by the manual admin trigger).
+    /// </param>
+    /// <param name="cancellationToken">Cancels the enumeration and the status write.</param>
+    internal async Task RunStatisticsPassAsync( bool forceRefresh, CancellationToken cancellationToken ) {
+        if (logger.IsEnabled( LogLevel.Information )) {
+            LogPassStarting( logger );
+        }
+
+        await WriteRunningStatusAsync( );
+
+        try {
+            StatisticsAccumulator acc = new( );
+            await foreach ((string atUri, MediaLinkResult result) in
+                atProtoStorage.ListAllRecordsAsync(
+                    settings.PdsUri, settings.UserDid, cancellationToken, forceRefresh: forceRefresh )) {
+                acc.Add( atUri, result );
+            }
+
+            LookupStatistics snapshot = acc.Build( );
+            await WriteHealthyStatusAsync( snapshot );
+            LogPassCompleted( logger, snapshot.TotalRecords );
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (Exception ex) {
+            // Route failures through the shared error-doc-first + one-retry path so the manual
+            // trigger path has the same error-reporting semantics as the scheduled path. Without
+            // this catch, a non-OCE exception propagates to the subscriber's Task.Run catch and
+            // leaves status:statistics stuck at IsRunning=true.
+            await HandleStatisticsPassFailureAndRetryAsync(
+                ex,
+                isFirstAttempt: true,
+                cancellationToken );
+        }
+    }
+
+    /// <summary>
+    /// Returns a short, sanitized description of the error that is safe for operator display.
+    /// Never surfaces exception messages or internal details.
+    /// </summary>
+    private static string ClassifyStatisticsError( Exception ex ) =>
+        ex switch {
+            OperationCanceledException => "Statistics computation cancelled.",
+            _ => "Statistics computation failed; see worker logs."
+        };
 
     #region LoggerMessage Methods
 
@@ -377,6 +672,59 @@ public sealed partial class CacheBootstrapBackgroundService(
         Level = LogLevel.Warning,
         Message = "Failed to read cache bootstrap status from Redis" )]
     private static partial void LogStatusReadError( ILogger logger, Exception ex );
+
+    // ---- Statistics log messages ----
+
+    /// <summary>Logs that reading the statistics status document from Redis failed.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.StatisticsStatusReadError,
+        Level = LogLevel.Warning,
+        Message = "Failed to read statistics status from Redis" )]
+    private static partial void LogStatisticsStatusReadError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that a statistics computation pass is starting.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.PassStarting,
+        Level = LogLevel.Information,
+        Message = "Starting statistics computation pass" )]
+    private static partial void LogPassStarting( ILogger logger );
+
+    /// <summary>Logs that a statistics computation pass completed, reporting the total record count.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.PassCompleted,
+        Level = LogLevel.Information,
+        Message = "Statistics computation pass completed: {TotalRecords} records" )]
+    private static partial void LogPassCompleted( ILogger logger, int totalRecords );
+
+    /// <summary>Logs that writing the statistics status document to Redis failed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.StatisticsStatusUpdateError,
+        Level = LogLevel.Warning,
+        Message = "Failed to update statistics status in Redis" )]
+    private static partial void LogStatisticsStatusUpdateError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that a statistics computation pass failed.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.PassError,
+        Level = LogLevel.Error,
+        Message = "Statistics computation pass failed ({SanitizedError}); will retry" )]
+    private static partial void LogPassError( ILogger logger, Exception ex, string sanitizedError );
+
+    /// <summary>Logs that both the initial and retry statistics passes failed; falling back to the periodic window.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RetryExhausted,
+        Level = LogLevel.Error,
+        Message = "Statistics computation retry exhausted; falling back to the periodic window" )]
+    private static partial void LogRetryExhausted( ILogger logger );
+
+    /// <summary>Logs that a manual statistics refresh trigger was coalesced because a pass is already running.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshCoalesced,
+        Level = LogLevel.Information,
+        Message = "Statistics refresh trigger coalesced — a pass is already running" )]
+    private static partial void LogRefreshCoalesced( ILogger logger );
 
     #endregion
 }

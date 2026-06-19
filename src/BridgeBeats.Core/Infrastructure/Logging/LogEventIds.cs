@@ -23,7 +23,6 @@ using RetryAfterLimitHandler = BridgeBeats.Core.Domain.Providers.Common.RetryAft
 using SagaResultCombiner = BridgeBeats.Core.Domain.Services.Queue.SagaResultCombiner;
 using SpotifyLookupService = BridgeBeats.Core.Domain.Providers.Spotify.SpotifyLookupService;
 using SpotifyTokenHandler = BridgeBeats.Core.Domain.Providers.Spotify.SpotifyTokenHandler;
-using StatisticsService = BridgeBeats.Core.Domain.Services.StatisticsService;
 using TidalLookupService = BridgeBeats.Core.Domain.Providers.Tidal.TidalLookupService;
 using TidalTokenHandler = BridgeBeats.Core.Domain.Providers.Tidal.TidalTokenHandler;
 namespace BridgeBeats.Core.Infrastructure.Logging;
@@ -1490,27 +1489,7 @@ public static class LogEventIds {
         /// EventIds for other services (3750-3999).
         /// </summary>
         public static class Other {
-            // StatisticsService (3750-3774)
-
-            /// <summary>
-            /// EventId for <see cref="StatisticsService.LogRefreshingStatistics"/>.
-            /// </summary>
-            public const int RefreshingStatistics = 3750;
-
-            /// <summary>
-            /// EventId for <see cref="StatisticsService.LogStatisticsRefreshed"/>.
-            /// </summary>
-            public const int StatisticsRefreshed = 3751;
-
-            /// <summary>
-            /// EventId for <see cref="StatisticsService.LogCacheBootstrapStatusError"/>.
-            /// </summary>
-            public const int CacheBootstrapStatusReadError = 3752;
-
-            /// <summary>
-            /// EventId for <see cref="StatisticsService.LogStatisticsRefreshSkipped"/>.
-            /// </summary>
-            public const int StatisticsRefreshSkipped = 3753;
+            // 3750-3753 retired (StatisticsService relocated to the worker stats fold)
 
             // AspireServiceExtensions (3800-3824)
         }
@@ -1536,28 +1515,7 @@ public static class LogEventIds {
     /// EventIds for BackgroundServices (4900-4999).
     /// </summary>
     public static class BackgroundServices {
-        // StatisticsRefreshBackgroundService (4900-4924)
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService starting.</summary>
-        public const int StatisticsRefreshStarting = 4900;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService initial refresh complete.</summary>
-        public const int StatisticsRefreshInitialComplete = 4901;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService periodic refresh triggered.</summary>
-        public const int StatisticsRefreshPeriodicTriggered = 4902;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService manual refresh triggered.</summary>
-        public const int StatisticsRefreshManualTriggered = 4903;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService refresh error.</summary>
-        public const int StatisticsRefreshError = 4904;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService stopped.</summary>
-        public const int StatisticsRefreshStopped = 4905;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService channel completed (writer closed).</summary>
-        public const int StatisticsRefreshChannelCompleted = 4906;
+        // 4900-4906 retired (StatisticsRefreshBackgroundService removed; refresh now cross-process Pub/Sub)
     }
 
     /// <summary>
@@ -1569,7 +1527,7 @@ public static class LogEventIds {
     /// <list type="bullet">
     ///   <item>5000-5249: SagaCoordinator (BridgeBeats.Worker.SagaCoordinator.Logging.LogEventIds)</item>
     ///   <item>5250-5499: Spotify (BridgeBeats.Worker.Spotify.Logging.LogEventIds)</item>
-    ///   <item>5500-5749: CacheBootstrap (BridgeBeats.Worker.CacheBootstrap.Logging.LogEventIds)</item>
+    ///   <item>5500-5749: Maintenance (BridgeBeats.Worker.Maintenance.Logging.LogEventIds)</item>
     ///   <item>5750-5999: JetStreamWatcher (BridgeBeats.Worker.JetStreamWatcher.Logging.LogEventIds)</item>
     ///   <item>6000-6249: Discord (BridgeBeats.Worker.Discord.Logging.LogEventIds)</item>
     ///   <item>6250-6499: AppleMusic (BridgeBeats.Worker.AppleMusic.Logging.LogEventIds)</item>
