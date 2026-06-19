@@ -25,7 +25,7 @@ namespace BridgeBeats.Tests.Unit;
 ///   error); plus the null-service / error-view guard, the live bootstrap status overlay, and that
 ///   the in-progress flag is the real running flag (a non-running status yields no spinner).</item>
 ///   <item>Refresh action: publishes via <see cref="IStatisticsService.RequestRefresh"/> and
-///   enforces a per-admin 1-minute throttle (T8).</item>
+///   enforces a per-admin 1-minute throttle.</item>
 /// </list>
 /// </summary>
 [TestClass]
@@ -287,10 +287,10 @@ public class StatisticsControllerTests {
         Assert.AreEqual( 100, model.TotalRecords );
     }
 
-    // ── Refresh / T8 throttle tests ──────────────────────────────────────────
+    // ── Refresh throttle tests ───────────────────────────────────────────────
 
     /// <summary>
-    /// T8-1: First Refresh call within the window publishes via <c>RequestRefresh</c> and
+    /// First Refresh call within the window publishes via <c>RequestRefresh</c> and
     /// redirects to Index.
     /// Failure-first evidence: before implementing the throttle, this test fails because
     /// <c>StatisticsController.Refresh</c> called <c>TriggerRefresh()</c> (removed from
@@ -314,7 +314,7 @@ public class StatisticsControllerTests {
     }
 
     /// <summary>
-    /// T8-2: A second Refresh call from the same admin within the 1-minute window does NOT
+    /// A second Refresh call from the same admin within the 1-minute window does NOT
     /// publish again and still redirects to Index without erroring.
     /// Failure-first evidence: without the throttle the service would be called twice; this
     /// assertion fails before the throttle guard is in place.
@@ -339,7 +339,7 @@ public class StatisticsControllerTests {
     }
 
     /// <summary>
-    /// T8-3: After advancing the fake clock past the 1-minute throttle window, the next
+    /// After advancing the fake clock past the 1-minute throttle window, the next
     /// Refresh call publishes again.
     /// Failure-first evidence: without TimeProvider-aware throttle, advancing the fake
     /// clock has no effect and the second call would still be suppressed; the Times.Exactly(2)
@@ -368,7 +368,7 @@ public class StatisticsControllerTests {
     }
 
     /// <summary>
-    /// T8-4: Negative control — a DIFFERENT admin is NOT blocked by another admin's throttle.
+    /// Negative control — a DIFFERENT admin is NOT blocked by another admin's throttle.
     /// Failure-first evidence: without a per-user key both admins would share the same throttle
     /// entry; the second admin's call would be suppressed and Times.Exactly(2) would fail.
     /// </summary>
@@ -391,7 +391,7 @@ public class StatisticsControllerTests {
     }
 
     /// <summary>
-    /// T8-5: When <see cref="IStatisticsService.RequestRefresh"/> returns false (publish
+    /// When <see cref="IStatisticsService.RequestRefresh"/> returns false (publish
     /// suppressed or failed inside the service), the throttle is NOT set, so the admin can
     /// retry immediately and the second call is also forwarded to the service.
     /// Failure-first evidence: before the fix the throttle was recorded unconditionally before
