@@ -390,6 +390,34 @@ public class StatisticsControllerTests {
         _statisticsServiceMock.Verify( x => x.RequestRefresh( ), Times.Exactly( 2 ) );
     }
 
+    /// <summary>
+    /// T8-5: When <see cref="IStatisticsService.RequestRefresh"/> returns false (publish
+    /// suppressed or failed inside the service), the throttle is NOT set, so the admin can
+    /// retry immediately and the second call is also forwarded to the service.
+    /// Failure-first evidence: before the fix the throttle was recorded unconditionally before
+    /// calling RequestRefresh, so a false return would still suppress the second call and the
+    /// Times.Exactly(2) assertion would fail.
+    /// </summary>
+    [TestMethod]
+    public void Refresh_FailedDispatch_DoesNotSetThrottle_AdminCanRetryImmediately( ) {
+        _ = _statisticsServiceMock
+            .Setup( x => x.RequestRefresh( ) )
+            .Returns( false );
+
+        StatisticsController controller = CreateController( WithAdminClaim( "admin-1" ) );
+
+        // First call — dispatch fails (returns false).
+        IActionResult first = controller.Refresh( );
+
+        // Second call immediately — must NOT be blocked by a throttle from the failed first call.
+        IActionResult second = controller.Refresh( );
+
+        RedirectToActionResult redirect = Assert.IsInstanceOfType<RedirectToActionResult>( second );
+        Assert.AreEqual( "Index", redirect.ActionName );
+        // Both calls reached the service because no throttle was set.
+        _statisticsServiceMock.Verify( x => x.RequestRefresh( ), Times.Exactly( 2 ) );
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     /// <summary>

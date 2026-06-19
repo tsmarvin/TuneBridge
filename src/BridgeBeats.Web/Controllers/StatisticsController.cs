@@ -101,25 +101,31 @@ public partial class StatisticsController(
         string? adminId = User.FindFirst( ClaimTypes.NameIdentifier )?.Value
             ?? User.Identity?.Name;
 
-        if (adminId is not null) {
-            string cacheKey = $"stats:refresh-throttle:{adminId}";
+        string? cacheKey = adminId is not null ? $"stats:refresh-throttle:{adminId}" : null;
+
+        if (cacheKey is not null) {
             if (memoryCache.TryGetValue( cacheKey, out DateTimeOffset throttleUntil )
                 && timeProvider.GetUtcNow( ) < throttleUntil) {
                 LogRefreshThrottled( );
                 TempData["RefreshNotice"] = "Refresh requested too recently — try again in a moment.";
                 return RedirectToAction( nameof( Index ) );
             }
-
-            // Record the throttle expiry so a FakeTimeProvider can advance past it in tests.
-            DateTimeOffset expiry = timeProvider.GetUtcNow( ) + s_throttleWindow;
-            _ = memoryCache.Set( cacheKey, expiry );
         }
 
         try {
-            _ = statisticsService.RequestRefresh( );
-            TempData["RefreshNotice"] = "Refresh requested. Statistics will update shortly.";
+            if (statisticsService.RequestRefresh( )) {
+                if (cacheKey is not null) {
+                    // Record the throttle expiry so a FakeTimeProvider can advance past it in tests.
+                    DateTimeOffset expiry = timeProvider.GetUtcNow( ) + s_throttleWindow;
+                    _ = memoryCache.Set( cacheKey, expiry );
+                }
+                TempData["RefreshNotice"] = "Refresh requested. Statistics will update shortly.";
+            } else {
+                TempData["RefreshNotice"] = "Couldn't request a refresh right now — please try again.";
+            }
         } catch (Exception ex) {
             LogRefreshError( ex );
+            TempData["RefreshNotice"] = "Couldn't request a refresh right now — please try again.";
         }
 
         return RedirectToAction( nameof( Index ) );

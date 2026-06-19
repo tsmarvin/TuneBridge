@@ -8,13 +8,13 @@ using StackExchange.Redis;
 namespace BridgeBeats.Web.Services;
 
 /// <summary>
-/// Reads lookup statistics and CacheBootstrap worker status from Redis, and publishes manual
-/// refresh requests to the CacheBootstrap worker via Pub/Sub. No statistics computation is
+/// Reads lookup statistics and Maintenance worker status from Redis, and publishes manual
+/// refresh requests to the Maintenance worker via Pub/Sub. No statistics computation is
 /// performed in this class; all aggregation is done by the worker.
 /// </summary>
 /// <remarks>
 /// <c>GetCachedStatistics</c> and <see cref="IsRefreshing"/> are backed by the
-/// <c>status:statistics</c> Redis document written by the CacheBootstrap worker. Reads are
+/// <c>status:statistics</c> Redis document written by the Maintenance worker. Reads are
 /// served from an in-process memo refreshed at most once per <see cref="s_memoWindow"/> to avoid
 /// Redis round-trips on page bursts. <c>GetLiveBootstrapStatusAsync</c> reads
 /// <c>status:cache-bootstrap</c> directly on every call (its own short-lived nature is managed

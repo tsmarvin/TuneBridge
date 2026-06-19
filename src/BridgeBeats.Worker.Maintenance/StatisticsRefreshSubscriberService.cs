@@ -39,10 +39,12 @@ public sealed partial class StatisticsRefreshSubscriberService(
                 _ = Task.Run( async ( ) => {
                     try {
                         await bootstrapService.TriggerStatisticsRefreshAsync( stoppingToken );
+                    } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                        // Normal shutdown — no log.
                     } catch (Exception ex) {
                         LogRefreshHandlerError( logger, ex );
                     }
-                }, stoppingToken ).ConfigureAwait( false );
+                }, stoppingToken );
             }
         );
 

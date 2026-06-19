@@ -14,8 +14,9 @@ namespace BridgeBeats.Tests.Unit;
 public class StatisticsStatusTests {
 
     /// <summary>
-    /// Case-insensitive JSON options verbatim from <c>StatisticsService.cs:36</c>, reused here so
-    /// the deserialization surface matches what the application actually uses.
+    /// Case-insensitive JSON options matching those used by <see cref="BridgeBeats.Web.Services.RedisStatisticsReader"/>
+    /// for all Redis document deserializations, reused here so the deserialization surface matches
+    /// what the application actually uses.
     /// </summary>
     private static readonly JsonSerializerOptions s_jsonOptions =
         new( ) { PropertyNameCaseInsensitive = true };
