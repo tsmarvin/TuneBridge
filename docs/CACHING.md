@@ -44,7 +44,7 @@ rather than your main account password.
 
 ### Stale-cache refresh sweep
 
-The `StaleCacheRefreshBackgroundService` (in `BridgeBeats.Worker.CacheBootstrap`) runs on a
+The `StaleCacheRefreshBackgroundService` (in `BridgeBeats.Worker.Maintenance`) runs on a
 periodic timer, defaulting to every 24 hours (`RefreshIntervalHours`). Each run queries Redis for
 the oldest stale or expired media-link records and re-enqueues up to `MaxRecordsPerRun` of them at
 bulk priority. The provider workers process these lookups and write refreshed records back to the

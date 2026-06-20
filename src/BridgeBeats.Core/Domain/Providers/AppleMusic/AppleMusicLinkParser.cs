@@ -273,7 +273,7 @@ namespace BridgeBeats.Providers.AppleMusic {
         private static void ValidateStorefront( string storefront ) {
             if (!s_validStorefront.IsMatch( storefront )) {
                 throw new ArgumentException(
-                    $"Invalid storefront value '{storefront}': must be 2–3 alphabetic characters.",
+                    "Storefront must be 2–3 alphabetic characters.",
                     nameof( storefront )
                 );
             }
@@ -287,7 +287,7 @@ namespace BridgeBeats.Providers.AppleMusic {
         private static void ValidateCatalogId( string id ) {
             if (!s_validCatalogId.IsMatch( id )) {
                 throw new ArgumentException(
-                    $"Invalid catalog id '{id}': must contain only numeric digits.",
+                    "Catalog id must contain only numeric digits.",
                     nameof( id )
                 );
             }
@@ -303,7 +303,7 @@ namespace BridgeBeats.Providers.AppleMusic {
         private static void ValidateIsrc( string isrc ) {
             if (!s_validIsrc.IsMatch( isrc )) {
                 throw new ArgumentException(
-                    $"Invalid ISRC value '{isrc}': must be 4–18 alphanumeric characters.",
+                    "ISRC must be 4–18 alphanumeric characters.",
                     nameof( isrc )
                 );
             }
@@ -318,7 +318,7 @@ namespace BridgeBeats.Providers.AppleMusic {
         private static void ValidateUpc( string upc ) {
             if (!s_validUpc.IsMatch( upc )) {
                 throw new ArgumentException(
-                    $"Invalid UPC value '{upc}': must be 8–14 numeric digits.",
+                    "UPC must be 8–14 numeric digits.",
                     nameof( upc )
                 );
             }

@@ -278,7 +278,7 @@ public sealed partial class RedisMediaLinkCache : IMediaLinkCacheRepository {
     /// title/artist metadata pointers, and provider-id pointers. All written keys are recorded in
     /// <c>keys:{rkey}</c> so they can be refreshed or removed as a unit, and all share the configured
     /// cache-day TTL. When an entry for the same record already exists, only the TTLs are refreshed
-    /// rather than rewriting the pointers. This is the same method CacheBootstrap calls to rebuild
+    /// rather than rewriting the pointers. This is the same method the Maintenance worker calls to rebuild
     /// Redis from the PDS.
     /// </remarks>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="result"/> is null.</exception>

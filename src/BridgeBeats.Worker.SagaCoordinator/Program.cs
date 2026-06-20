@@ -58,7 +58,7 @@ public static class Program {
         builder.AddRedisClient( "redis" );
 
         // Lane B: Data Protection — must use the same app name and key path as Web so
-        // values encrypted in one process (Web, SagaCoordinator, CacheBootstrap) can be
+        // values encrypted in one process (Web, SagaCoordinator, Maintenance) can be
         // decrypted by any other.
         string dataProtectionKeyPath = builder.Configuration["BridgeBeats:DataProtectionKeyPath"] ?? DataProtectionExtensions.DefaultKeyPath;
         _ = builder.Services.AddBridgeBeatsDataProtection( dataProtectionKeyPath );
