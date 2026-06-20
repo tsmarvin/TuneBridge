@@ -296,7 +296,8 @@ namespace BridgeBeats.Providers.AppleMusic {
         /// <summary>
         /// Validates that <paramref name="isrc"/> conforms to a conservative alphanumeric ISRC pattern.
         /// Apple Music strips ISRC hyphens, so the expected form is 4–18 uppercase letters and digits.
-        /// The Security Engineer should confirm whether tighter bounds are appropriate.
+        /// The canonical 12-character ISRC (hyphens stripped) fits well within this range; the upper
+        /// bound is intentionally permissive to avoid rejecting non-standard registrant codes.
         /// </summary>
         /// <param name="isrc">The ISRC value to validate.</param>
         /// <exception cref="ArgumentException">Thrown when the value does not match the expected pattern.</exception>
@@ -385,8 +386,9 @@ namespace BridgeBeats.Providers.AppleMusic {
 
         /// <summary>
         /// Compiled regex that accepts a conservative ISRC value: 4–18 uppercase or lowercase letters
-        /// and digits, with no hyphens (Apple Music strips ISRC hyphens). Security Engineer should
-        /// confirm whether stricter bounds are appropriate.
+        /// and digits, with no hyphens (Apple Music strips ISRC hyphens). The canonical 12-character
+        /// ISRC fits within this range; the upper bound is intentionally permissive to avoid rejecting
+        /// non-standard registrant codes.
         /// </summary>
         private static readonly Regex s_validIsrc = ValidIsrc();
 

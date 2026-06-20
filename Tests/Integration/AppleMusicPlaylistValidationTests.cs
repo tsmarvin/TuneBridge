@@ -202,6 +202,182 @@ public class AppleMusicPlaylistValidationTests : IDisposable {
     }
 
     /// <summary>
+    /// Verifies that a <c>PlaylistId</c> of <c>".."</c> (dot-dot path traversal segment) returns HTTP
+    /// 400 from model validation before any outbound Apple Music API call is attempted. Without the
+    /// tightened regex, <c>Uri.EscapeDataString</c> does not escape dots, so <c>".."</c> would reach
+    /// the outbound URL and normalize to a different Apple API path.
+    /// </summary>
+    /// <remarks>
+    /// Failure-first evidence: the prior regex <c>^[A-Za-z0-9._-]+$</c> accepted <c>".."</c>; model
+    /// validation passed and the action returned 401 (no Apple token) rather than 400. After
+    /// tightening to <c>^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$</c>, <c>ModelState.IsValid</c> is false
+    /// and the action returns 400 before any outbound call.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_PlaylistIdDotDot_Returns400BeforeOutboundCall( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( ".." );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - model validation rejects the dot-dot id; no outbound call is ever made
+        Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
+        SpyHttpMessageHandler spy = _factory!.Services.GetRequiredService<SpyHttpMessageHandler>( );
+        Assert.AreEqual( 0, spy.SendCount, "No outbound call must reach the musickit-api client when model validation rejects the request" );
+    }
+
+    /// <summary>
+    /// Verifies that a <c>PlaylistId</c> of <c>"."</c> (standalone dot) returns HTTP 400 from model
+    /// validation before any outbound Apple Music API call is attempted.
+    /// </summary>
+    /// <remarks>
+    /// Failure-first evidence: the prior regex <c>^[A-Za-z0-9._-]+$</c> accepted <c>"."</c>; model
+    /// validation passed and the action returned 401 rather than 400. The tightened regex rejects it
+    /// because the value does not start with an alphanumeric character.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_PlaylistIdSingleDot_Returns400BeforeOutboundCall( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( "." );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - model validation rejects the standalone dot; no outbound call is ever made
+        Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
+        SpyHttpMessageHandler spy = _factory!.Services.GetRequiredService<SpyHttpMessageHandler>( );
+        Assert.AreEqual( 0, spy.SendCount, "No outbound call must reach the musickit-api client when model validation rejects the request" );
+    }
+
+    /// <summary>
+    /// Verifies that a <c>PlaylistId</c> containing a doubled separator (<c>"a..b"</c>) returns HTTP
+    /// 400 from model validation before any outbound Apple Music API call is attempted. Consecutive
+    /// separators can degenerate into traversal-style sequences when interpolated into a URL.
+    /// </summary>
+    /// <remarks>
+    /// Failure-first evidence: the prior regex <c>^[A-Za-z0-9._-]+$</c> accepted <c>"a..b"</c>;
+    /// model validation passed and the action returned 401 rather than 400. The tightened regex
+    /// requires a single separator followed by at least one alphanumeric character and therefore
+    /// rejects doubled separators.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_PlaylistIdDoubledSeparator_Returns400BeforeOutboundCall( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( "a..b" );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - model validation rejects the doubled-separator id; no outbound call is ever made
+        Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
+        SpyHttpMessageHandler spy = _factory!.Services.GetRequiredService<SpyHttpMessageHandler>( );
+        Assert.AreEqual( 0, spy.SendCount, "No outbound call must reach the musickit-api client when model validation rejects the request" );
+    }
+
+    /// <summary>
+    /// Verifies that an <c>i.</c>-prefixed Apple library item id (e.g. <c>i.e5gmPS6rZ856</c>) passes
+    /// model validation. The action then proceeds to the user-token checks; because the test user has
+    /// no stored Apple Music token the endpoint returns 401, not 400.
+    /// </summary>
+    /// <remarks>
+    /// Regression guard: this positive case confirms the tightened regex does not over-restrict
+    /// well-formed Apple library item ids. Both the old and new regexes accept this form; no
+    /// meaningful failure-first ordering exists for a purely positive guard.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_LibraryItemPrefixedId_PassesModelValidation( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( "i.e5gmPS6rZ856" );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - model validation passes; the action then fails at the user-token check (401),
+        // confirming the well-formed id did NOT trigger a 400 from ModelState.
+        Assert.AreNotEqual(
+            HttpStatusCode.BadRequest, response.StatusCode,
+            "An i.-prefixed Apple library item id must not be rejected by model validation."
+        );
+    }
+
+    /// <summary>
+    /// Verifies that a <c>pl.u-</c>-prefixed Apple catalog playlist id (e.g. <c>pl.u-abc123</c>)
+    /// passes model validation. The action then proceeds to the user-token checks; because the test
+    /// user has no stored Apple Music token the endpoint returns 401, not 400.
+    /// </summary>
+    /// <remarks>
+    /// Regression guard: this positive case confirms the tightened regex correctly handles ids that
+    /// contain both a dot and a hyphen as separators between alphanumeric runs. Both the old and new
+    /// regexes accept this form; no meaningful failure-first ordering exists for a purely positive guard.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_CatalogPlaylistHyphenatedId_PassesModelValidation( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( "pl.u-abc123" );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - model validation passes; the action then fails at the user-token check (401),
+        // confirming the well-formed id did NOT trigger a 400 from ModelState.
+        Assert.AreNotEqual(
+            HttpStatusCode.BadRequest, response.StatusCode,
+            "A pl.u--prefixed Apple catalog playlist id must not be rejected by model validation."
+        );
+    }
+
+    /// <summary>
     /// A <see cref="CustomWebApplicationFactory"/> variant that installs a stub <c>TestScheme</c>
     /// authentication handler so these tests can present an authenticated principal without a real
     /// login flow. The Apple Music token is intentionally omitted from the test user so the action
