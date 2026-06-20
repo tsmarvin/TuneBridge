@@ -79,7 +79,7 @@ public partial class StatisticsController(
     }
 
     /// <summary>
-    /// Publishes a manual refresh request to the CacheBootstrap worker, then redirects to the statistics
+    /// Publishes a manual refresh request to the Maintenance worker, then redirects to the statistics
     /// page. Applies a per-admin 1-minute throttle so bursts from the same admin do not result in repeated
     /// publishes. Restricted to users in the <see cref="BridgeBeats.Contracts.Constants.Roles.AspireDashboardAccess"/> role.
     /// </summary>
@@ -117,7 +117,8 @@ public partial class StatisticsController(
                 if (cacheKey is not null) {
                     // Record the throttle expiry so a FakeTimeProvider can advance past it in tests.
                     DateTimeOffset expiry = timeProvider.GetUtcNow( ) + s_throttleWindow;
-                    _ = memoryCache.Set( cacheKey, expiry );
+                    _ = memoryCache.Set( cacheKey, expiry,
+                        new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = s_throttleWindow } );
                 }
                 TempData["RefreshNotice"] = "Refresh requested. Statistics will update shortly.";
             } else {
