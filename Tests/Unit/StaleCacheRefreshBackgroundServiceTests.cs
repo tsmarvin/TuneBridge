@@ -2,7 +2,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Worker.CacheBootstrap;
+using BridgeBeats.Worker.Maintenance;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
@@ -120,26 +120,25 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await executeTask;
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.Never
         );
     }
 
     /// <summary>
     /// The durable marker (<c>cache:refresh:last-run</c>) is written via <c>StringSetAsync</c>
-    /// BEFORE <c>ListAllRecordsAsync</c> is called. A restart mid-drip therefore sees a fresh
-    /// marker and waits the interval remainder rather than re-selecting.
+    /// AFTER <c>EnqueueAsync</c> completes, not before. A crash mid-pass therefore leaves the marker
+    /// unwritten so the next start treats itself as due-now rather than skipping the interval.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_WritesMarkerBeforeSelection( ) {
+    public async Task RunRefreshPass_WritesMarkerAfterSuccessfulPass( ) {
         int markerWriteOrder = -1;
-        int listCallOrder = -1;
+        int enqueueOrder = -1;
         int callCounter = 0;
 
-        // Signals when ListAllRecordsAsync has been called so we know both events have fired
-        // and the ordering assertion is safe to read.
-        TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        // Signals when EnqueueAsync has been called so we know both events have fired.
+        TaskCompletionSource enqueueCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
 
@@ -152,29 +151,36 @@ public class StaleCacheRefreshBackgroundServiceTests {
             } )
             .ReturnsAsync( true );
 
-        _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
-                listCallOrder = System.Threading.Interlocked.Increment( ref callCounter );
-                _ = listCalled.TrySetResult( );
-                return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
-            } );
+        SetupRecordList( [MakeStaleRecord( "at://test/1", DateTime.UtcNow.AddDays( -60 ) )] );
 
+        _ = _queueMock
+            .Setup( q => q.EnqueueAsync(
+                It.IsAny<QueuedLookupRequest>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Callback<QueuedLookupRequest, QueuePriority, CancellationToken>( ( _, _, _ ) => {
+                enqueueOrder = System.Threading.Interlocked.Increment( ref callCounter );
+                _ = enqueueCalled.TrySetResult( );
+            } )
+            .Returns( Task.CompletedTask );
+
+        _settings = MakeSettings( refreshRetryInterval: TimeSpan.FromMilliseconds( 100 ) );
         StaleCacheRefreshBackgroundService service = CreateService( );
         service._startupGrace = TimeSpan.Zero;
         service._maxJitter = TimeSpan.Zero;
 
         _ = service.StartAsync( cts.Token );
 
-        // Wait until the selection phase fires, then cancel so the loop terminates.
-        await listCalled.Task.WaitAsync( TestContext.CancellationToken );
+        // Wait until the enqueue phase fires, then allow the marker write to complete.
+        await enqueueCalled.Task.WaitAsync( TimeSpan.FromSeconds( 5 ), TestContext.CancellationToken );
+        await Task.Delay( 200, TestContext.CancellationToken );
         await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
 
-        Assert.AreNotEqual( -1, markerWriteOrder, "Marker write must occur" );
-        Assert.AreNotEqual( -1, listCallOrder, "ListAllRecordsAsync must be called" );
-        Assert.IsLessThan( listCallOrder, markerWriteOrder,
-            "Marker must be written before selection begins" );
+        Assert.AreNotEqual( -1, enqueueOrder, "EnqueueAsync must be called" );
+        Assert.AreNotEqual( -1, markerWriteOrder, "Marker write must occur after successful pass" );
+        Assert.IsLessThan( markerWriteOrder, enqueueOrder,
+            "Marker must be written AFTER enqueue completes (pass success), not before" );
     }
 
     /// <summary>
@@ -191,8 +197,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
                 _ = listCalled.TrySetResult( );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
             } );
@@ -210,7 +216,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.StopAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.AtLeastOnce
         );
     }
@@ -229,8 +235,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
                 _ = listCalled.TrySetResult( );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
             } );
@@ -248,7 +254,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.StopAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.AtLeastOnce
         );
     }
@@ -269,8 +275,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         TaskCompletionSource listCalled = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
                 _ = listCalled.TrySetResult( );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
             } );
@@ -288,88 +294,161 @@ public class StaleCacheRefreshBackgroundServiceTests {
         await service.StopAsync( CancellationToken.None );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
             Times.AtLeastOnce
         );
     }
 
     #endregion
 
-    #region Skip Guard Tests
+    #region Failure Backoff and Gate-Removed Tests
 
     /// <summary>
-    /// When the bootstrap status document reports <c>IsRunning = true</c>, the refresh pass must
-    /// skip selection and enqueue no records.
+    /// When <c>ListAllRecordsAsync</c> throws a non-OCE exception, the loop logs 5534 exactly once,
+    /// never writes the marker for the failing pass, and retries after the configured
+    /// <c>RefreshRetryInterval</c> (not the 6-hour refresh interval). The retry is confirmed by the
+    /// second <c>ListAllRecordsAsync</c> arriving within a 5-second timeout; cancellation fires
+    /// inside the second call so it cannot write a marker, confirming the marker-never assertion
+    /// applies to the failure path only.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_WhenBootstrapIsRunning_SkipsSelectionAndEnqueue( ) {
+    public async Task ExecuteAsync_PassFails_LogsRetryEvent_NoMarker_RetriesShortly( ) {
+        int listCallCount = 0;
+        TaskCompletionSource secondCallTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
+                int count = System.Threading.Interlocked.Increment( ref listCallCount );
+                if (count == 1) {
+                    throw new InvalidOperationException( "Simulated fatal enumeration failure" );
+                }
+                _ = secondCallTcs.TrySetResult( );
+                cts.Cancel( );
+                throw new OperationCanceledException( cts.Token );
+            } );
+
+        _settings = MakeSettings(
+            refreshInterval: TimeSpan.FromHours( 6 ),
+            refreshRetryInterval: TimeSpan.FromMilliseconds( 500 )
+        );
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        service._startupGrace = TimeSpan.Zero;
+        service._maxJitter = TimeSpan.Zero;
+
+        _ = service.StartAsync( cts.Token );
+
+        await secondCallTcs.Task.WaitAsync( TimeSpan.FromSeconds( 5 ), TestContext.CancellationToken );
+        await service.StopAsync( CancellationToken.None );
+
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                It.Is<EventId>( e => e.Id == BridgeBeats.Worker.Maintenance.Logging.LogEventIds.RefreshPassFailedRetrying ),
+                It.IsAny<It.IsAnyType>( ),
+                It.IsAny<Exception?>( ),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
+            Times.Once,
+            "5534 must be logged exactly once for the failing pass" );
+
+        _redisDatabaseMock.Verify(
+            d => d.StringSetAsync(
+                "cache:refresh:last-run", It.IsAny<RedisValue>( ),
+                It.IsAny<Expiration>( ), It.IsAny<ValueCondition>( ), It.IsAny<CommandFlags>( ) ),
+            Times.Never,
+            "The marker must NOT be written when a pass fails" );
+    }
+
+    /// <summary>
+    /// When a pass throws and the backoff <c>Task.Delay</c> is cancelled during shutdown,
+    /// <c>ExecuteAsync</c> must reach a clean <c>RanToCompletion</c> terminal state AND
+    /// <c>StopAsync</c> must return within a short wall-clock bound.
+    /// <para>
+    /// The <c>RanToCompletion</c> assertion discriminates the precise G3 inner-try structure: with
+    /// the inner <c>try/catch</c> present the OCE from the backoff delay is caught and the loop
+    /// exits via <c>break</c>, leaving <c>ExecuteAsync</c> at <c>RanToCompletion</c>. Without it
+    /// the OCE escapes the outer catch, faulting or cancelling <c>ExecuteAsync</c> — a structural
+    /// defect the wall-clock assertion alone cannot detect because <c>BackgroundService.StopAsync</c>
+    /// awaits via <c>Task.WhenAny</c> and does not re-throw.
+    /// </para>
+    /// <para>
+    /// The wall-clock assertion independently guards against a backoff <c>Task.Delay</c> that drops
+    /// the cancellation token entirely, which would cause <c>StopAsync</c> to hang for the full
+    /// retry interval (~30 s).
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ExecuteAsync_BackoffObservesToken_StopsPromptlyOnCancellation( ) {
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) =>
+                throw new InvalidOperationException( "Force backoff" ) );
+
+        _settings = MakeSettings(
+            refreshRetryInterval: TimeSpan.FromSeconds( 30 )
+        );
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        service._startupGrace = TimeSpan.Zero;
+        service._maxJitter = TimeSpan.Zero;
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
+        _ = service.StartAsync( cts.Token );
+
+        await Task.Delay( 300, TestContext.CancellationToken );
+
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew( );
+        cts.CancelAfter( 200 );
+        await service.StopAsync( CancellationToken.None );
+        sw.Stop( );
+
+        Assert.AreEqual( TaskStatus.RanToCompletion, service.ExecuteTask!.Status,
+            "ExecuteAsync must reach RanToCompletion; Faulted/Canceled means the inner-try around the backoff delay is missing and the OCE escaped" );
+
+        Assert.IsLessThan( TimeSpan.FromSeconds( 3 ), sw.Elapsed,
+            "StopAsync must return in under 3 seconds; a backoff that ignores the token would hang ~30s" );
+
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                It.Is<EventId>( e => e.Id == BridgeBeats.Worker.Maintenance.Logging.LogEventIds.RefreshPassFailedRetrying ),
+                It.IsAny<It.IsAnyType>( ),
+                It.IsAny<Exception?>( ),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
+            Times.Once,
+            "5534 must be logged once for the pass failure; the cancellation must not be double-counted as a failure" );
+    }
+
+    /// <summary>
+    /// Pin: a bootstrap status document with <c>IsRunning=true</c> no longer gates the pass.
+    /// <c>ListAllRecordsAsync</c> must still be called and records enqueued even when the status
+    /// shows a bootstrap is in progress.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task RunRefreshPass_BootstrapRunning_NoLongerGatesThePass( ) {
         string runningJson = System.Text.Json.JsonSerializer.Serialize(
-            new CacheBootstrapStatus { IsRunning = true } );
+            new BridgeBeats.Contracts.DTOs.CacheBootstrapStatus { IsRunning = true } );
         _ = _redisDatabaseMock
-            .Setup( d => d.StringGetAsync( CacheBootstrapStatus.RedisKey, It.IsAny<CommandFlags>( ) ) )
+            .Setup( d => d.StringGetAsync( BridgeBeats.Contracts.DTOs.CacheBootstrapStatus.RedisKey, It.IsAny<CommandFlags>( ) ) )
             .ReturnsAsync( (RedisValue)runningJson );
 
-        StaleCacheRefreshBackgroundService service = CreateService( );
-
-        await service.RunRefreshPassAsync( TestContext.CancellationToken );
-
-        _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Never
-        );
-        _queueMock.Verify(
-            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Never
-        );
-    }
-
-    /// <summary>
-    /// When the bootstrap status document reports <c>IsRunning = false</c>, the refresh pass proceeds.
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_WhenBootstrapIsNotRunning_ProceedsWithSelection( ) {
-        string notRunningJson = System.Text.Json.JsonSerializer.Serialize(
-            new CacheBootstrapStatus { IsRunning = false } );
-        _ = _redisDatabaseMock
-            .Setup( d => d.StringGetAsync( CacheBootstrapStatus.RedisKey, It.IsAny<CommandFlags>( ) ) )
-            .ReturnsAsync( (RedisValue)notRunningJson );
-
         SetupRecordList( [MakeStaleRecord( "at://test/1", DateTime.UtcNow.AddDays( -60 ) )] );
         StaleCacheRefreshBackgroundService service = CreateService( );
 
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
 
         _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Once
-        );
+            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ),
+            Times.Once,
+            "Gate removed: ListAllRecordsAsync must be called regardless of bootstrap status" );
         _queueMock.Verify(
             q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Once
-        );
-    }
-
-    /// <summary>
-    /// When the bootstrap status is absent from Redis, the pass treats it as not-running and proceeds.
-    /// </summary>
-    [TestMethod]
-    [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_WhenStatusAbsent_ProceedsWithSelection( ) {
-        _ = _redisDatabaseMock
-            .Setup( d => d.StringGetAsync( It.IsAny<RedisKey>( ), It.IsAny<CommandFlags>( ) ) )
-            .ReturnsAsync( RedisValue.Null );
-
-        SetupRecordList( [MakeStaleRecord( "at://test/1", DateTime.UtcNow.AddDays( -60 ) )] );
-        StaleCacheRefreshBackgroundService service = CreateService( );
-
-        await service.RunRefreshPassAsync( TestContext.CancellationToken );
-
-        _atProtoStorageMock.Verify(
-            s => s.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Once
-        );
+            Times.Once,
+            "Gate removed: records must still be enqueued when bootstrap is running" );
     }
 
     #endregion
@@ -1354,38 +1433,77 @@ public class StaleCacheRefreshBackgroundServiceTests {
     }
 
     /// <summary>
-    /// When the PDS stream throws fatally mid-pass, the error is logged and the loop survives to
-    /// the next tick.
+    /// When <c>ListAllRecordsAsync</c> throws a non-OCE exception, <c>RunRefreshPassAsync</c> now
+    /// bubbles the exception rather than swallowing it. The swallow was removed so the outer loop
+    /// can apply the failure backoff.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task ExecuteAsync_FatalMidPassError_LogsAndLoopSurvives( ) {
-        // Use a very short interval so two ticks fire quickly, but the service still needs
-        // to survive the grace period; we start with a 1-ms grace override isn't possible
-        // through settings, so we drive RunRefreshPassAsync directly.
-        int listCallCount = 0;
-        TaskCompletionSource secondCallTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
+    public async Task RunRefreshPassAsync_FatalEnumerationError_Bubbles( ) {
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) =>
+                throw new InvalidOperationException( "Fatal enumeration error" ) );
+
+        StaleCacheRefreshBackgroundService service = CreateService( );
+
+        _ = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            async ( ) => await service.RunRefreshPassAsync( TestContext.CancellationToken ),
+            "A fatal enumeration error must bubble out of RunRefreshPassAsync, not be swallowed" );
+    }
+
+    /// <summary>
+    /// When <c>ListAllRecordsAsync</c> returns an empty enumerable, the pass completes without error
+    /// and <c>EnqueueAsync</c> is never called.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task RunRefreshPassAsync_EmptyEnumerable_CompletesWithoutEnqueue( ) {
+        SetupRecordList( [] );
+        StaleCacheRefreshBackgroundService service = CreateService( );
+
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+
+        _queueMock.Verify(
+            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never );
+    }
+
+    /// <summary>
+    /// When the cancellation token is cancelled during enumeration, <c>RunRefreshPassAsync</c>
+    /// throws <see cref="OperationCanceledException"/> (the kept OCE guard logs 5527 and rethrows).
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task RunRefreshPassAsync_TokenCancelled_ThrowsOce( ) {
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
 
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns<Uri, string, CancellationToken>( ( _, _, _ ) => {
-                int count = System.Threading.Interlocked.Increment( ref listCallCount );
-                if (count == 1) {
-                    throw new InvalidOperationException( "Fatal pass error" );
-                }
-                _ = secondCallTcs.TrySetResult( );
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, ct, _ ) => {
+                ct.ThrowIfCancellationRequested( );
                 return AsyncEnumerable.Empty<(string, MediaLinkResult)>( );
             } );
 
-        // Drive two passes directly to verify error isolation.
+        await cts.CancelAsync( );
         StaleCacheRefreshBackgroundService service = CreateService( );
 
-        // First pass — throws.
-        await service.RunRefreshPassAsync( TestContext.CancellationToken );
-        // Second pass — succeeds.
-        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        _ = await Assert.ThrowsExactlyAsync<OperationCanceledException>(
+            async ( ) => await service.RunRefreshPassAsync( cts.Token ),
+            "An OCE from a cancelled token must propagate out of RunRefreshPassAsync" );
 
-        Assert.IsGreaterThanOrEqualTo( listCallCount, 2, "Both passes should attempt ListAllRecordsAsync" );
+        int refreshCancelledId = BridgeBeats.Worker.Maintenance.Logging.LogEventIds.RefreshCancelled;
+#pragma warning disable CA1873
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.Is<EventId>( e => e.Id == refreshCancelledId ),
+                It.IsAny<It.IsAnyType>( ),
+                It.IsAny<Exception?>( ),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
+            Times.Once,
+            "5527 (RefreshCancelled) must be logged when the OCE guard fires" );
+#pragma warning restore CA1873
     }
 
     /// <summary>
@@ -1575,8 +1693,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
         // per branch. Asserting each tunable appears in each sub-string catches the silent-revert
         // trap: a tunable removed from one branch but still present in the other still has a
         // whole-file count >= 1, but fails the per-branch assertion.
-        const string ProdBranchMarker = "AddProductionExecutable( \"cache-bootstrap\"";
-        const string DevBranchMarker  = "AddProject<Projects.BridgeBeats_Worker_CacheBootstrap>( \"cache-bootstrap\" )";
+        const string ProdBranchMarker = "AddProductionExecutable( \"maintenance\"";
+        const string DevBranchMarker  = "AddProject<Projects.BridgeBeats_Worker_Maintenance>( \"maintenance\" )";
 
         int prodIdx = source.IndexOf( ProdBranchMarker, StringComparison.Ordinal );
         int devIdx  = source.IndexOf( DevBranchMarker,  StringComparison.Ordinal );
@@ -1596,6 +1714,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         string[] requiredEnvVars = [
             "BridgeBeats__RefreshIntervalHours",
             "BridgeBeats__MaxRecordsPerRun",
+            "BridgeBeats__RefreshRetryMinutes",
         ];
 
         foreach (string envVar in requiredEnvVars) {
@@ -1609,12 +1728,32 @@ public class StaleCacheRefreshBackgroundServiceTests {
         }
     }
 
+    /// <summary>
+    /// When <c>BridgeBeats:RefreshRetryMinutes</c> is absent from configuration,
+    /// <c>ValidateConfiguration</c> defaults to 5 minutes.
+    /// </summary>
+    [TestMethod]
+    public void ValidateConfiguration_RefreshRetryMinutes_DefaultsToFiveMinutes( ) {
+        Microsoft.Extensions.Hosting.HostApplicationBuilder builder =
+            Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder( );
+
+        builder.Configuration["BridgeBeats:ATProtoIdentifier"] = "test@example.com";
+        builder.Configuration["BridgeBeats:ATProtoPassword"] = "password";
+        builder.Configuration["BridgeBeats:ATProtoUserDID"] = "did:plc:testuser123";
+
+        (_, _, _, _, _, _, _, _, int refreshRetryMinutes) =
+            BridgeBeats.Worker.Maintenance.Program.ValidateConfiguration( builder );
+
+        Assert.AreEqual( 5, refreshRetryMinutes,
+            "RefreshRetryMinutes must default to 5 when unset in configuration" );
+    }
+
     #endregion
 
     #region Settings Binding Tests
 
     /// <summary>
-    /// Settings with unset env falls back to 6h interval and 500 max records
+    /// Settings with unset env falls back to 6h interval, 500 max records, and 5-minute retry
     /// (the defaults verified via the settings record constructor).
     /// </summary>
     [TestMethod]
@@ -1623,6 +1762,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         Assert.AreEqual( TimeSpan.FromHours( 6 ), defaults.RefreshInterval );
         Assert.AreEqual( 500, defaults.MaxRecordsPerRun );
+        Assert.AreEqual( TimeSpan.FromMinutes( 5 ), defaults.RefreshRetryInterval );
     }
 
     /// <summary>
@@ -1636,11 +1776,13 @@ public class StaleCacheRefreshBackgroundServiceTests {
             BootstrapInterval: TimeSpan.FromHours( 6 ),
             CacheDays: 30,
             RefreshInterval: TimeSpan.FromHours( 12 ),
-            MaxRecordsPerRun: 250
+            MaxRecordsPerRun: 250,
+            RefreshRetryInterval: TimeSpan.FromMinutes( 3 )
         );
 
         Assert.AreEqual( TimeSpan.FromHours( 12 ), settings.RefreshInterval );
         Assert.AreEqual( 250, settings.MaxRecordsPerRun );
+        Assert.AreEqual( TimeSpan.FromMinutes( 3 ), settings.RefreshRetryInterval );
     }
 
     #endregion
@@ -1699,7 +1841,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
     private CacheBootstrapSettings MakeSettings(
         TimeSpan? refreshInterval = null,
         int maxRecordsPerRun = 500,
-        int cacheDays = 30
+        int cacheDays = 30,
+        TimeSpan? refreshRetryInterval = null
     ) =>
         new(
             s_testPdsUri,
@@ -1707,12 +1850,13 @@ public class StaleCacheRefreshBackgroundServiceTests {
             BootstrapInterval: TimeSpan.FromHours( 6 ),
             CacheDays: cacheDays,
             RefreshInterval: refreshInterval ?? TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: maxRecordsPerRun
+            MaxRecordsPerRun: maxRecordsPerRun,
+            RefreshRetryInterval: refreshRetryInterval ?? TimeSpan.FromMinutes( 5 )
         );
 
     private void SetupRecordList( List<(string AtUri, MediaLinkResult Result)> records ) {
         _ = _atProtoStorageMock
-            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( records.ToAsyncEnumerable( ) );
     }
 

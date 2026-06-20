@@ -43,6 +43,10 @@ public interface IATProtoStorageService {
     /// <param name="pdsUri">The base URI of the PDS to read from.</param>
     /// <param name="userDid">The DID of the user whose records are enumerated.</param>
     /// <param name="cancellationToken">Token used to stop enumeration.</param>
+    /// <param name="forceRefresh">
+    /// When <see langword="true"/>, bypasses the TTL cache and forces a fresh download under the
+    /// single-flight lock. Use for admin-triggered manual refreshes.
+    /// </param>
     /// <returns>
     /// An asynchronous sequence of tuples, each carrying a record's AT-URI and its
     /// <see cref="MediaLinkResult"/>. Used by statistics aggregation.
@@ -54,7 +58,8 @@ public interface IATProtoStorageService {
     IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> ListAllRecordsAsync(
         Uri pdsUri,
         string userDid,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        bool forceRefresh = false
     );
 
 }

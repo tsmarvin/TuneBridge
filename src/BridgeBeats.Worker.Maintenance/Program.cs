@@ -5,10 +5,11 @@ using BridgeBeats.Core.Domain.Extensions;
 using BridgeBeats.Core.Infrastructure.Cache;
 using BridgeBeats.Core.Infrastructure.Extensions;
 using BridgeBeats.Core.Infrastructure.Storage;
+using BridgeBeats.Worker.Maintenance.Interfaces;
 using Serilog;
 using StackExchange.Redis;
 
-namespace BridgeBeats.Worker.CacheBootstrap;
+namespace BridgeBeats.Worker.Maintenance;
 
 /// <summary>
 /// Entry point and composition root for the CacheBootstrap worker process. The worker is a headless
@@ -50,7 +51,7 @@ public static class Program {
     /// <param name="builder">The host application builder being configured.</param>
     private static void ConfigureServices( HostApplicationBuilder builder ) {
         // Configure file logging
-        _ = builder.ConfigureFileLogging( "CacheBootstrap" );
+        _ = builder.ConfigureFileLogging( "Maintenance" );
 
         // Add Aspire service defaults (telemetry, resilience)
         _ = builder.AddServiceDefaults( );
@@ -67,7 +68,7 @@ public static class Program {
         // Read and validate credentials
         (string atProtoIdentifier, string atProtoPassword, string atProtoUserDID,
             string atProtoPdsUri, int cacheDays, int bootstrapIntervalHours,
-            int refreshIntervalHours, int maxRecordsPerRun) =
+            int refreshIntervalHours, int maxRecordsPerRun, int refreshRetryMinutes) =
                 ValidateConfiguration( builder );
 
         // Register ATProto session manager and storage service (centralized authentication)
@@ -93,9 +94,25 @@ public static class Program {
             TimeSpan.FromHours( bootstrapIntervalHours ),
             cacheDays,
             TimeSpan.FromHours( refreshIntervalHours ),
-            maxRecordsPerRun
+            maxRecordsPerRun,
+            TimeSpan.FromMinutes( refreshRetryMinutes )
         ) );
-        _ = builder.Services.AddHostedService<CacheBootstrapBackgroundService>( );
+        // Coalescing guard: shared singleton so the subscriber and scheduled cycle
+        // share one instance. Register the concrete type first, then expose the interface
+        // pointing at the same instance — mirrors the IStatisticsRefreshTrigger/StatisticsRefreshTrigger idiom.
+        _ = builder.Services.AddSingleton<StatisticsRefreshTrigger>( );
+        _ = builder.Services.AddSingleton<IStatisticsRefreshTrigger>(
+            sp => sp.GetRequiredService<StatisticsRefreshTrigger>( ) );
+
+        // Register the concrete type as a singleton so it is directly resolvable (e.g. by
+        // StatisticsRefreshSubscriberService), then expose the same instance to the host as
+        // IHostedService — mirrors the StatisticsRefreshTrigger idiom above at lines 102-104.
+        _ = builder.Services.AddSingleton<CacheBootstrapBackgroundService>( );
+        _ = builder.Services.AddHostedService(
+            sp => sp.GetRequiredService<CacheBootstrapBackgroundService>( ) );
+
+        // Manual-refresh subscriber: receives Pub/Sub triggers and routes them through the coalescing guard.
+        _ = builder.Services.AddHostedService<StatisticsRefreshSubscriberService>( );
 
         // Detect and register enabled providers for the stale-cache refresh sweep
         HashSet<SupportedProviders> enabledProviders = DetectEnabledProviders( builder );
@@ -118,22 +135,23 @@ public static class Program {
 
     /// <summary>
     /// Reads and validates the ATProto credentials and bootstrap settings from configuration. The PDS
-    /// URI, cache-retention days, bootstrap interval, refresh interval, and max records per run fall
-    /// back to defaults when unset; the user DID is validated with
+    /// URI, cache-retention days, bootstrap interval, refresh interval, max records per run, and retry
+    /// interval fall back to defaults when unset; the user DID is validated with
     /// <see cref="Core.Infrastructure.Storage.ATProtoUriHelper.ValidateDid(string, string)"/>.
     /// </summary>
     /// <param name="builder">The host application builder whose configuration is read.</param>
     /// <returns>
     /// A tuple of the ATProto identifier, app password, user DID, PDS URI, cache-retention days
     /// (default 30), bootstrap interval in hours (default 6), stale-cache refresh interval in hours
-    /// (default 6), and max stale records per refresh run (default 500).
+    /// (default 6), max stale records per refresh run (default 500), and retry interval in minutes
+    /// (default 5).
     /// </returns>
     /// <exception cref="InvalidOperationException">
     /// Thrown when any of the required ATProto credentials are missing or blank.
     /// </exception>
-    private static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID,
+    internal static (string AtProtoIdentifier, string AtProtoPassword, string AtProtoUserDID,
         string AtProtoPdsUri, int CacheDays, int BootstrapIntervalHours,
-        int RefreshIntervalHours, int MaxRecordsPerRun) ValidateConfiguration(
+        int RefreshIntervalHours, int MaxRecordsPerRun, int RefreshRetryMinutes) ValidateConfiguration(
             HostApplicationBuilder builder
     ) {
         string? atProtoIdentifier = builder.Configuration["BridgeBeats:ATProtoIdentifier"];
@@ -145,6 +163,7 @@ public static class Program {
         int bootstrapIntervalHours = builder.Configuration.GetValue("BridgeBeats:BootstrapIntervalHours", 6);
         int refreshIntervalHours = builder.Configuration.GetValue("BridgeBeats:RefreshIntervalHours", 6);
         int maxRecordsPerRun = builder.Configuration.GetValue("BridgeBeats:MaxRecordsPerRun", 500);
+        int refreshRetryMinutes = builder.Configuration.GetValue("BridgeBeats:RefreshRetryMinutes", 5);
 
         if (string.IsNullOrWhiteSpace( atProtoIdentifier ) ||
             string.IsNullOrWhiteSpace( atProtoPassword ) ||
@@ -159,7 +178,7 @@ public static class Program {
         ATProtoUriHelper.ValidateDid( atProtoUserDID, "BridgeBeats:ATProtoUserDID" );
 
         return (atProtoIdentifier, atProtoPassword, atProtoUserDID, atProtoPdsUri, cacheDays,
-            bootstrapIntervalHours, refreshIntervalHours, maxRecordsPerRun);
+            bootstrapIntervalHours, refreshIntervalHours, maxRecordsPerRun, refreshRetryMinutes);
     }
 
     /// <summary>
@@ -212,7 +231,7 @@ public static class Program {
     private static async Task ValidateRedisConnectionAsync( IHost app ) {
         IConnectionMultiplexer redis = app.Services.GetRequiredService<IConnectionMultiplexer>();
         ILoggerFactory loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
-        Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger("CacheBootstrap.Startup");
+        Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger("Maintenance.Startup");
 
         // Log Redis connection details
         if (logger.IsEnabled( LogLevel.Information )) {

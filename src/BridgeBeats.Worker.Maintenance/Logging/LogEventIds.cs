@@ -1,4 +1,4 @@
-namespace BridgeBeats.Worker.CacheBootstrap.Logging;
+namespace BridgeBeats.Worker.Maintenance.Logging;
 
 /// <summary>
 /// Stable numeric event identifiers for the CacheBootstrap worker's structured log messages (5500-5749).
@@ -61,11 +61,8 @@ public static class LogEventIds {
     /// <summary>The stale-cache refresh service is shutting down.</summary>
     public const int RefreshShuttingDown = 5520;
 
-    /// <summary>A periodic refresh pass failed and will retry at the next interval.</summary>
-    public const int RefreshPeriodicError = 5521;
-
-    /// <summary>The refresh pass was skipped because a full bootstrap run is in progress.</summary>
-    public const int RefreshSkippedBootstrapRunning = 5522;
+    // 5521 retired (§8.1) — do not reuse
+    // 5522 retired (§8.1) — do not reuse
 
     /// <summary>A refresh pass is starting; reports the number of stale records selected.</summary>
     public const int RefreshStarting = 5523;
@@ -82,14 +79,12 @@ public static class LogEventIds {
     /// <summary>The refresh pass was cancelled by host shutdown.</summary>
     public const int RefreshCancelled = 5527;
 
-    /// <summary>A fatal error aborted the refresh pass.</summary>
-    public const int RefreshFatalError = 5528;
+    // 5528 retired (§8.1) — do not reuse
 
     /// <summary>The refresh sweep has no enabled providers to enqueue to; the pass is skipped.</summary>
     public const int RefreshNoEnabledProviders = 5529;
 
-    /// <summary>Reading the bootstrap status document from Redis failed during a refresh pass.</summary>
-    public const int RefreshStatusReadError = 5530;
+    // 5530 retired (§8.1) — do not reuse
 
     /// <summary>Writing the durable last-run marker to Redis failed; the pass proceeds.</summary>
     public const int RefreshMarkerWriteError = 5531;
@@ -99,6 +94,40 @@ public static class LogEventIds {
 
     /// <summary>Enqueuing one provider leg of a refresh record failed; the leg is marked complete-as-failed in the saga.</summary>
     public const int RefreshLegEnqueueFailed = 5533;
+
+    /// <summary>A stale-cache refresh pass failed; the service will retry after the configured retry interval.</summary>
+    public const int RefreshPassFailedRetrying = 5534;
+
+    #endregion
+
+    #region Statistics fold (5575-5599)
+
+    /// <summary>A statistics computation pass is starting.</summary>
+    public const int PassStarting = 5575;
+
+    /// <summary>A statistics computation pass completed successfully.</summary>
+    public const int PassCompleted = 5576;
+
+    /// <summary>Writing the statistics status document to Redis failed.</summary>
+    public const int StatisticsStatusUpdateError = 5577;
+
+    /// <summary>A statistics computation pass failed; will retry after the configured interval.</summary>
+    public const int PassError = 5578;
+
+    /// <summary>Both the initial statistics pass and the retry failed; falling back to the periodic window.</summary>
+    public const int RetryExhausted = 5579;
+
+    /// <summary>A manual statistics refresh was requested via Pub/Sub.</summary>
+    public const int RefreshRequested = 5580;
+
+    /// <summary>A manual statistics refresh trigger was coalesced because a pass is already running.</summary>
+    public const int RefreshCoalesced = 5581;
+
+    /// <summary>An unhandled exception was thrown in the statistics refresh Pub/Sub handler.</summary>
+    public const int RefreshHandlerError = 5582;
+
+    /// <summary>Reading the statistics status document from Redis failed.</summary>
+    public const int StatisticsStatusReadError = 5583;
 
     #endregion
 

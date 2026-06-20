@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>BridgeBeats.Worker.CacheBootstrap</RootNamespace>
+    <RootNamespace>BridgeBeats.Worker.Maintenance</RootNamespace>
     <UserSecretsId>bridgebeats-apphost</UserSecretsId>
     <RepositoryUrl>https://github.com/tsmarvin/BridgeBeats</RepositoryUrl>
     <Nullable>enable</Nullable>

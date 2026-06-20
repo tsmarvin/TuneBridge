@@ -23,7 +23,6 @@ using RetryAfterLimitHandler = BridgeBeats.Core.Domain.Providers.Common.RetryAft
 using SagaResultCombiner = BridgeBeats.Core.Domain.Services.Queue.SagaResultCombiner;
 using SpotifyLookupService = BridgeBeats.Core.Domain.Providers.Spotify.SpotifyLookupService;
 using SpotifyTokenHandler = BridgeBeats.Core.Domain.Providers.Spotify.SpotifyTokenHandler;
-using StatisticsService = BridgeBeats.Core.Domain.Services.StatisticsService;
 using TidalLookupService = BridgeBeats.Core.Domain.Providers.Tidal.TidalLookupService;
 using TidalTokenHandler = BridgeBeats.Core.Domain.Providers.Tidal.TidalTokenHandler;
 namespace BridgeBeats.Core.Infrastructure.Logging;
@@ -116,6 +115,51 @@ public static class LogEventIds {
             /// EventId for ATProtoStorageService CAR commit version not equal to 3 (warn and proceed).
             /// </summary>
             public const int ATProtoStorageServiceCarCommitVersionUnexpected = 1085;
+
+            /// <summary>
+            /// EventId logged per re-download attempt before the retry wait, with the attempt number
+            /// and the classified fault. Part of the CAR fetch+parse retry (1086-1087).
+            /// </summary>
+            public const int ATProtoStorageServiceCarRetryAttempt = 1086;
+
+            /// <summary>
+            /// EventId logged once when all 3 CAR fetch+parse attempts are exhausted, before the
+            /// CarParseException propagates to the caller.
+            /// </summary>
+            public const int ATProtoStorageServiceCarRetryExhausted = 1087;
+
+            /// <summary>
+            /// EventId logged when a full-collection read is served from the fresh in-process CAR
+            /// cache without a network download — logged at both the pre-lock fast read and the
+            /// under-lock awaiter-reuse serve.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheHit = 1088;
+
+            /// <summary>
+            /// EventId logged under the lock when a confirmed miss, expiry, or forced-refresh will
+            /// trigger a fresh download. Carries a flag indicating whether the miss was forced.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheMiss = 1089;
+
+            /// <summary>
+            /// EventId logged when the single-flight download begins under the lock — one per actual
+            /// download, pairing with ATProtoStorageServiceCarCacheRefreshComplete to bound the
+            /// populate duration in logs.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheRefreshStart = 1090;
+
+            /// <summary>
+            /// EventId logged when an accepted transfer is committed to the cache after a successful
+            /// download+parse. Carries the record count and the new cache timestamp.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheRefreshComplete = 1091;
+
+            /// <summary>
+            /// EventId logged when the field overwrite replaces a previously-expired cache entry —
+            /// distinguishes a true expiry-replace from a cold first populate. Not logged on the
+            /// initial populate.
+            /// </summary>
+            public const int ATProtoStorageServiceCarCacheEvict = 1092;
 
             // RedisATProtoSessionManager (1100-1149)
 
@@ -1445,27 +1489,7 @@ public static class LogEventIds {
         /// EventIds for other services (3750-3999).
         /// </summary>
         public static class Other {
-            // StatisticsService (3750-3774)
-
-            /// <summary>
-            /// EventId for <see cref="StatisticsService.LogRefreshingStatistics"/>.
-            /// </summary>
-            public const int RefreshingStatistics = 3750;
-
-            /// <summary>
-            /// EventId for <see cref="StatisticsService.LogStatisticsRefreshed"/>.
-            /// </summary>
-            public const int StatisticsRefreshed = 3751;
-
-            /// <summary>
-            /// EventId for <see cref="StatisticsService.LogCacheBootstrapStatusError"/>.
-            /// </summary>
-            public const int CacheBootstrapStatusReadError = 3752;
-
-            /// <summary>
-            /// EventId for <see cref="StatisticsService.LogStatisticsRefreshSkipped"/>.
-            /// </summary>
-            public const int StatisticsRefreshSkipped = 3753;
+            // 3750-3753 retired (StatisticsService relocated to the worker stats fold)
 
             // AspireServiceExtensions (3800-3824)
         }
@@ -1491,28 +1515,7 @@ public static class LogEventIds {
     /// EventIds for BackgroundServices (4900-4999).
     /// </summary>
     public static class BackgroundServices {
-        // StatisticsRefreshBackgroundService (4900-4924)
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService starting.</summary>
-        public const int StatisticsRefreshStarting = 4900;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService initial refresh complete.</summary>
-        public const int StatisticsRefreshInitialComplete = 4901;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService periodic refresh triggered.</summary>
-        public const int StatisticsRefreshPeriodicTriggered = 4902;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService manual refresh triggered.</summary>
-        public const int StatisticsRefreshManualTriggered = 4903;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService refresh error.</summary>
-        public const int StatisticsRefreshError = 4904;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService stopped.</summary>
-        public const int StatisticsRefreshStopped = 4905;
-
-        /// <summary>EventId for StatisticsRefreshBackgroundService channel completed (writer closed).</summary>
-        public const int StatisticsRefreshChannelCompleted = 4906;
+        // 4900-4906 retired (StatisticsRefreshBackgroundService removed; refresh now cross-process Pub/Sub)
     }
 
     /// <summary>
@@ -1524,7 +1527,7 @@ public static class LogEventIds {
     /// <list type="bullet">
     ///   <item>5000-5249: SagaCoordinator (BridgeBeats.Worker.SagaCoordinator.Logging.LogEventIds)</item>
     ///   <item>5250-5499: Spotify (BridgeBeats.Worker.Spotify.Logging.LogEventIds)</item>
-    ///   <item>5500-5749: CacheBootstrap (BridgeBeats.Worker.CacheBootstrap.Logging.LogEventIds)</item>
+    ///   <item>5500-5749: Maintenance (BridgeBeats.Worker.Maintenance.Logging.LogEventIds)</item>
     ///   <item>5750-5999: JetStreamWatcher (BridgeBeats.Worker.JetStreamWatcher.Logging.LogEventIds)</item>
     ///   <item>6000-6249: Discord (BridgeBeats.Worker.Discord.Logging.LogEventIds)</item>
     ///   <item>6250-6499: AppleMusic (BridgeBeats.Worker.AppleMusic.Logging.LogEventIds)</item>

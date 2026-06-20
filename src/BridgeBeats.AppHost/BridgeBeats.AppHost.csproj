@@ -30,6 +30,6 @@
     <ProjectReference Include="..\BridgeBeats.Worker.Tidal\BridgeBeats.Worker.Tidal.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.SagaCoordinator\BridgeBeats.Worker.SagaCoordinator.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.JetStreamWatcher\BridgeBeats.Worker.JetStreamWatcher.csproj" />
-    <ProjectReference Include="..\BridgeBeats.Worker.CacheBootstrap\BridgeBeats.Worker.CacheBootstrap.csproj" />
+    <ProjectReference Include="..\BridgeBeats.Worker.Maintenance\BridgeBeats.Worker.Maintenance.csproj" />
   </ItemGroup>
 </Project>

@@ -5,7 +5,7 @@ using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Services.Queue;
 using BridgeBeats.Core.Domain.Utilities;
 using BridgeBeats.Core.Infrastructure.Queue;
-using BridgeBeats.Worker.CacheBootstrap;
+using BridgeBeats.Worker.Maintenance;
 using BridgeBeats.Worker.SagaCoordinator;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -348,7 +348,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
         };
 
         _ = _atProtoStorageMock
-            .Setup( a => a.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( a => a.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( new List<(string, MediaLinkResult)> { (AtUri, firstRecord) }.ToAsyncEnumerable( ) );
 
         List<QueuedLookupRequest> firstPassLegs = [];
@@ -386,7 +386,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
         // Apple is absent from partialRecord.Results (the lookup failed and was not written back).
 
         _ = _atProtoStorageMock
-            .Setup( a => a.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Setup( a => a.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
             .Returns( new List<(string, MediaLinkResult)> { (AtUri, partialRecord) }.ToAsyncEnumerable( ) );
 
         // ── Step 3: Second pass — record is stale again; Apple must get a fallback leg. ───────
@@ -505,7 +505,8 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             TimeSpan.FromHours( 6 ),
             CacheDays: 30,
             RefreshInterval: TimeSpan.FromHours( 6 ),
-            MaxRecordsPerRun: 500
+            MaxRecordsPerRun: 500,
+            RefreshRetryInterval: TimeSpan.FromMinutes( 5 )
         );
 
         Mock<IConnectionMultiplexer> redisMock = new( );

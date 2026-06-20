@@ -1,15 +1,14 @@
 using System.Globalization;
-using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Utilities;
 using BridgeBeats.Core.Infrastructure.Utilities;
-using BridgeBeats.Worker.CacheBootstrap.Logging;
+using BridgeBeats.Worker.Maintenance.Logging;
 using StackExchange.Redis;
 
-namespace BridgeBeats.Worker.CacheBootstrap;
+namespace BridgeBeats.Worker.Maintenance;
 
 /// <summary>
 /// Periodically selects the oldest stale cached media-link records and bulk-enqueues them for
@@ -19,19 +18,18 @@ namespace BridgeBeats.Worker.CacheBootstrap;
 /// </summary>
 /// <remarks>
 /// The service operates as an independent failure domain from
-/// <see cref="CacheBootstrapBackgroundService"/>. Before each pass it reads the
-/// <see cref="CacheBootstrapStatus"/> document from Redis; when <c>IsRunning</c> is
-/// <see langword="true"/> it skips that pass to avoid compounding a degraded-cache window. A missing
-/// or unreadable status is treated as not-running, so the sweep proceeds. Per-record failures are
-/// counted and skipped; the remaining records are still enqueued. A fatal error during a pass is
-/// logged and the loop continues to the next scheduled pass.
+/// <see cref="CacheBootstrapBackgroundService"/>. Per-record failures are counted and skipped;
+/// the remaining records are still enqueued. A fatal error during a pass causes a short retry
+/// backoff (configured via <see cref="CacheBootstrapSettings.RefreshRetryInterval"/>) before the
+/// next pass attempt; the last-run marker is not advanced on failure so the next pass treats itself
+/// as due-now.
 /// </remarks>
 /// <param name="atProtoStorage">Streams every stored record from the user's ATProto PDS.</param>
 /// <param name="sagaManager">Creates and initializes sagas for re-lookup jobs.</param>
 /// <param name="queueResolver">Resolves the per-provider queue used to enqueue re-lookup requests.</param>
-/// <param name="redis">The Redis connection used to read the bootstrap status and durable schedule marker.</param>
+/// <param name="redis">The Redis connection used to read the durable schedule marker.</param>
 /// <param name="enabledProviders">The set of providers that participate in re-lookups.</param>
-/// <param name="settings">Configuration: PDS URI, user DID, cache freshness window, refresh interval, and max records per run.</param>
+/// <param name="settings">Configuration: PDS URI, user DID, cache freshness window, refresh interval, max records per run, and retry interval.</param>
 /// <param name="logger">The logger for this service.</param>
 public sealed partial class StaleCacheRefreshBackgroundService(
     IATProtoStorageService atProtoStorage,
@@ -52,9 +50,6 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     /// <summary>Upper bound of the per-pass uniform jitter applied to de-synchronize the sweep from the bootstrap scan.</summary>
     private static readonly TimeSpan s_maxJitter = TimeSpan.FromSeconds( 300 );
 
-    /// <summary>Serializer options used when reading the bootstrap status document from Redis.</summary>
-    private static readonly JsonSerializerOptions s_jsonReadOptions = new( ) { PropertyNameCaseInsensitive = true };
-
     /// <summary>
     /// Startup grace duration used by <see cref="ExecuteAsync"/>. Defaults to
     /// <see cref="s_startupGrace"/> (120 s). Tests set this to <see cref="TimeSpan.Zero"/> to drive
@@ -71,9 +66,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
 
     /// <summary>
     /// Waits a fixed startup grace, then loops on the durable schedule: reads the last-run marker
-    /// to determine elapsed time, waits the remainder plus jitter, writes the marker before
-    /// selection, and runs the refresh pass. Cancellation ends the loop cleanly; per-pass errors
-    /// are logged and do not stop the loop.
+    /// to determine elapsed time, waits the remainder plus jitter, runs the refresh pass, then
+    /// writes the marker on success only. On failure, waits the configured retry interval before
+    /// trying again; the marker is not advanced so the next pass treats itself as due-now.
+    /// Cancellation ends the loop cleanly from any wait point.
     /// </summary>
     /// <param name="stoppingToken">Signals when the host is shutting down.</param>
     /// <returns>A task that completes when the service stops.</returns>
@@ -110,12 +106,17 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                     await Task.Delay( wait, stoppingToken );
                 }
 
-                await WriteLastRunMarkerAsync( );
                 await RunRefreshPassAsync( stoppingToken );
+                await WriteLastRunMarkerAsync( );
             } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
                 break;
             } catch (Exception ex) {
-                LogRefreshPeriodicError( logger, ex );
+                LogRefreshPassFailedRetrying( logger, ex, settings.RefreshRetryInterval );
+                try {
+                    await Task.Delay( settings.RefreshRetryInterval, stoppingToken );
+                } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                    break;
+                }
             }
         }
 
@@ -123,21 +124,15 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     }
 
     /// <summary>
-    /// Performs one stale-cache refresh pass: checks whether the bootstrap is running (skips if so),
-    /// streams the PDS to identify the oldest stale records up to the configured maximum, and
-    /// bulk-enqueues each one. Per-record failures are counted and skipped.
+    /// Performs one stale-cache refresh pass: streams the PDS to identify the oldest stale records
+    /// up to the configured maximum and bulk-enqueues each one. Per-record failures are counted and
+    /// skipped; a fatal enumeration error propagates to the caller.
     /// </summary>
     /// <param name="cancellationToken">A token that cancels the pass.</param>
     /// <returns>A task that completes when the pass finishes or aborts.</returns>
     internal async Task RunRefreshPassAsync( CancellationToken cancellationToken ) {
         if (enabledProviders.Count == 0) {
             LogRefreshNoEnabledProviders( logger );
-            return;
-        }
-
-        CacheBootstrapStatus? status = await GetBootstrapStatusAsync( );
-        if (status?.IsRunning == true) {
-            LogRefreshSkippedBootstrapRunning( logger );
             return;
         }
 
@@ -216,9 +211,6 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             LogRefreshCancelled( logger );
             throw;
-        } catch (Exception ex) {
-            LogRefreshFatalError( logger, ex );
-            return [];
         }
 
         return [.. oldest.Select( e => (e.AtUri, e.Result) )];
@@ -488,27 +480,6 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     }
 
     /// <summary>
-    /// Reads the last-published bootstrap status from Redis. Failures are logged and treated as
-    /// no status (proceed with the refresh pass).
-    /// </summary>
-    /// <returns>
-    /// The previously published <see cref="CacheBootstrapStatus"/>, or <see langword="null"/> if
-    /// none exists or the read failed.
-    /// </returns>
-    private async Task<CacheBootstrapStatus?> GetBootstrapStatusAsync( ) {
-        try {
-            IDatabase db = redis.GetDatabase( );
-            RedisValue value = await db.StringGetAsync( CacheBootstrapStatus.RedisKey );
-            return value.IsNullOrEmpty
-                ? null
-                : JsonSerializer.Deserialize<CacheBootstrapStatus>( value.ToString( ), s_jsonReadOptions );
-        } catch (Exception ex) {
-            LogRefreshStatusReadError( logger, ex );
-            return null;
-        }
-    }
-
-    /// <summary>
     /// Compares stale-record entries by <c>LookedUpAt</c> ascending then by AT-URI as a tiebreaker.
     /// When stored in a <see cref="SortedSet{T}"/>, removing <c>Max</c> always evicts the newest
     /// entry, retaining the oldest N items under bounded-size conditions.
@@ -549,16 +520,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     private static partial void LogRefreshShuttingDown( ILogger logger );
 
     [LoggerMessage(
-        EventId = LogEventIds.RefreshPeriodicError,
-        Level = LogLevel.Error,
-        Message = "Error during stale-cache refresh pass, will retry at next interval" )]
-    private static partial void LogRefreshPeriodicError( ILogger logger, Exception ex );
-
-    [LoggerMessage(
-        EventId = LogEventIds.RefreshSkippedBootstrapRunning,
-        Level = LogLevel.Information,
-        Message = "Stale-cache refresh skipped: full bootstrap run is currently in progress" )]
-    private static partial void LogRefreshSkippedBootstrapRunning( ILogger logger );
+        EventId = LogEventIds.RefreshPassFailedRetrying,
+        Level = LogLevel.Warning,
+        Message = "Stale-cache refresh pass failed; retrying in {RetryInterval}" )]
+    private static partial void LogRefreshPassFailedRetrying( ILogger logger, Exception ex, TimeSpan retryInterval );
 
     [LoggerMessage(
         EventId = LogEventIds.RefreshStarting,
@@ -591,22 +556,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     private static partial void LogRefreshCancelled( ILogger logger );
 
     [LoggerMessage(
-        EventId = LogEventIds.RefreshFatalError,
-        Level = LogLevel.Error,
-        Message = "Fatal error during stale-cache refresh pass" )]
-    private static partial void LogRefreshFatalError( ILogger logger, Exception ex );
-
-    [LoggerMessage(
         EventId = LogEventIds.RefreshNoEnabledProviders,
         Level = LogLevel.Warning,
         Message = "Stale-cache refresh skipped: no enabled providers are configured" )]
     private static partial void LogRefreshNoEnabledProviders( ILogger logger );
-
-    [LoggerMessage(
-        EventId = LogEventIds.RefreshStatusReadError,
-        Level = LogLevel.Warning,
-        Message = "Failed to read bootstrap status from Redis; treating as not-running and proceeding" )]
-    private static partial void LogRefreshStatusReadError( ILogger logger, Exception ex );
 
     [LoggerMessage(
         EventId = LogEventIds.RefreshMarkerWriteError,
