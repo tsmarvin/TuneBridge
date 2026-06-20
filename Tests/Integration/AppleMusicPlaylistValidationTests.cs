@@ -378,6 +378,45 @@ public class AppleMusicPlaylistValidationTests : IDisposable {
     }
 
     /// <summary>
+    /// Verifies that a <c>PlaylistId</c> with a trailing newline (<c>"p.ABCdef1234\n"</c>) returns HTTP 400
+    /// from model validation before any outbound Apple Music API call is attempted. This pins the
+    /// "must end with alphanumeric / full-string match" rule: the <c>\A</c>/<c>\z</c> anchors reject the
+    /// trailing <c>\n</c> where the <c>^</c>/<c>$</c> anchors previously allowed it because <c>$</c>
+    /// matches before a trailing newline in .NET multiline semantics.
+    /// </summary>
+    /// <remarks>
+    /// Failure-first evidence: before the anchor change (<c>^...$</c> form), this test failed — model
+    /// validation accepted <c>"p.ABCdef1234\n"</c> and the action returned 401 (no Apple token) rather
+    /// than 400. After changing to <c>\A...\z</c>, <c>ModelState.IsValid</c> is false and the action
+    /// returns 400 before any outbound call.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_PlaylistIdWithTrailingNewline_Returns400BeforeOutboundCall( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        // A syntactically valid id plus a trailing newline. The \A...\z anchors reject this;
+        // the old ^...$ anchors accepted it because $ matches before a terminal \n in .NET.
+        ProcessPlaylistRequest request = new( "p.ABCdef1234\n" );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - model validation rejects the trailing-newline id; no outbound call is ever made
+        Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
+        SpyHttpMessageHandler spy = _factory!.Services.GetRequiredService<SpyHttpMessageHandler>( );
+        Assert.AreEqual( 0, spy.SendCount, "No outbound call must reach the musickit-api client when model validation rejects the request" );
+    }
+
+    /// <summary>
     /// A <see cref="CustomWebApplicationFactory"/> variant that installs a stub <c>TestScheme</c>
     /// authentication handler so these tests can present an authenticated principal without a real
     /// login flow. The Apple Music token is intentionally omitted from the test user so the action

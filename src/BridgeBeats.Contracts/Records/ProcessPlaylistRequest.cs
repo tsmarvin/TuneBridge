@@ -15,7 +15,7 @@ namespace BridgeBeats.Contracts.Records {
         [Required]
         [StringLength( 100, MinimumLength = 1 )]
         [RegularExpression(
-            @"^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$",
+            @"\A[A-Za-z0-9]+([._-][A-Za-z0-9]+)*\z",
             ErrorMessage = "PlaylistId contains invalid characters. Only alphanumeric characters are allowed, with dots, underscores, or hyphens permitted as single separators between alphanumeric segments. Leading, trailing, and consecutive separator characters are not allowed."
         )]
         string PlaylistId
