@@ -3,7 +3,7 @@ using BridgeBeats.Worker.Maintenance.Logging;
 namespace BridgeBeats.Worker.Maintenance;
 
 /// <summary>
-/// Source-generated structured-logging helpers for the CacheBootstrap startup path. These wrap the
+/// Source-generated structured-logging helpers for the Maintenance startup path. These wrap the
 /// Redis-connection verification messages emitted from <see cref="Program"/> before the worker runs.
 /// </summary>
 internal static partial class ProgramLog {

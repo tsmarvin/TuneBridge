@@ -83,7 +83,7 @@ public sealed partial class RedisStatisticsReader(
     }
 
     /// <summary>
-    /// <see langword="true"/> when the CacheBootstrap worker is currently running a statistics
+    /// <see langword="true"/> when the Maintenance worker is currently running a statistics
     /// computation, as reported by the <c>IsRunning</c> field of <c>status:statistics</c>.
     /// Served from the in-process memo. A projection over <see cref="GetStatus"/> (its running flag).
     /// </summary>
@@ -100,7 +100,7 @@ public sealed partial class RedisStatisticsReader(
     }
 
     /// <summary>
-    /// Publishes a manual refresh request to the CacheBootstrap worker via
+    /// Publishes a manual refresh request to the Maintenance worker via
     /// <see cref="RedisChannels.StatisticsRefreshRequested"/>. Returns immediately.
     /// </summary>
     /// <returns>

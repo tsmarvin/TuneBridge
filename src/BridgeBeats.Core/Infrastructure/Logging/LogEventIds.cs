@@ -38,7 +38,7 @@ namespace BridgeBeats.Core.Infrastructure.Logging;
 ///   <item>2000-2999: Core/Providers (Spotify, Tidal, AppleMusic, Common)</item>
 ///   <item>3000-3999: Core/Services (Queue, LinkResolver, Cards, Other)</item>
 ///   <item>4000-4999: Web (Controllers, Middleware, Configuration)</item>
-///   <item>5000-6999: Workers (SagaCoordinator, Spotify, CacheBootstrap, JetStream, Discord, AppleMusic, Tidal)</item>
+///   <item>5000-6999: Workers (SagaCoordinator, Spotify, Maintenance, JetStream, Discord, AppleMusic, Tidal)</item>
 /// </list>
 /// </remarks>
 public static class LogEventIds {

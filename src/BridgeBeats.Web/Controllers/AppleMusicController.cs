@@ -298,8 +298,11 @@ public partial class AppleMusicController(
             // Add user token for accessing user's library
             client.DefaultRequestHeaders.Add( "Music-User-Token", user.AppleMusicUserToken );
 
-            // Fetch all playlist tracks with pagination
-            string playlistId = request.PlaylistId.SanitizeForLogging( );
+            // Fetch all playlist tracks with pagination.
+            // Uri.EscapeDataString is defense-in-depth; the [RegularExpression] annotation on
+            // ProcessPlaylistRequest.PlaylistId has already enforced the safe character set via
+            // ModelState validation above.
+            string playlistId = Uri.EscapeDataString( request.PlaylistId );
 
             List<string> trackIds = [];
             string? nextUrl = $"https://api.music.apple.com/v1/me/library/playlists/{playlistId}/tracks";
@@ -350,7 +353,7 @@ public partial class AppleMusicController(
                 }
                 if (totalTracks >= 1000) {
                     overonekay = true;
-                    LogPlaylistTooLarge( playlistId );
+                    LogPlaylistTooLarge( request.PlaylistId.SanitizeForLogging( ) );
                     break;
                 }
             }
