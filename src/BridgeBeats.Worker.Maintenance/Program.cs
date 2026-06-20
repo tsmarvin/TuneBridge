@@ -12,7 +12,7 @@ using StackExchange.Redis;
 namespace BridgeBeats.Worker.Maintenance;
 
 /// <summary>
-/// Entry point and composition root for the CacheBootstrap worker process. The worker is a headless
+/// Entry point and composition root for the Maintenance worker process. The worker is a headless
 /// background host (no HTTP endpoint): it builds a generic host, registers the Redis client, ATProto
 /// storage, the media-link cache, and the <see cref="CacheBootstrapBackgroundService"/> that rebuilds
 /// the Redis lookup index from the PDS.

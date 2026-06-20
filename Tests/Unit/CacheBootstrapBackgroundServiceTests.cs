@@ -1102,6 +1102,86 @@ public class CacheBootstrapBackgroundServiceTests {
             $"Only the bootstrap ListAllRecordsAsync call should have occurred; retry must not run after cancellation. Actual call count: {listCallCount[0]}" );
     }
 
+    /// <summary>
+    /// T6c: A persistently-failing statistics pass (via the manual-trigger path) terminates after
+    /// exactly two attempts — the initial attempt and one retry — then logs
+    /// <see cref="LogEventIds.RetryExhausted"/> (5579) and returns. It does NOT retry a third time
+    /// or loop indefinitely.
+    /// <para>
+    /// The manual-trigger entry path (<see cref="CacheBootstrapBackgroundService.RunStatisticsPassAsync"/>
+    /// → <see cref="CacheBootstrapBackgroundService.TriggerStatisticsRefreshAsync"/>) is used because
+    /// both the initial attempt and the retry enumerate the PDS via
+    /// <see cref="IATProtoStorageService.ListAllRecordsAsync"/>, making the call count a clean
+    /// observable proxy for "how many attempts ran". Expected: 2.
+    /// </para>
+    /// <para>
+    /// Failure-first evidence: before the Task 1 fix, <c>HandleStatisticsPassFailureAndRetryAsync</c>
+    /// re-entered <see cref="CacheBootstrapBackgroundService.RunStatisticsPassAsync"/> (not the core
+    /// body) on retry, which re-entered Handle with <c>isFirstAttempt:true</c> on the retry's failure
+    /// — restarting the retry cycle. The result was an unbounded loop:
+    /// <see cref="LogEventIds.RetryExhausted"/> was never logged and
+    /// <see cref="IATProtoStorageService.ListAllRecordsAsync"/> was called without bound. Under
+    /// the old code, the TCS below would never fire, the <see cref="TestContext"/> cancellation
+    /// would time out, and this test would fail.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task StatisticsPass_PersistentFailure_TerminatesAfterTwoAttemptsAndLogsRetryExhausted( ) {
+        // Arrange
+        _ = _loggerMock.Setup( l => l.IsEnabled( It.IsAny<LogLevel>( ) ) ).Returns( true );
+
+        // Make every ListAllRecordsAsync call throw so both the initial attempt and the retry fail.
+        int[] listCallCount = [0];
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync(
+                It.IsAny<Uri>( ), It.IsAny<string>( ),
+                It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, _, _ ) => {
+                _ = Interlocked.Increment( ref listCallCount[0] );
+                throw new InvalidOperationException( "Persistent statistics failure" );
+            } );
+
+        // Signal when RetryExhausted (5579) is logged — the terminal event.
+        TaskCompletionSource retryExhaustedTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        _ = _loggerMock
+            .Setup( l => l.Log(
+                LogLevel.Error,
+                It.Is<EventId>( e => e.Id == LogEventIds.RetryExhausted ),
+                It.IsAny<It.IsAnyType>( ),
+                It.IsAny<Exception?>( ),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ) )
+            .Callback( ( ) => retryExhaustedTcs.TrySetResult( ) );
+
+        // Use a very short retry interval so the test does not spend 30 s in Task.Delay.
+        CacheBootstrapBackgroundService service = CreateService(
+            statisticsRetryInterval: TimeSpan.FromMilliseconds( 5 ) );
+
+        // Act: drive the manual-trigger path directly (TriggerStatisticsRefreshAsync →
+        // RunStatisticsPassAsync → RunStatisticsPassCoreAsync).
+        Task triggerTask = service.TriggerStatisticsRefreshAsync( CancellationToken.None );
+
+        // Wait for the RetryExhausted log — the termination signal.
+        await retryExhaustedTcs.Task.WaitAsync( TestContext.CancellationToken );
+
+        // Allow the trigger task to finish (it should return after RetryExhausted).
+        await triggerTask;
+
+        // Assert: exactly two ListAllRecordsAsync calls (initial attempt + one retry).
+        Assert.AreEqual( 2, listCallCount[0],
+            $"Expected exactly 2 ListAllRecordsAsync calls (initial + one retry); got {listCallCount[0]}" );
+
+        // Assert: RetryExhausted logged exactly once.
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Error,
+                It.Is<EventId>( e => e.Id == LogEventIds.RetryExhausted ),
+                It.IsAny<It.IsAnyType>( ),
+                It.IsAny<Exception?>( ),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>( ) ),
+            Times.Once( ) );
+    }
+
     #endregion
 
     #region T7 — Coalescing: concurrent trigger during a running pass is dropped

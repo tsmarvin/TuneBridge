@@ -5,7 +5,7 @@ namespace BridgeBeats.Contracts.Interfaces;
 /// <summary>
 /// Serves aggregate lookup statistics by reading the worker-published <c>status:statistics</c>
 /// Redis document, plus the live cache-bootstrap worker status that can be merged into the stats.
-/// Refresh requests are dispatched to the CacheBootstrap worker over Redis Pub/Sub.
+/// Refresh requests are dispatched to the Maintenance worker over Redis Pub/Sub.
 /// </summary>
 public interface IStatisticsService {
 
@@ -24,7 +24,7 @@ public interface IStatisticsService {
 
     /// <summary>
     /// Returns the most recently cached statistics snapshot without computing or waiting. The
-    /// value reflects the last snapshot written by the CacheBootstrap worker. Lets a caller
+    /// value reflects the last snapshot written by the Maintenance worker. Lets a caller
     /// distinguish "no data yet" from "data available". A projection over
     /// <see cref="GetStatus"/> (the snapshot field of the same status document).
     /// </summary>
@@ -35,14 +35,14 @@ public interface IStatisticsService {
     LookupStatistics? GetCachedStatistics( );
 
     /// <summary>
-    /// Whether the CacheBootstrap worker is currently running a statistics computation, as
+    /// Whether the Maintenance worker is currently running a statistics computation, as
     /// reported by the <c>IsRunning</c> field of the <c>status:statistics</c> Redis document. A
     /// projection over <see cref="GetStatus"/> (the running flag of the same status document).
     /// </summary>
     bool IsRefreshing { get; }
 
     /// <summary>
-    /// Publishes a manual-refresh request to the CacheBootstrap worker over Redis Pub/Sub.
+    /// Publishes a manual-refresh request to the Maintenance worker over Redis Pub/Sub.
     /// Returns immediately (fire-and-forget). Admin-gated and rate-limited by the caller.
     /// </summary>
     /// <returns>

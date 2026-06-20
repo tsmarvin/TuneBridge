@@ -1,7 +1,7 @@
 namespace BridgeBeats.Worker.Maintenance.Logging;
 
 /// <summary>
-/// Stable numeric event identifiers for the CacheBootstrap worker's structured log messages (5500-5749).
+/// Stable numeric event identifiers for the Maintenance worker's structured log messages (5500-5749).
 /// Extends <see cref="Core.Infrastructure.Logging.LogEventIds"/> with CacheBootstrap-specific EventIds.
 /// Each constant is the <c>EventId</c> assigned to a corresponding
 /// <see cref="Microsoft.Extensions.Logging.LoggerMessageAttribute"/> method. The

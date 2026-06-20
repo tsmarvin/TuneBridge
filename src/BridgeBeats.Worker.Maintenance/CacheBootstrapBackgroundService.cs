@@ -411,8 +411,8 @@ public sealed partial class CacheBootstrapBackgroundService(
 
     /// <summary>
     /// Writes the statistics snapshot built from <paramref name="accumulator"/>. On failure,
-    /// writes an error status doc, waits the retry interval, then retries once via a fresh
-    /// <see cref="RunStatisticsPassAsync"/> call. A second failure writes the final error doc.
+    /// writes an error status doc, waits the retry interval, then retries once via
+    /// <see cref="RunStatisticsPassCoreAsync"/>. A second failure writes the final error doc.
     /// </summary>
     private async Task TryPublishStatisticsFromAccumulatorAsync(
         StatisticsAccumulator accumulator,
@@ -439,8 +439,9 @@ public sealed partial class CacheBootstrapBackgroundService(
     }
 
     /// <summary>
-    /// Writes an error status document, waits the retry interval, then retries via a fresh
-    /// <see cref="RunStatisticsPassAsync"/>. A second failure writes the final error document.
+    /// Writes an error status document, waits the retry interval, then retries via
+    /// <see cref="RunStatisticsPassCoreAsync"/>. A second failure writes the final error document
+    /// and returns, letting the periodic timer serve as the backstop.
     /// </summary>
     private async Task HandleStatisticsPassFailureAndRetryAsync(
         Exception firstEx,
@@ -466,9 +467,12 @@ public sealed partial class CacheBootstrapBackgroundService(
             throw;
         }
 
-        // Retry once: re-read records (cache-served within the 5-min TTL, no second download).
+        // Retry once via the core body (not RunStatisticsPassAsync, which would re-enter
+        // Handle with isFirstAttempt:true and restart the retry cycle unboundedly). Calling
+        // the core directly lets a second failure propagate to the catch below, which re-enters
+        // Handle with isFirstAttempt:false — the terminal path that logs RetryExhausted.
         try {
-            await RunStatisticsPassAsync( forceRefresh: false, cancellationToken );
+            await RunStatisticsPassCoreAsync( forceRefresh: false, cancellationToken );
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             throw;
         } catch (Exception retryEx) {
@@ -480,9 +484,42 @@ public sealed partial class CacheBootstrapBackgroundService(
     }
 
     /// <summary>
-    /// Runs a full statistics-only pass: enumerates all records (cache-served when within the
-    /// 5-minute TTL), folds them into a <see cref="StatisticsAccumulator"/>, and publishes the
-    /// snapshot. Called for the retry (no second download on the happy path) and for manual triggers.
+    /// Core statistics pass body: marks status running, enumerates all records (cache-served when
+    /// within the 5-minute TTL), folds them into a <see cref="StatisticsAccumulator"/>, and
+    /// publishes the snapshot. All exceptions propagate to the caller; no self-handling is
+    /// performed here. Callers are responsible for error-doc writes and retry orchestration.
+    /// </summary>
+    /// <param name="forceRefresh">
+    /// When <see langword="true"/>, bypasses the CAR cache TTL and forces a fresh download
+    /// (used by the manual admin trigger).
+    /// </param>
+    /// <param name="cancellationToken">Cancels the enumeration and the status write.</param>
+    private async Task RunStatisticsPassCoreAsync( bool forceRefresh, CancellationToken cancellationToken ) {
+        if (logger.IsEnabled( LogLevel.Information )) {
+            LogPassStarting( logger );
+        }
+
+        await WriteRunningStatusAsync( );
+
+        StatisticsAccumulator acc = new( );
+        await foreach ((string atUri, MediaLinkResult result) in
+            atProtoStorage.ListAllRecordsAsync(
+                settings.PdsUri, settings.UserDid, cancellationToken, forceRefresh: forceRefresh )) {
+            acc.Add( atUri, result );
+        }
+
+        LookupStatistics snapshot = acc.Build( );
+        await WriteHealthyStatusAsync( snapshot );
+        LogPassCompleted( logger, snapshot.TotalRecords );
+    }
+
+    /// <summary>
+    /// Runs a full statistics-only pass: wraps <see cref="RunStatisticsPassCoreAsync"/> with
+    /// error-doc-on-failure semantics so the manual-trigger path never leaves
+    /// <c>status:statistics</c> stuck at <c>IsRunning=true</c>. On failure,
+    /// <see cref="HandleStatisticsPassFailureAndRetryAsync"/> writes an error status document,
+    /// waits the retry interval, retries once via the core, and — on a second consecutive failure
+    /// — writes the final error document and returns.
     /// </summary>
     /// <param name="forceRefresh">
     /// When <see langword="true"/>, bypasses the CAR cache TTL and forces a fresh download
@@ -490,23 +527,8 @@ public sealed partial class CacheBootstrapBackgroundService(
     /// </param>
     /// <param name="cancellationToken">Cancels the enumeration and the status write.</param>
     internal async Task RunStatisticsPassAsync( bool forceRefresh, CancellationToken cancellationToken ) {
-        if (logger.IsEnabled( LogLevel.Information )) {
-            LogPassStarting( logger );
-        }
-
-        await WriteRunningStatusAsync( );
-
         try {
-            StatisticsAccumulator acc = new( );
-            await foreach ((string atUri, MediaLinkResult result) in
-                atProtoStorage.ListAllRecordsAsync(
-                    settings.PdsUri, settings.UserDid, cancellationToken, forceRefresh: forceRefresh )) {
-                acc.Add( atUri, result );
-            }
-
-            LookupStatistics snapshot = acc.Build( );
-            await WriteHealthyStatusAsync( snapshot );
-            LogPassCompleted( logger, snapshot.TotalRecords );
+            await RunStatisticsPassCoreAsync( forceRefresh, cancellationToken );
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             throw;
         } catch (Exception ex) {
