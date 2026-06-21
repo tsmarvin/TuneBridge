@@ -221,10 +221,8 @@ namespace BridgeBeats.Web.Configuration {
             _ = app.Use( async ( ctx, next ) => {
                 string path = ctx.Request.Path.Value ?? string.Empty;
                 bool isEmbed =
-                    path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase )    ||
-                    path.EndsWith( "/embed/qr", StringComparison.OrdinalIgnoreCase ) ||
-                    path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase )  ||
-                    path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase )
+                    path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) ||
+                    path.EndsWith( "/embed/qr", StringComparison.OrdinalIgnoreCase )
                 ;
                 bool isAppleMusic = path.StartsWith( "/applemusic", StringComparison.OrdinalIgnoreCase );
 
