@@ -33,7 +33,7 @@
                                 </button>
                             </li>
                             <li>
-                                <button class="dropdown-item copy-embed-btn" type="button" data-url="@Model.CardUrl" data-title="@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.PrimaryResult.Title ?? "Music Link"))">
+                                <button class="dropdown-item copy-embed-btn" type="button" data-url="@Model.CardUrl" data-title='@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.PrimaryResult.Title ?? "Music Link", ViewSecurityHelpers.HtmlSafeJsonOptions))'>
                                     <span class="dropdown-icon">🖼️</span> Copy Embed
                                 </button>
                             </li>
@@ -71,7 +71,7 @@
         </div>
         <div class="embed-providers">
             @foreach (var providerResult in Model.Result.Results) {
-                <a href="@providerResult.Value.URL" target="_blank" rel="noopener noreferrer" class="provider-button">
+                <a href="@(ViewSecurityHelpers.IsHttpOrHttps(providerResult.Value.URL) ? providerResult.Value.URL : "#")" target="_blank" rel="noopener noreferrer" class="provider-button">
                     <span class="provider-icon provider-icon-@providerResult.Key.ToString().ToLowerInvariant()">
                         @providerResult.Key.GetProviderLogo( )
                     </span>

@@ -306,6 +306,145 @@ public class AppleMusicPlaylistValidationTests : IDisposable {
     }
 
     /// <summary>
+    /// Negative control (PlaylistId leading-dot): a <c>PlaylistId</c> of <c>".p"</c> (separator
+    /// first, then alphanumeric) must be rejected with HTTP 400. The tightened regex
+    /// <c>\A[A-Za-z0-9]+([._-][A-Za-z0-9]+)*\z</c> requires the value to begin with an
+    /// alphanumeric character, so a leading separator is never valid.
+    /// </summary>
+    /// <remarks>
+    /// Failure-first evidence: the prior regex <c>^[A-Za-z0-9._-]+$</c> accepted <c>".p"</c>;
+    /// model validation passed and the action returned 401 rather than 400. The tightened regex
+    /// rejects it because it does not start with an alphanumeric character.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_PlaylistIdLeadingDot_Returns400BeforeOutboundCall( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( ".p" );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - leading-dot id must be rejected by model validation
+        Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
+        SpyHttpMessageHandler spy = _factory!.Services.GetRequiredService<SpyHttpMessageHandler>( );
+        Assert.AreEqual( 0, spy.SendCount, "No outbound call must reach the musickit-api client when model validation rejects the request" );
+    }
+
+    /// <summary>
+    /// Negative control (PlaylistId trailing-dot): a <c>PlaylistId</c> of <c>"p."</c>
+    /// (alphanumeric followed by a separator with nothing after) must be rejected with HTTP 400.
+    /// The tightened regex requires each separator to be followed by at least one alphanumeric
+    /// character, so a trailing separator is never valid.
+    /// </summary>
+    /// <remarks>
+    /// Failure-first evidence: the prior regex <c>^[A-Za-z0-9._-]+$</c> accepted <c>"p."</c>;
+    /// model validation passed and the action returned 401 rather than 400. The tightened regex
+    /// rejects it because the trailing dot is not followed by an alphanumeric character.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_PlaylistIdTrailingDot_Returns400BeforeOutboundCall( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( "p." );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - trailing-dot id must be rejected by model validation
+        Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
+        SpyHttpMessageHandler spy = _factory!.Services.GetRequiredService<SpyHttpMessageHandler>( );
+        Assert.AreEqual( 0, spy.SendCount, "No outbound call must reach the musickit-api client when model validation rejects the request" );
+    }
+
+    /// <summary>
+    /// Negative control (PlaylistId doubled-hyphen): a <c>PlaylistId</c> of <c>"a--b"</c> must be
+    /// rejected with HTTP 400. Doubled separators can degenerate into traversal-style sequences
+    /// when interpolated into a URL; the tightened regex rejects them by requiring exactly one
+    /// separator between each pair of alphanumeric runs.
+    /// </summary>
+    /// <remarks>
+    /// Failure-first evidence: the prior regex <c>^[A-Za-z0-9._-]+$</c> accepted <c>"a--b"</c>;
+    /// model validation passed and the action returned 401 rather than 400. The tightened regex
+    /// rejects consecutive separators.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_PlaylistIdDoubledHyphen_Returns400BeforeOutboundCall( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( "a--b" );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - doubled-hyphen id must be rejected by model validation
+        Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
+        SpyHttpMessageHandler spy = _factory!.Services.GetRequiredService<SpyHttpMessageHandler>( );
+        Assert.AreEqual( 0, spy.SendCount, "No outbound call must reach the musickit-api client when model validation rejects the request" );
+    }
+
+    /// <summary>
+    /// Negative control (PlaylistId doubled-underscore): a <c>PlaylistId</c> of <c>"a__b"</c>
+    /// must be rejected with HTTP 400. Doubled separators are not permitted by the tightened
+    /// grammar <c>\A[A-Za-z0-9]+([._-][A-Za-z0-9]+)*\z</c>.
+    /// </summary>
+    /// <remarks>
+    /// Failure-first evidence: the prior regex <c>^[A-Za-z0-9._-]+$</c> accepted <c>"a__b"</c>;
+    /// model validation passed and the action returned 401 rather than 400. The tightened regex
+    /// rejects consecutive separators.
+    /// </remarks>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessPlaylist_PlaylistIdDoubledUnderscore_Returns400BeforeOutboundCall( ) {
+        // Arrange
+        string antiforgeryToken = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            _client!, TestContext.CancellationToken
+        );
+        ProcessPlaylistRequest request = new( "a__b" );
+
+        // Act
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            _client!,
+            "applemusic/process-playlist",
+            JsonContent.Create( request ),
+            antiforgeryToken,
+            TestContext.CancellationToken
+        );
+
+        // Assert - doubled-underscore id must be rejected by model validation
+        Assert.AreEqual( HttpStatusCode.BadRequest, response.StatusCode );
+        SpyHttpMessageHandler spy = _factory!.Services.GetRequiredService<SpyHttpMessageHandler>( );
+        Assert.AreEqual( 0, spy.SendCount, "No outbound call must reach the musickit-api client when model validation rejects the request" );
+    }
+
+    /// <summary>
     /// Verifies that an <c>i.</c>-prefixed Apple library item id (e.g. <c>i.e5gmPS6rZ856</c>) passes
     /// model validation. The action then proceeds to the user-token checks; because the test user has
     /// no stored Apple Music token the endpoint returns 401, not 400.

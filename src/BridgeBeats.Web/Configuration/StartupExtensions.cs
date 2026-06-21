@@ -157,7 +157,7 @@ namespace BridgeBeats.Web.Configuration {
         /// Builds the application and configures the HTTP request pipeline: database initialization
         /// (outside Testing), exception handling and HSTS in non-development environments, HTTPS
         /// redirection, static file serving with a Content Security Policy, routing, the BridgeBeats
-        /// middleware (health, authentication, authorization, Swagger gating, rate limiting), Swagger,
+        /// middleware (health, authentication, authorization, Swagger gating), Swagger,
         /// and controller routing.
         /// </summary>
         /// <param name="builder">The configured web application builder to build and wire.</param>
@@ -221,10 +221,8 @@ namespace BridgeBeats.Web.Configuration {
             _ = app.Use( async ( ctx, next ) => {
                 string path = ctx.Request.Path.Value ?? string.Empty;
                 bool isEmbed =
-                    path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase )    ||
-                    path.EndsWith( "/embed/qr", StringComparison.OrdinalIgnoreCase ) ||
-                    path.StartsWith( "/card/", StringComparison.OrdinalIgnoreCase )  ||
-                    path.StartsWith( "/playlist/", StringComparison.OrdinalIgnoreCase )
+                    path.EndsWith( "/embed", StringComparison.OrdinalIgnoreCase ) ||
+                    path.EndsWith( "/embed/qr", StringComparison.OrdinalIgnoreCase )
                 ;
                 bool isAppleMusic = path.StartsWith( "/applemusic", StringComparison.OrdinalIgnoreCase );
 

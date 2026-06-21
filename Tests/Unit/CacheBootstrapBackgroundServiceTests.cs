@@ -982,7 +982,8 @@ public class CacheBootstrapBackgroundServiceTests {
         await executeTask;
 
         // ListAllRecordsAsync must have been called at least twice (initial bootstrap + retry RunStatisticsPassAsync).
-        Assert.IsGreaterThanOrEqualTo( listCallCount[0], 2,
+        // Assert.IsGreaterThanOrEqualTo(lowerBound, value) passes when value >= lowerBound.
+        Assert.IsGreaterThanOrEqualTo( 2, listCallCount[0],
             $"Expected at least 2 ListAllRecordsAsync calls; got {listCallCount[0]}" );
 
         // The error doc must have been written before the retry call.
