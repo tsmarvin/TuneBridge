@@ -157,7 +157,7 @@ namespace BridgeBeats.Web.Configuration {
         /// Builds the application and configures the HTTP request pipeline: database initialization
         /// (outside Testing), exception handling and HSTS in non-development environments, HTTPS
         /// redirection, static file serving with a Content Security Policy, routing, the BridgeBeats
-        /// middleware (health, authentication, authorization, Swagger gating), Swagger,
+        /// middleware (health, authentication, authorization, Swagger gating, rate limiting), Swagger,
         /// and controller routing.
         /// </summary>
         /// <param name="builder">The configured web application builder to build and wire.</param>
