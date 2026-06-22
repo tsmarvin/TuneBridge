@@ -307,8 +307,8 @@ public sealed partial class LookupOrchestrator(
     ) {
         TimeSpan waitTimeout = waitBudget ?? _interactiveWaitTimeout;
 
-        // Check cache. Partial results are reported stale by the cache so they
-        // fall through to the dedup/wait logic below instead of masquerading as final.
+        // Check cache. Freshness is age-only (RedisMediaLinkCache.CheckRecordFreshness
+        // checks LookedUpAt against the configured window; IsPartial is not consulted).
         (MediaLinkResult result, string recordUri, bool isStale)? cached = await cacheCheck( );
 
         if (cached.HasValue && !cached.Value.isStale) {
@@ -545,7 +545,7 @@ public sealed partial class LookupOrchestrator(
 
             MediaLinkResult? result = await _atProtoStorage.GetMediaLinkResultAsync( resultUri );
 
-            // Saga state missing (expired/deleted) - trust the stored result's own flag
+            // Saga state missing (expired/deleted) - no saga means no in-progress partial; result is served as final
             if (saga is null) {
                 return new LookupResult {
                     Result = result,

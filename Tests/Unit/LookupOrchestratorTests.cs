@@ -297,6 +297,51 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
+    /// Verifies that a fresh cache hit (isStale = false) on a subset record — one where only some
+    /// providers contributed results — yields a non-partial envelope with no saga ID. Partiality of
+    /// the stored record is not re-surfaced once the record is cold-served; the caller sees a final
+    /// result. The saga-driven partial test below (~line 940) is the negative control proving the
+    /// hot/saga early-release path still returns <c>IsPartial = true</c>.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WithFreshCacheHitOnSubsetRecord_ShouldReturnNonPartialWithNoSagaId( ) {
+        // Arrange — a subset result (only Spotify responded); IsPartial is false because
+        // ConvertFromRecord no longer reads isPartial from the PDS record
+        MediaLinkResult subsetResult = new( ) {
+            IsPartial = false,
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
+                [SupportedProviders.Spotify] = new MusicLookupResult {
+                    Artist = TestArtist,
+                    Title = TestTitle,
+                    ExternalId = TestIsrc,
+                    URL = "https://open.spotify.com/track/123",
+                    ArtUrl = "https://example.com/art.jpg",
+                    IsAlbum = false
+                }
+            }
+        };
+
+        _ = _cacheMock
+            .Setup( c => c.TryGetCachedResultByISRCAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( (subsetResult, TestRecordUri, false) ); // isStale = false → served as fresh
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert — cold-served subset record is non-partial with no saga
+        Assert.IsNotNull( result.Result );
+        Assert.IsFalse( result.IsPartial, "Cold-served subset record must not be partial in the envelope." );
+        Assert.IsNull( result.SagaId, "Cold-served subset record must carry no saga ID." );
+
+        // Deduplicator must not be touched — cache hit short-circuits before dedup
+        _deduplicatorMock.Verify(
+            d => d.TryAcquireAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
     /// Verifies a cache miss with the dedup lock acquired creates an ISRC saga and enqueues the first provider request
     /// at <see cref="QueuePriority.Interactive"/>.
     /// </summary>

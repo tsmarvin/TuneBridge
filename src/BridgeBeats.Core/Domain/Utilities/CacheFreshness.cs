@@ -1,11 +1,10 @@
 namespace BridgeBeats.Core.Domain.Utilities;
 
 /// <summary>
-/// The staleness predicate for the bulk refresh sweep (and any future interactive force-refresh
-/// that opts in). This is not repo-wide: the interactive read cache (<c>RedisMediaLinkCache</c>)
-/// keeps its own separate IsPartial-as-stale rule; this predicate governs only the refresh sweep's
-/// age-only selection. Staleness is AGE-ONLY: a record's partial-ness is deliberately NOT a
-/// staleness trigger, so a record can never be re-attempted more than once per freshness window
+/// The staleness predicate used across the codebase. Staleness is AGE-ONLY throughout: both the
+/// bulk refresh sweep and the interactive read cache (<c>RedisMediaLinkCache.CheckRecordFreshness</c>)
+/// apply the same age-only rule. A record's partial-ness is deliberately NOT a staleness trigger
+/// in either path, so a record can never be re-attempted more than once per freshness window
 /// (see remarks).
 /// </summary>
 /// <remarks>
