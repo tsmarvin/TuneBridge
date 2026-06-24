@@ -18,7 +18,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.4.3" />
+    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.4.6" />
     <PackageReference Include="Aspire.Hosting.Redis" Version="13.4.3" />
     <!-- Pin: overrides the vulnerable MessagePack 2.5.192 pulled in via Aspire.Hosting → StreamJsonRpc. -->
     <PackageReference Include="MessagePack" Version="2.5.301" />
