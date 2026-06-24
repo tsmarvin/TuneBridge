@@ -16,7 +16,7 @@
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.Testing" Version="13.4.3" />
     <!-- Pin: overrides the vulnerable MessagePack 2.5.192 pulled in via Aspire.Hosting.Testing → StreamJsonRpc. -->
-    <PackageReference Include="MessagePack" Version="2.5.301" />
+    <PackageReference Include="MessagePack" Version="3.1.7" />
     <PackageReference Include="coverlet.collector" Version="10.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
