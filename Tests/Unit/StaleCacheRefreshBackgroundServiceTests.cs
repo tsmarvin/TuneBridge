@@ -592,18 +592,18 @@ public class StaleCacheRefreshBackgroundServiceTests {
     }
 
     /// <summary>
-    /// A record with <c>IsPartial = true</c> and an EXPIRED timestamp IS selected (via the age arm).
-    /// Confirms partial records do eventually get refreshed — just once per freshness window.
+    /// A record whose timestamp is outside the freshness window is selected based on age alone.
+    /// Provider coverage is not part of the selection predicate.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_PartialAndExpired_IsSelected( ) {
+    public async Task RunRefreshPass_ExpiredRecord_IsSelected( ) {
         DateTime expired = DateTime.UtcNow.AddDays( -31 ); // outside 30-day window
 
-        (string, MediaLinkResult) partialExpiredRec = MakeStaleRecord(
-            "at://partial-expired", expired, isrc: "PARTIAL_EXPIRED_ISRC" );
+        (string, MediaLinkResult) expiredRec = MakeStaleRecord(
+            "at://expired", expired, isrc: "EXPIRED_ISRC" );
 
-        SetupRecordList( [partialExpiredRec] );
+        SetupRecordList( [expiredRec] );
 
         List<QueuedLookupRequest> enqueuedRequests = [];
         _ = _queueMock
@@ -620,19 +620,19 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         Assert.HasCount( 1, enqueuedRequests );
         Assert.AreEqual( LookupRequestType.SongIdLookup, enqueuedRequests[0].LookupType,
-            "Partial-expired record with parseable URL yields a native SongIdLookup leg." );
+            "Expired record with a parseable URL yields a native SongIdLookup leg." );
         Assert.AreEqual( "3SPOTID12345", enqueuedRequests[0].LookupValue,
             "Native leg LookupValue is the extracted track ID, not the ISRC." );
     }
 
     /// <summary>
     /// Equivalence pin: the age-only selection produces the same result set as the inline age check
-    /// without the old <c>IsPartial</c> arm. A corpus with a partial+fresh record confirms it is
-    /// excluded.
+    /// without the old <c>IsPartial</c> arm. A corpus with fresh records of differing provider
+    /// coverage confirms both are excluded.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_SelectionEquivalentToAgeOnlyCheck_ExcludesPartialFresh( ) {
+    public async Task RunRefreshPass_SelectionEquivalentToAgeOnlyCheck_ExcludesFreshRecords( ) {
         int cacheDays = 30;
         _settings = MakeSettings( cacheDays: cacheDays );
         DateTime utcNow = DateTime.UtcNow;
