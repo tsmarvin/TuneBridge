@@ -514,7 +514,6 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 return;
             }
 
-            finalResult.IsPartial = true;
             finalResult.RateLimitedProviders = saga.RateLimitInfo?.Select( r => r.Provider ).ToList( );
 
             bool uriRecorded = false;

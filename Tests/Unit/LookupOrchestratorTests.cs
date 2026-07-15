@@ -298,18 +298,19 @@ public class LookupOrchestratorTests {
 
     /// <summary>
     /// Verifies that a fresh cache hit (isStale = false) on a subset record — one where only some
-    /// providers contributed results — yields a non-partial envelope with no saga ID. Partiality of
-    /// the stored record is not re-surfaced once the record is cold-served; the caller sees a final
-    /// result. The saga-driven partial test below (~line 940) is the negative control proving the
-    /// hot/saga early-release path still returns <c>IsPartial = true</c>.
+    /// providers contributed results — yields a non-partial envelope with no saga ID. Under the
+    /// computed-property model, <c>LookupResult.IsPartial</c> derives from <c>!string.IsNullOrEmpty(SagaId)</c>.
+    /// The cache-hit path sets no <c>SagaId</c>, so the envelope is always non-partial for a
+    /// fresh cache hit regardless of how many providers contributed to the stored result.
+    /// A regression that incorrectly sets <c>SagaId</c> on a cache-hit result would fail
+    /// the <c>Assert.IsNull(result.SagaId)</c> assertion below.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task LookupByIsrcAsync_WithFreshCacheHitOnSubsetRecord_ShouldReturnNonPartialWithNoSagaId( ) {
-        // Arrange — a subset result (only Spotify responded); IsPartial is false because
-        // ConvertFromRecord no longer reads isPartial from the PDS record
+        // Arrange — a subset result (only Spotify responded); the cache-hit path must not
+        // propagate any partial state to the envelope via SagaId.
         MediaLinkResult subsetResult = new( ) {
-            IsPartial = false,
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 [SupportedProviders.Spotify] = new MusicLookupResult {
                     Artist = TestArtist,
@@ -749,6 +750,13 @@ public class LookupOrchestratorTests {
         // Assert
         Assert.HasCount( 1, results );
         Assert.IsNotNull( results[0].Result );
+        MediaLinkResult actualResult = results[0].Result!;
+        Assert.HasCount( 1, actualResult.InputLinks );
+        Assert.AreEqual(
+            "https://open.spotify.com/track/abc123",
+            actualResult.InputLinks[0],
+            "The caching orchestrator must restore the submitted URL because PDS records do not persist InputLinks."
+        );
     }
 
     /// <summary>

@@ -16,6 +16,8 @@ namespace BridgeBeats.Tests.Unit;
 [TestClass]
 public class MediaLinkResultRecordTests {
 
+    private static readonly JsonSerializerOptions s_webJsonOptions = new( JsonSerializerDefaults.Web );
+
     /// <summary>
     /// The private static <c>ConvertToRecord</c> method on <see cref="ATProtoStorageService"/>,
     /// resolved via reflection once for the class.
@@ -39,8 +41,8 @@ public class MediaLinkResultRecordTests {
     /// suppressed by its default.
     /// </remarks>
     [TestMethod]
-    public void ConvertToRecord_WithPartialResult_DoesNotSerializeIsPartialKey( ) {
-        // Arrange — a DTO that is explicitly partial with one provider result
+    public void ConvertToRecord_DoesNotSerializeIsPartialKey( ) {
+        // Arrange — an explicitly partial API DTO with one provider result
         MediaLinkResult dto = new( ) {
             IsPartial = true,
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
@@ -82,5 +84,20 @@ public class MediaLinkResultRecordTests {
         // Assert — positive control: required fields must be present so an empty serializer cannot pass
         Assert.IsTrue( obj.ContainsKey( "results" ), "Serialized record must contain 'results'." );
         Assert.IsTrue( obj.ContainsKey( "lookedUpAt" ), "Serialized record must contain 'lookedUpAt'." );
+    }
+
+    /// <summary>
+    /// Verifies the public API representation retains <c>isPartial</c> even though the persisted
+    /// PDS record deliberately omits it. This pins the boundary between transient saga-derived
+    /// response metadata and durable record content.
+    /// </summary>
+    [TestMethod]
+    public void ApiSerialization_IncludesIsPartialKey( ) {
+        MediaLinkResult dto = new( ) { IsPartial = true };
+
+        JsonObject obj = JsonNode.Parse( JsonSerializer.Serialize( dto, s_webJsonOptions ) )!.AsObject( );
+
+        Assert.IsTrue( obj.ContainsKey( "isPartial" ), "API JSON must retain the isPartial contract." );
+        Assert.IsTrue( obj["isPartial"]!.GetValue<bool>( ) );
     }
 }

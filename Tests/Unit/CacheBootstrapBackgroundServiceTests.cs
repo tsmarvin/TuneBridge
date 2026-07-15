@@ -1257,7 +1257,6 @@ public class CacheBootstrapBackgroundServiceTests {
     public void StatisticsAccumulator_Add_DoesNotMutateInputRecord( ) {
         MediaLinkResult result = new( ) {
             LookedUpAt = new DateTime( 2024, 5, 1, 12, 0, 0, DateTimeKind.Utc ),
-            IsPartial = false,
         };
         result.Results.Add( SupportedProviders.Spotify, new MusicLookupResult {
             Artist = "A",
@@ -1268,7 +1267,6 @@ public class CacheBootstrapBackgroundServiceTests {
         } );
 
         DateTime lookedUpAtBefore = result.LookedUpAt;
-        bool isPartialBefore = result.IsPartial;
         int resultCountBefore = result.Results.Count;
 
         StatisticsAccumulator accumulator = new( );
@@ -1276,7 +1274,6 @@ public class CacheBootstrapBackgroundServiceTests {
         _ = accumulator.Build( );
 
         Assert.AreEqual( lookedUpAtBefore, result.LookedUpAt, "LookedUpAt must be unchanged after Add" );
-        Assert.AreEqual( isPartialBefore, result.IsPartial, "IsPartial must be unchanged after Add" );
         Assert.HasCount( resultCountBefore, result.Results, "Results count must be unchanged after Add" );
     }
 

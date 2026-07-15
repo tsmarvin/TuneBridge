@@ -339,17 +339,15 @@ public class RedisMediaLinkCacheTests {
     }
 
     /// <summary>
-    /// Verifies a recent cached record that represents a provider subset (IsPartial = true on the
-    /// in-memory DTO) is reported as FRESH. Staleness is age-only; partiality is owned by the saga
-    /// and does not drive cache freshness. The sibling test above (aged record) remains the positive
-    /// control for the stale path.
+    /// Verifies a recent cached record that represents a provider subset is reported as FRESH.
+    /// Staleness is age-only; partiality is owned by the saga and does not drive cache freshness.
+    /// The sibling test above (aged record) remains the positive control for the stale path.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task CheckRecordFreshness_ReturnsFresh_WhenResultIsRecentButSubset( ) {
-        // Arrange — a freshly looked-up result where only Spotify responded (IsPartial = true on DTO)
+        // Arrange — a freshly looked-up result where only Spotify responded
         MediaLinkResult result = CreateTestResult( "PARTIALTEST123", false );
-        result.IsPartial = true;
 
         string recordUri = $"at://{UserDID}/link.bridgebeats.lookup/track:PARTIALTEST123";
 

@@ -162,10 +162,10 @@ public sealed partial class LookupOrchestrator(
     /// <returns>The lookup outcome, possibly partial.</returns>
     public async Task<LookupResult> LookupByMetadataAsync( string title, string artist ) {
         if (string.IsNullOrWhiteSpace( title ) || string.IsNullOrWhiteSpace( artist )) {
-            return new LookupResult { Result = null, IsPartial = false };
+            return new LookupResult { Result = null };
         }
 
-        string lookupKey = $"{LookupRequestType.SongLookup}:{title.Trim().ToUpperInvariant()}:{artist.Trim().ToUpperInvariant()}";
+        string lookupKey = LookupKeyBuilder.MetadataKey( title, artist );
 
         return await PerformLookupAsync(
             lookupKey: lookupKey,
@@ -186,11 +186,11 @@ public sealed partial class LookupOrchestrator(
     /// <returns>The lookup outcome, possibly partial.</returns>
     public async Task<LookupResult> LookupByIsrcAsync( string isrc ) {
         if (string.IsNullOrWhiteSpace( isrc )) {
-            return new LookupResult { Result = null, IsPartial = false };
+            return new LookupResult { Result = null };
         }
 
         string normalizedIsrc = isrc.Trim( ).ToUpperInvariant( );
-        string lookupKey = $"{LookupRequestType.IsrcLookup}:{normalizedIsrc}";
+        string lookupKey = LookupKeyBuilder.IsrcKey( isrc );
 
         return await PerformLookupAsync(
             lookupKey: lookupKey,
@@ -209,11 +209,11 @@ public sealed partial class LookupOrchestrator(
     /// <returns>The lookup outcome, possibly partial.</returns>
     public async Task<LookupResult> LookupByUpcAsync( string upc ) {
         if (string.IsNullOrWhiteSpace( upc )) {
-            return new LookupResult { Result = null, IsPartial = false };
+            return new LookupResult { Result = null };
         }
 
         string normalizedUpc = upc.Trim( );
-        string lookupKey = $"{LookupRequestType.UpcLookup}:{normalizedUpc}";
+        string lookupKey = LookupKeyBuilder.UpcKey( upc );
 
         return await PerformLookupAsync(
             lookupKey: lookupKey,
@@ -236,7 +236,7 @@ public sealed partial class LookupOrchestrator(
     /// <returns>The lookup outcome, possibly partial.</returns>
     public async Task<LookupResult> LookupByProviderIdAsync( string providerId, SupportedProviders provider, bool isAlbum ) {
         if (string.IsNullOrWhiteSpace( providerId )) {
-            return new LookupResult { Result = null, IsPartial = false };
+            return new LookupResult { Result = null };
         }
 
         string normalizedId = providerId.Trim( );
@@ -265,7 +265,7 @@ public sealed partial class LookupOrchestrator(
     private async Task<LookupResult> LookupByUrlAsync( string url, SupportedProviders provider, TimeSpan? waitBudget = null ) {
         string lookupKey = LookupKeyBuilder.UrlKey( url );
 
-        return await PerformLookupAsync(
+        LookupResult lookupResult = await PerformLookupAsync(
             lookupKey: lookupKey,
             lookupType: LookupRequestType.UriLookup,
             lookupValue: url,
@@ -274,6 +274,20 @@ public sealed partial class LookupOrchestrator(
             initialProvider: provider,
             waitBudget: waitBudget
         );
+
+        // Input links are intentionally absent from PDS records. Restore the submitted URL on
+        // the response so Web can reconstruct the same saga key for its render-time progress
+        // probe, and so caching-path results preserve the same input-link contract as the direct
+        // resolver path.
+        if (lookupResult.Result is not null) {
+            // The controller probes InputLinks[0], so make the URL for this specific lookup the
+            // leading entry even if a reused in-memory result already carries another alias.
+            _ = lookupResult.Result.InputLinks.RemoveAll(
+                input => input.Equals( url, StringComparison.OrdinalIgnoreCase ) );
+            lookupResult.Result.InputLinks.Insert( 0, url );
+        }
+
+        return lookupResult;
     }
 
     /// <summary>
@@ -307,15 +321,17 @@ public sealed partial class LookupOrchestrator(
     ) {
         TimeSpan waitTimeout = waitBudget ?? _interactiveWaitTimeout;
 
-        // Check cache. Freshness is age-only (RedisMediaLinkCache.CheckRecordFreshness
-        // checks LookedUpAt against the configured window; IsPartial is not consulted).
+        // Check cache. Freshness is age-only (RedisMediaLinkCache.CheckRecordFreshness checks
+        // LookedUpAt against the configured window). PDS/cache reads carry no persisted partial
+        // flag and are assumed final. A partial saga generation can be visible briefly before its
+        // deterministic record is replaced by the final generation; that bounded consistency
+        // window is an accepted tradeoff for avoiding a saga read on every fresh cache hit.
         (MediaLinkResult result, string recordUri, bool isStale)? cached = await cacheCheck( );
 
         if (cached.HasValue && !cached.Value.isStale) {
             LogCacheHit( _logger, lookupKey );
             return new LookupResult {
-                Result = cached.Value.result,
-                IsPartial = cached.Value.result.IsPartial
+                Result = cached.Value.result
             };
         }
 
@@ -353,18 +369,17 @@ public sealed partial class LookupOrchestrator(
                 return await WaitForFinalResultAsync( lookupKey, inFlightSagaId, resultUri, deadline );
             }
 
-            // Timeout or failure - check cache again, might have been populated
+            // Timeout or failure - check cache again, might have been populated.
+            // A cache-served result is always final; no live saga reference is attached.
             cached = await cacheCheck( );
             if (cached.HasValue) {
                 return new LookupResult {
-                    Result = cached.Value.result,
-                    IsPartial = cached.Value.result.IsPartial,
-                    SagaId = cached.Value.result.IsPartial ? inFlightSagaId : null
+                    Result = cached.Value.result
                 };
             }
 
             // Still nothing, return null
-            return new LookupResult { Result = null, IsPartial = false };
+            return new LookupResult { Result = null };
         }
 
         try {
@@ -420,7 +435,7 @@ public sealed partial class LookupOrchestrator(
         // Generate deterministic saga ID from lookup key
         string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
 
-        // Create saga (or resume an in-progress one, e.g. when a cached partial sent us back here)
+        // Create a saga, or resume one already started for this deterministic lookup key.
         LookupSagaState saga = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, lookupValue );
 
         DateTimeOffset deadline = DateTimeOffset.UtcNow + waitTimeout;
@@ -503,14 +518,13 @@ public sealed partial class LookupOrchestrator(
         if (storedResultUri is not null) {
             MediaLinkResult? storedResult = await _atProtoStorage.GetMediaLinkResultAsync( storedResultUri );
             return !string.IsNullOrEmpty( saga2!.FinalResultUri )
-                ? new LookupResult { Result = storedResult, IsPartial = false }
+                ? new LookupResult { Result = storedResult }
                 : CreatePartialResult( storedResult, sagaId, saga2 );
         }
 
         // No result yet
         return new LookupResult {
             Result = null,
-            IsPartial = true,
             SagaId = sagaId,
             RateLimitedProviders = GetActiveRateLimits( saga2 )
         };
@@ -548,9 +562,7 @@ public sealed partial class LookupOrchestrator(
             // Saga state missing (expired/deleted) - no saga means no in-progress partial; result is served as final
             if (saga is null) {
                 return new LookupResult {
-                    Result = result,
-                    IsPartial = result?.IsPartial ?? false,
-                    SagaId = result?.IsPartial == true ? sagaId : null
+                    Result = result
                 };
             }
 
@@ -559,8 +571,7 @@ public sealed partial class LookupOrchestrator(
 
             if (isFinal) {
                 return new LookupResult {
-                    Result = result,
-                    IsPartial = false
+                    Result = result
                 };
             }
 
@@ -653,7 +664,6 @@ public sealed partial class LookupOrchestrator(
     private static LookupResult CreatePartialResult( MediaLinkResult? result, string sagaId, LookupSagaState? saga )
         => new( ) {
             Result = result,
-            IsPartial = true,
             SagaId = sagaId,
             RateLimitedProviders = GetActiveRateLimits( saga )
         };
