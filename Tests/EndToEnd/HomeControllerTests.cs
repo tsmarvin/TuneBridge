@@ -318,12 +318,8 @@ public class HomeControllerTests {
 }
 
 /// <summary>
-/// Verifies that <c>MusicLookupResultItem.IsLookupInProgress</c> correctly reflects the injected
-/// <see cref="ILookupProgressProbe"/> at the three controller sites (<c>LookupResults</c>,
-/// <c>CreateViewModelFromResult</c>, <c>LookupResultsStream</c>). Each test exercises the
-/// <c>LookupResultsByIsrc</c> action with a stubbed media-link service (so a result item is always
-/// produced) and a controlled probe, then inspects the rendered HTML for the "Still looking up…"
-/// indicator that appears only when <c>IsLookupInProgress</c> is <see langword="true"/>.
+/// Verifies result rendering behavior with stubbed media-link services, including live saga-progress
+/// indicators and preservation of guidance carried by result-less placeholders.
 /// </summary>
 /// <remarks>
 /// Failure-first evidence for each new test is documented inline. A stub
@@ -334,12 +330,65 @@ public class HomeControllerTests {
 /// </remarks>
 [TestClass]
 [TestCategory( "EndToEnd" )]
-public class HomeControllerProbeWiringTests {
+public class HomeControllerRenderingTests {
 
     private const string TestUrl = "https://open.spotify.com/track/probetesttrack";
+    private const string PlaceholderMessage = "Apple Music is temporarily unavailable. Please try again.";
 
     /// <summary>MSTest-injected context used to obtain the per-test cancellation token.</summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Verifies URL lookup placeholders retain their provider guidance instead of becoming a generic
+    /// no-results response.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 15000, CooperativeCancellation = true )]
+    public async Task LookupResults_ResultlessPlaceholder_RendersProviderMessage( ) {
+        MediaLinkResult placeholder = new( ) { Messages = [PlaceholderMessage] };
+        using ProbeOverrideFactory factory = new( BuildBaseConfig( ), services => {
+            _ = services.RemoveAll<IMediaLinkService>( );
+            _ = services.AddTransient<IMediaLinkService>( _ => BuildStubMediaService( placeholder ) );
+        } );
+        await factory.InitializeDatabasesAsync( );
+        using HttpClient client = factory.CreateClient( );
+
+        string token = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync( client, TestContext.CancellationToken );
+        FormUrlEncodedContent formData = new( new Dictionary<string, string> { ["uri"] = TestUrl } );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            client, "/Home/LookupResults", formData, token, TestContext.CancellationToken );
+        string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
+
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
+        Assert.Contains( PlaceholderMessage, content, StringComparison.Ordinal );
+        Assert.DoesNotContain( "No results found", content, StringComparison.OrdinalIgnoreCase );
+    }
+
+    /// <summary>
+    /// Verifies single-result actions retain guidance from a result-less placeholder rather than
+    /// replacing it with their generic no-results fallback.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 15000, CooperativeCancellation = true )]
+    public async Task LookupResultsByIsrc_ResultlessPlaceholder_RendersProviderMessage( ) {
+        MediaLinkResult placeholder = new( ) { Messages = [PlaceholderMessage] };
+        using ProbeOverrideFactory factory = new( BuildBaseConfig( ), services => {
+            _ = services.RemoveAll<IMediaLinkService>( );
+            _ = services.AddTransient<IMediaLinkService>( _ => BuildStubMediaService( placeholder ) );
+        } );
+        await factory.InitializeDatabasesAsync( );
+        using HttpClient client = factory.CreateClient( );
+
+        string token = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync( client, TestContext.CancellationToken );
+        FormUrlEncodedContent formData = new( new Dictionary<string, string> { ["isrc"] = "USRC12345678" } );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            client, "/Home/LookupResultsByIsrc", formData, token, TestContext.CancellationToken );
+        string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
+
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
+        Assert.Contains( PlaceholderMessage, content, StringComparison.Ordinal );
+        Assert.DoesNotContain( "No results found", content, StringComparison.OrdinalIgnoreCase );
+    }
 
     /// <summary>
     /// Verifies that when <see cref="ILookupProgressProbe.IsActiveAsync"/> returns
@@ -536,9 +585,9 @@ public class HomeControllerProbeWiringTests {
     /// one view-model item regardless of what ISRC is submitted. The stub is disposable: a new
     /// instance is created per-test factory.
     /// </summary>
-    private static IMediaLinkService BuildStubMediaService( ) {
+    private static IMediaLinkService BuildStubMediaService( MediaLinkResult? result = null ) {
         Mock<IMediaLinkService> mock = new( );
-        MediaLinkResult stubResult = new( ) {
+        MediaLinkResult stubResult = result ?? new MediaLinkResult {
             Results = new Dictionary<SupportedProviders, MusicLookupResult> {
                 [SupportedProviders.Spotify] = new MusicLookupResult {
                     Artist = "Probe Test Artist",

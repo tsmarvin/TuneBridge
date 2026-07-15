@@ -67,9 +67,14 @@ namespace BridgeBeats.Web.Controllers {
 
             // Perform lookup server-side and collect all results
             MusicLookupViewModel viewModel = new( );
+            List<string> placeholderMessages = [];
             await foreach (MediaLinkResult result in mediaLinkService.GetInfoAsync( uri )) {
                 if (result.Results.Count == 0) {
-                    continue; // Skip empty results
+                    if (result.Messages is { Count: > 0 }) {
+                        placeholderMessages.AddRange(
+                            result.Messages.Where( message => !string.IsNullOrWhiteSpace( message ) ) );
+                    }
+                    continue;
                 }
 
                 // Find primary result
@@ -117,7 +122,9 @@ namespace BridgeBeats.Web.Controllers {
             }
 
             if (viewModel.Items.Count == 0) {
-                viewModel.Message = "No results found";
+                viewModel.Message = placeholderMessages.Count > 0
+                    ? string.Join( " ", placeholderMessages )
+                    : "No results found";
             }
 
             return PartialView( "_LookupResults", viewModel );
@@ -208,7 +215,8 @@ namespace BridgeBeats.Web.Controllers {
         /// <summary>
         /// Builds a single-item lookup view model from a resolved result, selecting the primary provider,
         /// storing an Open Graph card when enabled, resolving the ATProto URI, and probing the saga to
-        /// set the "lookup in progress" indicator. Falls back to a message when there is no usable result.
+        /// set the "lookup in progress" indicator. Preserves provider guidance from result-less placeholders,
+        /// falling back to the supplied no-results message only when no guidance is available.
         /// </summary>
         /// <param name="result">The resolved media-link result, or null when nothing matched.</param>
         /// <param name="noResultsMessage">The message to display when no usable result is present.</param>
@@ -222,7 +230,7 @@ namespace BridgeBeats.Web.Controllers {
             MusicLookupViewModel viewModel = new( );
 
             if (result == null || result.Results.Count == 0) {
-                viewModel.Message = noResultsMessage;
+                viewModel.Message = GetResultMessage( result, noResultsMessage );
                 return PartialView( "_LookupResults", viewModel );
             }
 
@@ -242,7 +250,7 @@ namespace BridgeBeats.Web.Controllers {
             }
 
             if (primaryResult == null) {
-                viewModel.Message = noResultsMessage;
+                viewModel.Message = GetResultMessage( result, noResultsMessage );
                 return PartialView( "_LookupResults", viewModel );
             }
 
@@ -268,6 +276,18 @@ namespace BridgeBeats.Web.Controllers {
             } );
 
             return PartialView( "_LookupResults", viewModel );
+        }
+
+        private static string GetResultMessage( MediaLinkResult? result, string fallback ) {
+            if (result?.Messages is not { Count: > 0 }) {
+                return fallback;
+            }
+
+            string message = string.Join(
+                " ",
+                result.Messages.Where( value => !string.IsNullOrWhiteSpace( value ) )
+            );
+            return string.IsNullOrWhiteSpace( message ) ? fallback : message;
         }
 
         /// <summary>
