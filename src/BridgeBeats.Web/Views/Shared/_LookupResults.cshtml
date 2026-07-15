@@ -78,10 +78,10 @@
                             </a>
                         }
                     </div>
-                    @if (item.Result.IsPartial || item.Result.Messages is { Count: > 0 }) {
+                    @if (item.IsLookupInProgress || item.Result.Messages is { Count: > 0 }) {
                         <div class="alert alert-warning embed-partial-notice mb-0 mt-2" role="status">
-                            @if (item.Result.IsPartial) {
-                                <strong>Incomplete results</strong>
+                            @if (item.IsLookupInProgress) {
+                                <strong>Still looking up…</strong>
                             }
                             @if (item.Result.Messages is { Count: > 0 }) {
                                 foreach (var message in item.Result.Messages) {

@@ -304,6 +304,14 @@ public static class ServiceExtensions {
                     s.GetRequiredService<ILogger<CachingMediaLinkService>>( )
                 )
             );
+
+            // Register the saga-backed progress probe
+            _ = services.AddTransient<ILookupProgressProbe>( s =>
+                new LookupProgressProbe(
+                    s.GetRequiredService<ISagaStateManager>( ),
+                    s.GetRequiredService<ILogger<LookupProgressProbe>>( )
+                )
+            );
         } else {
             // Use default (non-caching) service
             _ = services.AddTransient<IMediaLinkService>( s => {
@@ -315,6 +323,9 @@ public static class ServiceExtensions {
                     s.GetRequiredService<JsonSerializerOptions>( )
                 );
             } );
+
+            // Register the no-op probe for the non-caching path (no sagas)
+            _ = services.AddTransient<ILookupProgressProbe>( _ => new NullLookupProgressProbe( ) );
         }
 
         return services;

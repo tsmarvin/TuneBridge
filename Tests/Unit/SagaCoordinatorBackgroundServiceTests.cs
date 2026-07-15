@@ -682,9 +682,13 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Exactly( 2 )
         );
 
-        // Assert - Partial result written with the IsPartial flag set on the stored record
+        // Assert - Partial result written (non-terminal write path: SetPartialResultUriAsync, not SetFinalResultUriAsync)
         _atProtoStorageMock.Verify(
-            a => a.StoreMediaLinkResultAsync( It.Is<MediaLinkResult>( r => r.IsPartial ), It.IsAny<CancellationToken>( ) ),
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
 
@@ -785,10 +789,10 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Assert - No secondary lookups queued (everything came from cache)
         _queueResolverMock.Verify( r => r.GetQueue( It.IsAny<SupportedProviders>( ) ), Times.Never );
 
-        // Assert - Final result stored with ALL three providers' results, not marked partial
+        // Assert - Final result stored with ALL three providers' results (terminal write path: SetFinalResultUriAsync below)
         _atProtoStorageMock.Verify(
             a => a.StoreMediaLinkResultAsync(
-                It.Is<MediaLinkResult>( r => r.Results.Count == 3 && !r.IsPartial ),
+                It.Is<MediaLinkResult>( r => r.Results.Count == 3 ),
                 It.IsAny<CancellationToken>( )
             ),
             Times.Once
@@ -892,12 +896,16 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Once
         );
 
-        // Assert - Partial result includes the cached provider's data (Spotify + AppleMusic)
+        // Assert - Partial result includes the cached provider's data (Spotify + AppleMusic), non-terminal write
         _atProtoStorageMock.Verify(
             a => a.StoreMediaLinkResultAsync(
-                It.Is<MediaLinkResult>( r => r.Results.Count == 2 && r.IsPartial ),
+                It.Is<MediaLinkResult>( r => r.Results.Count == 2 ),
                 It.IsAny<CancellationToken>( )
             ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( TestSagaId, It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
 
@@ -1074,9 +1082,13 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Never
         );
 
-        // Assert - The partial result is still written for waiting callers
+        // Assert - The partial result is still written for waiting callers (non-terminal write path)
         _atProtoStorageMock.Verify(
-            a => a.StoreMediaLinkResultAsync( It.Is<MediaLinkResult>( r => r.IsPartial ), It.IsAny<CancellationToken>( ) ),
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
     }
@@ -1241,9 +1253,13 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Never
         );
 
-        // Assert - The partial result is written for waiting callers instead
+        // Assert - The partial result is written for waiting callers instead (non-terminal write path)
         _atProtoStorageMock.Verify(
-            a => a.StoreMediaLinkResultAsync( It.Is<MediaLinkResult>( r => r.IsPartial ), It.IsAny<CancellationToken>( ) ),
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
         _sagaManagerMock.Verify(
@@ -1338,9 +1354,13 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Never
         );
 
-        // Assert - The partial result is written so waiting callers receive a response
+        // Assert - The partial result is written so waiting callers receive a response (non-terminal write path)
         _atProtoStorageMock.Verify(
-            a => a.StoreMediaLinkResultAsync( It.Is<MediaLinkResult>( r => r.IsPartial ), It.IsAny<CancellationToken>( ) ),
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
 
@@ -1404,9 +1424,13 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Exactly( 2 )
         );
 
-        // Assert - Partial result written instead of a premature final
+        // Assert - Partial result written instead of a premature final (non-terminal write path)
         _atProtoStorageMock.Verify(
-            a => a.StoreMediaLinkResultAsync( It.Is<MediaLinkResult>( r => r.IsPartial ), It.IsAny<CancellationToken>( ) ),
+            a => a.StoreMediaLinkResultAsync( It.IsAny<MediaLinkResult>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _sagaManagerMock.Verify(
+            s => s.SetPartialResultUriAsync( TestSagaId, TestRecordUri, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
         _sagaManagerMock.Verify(
@@ -2099,9 +2123,9 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies the non-terminal write path: <c>terminal=false</c> sets <c>IsPartial=true</c> on
-    /// the combined result, calls <c>SetPartialResultUriAsync</c> (not <c>SetFinalResultUriAsync</c>),
-    /// and never calls <c>SetIsPartialAsync(false)</c> or <c>TryClaimFinalizeAsync</c>.
+    /// Verifies the non-terminal write path: <c>terminal=false</c> calls <c>SetPartialResultUriAsync</c>
+    /// (not <c>SetFinalResultUriAsync</c>), and never calls <c>SetIsPartialAsync(false)</c> or
+    /// <c>TryClaimFinalizeAsync</c>.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -2143,14 +2167,14 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Act - non-terminal write
         await service.InvokeWriteForTestAsync( partialSaga, terminal: false, cts.Token );
 
-        // Assert - the combined result written to PDS carries IsPartial=true
+        // Assert - the combined result is stored once (non-terminal path confirmed by SetPartialResultUriAsync below)
         _atProtoStorageMock.Verify(
             a => a.StoreMediaLinkResultAsync(
-                It.Is<MediaLinkResult>( r => r.IsPartial ),
+                It.IsAny<MediaLinkResult>( ),
                 It.IsAny<CancellationToken>( )
             ),
             Times.Once,
-            "Non-terminal write must produce a result with IsPartial=true"
+            "Non-terminal write must store the result exactly once"
         );
 
         // Assert - partial URI stored, not final URI

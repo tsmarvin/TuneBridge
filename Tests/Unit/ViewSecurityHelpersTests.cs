@@ -185,9 +185,10 @@ public class ViewSecurityHelpersTests {
     /// </summary>
     [TestMethod]
     public void HtmlSafeJsonOptions_IsSingletonInstance( ) {
-        Assert.AreSame(
-            ViewSecurityHelpers.HtmlSafeJsonOptions,
-            ViewSecurityHelpers.HtmlSafeJsonOptions );
+        JsonSerializerOptions firstAccess = ViewSecurityHelpers.HtmlSafeJsonOptions;
+        JsonSerializerOptions secondAccess = ViewSecurityHelpers.HtmlSafeJsonOptions;
+
+        Assert.AreSame( firstAccess, secondAccess );
     }
 
     // -----------------------------------------------------------------------

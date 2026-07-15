@@ -537,7 +537,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         DateTime justStale = DateTime.UtcNow.AddDays( -cacheDays ).AddSeconds( -1 );
         DateTime justFresh = DateTime.UtcNow.AddDays( -cacheDays ).AddDays( 1 );
 
-        (string, MediaLinkResult) staleRec = MakeStaleRecord( "at://stale", justStale, isrc: "STALE_ISRC", forceIsPartial: false );
+        (string, MediaLinkResult) staleRec = MakeStaleRecord( "at://stale", justStale, isrc: "STALE_ISRC" );
         (string, MediaLinkResult) freshRec = MakeFreshRecord( "at://fresh", justFresh, isrc: "FRESH_ISRC" );
 
         SetupRecordList( [staleRec, freshRec] );
@@ -565,20 +565,21 @@ public class StaleCacheRefreshBackgroundServiceTests {
     }
 
     /// <summary>
-    /// A record with <c>IsPartial = true</c> and a FRESH timestamp is NOT selected. This is the
-    /// age-only behavior change: partial-ness alone is no longer a staleness trigger.
+    /// A record with a FRESH timestamp is NOT selected regardless of its provider coverage.
+    /// Freshness is age-only: the only criterion is whether the record has exceeded the cache
+    /// window; provider coverage has no bearing on selection.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_PartialButFreshRecord_IsNotSelected( ) {
+    public async Task RunRefreshPass_FreshRecord_IsNotSelected( ) {
         DateTime fresh = DateTime.UtcNow.AddDays( -1 ); // well inside cache window
 
-        // IsPartial=true, fresh timestamp — under age-only rule this must NOT be selected.
-        (string, MediaLinkResult) partialFreshRec = MakeStaleRecord( "at://partial-fresh", fresh, isrc: "PARTIAL_ISRC", forceIsPartial: true );
-        // IsPartial=false, fresh timestamp — also NOT selected.
+        // Fresh timestamp — under age-only rule this must NOT be selected.
+        (string, MediaLinkResult) ageFreshRec = MakeStaleRecord( "at://age-fresh", fresh, isrc: "AGE_FRESH_ISRC" );
+        // Also fresh timestamp — also NOT selected.
         (string, MediaLinkResult) freshRec = MakeFreshRecord( "at://fresh", fresh, isrc: "FRESH_ISRC" );
 
-        SetupRecordList( [partialFreshRec, freshRec] );
+        SetupRecordList( [ageFreshRec, freshRec] );
 
         StaleCacheRefreshBackgroundService service = CreateService( );
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
@@ -591,18 +592,18 @@ public class StaleCacheRefreshBackgroundServiceTests {
     }
 
     /// <summary>
-    /// A record with <c>IsPartial = true</c> and an EXPIRED timestamp IS selected (via the age arm).
-    /// Confirms partial records do eventually get refreshed — just once per freshness window.
+    /// A record whose timestamp is outside the freshness window is selected based on age alone.
+    /// Provider coverage is not part of the selection predicate.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_PartialAndExpired_IsSelected( ) {
+    public async Task RunRefreshPass_ExpiredRecord_IsSelected( ) {
         DateTime expired = DateTime.UtcNow.AddDays( -31 ); // outside 30-day window
 
-        (string, MediaLinkResult) partialExpiredRec = MakeStaleRecord(
-            "at://partial-expired", expired, isrc: "PARTIAL_EXPIRED_ISRC", forceIsPartial: true );
+        (string, MediaLinkResult) expiredRec = MakeStaleRecord(
+            "at://expired", expired, isrc: "EXPIRED_ISRC" );
 
-        SetupRecordList( [partialExpiredRec] );
+        SetupRecordList( [expiredRec] );
 
         List<QueuedLookupRequest> enqueuedRequests = [];
         _ = _queueMock
@@ -619,32 +620,32 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         Assert.HasCount( 1, enqueuedRequests );
         Assert.AreEqual( LookupRequestType.SongIdLookup, enqueuedRequests[0].LookupType,
-            "Partial-expired record with parseable URL yields a native SongIdLookup leg." );
+            "Expired record with a parseable URL yields a native SongIdLookup leg." );
         Assert.AreEqual( "3SPOTID12345", enqueuedRequests[0].LookupValue,
             "Native leg LookupValue is the extracted track ID, not the ISRC." );
     }
 
     /// <summary>
     /// Equivalence pin: the age-only selection produces the same result set as the inline age check
-    /// without the old <c>IsPartial</c> arm. A corpus with a partial+fresh record confirms it is
-    /// excluded.
+    /// without the old <c>IsPartial</c> arm. A corpus with fresh records of differing provider
+    /// coverage confirms both are excluded.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task RunRefreshPass_SelectionEquivalentToAgeOnlyCheck_ExcludesPartialFresh( ) {
+    public async Task RunRefreshPass_SelectionEquivalentToAgeOnlyCheck_ExcludesFreshRecords( ) {
         int cacheDays = 30;
         _settings = MakeSettings( cacheDays: cacheDays );
         DateTime utcNow = DateTime.UtcNow;
 
-        // Records: one expired non-partial, one fresh non-partial, one fresh partial.
+        // Records: one expired, one fresh, one fresh with limited provider coverage.
         (string, MediaLinkResult) expiredRec = MakeStaleRecord(
-            "at://expired", utcNow.AddDays( -60 ), isrc: "EXPIRED_ISRC", forceIsPartial: false );
+            "at://expired", utcNow.AddDays( -60 ), isrc: "EXPIRED_ISRC" );
         (string, MediaLinkResult) freshRec = MakeFreshRecord(
             "at://fresh", utcNow.AddDays( -1 ), isrc: "FRESH_ISRC" );
-        (string, MediaLinkResult) partialFreshRec = MakeStaleRecord(
-            "at://partial-fresh", utcNow.AddDays( -1 ), isrc: "PARTIAL_ISRC", forceIsPartial: true );
+        (string, MediaLinkResult) ageFreshRec = MakeStaleRecord(
+            "at://age-fresh", utcNow.AddDays( -1 ), isrc: "AGE_FRESH_ISRC" );
 
-        SetupRecordList( [expiredRec, freshRec, partialFreshRec] );
+        SetupRecordList( [expiredRec, freshRec, ageFreshRec] );
 
         List<QueuedLookupRequest> enqueuedRequests = [];
         _ = _queueMock
@@ -889,7 +890,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task RunRefreshPass_RecordWithNoIdentifier_IsSkippedAndNotAnError( ) {
-        MediaLinkResult result = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ), IsPartial = false };
+        MediaLinkResult result = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
         result.Results[SupportedProviders.Spotify] = new MusicLookupResult {
             URL = string.Empty,
             ExternalId = string.Empty,
@@ -1863,10 +1864,9 @@ public class StaleCacheRefreshBackgroundServiceTests {
     private static (string AtUri, MediaLinkResult Result) MakeStaleRecord(
         string atUri,
         DateTime lookedUpAt,
-        string isrc = "ISRC_DEFAULT",
-        bool forceIsPartial = false
+        string isrc = "ISRC_DEFAULT"
     ) {
-        MediaLinkResult result = new( ) { LookedUpAt = lookedUpAt, IsPartial = forceIsPartial };
+        MediaLinkResult result = new( ) { LookedUpAt = lookedUpAt };
         result.Results[SupportedProviders.Spotify] = new MusicLookupResult {
             URL = "https://open.spotify.com/track/3SPOTID12345",
             ExternalId = isrc,
@@ -1882,7 +1882,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
         DateTime lookedUpAt,
         string isrc = "FRESH_ISRC_DEFAULT"
     ) {
-        MediaLinkResult result = new( ) { LookedUpAt = lookedUpAt, IsPartial = false };
+        MediaLinkResult result = new( ) { LookedUpAt = lookedUpAt };
         result.Results[SupportedProviders.Spotify] = new MusicLookupResult {
             URL = "https://open.spotify.com/track/3SPOTFRESH1",
             ExternalId = isrc,

@@ -377,7 +377,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
 
         // ── Step 2: Simulate Apple lookup failure — write back record with Spotify only. ──────
         // The age-only rule: LookedUpAt must be past the cache window for re-selection.
-        MediaLinkResult partialRecord = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -61 ), IsPartial = true };
+        MediaLinkResult partialRecord = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -61 ) };
         partialRecord.Results[SupportedProviders.Spotify] = new MusicLookupResult {
             URL = SpotifyTrackUrl,
             ExternalId = Isrc,

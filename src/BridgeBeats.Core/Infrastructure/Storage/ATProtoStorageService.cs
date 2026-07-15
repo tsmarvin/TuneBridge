@@ -203,8 +203,7 @@ public partial class ATProtoStorageService(
 
         return new MediaLinkResultRecord(
             results: providerResults,
-            lookedUpAt: DateTimeOffset.UtcNow,
-            isPartial: result.IsPartial
+            lookedUpAt: DateTimeOffset.UtcNow
         );
     }
 
@@ -217,8 +216,7 @@ public partial class ATProtoStorageService(
     /// <remarks>Input links are not stored in PDS records, only provider results.</remarks>
     private static MediaLinkResult? ConvertFromRecord( MediaLinkResultRecord record ) {
         MediaLinkResult result = new( ) {
-            LookedUpAt = record.LookedUpAt.UtcDateTime,
-            IsPartial = record.IsPartial
+            LookedUpAt = record.LookedUpAt.UtcDateTime
         };
 
         foreach (ProviderResultRecord providerResult in record.Results) {

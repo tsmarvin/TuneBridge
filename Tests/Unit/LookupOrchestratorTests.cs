@@ -297,6 +297,52 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
+    /// Verifies that a fresh cache hit (isStale = false) on a subset record — one where only some
+    /// providers contributed results — yields a non-partial envelope with no saga ID. Under the
+    /// computed-property model, <c>LookupResult.IsPartial</c> derives from <c>!string.IsNullOrEmpty(SagaId)</c>.
+    /// The cache-hit path sets no <c>SagaId</c>, so the envelope is always non-partial for a
+    /// fresh cache hit regardless of how many providers contributed to the stored result.
+    /// A regression that incorrectly sets <c>SagaId</c> on a cache-hit result would fail
+    /// the <c>Assert.IsNull(result.SagaId)</c> assertion below.
+    /// </summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WithFreshCacheHitOnSubsetRecord_ShouldReturnNonPartialWithNoSagaId( ) {
+        // Arrange — a subset result (only Spotify responded); the cache-hit path must not
+        // propagate any partial state to the envelope via SagaId.
+        MediaLinkResult subsetResult = new( ) {
+            Results = new Dictionary<SupportedProviders, MusicLookupResult> {
+                [SupportedProviders.Spotify] = new MusicLookupResult {
+                    Artist = TestArtist,
+                    Title = TestTitle,
+                    ExternalId = TestIsrc,
+                    URL = "https://open.spotify.com/track/123",
+                    ArtUrl = "https://example.com/art.jpg",
+                    IsAlbum = false
+                }
+            }
+        };
+
+        _ = _cacheMock
+            .Setup( c => c.TryGetCachedResultByISRCAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( (subsetResult, TestRecordUri, false) ); // isStale = false → served as fresh
+
+        // Act
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        // Assert — cold-served subset record is non-partial with no saga
+        Assert.IsNotNull( result.Result );
+        Assert.IsFalse( result.IsPartial, "Cold-served subset record must not be partial in the envelope." );
+        Assert.IsNull( result.SagaId, "Cold-served subset record must carry no saga ID." );
+
+        // Deduplicator must not be touched — cache hit short-circuits before dedup
+        _deduplicatorMock.Verify(
+            d => d.TryAcquireAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
     /// Verifies a cache miss with the dedup lock acquired creates an ISRC saga and enqueues the first provider request
     /// at <see cref="QueuePriority.Interactive"/>.
     /// </summary>
@@ -704,6 +750,13 @@ public class LookupOrchestratorTests {
         // Assert
         Assert.HasCount( 1, results );
         Assert.IsNotNull( results[0].Result );
+        MediaLinkResult actualResult = results[0].Result!;
+        Assert.HasCount( 1, actualResult.InputLinks );
+        Assert.AreEqual(
+            "https://open.spotify.com/track/abc123",
+            actualResult.InputLinks[0],
+            "The caching orchestrator must restore the submitted URL because PDS records do not persist InputLinks."
+        );
     }
 
     /// <summary>

@@ -90,13 +90,20 @@ record present on the PDS but missing from Redis can still be served.
 
 ### Staleness
 
-`CheckRecordFreshness` marks a record stale when either condition holds:
+`CheckRecordFreshness` marks a record stale on age alone: the record is stale when its `lookedUpAt`
+timestamp is older than `CacheDays`. Nothing else drives the freshness check.
 
-- The record's `lookedUpAt` is older than `CacheDays`, or
-- The record is partial (`isPartial` is `true`).
+Partiality does not affect cache freshness. API partiality is transient metadata derived from the
+active saga and is not persisted to PDS records. A record read through the PDS/cache path is assumed
+complete; when it ages past the window it remains a complete-but-stale response and is eligible for
+refresh. This is the same age-based rule the bulk sweep applies, so interactive lookups and the sweep
+agree on what counts as stale.
 
-Partial results are always treated as stale-eligible so callers re-enter the lookup path and wait for
-the complete result rather than serving a partial result as final.
+A partial saga generation can briefly occupy the deterministic PDS record before the final
+generation replaces it. A concurrent cache reader may treat that body as complete because fresh
+cache hits deliberately avoid an additional saga read. This bounded consistency window is accepted
+for the current single-service topology; a subsequent read after saga completion receives the final
+replacement.
 
 ### Storage flow
 

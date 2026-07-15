@@ -911,7 +911,7 @@ public class ATProtoStorageServiceListRecordsTests {
     }
 
     /// <summary>
-    /// Item 7b: mutating a yielded element's <c>IsPartial</c> within the TTL causes subsequent
+    /// Item 7b: mutating a yielded element's <c>Messages</c> within the TTL causes subsequent
     /// reads to observe the mutation — proving the shared-reference invariant. This documents the
     /// hazard: consumers must treat yielded elements as read-only.
     /// </summary>
@@ -929,15 +929,15 @@ public class ATProtoStorageServiceListRecordsTests {
         MediaLinkResult sharedElement = r1[0].Result;
 
         // Mutate the element (exercising the documented hazard)
-        bool originalIsPartial = sharedElement.IsPartial;
-        sharedElement.IsPartial = !originalIsPartial;
+        sharedElement.Messages = ["mutated-sentinel"];
 
         // Second read within TTL — same cached list, same element reference
         List<(string AtUri, MediaLinkResult Result)> r2 = await CollectAsync(
             service.ListAllRecordsAsync( s_testPdsUri, TestDid, TestContext.CancellationToken ) );
 
         Assert.AreSame( sharedElement, r2[0].Result );
-        Assert.AreEqual( !originalIsPartial, r2[0].Result.IsPartial,
+        Assert.IsNotNull( r2[0].Result.Messages );
+        Assert.AreEqual( "mutated-sentinel", r2[0].Result.Messages![0],
             "The mutation is visible across reads because both reads share the same MediaLinkResult instance." );
     }
 
