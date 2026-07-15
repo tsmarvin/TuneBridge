@@ -166,6 +166,24 @@ public class LookupProgressProbeTests {
         Assert.IsFalse( result, "A saga-store fault must produce false (not in progress), not an exception." );
     }
 
+    /// <summary>
+    /// A cancelled saga-store read belongs to the request lifecycle and must degrade quietly to
+    /// <see langword="false"/> rather than turning request or host shutdown into a failure.
+    /// </summary>
+    [TestMethod]
+    public async Task IsActiveAsync_WhenSagaStoreReadIsCancelled_ReturnsFalse( ) {
+        using CancellationTokenSource cts = new( );
+        cts.Cancel( );
+        string sagaId = ISagaStateManager.GenerateSagaId( TestLookupKey );
+        _ = _sagaManagerMock
+            .Setup( m => m.GetAsync( sagaId, cts.Token ) )
+            .ThrowsAsync( new OperationCanceledException( cts.Token ) );
+
+        bool result = await _probe.IsActiveAsync( TestLookupKey, cts.Token );
+
+        Assert.IsFalse( result );
+    }
+
     #endregion
 
     #region NullLookupProgressProbe

@@ -104,7 +104,7 @@ namespace BridgeBeats.Web.Controllers {
                     ? LookupKeyBuilder.UrlKey( result.InputLinks[0] )
                     : null;
                 bool isLookupInProgress = urlProbeKey is not null && probe is not null
-                    && await probe.IsActiveAsync( urlProbeKey );
+                    && await probe.IsActiveAsync( urlProbeKey, HttpContext.RequestAborted );
 
                 viewModel.Items.Add( new MusicLookupViewModel.MusicLookupResultItem {
                     CardUrl = cardUrl,
@@ -255,7 +255,8 @@ namespace BridgeBeats.Web.Controllers {
             // Get ATProto URI from cache if available
             string? atProtoUri = await GetATProtoUriFromCache( result );
 
-            bool isLookupInProgress = probe is not null && await probe.IsActiveAsync( lookupKey );
+            bool isLookupInProgress = probe is not null
+                && await probe.IsActiveAsync( lookupKey, HttpContext.RequestAborted );
 
             viewModel.Items.Add( new MusicLookupViewModel.MusicLookupResultItem {
                 CardUrl = cardUrl,
@@ -444,7 +445,7 @@ namespace BridgeBeats.Web.Controllers {
                             ? LookupKeyBuilder.UrlKey( result.InputLinks[0] )
                             : null;
                         bool streamIsInProgress = streamProbeKey is not null && probe is not null
-                            && await probe.IsActiveAsync( streamProbeKey );
+                            && await probe.IsActiveAsync( streamProbeKey, HttpContext.RequestAborted );
 
                         // Create single-item model
                         MusicLookupViewModel.MusicLookupResultItem item = new( ) {

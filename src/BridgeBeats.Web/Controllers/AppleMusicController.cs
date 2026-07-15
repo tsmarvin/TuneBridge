@@ -452,7 +452,7 @@ public partial class AppleMusicController(
                 string appleProbeKey = LookupKeyBuilder.TypedKey(
                     LookupRequestType.SongIdLookup, SupportedProviders.AppleMusic, songId.Trim( ) );
                 bool appleIsInProgress = probe is not null
-                    && await probe.IsActiveAsync( appleProbeKey );
+                    && await probe.IsActiveAsync( appleProbeKey, HttpContext.RequestAborted );
 
                 MusicLookupViewModel.MusicLookupResultItem item = new( )
                 {

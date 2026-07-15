@@ -1,5 +1,6 @@
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace BridgeBeats.Core.Domain.Services.LinkResolver;
@@ -27,6 +28,7 @@ namespace BridgeBeats.Core.Domain.Services.LinkResolver;
 /// On a transient saga-store fault the probe returns <see langword="false"/> (cannot determine
 /// → not in progress), matching the design's graceful-degradation intent. The fault is logged
 /// at <see cref="LogLevel.Warning"/> so it surfaces in monitoring without disrupting the render.
+/// Cancellation also returns <see langword="false"/>, but is not logged as a store fault.
 /// </remarks>
 /// <param name="sagaManager">Used to read saga state by id.</param>
 /// <param name="logger">Used to log saga-store read faults at warning level.</param>
@@ -42,17 +44,23 @@ public sealed class LookupProgressProbe( ISagaStateManager sagaManager, ILogger<
 
     /// <inheritdoc/>
     public async Task<bool> IsActiveAsync( string lookupKey, CancellationToken ct = default ) {
+        string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+
         try {
-            LookupSagaState? saga = await _sagaManager.GetAsync(
-                ISagaStateManager.GenerateSagaId( lookupKey ), ct );
+            LookupSagaState? saga = await _sagaManager.GetAsync( sagaId, ct );
 
             return saga is not null
                 && !saga.IsComplete
                 && string.IsNullOrEmpty( saga.FinalResultUri );
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+            // Request and host cancellation are expected lifecycle events. Stop the store read and
+            // degrade quietly rather than converting shutdown into a render failure.
+            return false;
         } catch (Exception ex) {
+            string sanitizedSagaId = sagaId.SanitizeForLogging( );
             _logger.LogWarning( ex,
-                "Saga store read failed for lookup key {LookupKey}; reporting not in progress",
-                lookupKey );
+                "Saga store read failed for saga {SagaId}; reporting not in progress",
+                sanitizedSagaId );
             return false;
         }
     }
