@@ -396,6 +396,45 @@ public class SpotifyBulkDispatchContractTests {
             "Genuine not-found must not be requeued" );
     }
 
+    /// <summary>A refresh-native miss resolves its ISRC fallback inside the original work item.</summary>
+    [TestMethod]
+    public async Task ProcessBulkTracks_NativeNotFoundWithFallback_ResolvesInline( ) {
+        QueuedLookupRequest request = CreateRequest( TestTrackId ) with {
+            FallbackLookupType = LookupRequestType.IsrcLookup,
+            FallbackLookupValue = "USRC12345678"
+        };
+        StreamEntry entry = BuildStreamEntryFromRequest( request );
+        _ = _dbMock.Setup( database => database.StreamReadGroupAsync(
+                TrackStream,
+                It.IsAny<RedisValue>( ),
+                It.IsAny<RedisValue>( ),
+                It.IsAny<RedisValue?>( ),
+                It.IsAny<int?>( ),
+                It.IsAny<bool>( ),
+                It.IsAny<TimeSpan?>( ),
+                It.IsAny<CommandFlags>( ) ) )
+            .ReturnsAsync( [entry] );
+        _ = _lookupServiceMock.Setup( service => service.GetTracksByIdsAsync( It.IsAny<IEnumerable<string>>( ) ) )
+            .ReturnsAsync( new Dictionary<string, MusicLookupResult?> { [TestTrackId] = null } );
+        _ = _lookupServiceMock.Setup( service => service.GetInfoByISRCAsync( "USRC12345678" ) )
+            .ReturnsAsync( new MusicLookupResult { ExternalId = "USRC12345678", IsAlbum = false } );
+
+        await CreateService( ).ProcessBulkTrackLookupsAsync( TestContext.CancellationToken );
+
+        _lookupServiceMock.Verify( service => service.GetInfoByISRCAsync( "USRC12345678" ), Times.Once );
+        _requestQueueMock.Verify( queue => queue.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _sagaManagerMock.Verify( manager => manager.UpdateProviderStateAsync(
+            TestSagaId,
+            It.Is<ProviderLookupState>( state => state.IsComplete && state.IsSuccess ),
+            It.IsAny<CancellationToken>( ) ), Times.Once );
+        _dbMock.Verify( database => database.StreamAcknowledgeAsync(
+            TrackStream,
+            It.IsAny<RedisValue>( ),
+            It.IsAny<RedisValue>( ),
+            It.IsAny<CommandFlags>( ) ), Times.Once );
+    }
+
     /// <summary>
     /// Verifies that <c>ShouldFlush</c> returns true when the count exceeds the size threshold.
     /// </summary>

@@ -204,6 +204,31 @@ public class TidalLinkParserTests {
             $"Expected countryCode={storefront}; got '{parsed["countryCode"]}'" );
     }
 
+    /// <summary>Storefront data cannot inject additional query parameters.</summary>
+    [TestMethod]
+    public void GetTracksIsrcURI_WithInvalidStorefront_Throws( ) {
+        _ = Assert.ThrowsExactly<ArgumentException>( ( ) =>
+            TidalLinkParser.GetTracksIsrcURI( "US&include=evil", "USRC12345678" ) );
+    }
+
+    /// <summary>External identifiers are escaped before insertion into the query string.</summary>
+    [TestMethod]
+    public void GetTracksIsrcURI_WithReservedCharacters_EscapesValue( ) {
+        string uri = TidalLinkParser.GetTracksIsrcURI( "us", "ABC&countryCode=ZZ" );
+
+        Assert.Contains( "ABC%26countryCode%3DZZ", uri );
+        NameValueCollection parsed = ParseQueryString( uri );
+        Assert.AreEqual( "ABC&countryCode=ZZ", parsed["filter[isrc]"] );
+        Assert.AreEqual( "US", parsed["countryCode"] );
+    }
+
+    /// <summary>Native ids are restricted to the numeric shape returned by Tidal URLs.</summary>
+    [TestMethod]
+    public void GetTrackIdURI_WithNonNumericId_Throws( ) {
+        _ = Assert.ThrowsExactly<ArgumentException>( ( ) =>
+            TidalLinkParser.GetTrackIdURI( "US", "123/path" ) );
+    }
+
     /// <summary>
     /// Parses the query string from a relative URI (splitting off the path at '?') and decodes
     /// percent-encoded parameter names such as <c>filter%5Bisrc%5D</c> → <c>filter[isrc]</c>.

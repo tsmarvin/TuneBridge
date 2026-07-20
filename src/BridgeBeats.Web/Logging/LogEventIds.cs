@@ -157,6 +157,14 @@ public static class LogEventIds {
         /// <summary>A manual refresh request was suppressed by the per-admin throttle.</summary>
         public const int StatisticsControllerRefreshThrottled = 4303;
 
+        // RefreshReview disposition (4325-4349)
+
+        /// <summary>An operator completed a refresh-review disposition.</summary>
+        public const int RefreshReviewDisposition = 4325;
+
+        /// <summary>An operator's refresh-review disposition failed.</summary>
+        public const int RefreshReviewDispositionFailed = 4326;
+
         // AppleMusicController (4250-4274)
 
         /// <summary>Storing an Apple Music user token failed.</summary>

@@ -648,6 +648,7 @@ namespace BridgeBeats.Web.Configuration {
             // routing Spotify SongIdLookup/AlbumIdLookup to the type-specific bulk streams.
             _ = services.AddQueueInfrastructure( );
             _ = services.AddAllProviderQueues<QueuedLookupRequest>( );
+            _ = services.AddScoped<IRefreshReviewDispositionService, RefreshReviewDispositionService>( );
 
         }
 

@@ -31,6 +31,7 @@ namespace BridgeBeats.Worker.Maintenance;
 /// <param name="enabledProviders">The set of providers that participate in re-lookups.</param>
 /// <param name="settings">Configuration: PDS URI, user DID, cache freshness window, refresh interval, max records per run, and retry interval.</param>
 /// <param name="logger">The logger for this service.</param>
+/// <param name="refreshReviewStore">Store used to suppress and review unresolved refreshes.</param>
 public sealed partial class StaleCacheRefreshBackgroundService(
     IATProtoStorageService atProtoStorage,
     ISagaStateManager sagaManager,
@@ -38,7 +39,8 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     IConnectionMultiplexer redis,
     HashSet<SupportedProviders> enabledProviders,
     CacheBootstrapSettings settings,
-    ILogger<StaleCacheRefreshBackgroundService> logger
+    ILogger<StaleCacheRefreshBackgroundService> logger,
+    IRefreshReviewStore refreshReviewStore
 ) : BackgroundService {
 
     /// <summary>Redis key that records the UTC instant the most recent refresh pass started.</summary>
@@ -189,6 +191,9 @@ public sealed partial class StaleCacheRefreshBackgroundService(
     ) {
         int maxN = settings.MaxRecordsPerRun;
         DateTime utcNow = DateTime.UtcNow;
+        HashSet<string> unresolvedUris = (await refreshReviewStore.GetUnresolvedAsync( cancellationToken ))
+            .Select( entry => entry.SourceRecordUri )
+            .ToHashSet( StringComparer.Ordinal );
 
         // A SortedSet sorted ascending by (LookedUpAt, AtUri): the Max entry is the newest stale
         // record and is evicted when the set exceeds maxN, leaving only the oldest maxN entries.
@@ -199,6 +204,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
             await foreach ((string atUri, MediaLinkResult result) in
                 atProtoStorage.ListAllRecordsAsync( settings.PdsUri, settings.UserDid, cancellationToken )) {
                 if (!CacheFreshness.IsStale( result.LookedUpAt, settings.CacheDays, utcNow )) {
+                    continue;
+                }
+
+                if (unresolvedUris.Contains( atUri )) {
                     continue;
                 }
 
@@ -282,6 +291,20 @@ public sealed partial class StaleCacheRefreshBackgroundService(
             cancellationToken: cancellationToken
         );
 
+        string? sourceRecordCid = await atProtoStorage.GetMediaLinkRecordCidAsync( atUri, cancellationToken );
+        await refreshReviewStore.RegisterPendingAsync(
+            new RefreshReviewEntry {
+                SourceRecordUri = atUri,
+                SourceRecordCid = sourceRecordCid,
+                SagaId = sagaId,
+                LookupType = sagaLookupType,
+                LookupValue = sagaLookupValue,
+                IsAlbum = recordIsAlbum,
+                SourceResult = result
+            },
+            cancellationToken
+        );
+
         // Initialize exactly the providers we are enqueuing legs for — the mode-B fix.
         await sagaManager.InitializeProviderStatesAsync(
             sagaId,
@@ -299,7 +322,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                 IsAlbum = leg.IsAlbum,
                 Title = leg.Title,
                 Artist = leg.Artist,
-                OriginPriority = QueuePriority.Bulk
+                OriginPriority = QueuePriority.Bulk,
+                Storefront = leg.Storefront,
+                FallbackLookupType = leg.FallbackLookupType,
+                FallbackLookupValue = leg.FallbackLookupValue
             };
 
             IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( leg.Provider );
@@ -348,6 +374,13 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         _ = TryResolveAnchor( record, out string recordExternalId, out bool recordIsAlbum,
             out string? anchorTitle, out string? anchorArtist );
 
+        LookupRequestType? externalLookupType = string.IsNullOrEmpty( recordExternalId )
+            ? null
+            : recordIsAlbum ? LookupRequestType.UpcLookup : LookupRequestType.IsrcLookup;
+        string? externalLookupValue = string.IsNullOrEmpty( recordExternalId )
+            ? null
+            : recordIsAlbum ? recordExternalId : recordExternalId.ToUpperInvariant( );
+
         // Step 2: native-id leg per present provider that is still enabled.
         // Providers absent from enabledProviders are skipped entirely: no native leg is emitted
         // and no fallback is registered — the provider drops off the record on the next write.
@@ -365,7 +398,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                     id.Trim( ),
                     isAlbum,
                     providerResult.Title,
-                    providerResult.Artist
+                    providerResult.Artist,
+                    ResolveProviderStorefront( provider, providerResult ),
+                    externalLookupType,
+                    externalLookupValue
                 ) );
             }
         }
@@ -395,7 +431,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                     fallbackValue,
                     recordIsAlbum,
                     anchorTitle,
-                    anchorArtist
+                    anchorArtist,
+                    ResolveFallbackStorefront( record, provider ),
+                    null,
+                    null
                 ) );
             }
             // If recordExternalId is blank, no fallback can be emitted for this provider.
@@ -433,6 +472,74 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         anchorTitle = null;
         anchorArtist = null;
         return false;
+    }
+
+    /// <summary>
+    /// Returns the provider's own stored storefront when valid, falling back to a storefront encoded
+    /// in its URL. Invalid persisted data is discarded so provider workers never turn it into a
+    /// transport failure.
+    /// </summary>
+    private static string? ResolveProviderStorefront(
+        SupportedProviders provider,
+        MusicLookupResult result
+    ) => NormalizeStorefrontForProvider( provider, result.MarketRegion )
+        ?? NormalizeStorefrontForProvider(
+            provider,
+            ProviderUrlParser.ExtractStorefront( provider, result.URL ?? string.Empty ) );
+
+    /// <summary>
+    /// Finds a storefront from any existing provider result that is valid for the target provider.
+    /// Storefront is resolved independently from the external-id anchor because providers such as
+    /// Spotify do not stamp a market even when another result carries one.
+    /// </summary>
+    private static string? ResolveFallbackStorefront(
+        MediaLinkResult record,
+        SupportedProviders targetProvider
+    ) {
+        foreach ((SupportedProviders sourceProvider, MusicLookupResult result) in record.Results) {
+            // Spotify's DTO carries the generic "us" default but Spotify has no storefront-scoped
+            // catalog capability. It must not override a real Apple Music or Tidal market.
+            if (sourceProvider == SupportedProviders.Spotify) {
+                continue;
+            }
+
+            string? storefront = NormalizeStorefrontForProvider( targetProvider, result.MarketRegion );
+            if (storefront is not null) {
+                return storefront;
+            }
+
+            string? sourceUrlStorefront = ProviderUrlParser.ExtractStorefront(
+                sourceProvider,
+                result.URL ?? string.Empty );
+            storefront = NormalizeStorefrontForProvider( targetProvider, sourceUrlStorefront );
+            if (storefront is not null) {
+                return storefront;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeStorefrontForProvider(
+        SupportedProviders provider,
+        string? storefront
+    ) {
+        if (string.IsNullOrWhiteSpace( storefront ) || provider == SupportedProviders.Spotify) {
+            return null;
+        }
+
+        string normalized = storefront.Trim( );
+        if (!normalized.All( char.IsAsciiLetter )) {
+            return null;
+        }
+
+        return provider switch {
+            SupportedProviders.AppleMusic when normalized.Length is >= 2 and <= 3 =>
+                normalized.ToLowerInvariant( ),
+            SupportedProviders.Tidal when normalized.Length == 2 =>
+                normalized.ToUpperInvariant( ),
+            _ => null
+        };
     }
 
     /// <summary>
@@ -508,7 +615,10 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         string LookupValue,
         bool IsAlbum,
         string? Title,
-        string? Artist
+        string? Artist,
+        string? Storefront,
+        LookupRequestType? FallbackLookupType,
+        string? FallbackLookupValue
     );
 
     #region LoggerMessage Methods

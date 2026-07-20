@@ -526,7 +526,8 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             redisMock.Object,
             enabledProviders,
             settings,
-            new Mock<ILogger<StaleCacheRefreshBackgroundService>>( ).Object
+            new Mock<ILogger<StaleCacheRefreshBackgroundService>>( ).Object,
+            CreateRefreshReviewStore( )
         );
     }
 
@@ -601,8 +602,25 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             resultCombiner,
             queueResolverMock.Object,
             enabledProviders,
-            new Mock<ILogger<SagaCoordinatorBackgroundService>>( ).Object
+            new Mock<ILogger<SagaCoordinatorBackgroundService>>( ).Object,
+            CreateRefreshReviewStore( )
         );
+    }
+
+    private static IRefreshReviewStore CreateRefreshReviewStore( ) {
+        Mock<IRefreshReviewStore> store = new( );
+        _ = store.Setup( candidate => candidate.GetUnresolvedAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( [] );
+        _ = store.Setup( candidate => candidate.RegisterPendingAsync(
+                It.IsAny<RefreshReviewEntry>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+        _ = store.Setup( candidate => candidate.MarkUnresolvedAsync(
+                It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+        _ = store.Setup( candidate => candidate.CompleteAsync(
+                It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+        return store.Object;
     }
 
     /// <summary>Produces a minimal valid JSON result for a provider leg carrying the given ISRC.</summary>

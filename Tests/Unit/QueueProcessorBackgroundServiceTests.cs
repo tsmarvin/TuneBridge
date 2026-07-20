@@ -218,6 +218,79 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>A missing native id falls back to the external id within the same provider leg.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessMessage_NativeIdNotFound_UsesExternalIdFallback( ) {
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.SongIdLookup, "stale-native-id" ) with {
+            FallbackLookupType = LookupRequestType.IsrcLookup,
+            FallbackLookupValue = "USRC12345678"
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+
+        SetupNotRateLimited( );
+        SetupSagaNotComplete( request.SagaId );
+        _ = _lookupServiceMock.Setup( service => service.GetInfoByIDAsync( "stale-native-id", false ) )
+            .ReturnsAsync( (MusicLookupResult?)null );
+        _ = _lookupServiceMock.Setup( service => service.GetInfoByISRCAsync( "USRC12345678" ) )
+            .ReturnsAsync( CreateLookupResult( ) );
+
+        int dequeueCount = 0;
+        _ = _queueMock.Setup( queue => queue.DequeueAsync(
+                It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => dequeueCount++ == 0 ? message : null );
+
+        QueueProcessorBackgroundService service = CreateService( );
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        _lookupServiceMock.Verify( lookup => lookup.GetInfoByIDAsync( "stale-native-id", false ), Times.Once );
+        _lookupServiceMock.Verify( lookup => lookup.GetInfoByISRCAsync( "USRC12345678" ), Times.Once );
+        _sagaManagerMock.Verify( manager => manager.UpdateProviderStateAsync(
+            request.SagaId,
+            It.Is<ProviderLookupState>( state => state.IsComplete && state.IsSuccess ),
+            It.IsAny<CancellationToken>( ) ), Times.Once );
+    }
+
+    /// <summary>The stored storefront is applied to both the native attempt and its fallback.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessMessage_WithStorefront_UsesStorefrontCapabilityForBothAttempts( ) {
+        Mock<IStorefrontMusicLookupService> storefrontLookup = new( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.SongIdLookup, "old-id" ) with {
+            Storefront = "jp",
+            FallbackLookupType = LookupRequestType.IsrcLookup,
+            FallbackLookupValue = "JPABC1234567"
+        };
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+
+        SetupNotRateLimited( );
+        SetupSagaNotComplete( request.SagaId );
+        _ = storefrontLookup.Setup( lookup => lookup.GetInfoByIDAsync( "old-id", false, "jp" ) )
+            .ReturnsAsync( (MusicLookupResult?)null );
+        _ = storefrontLookup.Setup( lookup => lookup.GetInfoByISRCAsync( "JPABC1234567", "jp" ) )
+            .ReturnsAsync( CreateLookupResult( ) );
+
+        int dequeueCount = 0;
+        _ = _queueMock.Setup( queue => queue.DequeueAsync(
+                It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => dequeueCount++ == 0 ? message : null );
+
+        QueueProcessorBackgroundService service = CreateService( storefrontLookup.Object );
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        storefrontLookup.Verify( lookup => lookup.GetInfoByIDAsync( "old-id", false, "jp" ), Times.Once );
+        storefrontLookup.Verify( lookup => lookup.GetInfoByISRCAsync( "JPABC1234567", "jp" ), Times.Once );
+        storefrontLookup.Verify( lookup => lookup.GetInfoByIDAsync( It.IsAny<string>( ), It.IsAny<bool>( ) ), Times.Never );
+    }
+
     /// <summary>
     /// A request carrying <see cref="QueuePriority.Bulk"/> origin priority forwards that priority to
     /// <c>GetOrCreateAsync</c> so the saga records its origin lane.
@@ -1444,13 +1517,13 @@ public class QueueProcessorBackgroundServiceTests {
     /// Builds a <see cref="QueueProcessorBackgroundService"/> bound to <see cref="TestProvider"/> from
     /// the current dependency mocks.
     /// </summary>
-    private QueueProcessorBackgroundService CreateService( ) =>
+    private QueueProcessorBackgroundService CreateService( IMusicLookupService? lookupService = null ) =>
         new(
             _redisMock.Object,
             _queueMock.Object,
             _rateLimitTrackerMock.Object,
             _sagaManagerMock.Object,
-            _lookupServiceMock.Object,
+            lookupService ?? _lookupServiceMock.Object,
             TestProvider,
             _loggerMock.Object
         );

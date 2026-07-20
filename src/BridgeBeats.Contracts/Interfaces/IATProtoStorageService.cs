@@ -1,4 +1,5 @@
 using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Contracts.Enums;
 
 namespace BridgeBeats.Contracts.Interfaces;
 
@@ -33,6 +34,22 @@ public interface IATProtoStorageService {
     /// when no record exists at the given AT-URI.
     /// </returns>
     Task<MediaLinkResult?> GetMediaLinkResultAsync( string recordUri );
+
+    /// <summary>Gets the current CID of a media-link record.</summary>
+    /// <param name="recordUri">The full AT-URI of the record.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The current record CID, or null when the record does not exist.</returns>
+    Task<string?> GetMediaLinkRecordCidAsync( string recordUri, CancellationToken cancellationToken = default );
+
+    /// <summary>Deletes an expected media-link record revision from the authenticated user's PDS.</summary>
+    /// <param name="recordUri">The full AT-URI of the record to delete.</param>
+    /// <param name="expectedCid">The record CID that must still be current.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The idempotent, revision-aware deletion outcome.</returns>
+    Task<MediaLinkDeleteOutcome> DeleteMediaLinkResultAsync(
+        string recordUri,
+        string expectedCid,
+        CancellationToken cancellationToken = default );
 
     /// <summary>
     /// Streams every stored media-link record for a given PDS and user, pairing each record's

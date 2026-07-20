@@ -127,7 +127,10 @@ public class QueueContractsTests {
             SagaId = "saga-789",
             CreatedAt = createdAt,
             AttemptCount = 2,
-            RateLimitedEndpoint = "/v1/catalog/us/albums"
+            RateLimitedEndpoint = "/v1/catalog/us/albums",
+            Storefront = "jp",
+            FallbackLookupType = LookupRequestType.UpcLookup,
+            FallbackLookupValue = "0123456789012"
         };
 
         // Act
@@ -161,6 +164,30 @@ public class QueueContractsTests {
         Assert.DoesNotContain( "\"artist\"", json, "JSON should not contain 'artist' field" );
         Assert.DoesNotContain( "\"title\"", json, "JSON should not contain 'title' field" );
         Assert.DoesNotContain( "\"rateLimitedEndpoint\"", json, "JSON should not contain 'rateLimitedEndpoint' field" );
+        Assert.DoesNotContain( "\"storefront\"", json, "JSON should not contain 'storefront' field" );
+        Assert.DoesNotContain( "\"fallbackLookupType\"", json, "JSON should not contain 'fallbackLookupType' field" );
+        Assert.DoesNotContain( "\"fallbackLookupValue\"", json, "JSON should not contain 'fallbackLookupValue' field" );
+    }
+
+    /// <summary>A payload written before storefront fallback fields existed remains readable.</summary>
+    [TestMethod]
+    public void QueuedLookupRequest_Deserialization_LegacyPayloadDefaultsNewFields( ) {
+        const string Json = """
+            {
+              "requestId":"req-legacy",
+              "provider":2,
+              "lookupType":1,
+              "lookupValue":"USRC12345678",
+              "sagaId":"saga-legacy"
+            }
+            """;
+
+        QueuedLookupRequest? request = JsonSerializer.Deserialize<QueuedLookupRequest>( Json, s_jsonOptions );
+
+        Assert.IsNotNull( request );
+        Assert.IsNull( request.Storefront );
+        Assert.IsNull( request.FallbackLookupType );
+        Assert.IsNull( request.FallbackLookupValue );
     }
 
     #endregion

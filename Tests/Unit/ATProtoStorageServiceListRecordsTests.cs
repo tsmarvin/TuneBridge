@@ -152,6 +152,10 @@ public class ATProtoStorageServiceListRecordsTests {
         // Assert: exactly 3 tuples with correct AT-URI format; playlist filtered out
         Assert.HasCount( 3, results );
         Assert.IsTrue( results.All( r => r.AtUri.StartsWith( $"at://{TestDid}/link.bridgebeats.lookup/", StringComparison.Ordinal ) ) );
+        string? firstCid = await service.GetMediaLinkRecordCidAsync(
+            $"at://{TestDid}/link.bridgebeats.lookup/rkey1",
+            TestContext.CancellationToken );
+        Assert.AreEqual( new idunno.AtProto.Cid( cid1 ).ToString( ), firstCid );
 
         // Verify exactly one HTTP request was made
         _httpHandlerMock.Protected( ).Verify(

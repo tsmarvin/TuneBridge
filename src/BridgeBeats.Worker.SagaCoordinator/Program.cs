@@ -116,7 +116,8 @@ public static class Program {
             sp.GetRequiredService<SagaResultCombiner>( ),
             sp.GetRequiredService<IProviderQueueResolver<QueuedLookupRequest>>( ),
             sp.GetRequiredService<HashSet<SupportedProviders>>( ),
-            sp.GetRequiredService<ILogger<SagaCoordinatorBackgroundService>>( )
+            sp.GetRequiredService<ILogger<SagaCoordinatorBackgroundService>>( ),
+            sp.GetRequiredService<IRefreshReviewStore>( )
         ) );
     }
 

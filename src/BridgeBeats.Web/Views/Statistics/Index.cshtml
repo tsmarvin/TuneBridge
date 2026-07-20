@@ -27,12 +27,17 @@
         <h1 class="mb-0">Collection Statistics</h1>
         @if (User.IsInRole( Roles.AspireDashboardAccess ))
         {
-            <form asp-action="Refresh" method="post" class="d-inline">
-                @Html.AntiForgeryToken()
-                <button type="submit" class="btn btn-outline-secondary btn-sm" title="Refresh statistics">
-                    <i class="bi bi-arrow-clockwise"></i> Refresh
-                </button>
-            </form>
+            <div class="d-flex gap-2">
+                <a asp-controller="RefreshReview" asp-action="Index" class="btn btn-outline-secondary btn-sm">
+                    Refresh review
+                </a>
+                <form asp-action="Refresh" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-outline-secondary btn-sm" title="Refresh statistics">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                </form>
+            </div>
         }
     </div>
 

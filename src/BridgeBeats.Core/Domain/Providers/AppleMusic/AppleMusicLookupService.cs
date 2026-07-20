@@ -28,7 +28,7 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
         IHttpClientFactory factory,
         ILogger<AppleMusicLookupService> logger,
         JsonSerializerOptions serializerOptions
-    ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService {
+    ) : MusicLookupServiceBase( logger, serializerOptions ), IStorefrontMusicLookupService {
 
         /// <summary>
         /// The default market region/storefront (country) used for Apple Music API requests when a lookup
@@ -42,22 +42,35 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
         #region IMusicLookupService Public
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc ) =>
-            ParseAppleMusicResponse(
-                await NewMusicApiRequest( AppleMusicLinkParser.GetSongsIsrcURI( DefaultStorefront, isrc ), LookupRequestType.IsrcLookup ),
-                LookupRequestType.IsrcLookup,
-                DefaultStorefront,
-                false
-            );
+        public override Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc )
+            => GetInfoByISRCAsync( isrc, DefaultStorefront );
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResult?> GetInfoByUPCAsync( string upc )
-            => ParseAppleMusicResponse(
-                await NewMusicApiRequest( AppleMusicLinkParser.GetAlbumUpcURI( DefaultStorefront, upc ), LookupRequestType.UpcLookup ),
+        public async Task<MusicLookupResult?> GetInfoByISRCAsync( string isrc, string storefront ) {
+            storefront = NormalizeStorefront( storefront );
+            return
+            ParseAppleMusicResponse(
+                await NewMusicApiRequest( AppleMusicLinkParser.GetSongsIsrcURI( storefront, isrc ), LookupRequestType.IsrcLookup ),
+                LookupRequestType.IsrcLookup,
+                storefront,
+                false
+            );
+        }
+
+        /// <inheritdoc/>
+        public override Task<MusicLookupResult?> GetInfoByUPCAsync( string upc )
+            => GetInfoByUPCAsync( upc, DefaultStorefront );
+
+        /// <inheritdoc/>
+        public async Task<MusicLookupResult?> GetInfoByUPCAsync( string upc, string storefront ) {
+            storefront = NormalizeStorefront( storefront );
+            return ParseAppleMusicResponse(
+                await NewMusicApiRequest( AppleMusicLinkParser.GetAlbumUpcURI( storefront, upc ), LookupRequestType.UpcLookup ),
                 LookupRequestType.UpcLookup,
-                DefaultStorefront,
+                storefront,
                 true
             );
+        }
 
         /// <inheritdoc/>
         public override async Task<MusicLookupResult?> GetInfoAsync( string title, string artist ) {
@@ -111,19 +124,29 @@ namespace BridgeBeats.Core.Domain.Providers.AppleMusic {
                 : null;
 
         /// <inheritdoc/>
-        public override async Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum ) {
+        public override Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum )
+            => GetInfoByIDAsync( providerId, isAlbum, DefaultStorefront );
+
+        /// <inheritdoc/>
+        public async Task<MusicLookupResult?> GetInfoByIDAsync( string providerId, bool isAlbum, string storefront ) {
+            storefront = NormalizeStorefront( storefront );
             string requestUri = isAlbum
-                ? AppleMusicLinkParser.GetAlbumIdUri( DefaultStorefront, providerId )
-                : AppleMusicLinkParser.GetSongIdUri( DefaultStorefront, providerId );
+                ? AppleMusicLinkParser.GetAlbumIdUri( storefront, providerId )
+                : AppleMusicLinkParser.GetSongIdUri( storefront, providerId );
 
             LookupRequestType requestKey = isAlbum ? LookupRequestType.AlbumIdLookup : LookupRequestType.SongIdLookup;
             return ParseAppleMusicResponse(
                 await NewMusicApiRequest( requestUri, requestKey ),
                 requestKey,
-                DefaultStorefront,
+                storefront,
                 isAlbum
             );
         }
+
+        private static string NormalizeStorefront( string storefront )
+            => string.IsNullOrWhiteSpace( storefront )
+                ? DefaultStorefront
+                : storefront.Trim( ).ToLowerInvariant( );
 
         #endregion IMusicLookupService Public
 

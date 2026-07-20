@@ -54,6 +54,7 @@ namespace BridgeBeats.Worker.SagaCoordinator;
 /// <param name="queueResolver">Resolves the per-provider queue used to enqueue secondary lookups.</param>
 /// <param name="enabledProviders">The providers eligible for secondary fan-out.</param>
 /// <param name="logger">The logger for this service.</param>
+/// <param name="refreshReviewStore">Stale-refresh context and unresolved-review store.</param>
 public sealed partial class SagaCoordinatorBackgroundService(
     IConnectionMultiplexer redis,
     ISagaStateManager sagaManager,
@@ -63,7 +64,8 @@ public sealed partial class SagaCoordinatorBackgroundService(
     SagaResultCombiner resultCombiner,
     IProviderQueueResolver<QueuedLookupRequest> queueResolver,
     HashSet<SupportedProviders> enabledProviders,
-    ILogger<SagaCoordinatorBackgroundService> logger
+    ILogger<SagaCoordinatorBackgroundService> logger,
+    IRefreshReviewStore refreshReviewStore
     ) : BackgroundService {
     private readonly IConnectionMultiplexer _redis = redis
                                                    ?? throw new ArgumentNullException( nameof( redis ) );
@@ -83,6 +85,8 @@ public sealed partial class SagaCoordinatorBackgroundService(
                                                                    ?? throw new ArgumentNullException( nameof( enabledProviders ) );
     private readonly ILogger<SagaCoordinatorBackgroundService> _logger = logger
                                                                        ?? throw new ArgumentNullException( nameof( logger ) );
+    private readonly IRefreshReviewStore _refreshReviewStore = refreshReviewStore
+                                                               ?? throw new ArgumentNullException( nameof( refreshReviewStore ) );
 
     private const string SagaCompletedChannel = "saga:completed";
     private const string LookupCompleteChannelPattern = "complete:*";
@@ -430,8 +434,14 @@ public sealed partial class SagaCoordinatorBackgroundService(
 
         if (finalResult is null) {
             if (terminal) {
-                // Complete saga with zero successes: release waiters and discard the saga.
+                // Preserve stale-refresh context for operator review before discarding the saga.
+                // The store is idempotent, so the polling backstop can safely retry this sequence.
                 LogNoSuccessfulResults( _logger, saga.SagaId );
+                await _refreshReviewStore.MarkUnresolvedAsync(
+                    saga.SagaId,
+                    "All provider refresh legs completed without a result.",
+                    ct
+                );
                 await _deduplicator.ReleaseAsync( saga.LookupKey, null, ct );
                 _ = await _sagaManager.DeleteAsync( saga.SagaId, ct );
             } else {
@@ -467,6 +477,13 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 // write against an already-recorded URI.
                 await _sagaManager.SetFinalResultUriAsync( saga.SagaId, recordUri, ct );
                 uriRecorded = true;
+
+                try {
+                    await _refreshReviewStore.CompleteAsync( saga.SagaId, ct );
+                } catch {
+                    // Pending context has the saga TTL and self-expires. A cleanup failure must
+                    // not turn an already-durable PDS write into a failed finalization.
+                }
 
                 // Clear the partial flag before releasing waiters so the waiter's isFinal read
                 // is already authoritative by the time it wakes.
