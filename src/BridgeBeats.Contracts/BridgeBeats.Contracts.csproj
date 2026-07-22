@@ -16,6 +16,7 @@
   <ItemGroup>
     <PackageReference Include="idunno.AtProto" Version="3.0.0" />
     <PackageReference Include="idunno.Bluesky" Version="3.0.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
   </ItemGroup>
 
   <ItemGroup>
