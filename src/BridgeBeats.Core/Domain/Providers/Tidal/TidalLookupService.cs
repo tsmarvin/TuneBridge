@@ -26,7 +26,7 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
     /// included resources: artist names are resolved by replacing <c>|artistId|</c>
     /// placeholders with the matching included artist's name, and album art for a track
     /// requires a secondary album lookup. Genre names found in a response are written
-    /// to the optional <see cref="IGenreCacheService"/> as a best-effort, non-blocking
+    /// to the <see cref="IGenreCacheService"/> as a best-effort
     /// side effect.
     /// </para>
     /// </remarks>
@@ -35,15 +35,14 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
     /// <param name="logger">Logger for lookup and parse diagnostics.</param>
     /// <param name="serializerOptions">JSON options used to deserialize Tidal responses.</param>
     /// <param name="genreCache">
-    /// Optional genre cache; when supplied, resolved genre names are cached
-    /// best-effort. When <see langword="null"/>, genre caching is skipped.
+    /// Genre cache used to store provider-native track genres.
     /// </param>
     public sealed partial class TidalLookupService(
         TidalTokenHandler handler,
         IHttpClientFactory factory,
         ILogger<TidalLookupService> logger,
         JsonSerializerOptions serializerOptions,
-        IGenreCacheService? genreCache = null
+        IGenreCacheService genreCache
     ) : MusicLookupServiceBase( logger, serializerOptions ), IStorefrontMusicLookupService {
 
         /// <summary>
@@ -481,8 +480,9 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
 
                 result.ArtUrl = await GetAlbumArtUrl( included, isAlbum, storefront );
 
-                // Cache genres if available (fire and forget - don't block the response)
-                CacheGenresFromIncluded( data, included );
+                if (!isAlbum) {
+                    await CacheGenresFromIncludedAsync( data, included );
+                }
 
                 return result;
             } catch (Exception ex) {
@@ -644,33 +644,30 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
 
         /// <summary>
         /// Resolves the genre names for a resource and writes them to the genre cache
-        /// as a best-effort, non-blocking side effect.
+        /// as an awaited, best-effort side effect.
         /// </summary>
         /// <remarks>
         /// Collects the genre ids from the resource's genres relationship, resolves
         /// their names from the side-loaded genre resources, and stores them via the
-        /// optional <see cref="IGenreCacheService"/>. The write runs on a background
-        /// task and swallows failures with a warning log. No-ops when no genre cache is
-        /// configured, the resource has no id, or no genres resolve.
+        /// <see cref="IGenreCacheService"/>. Cache failures are logged without failing
+        /// the provider lookup. No-ops when the resource has no id or its genre
+        /// relationship was not returned by Tidal.
         /// </remarks>
         /// <param name="data">The primary resource whose genres are cached.</param>
         /// <param name="included">The side-loaded resources containing genre details.</param>
-        private void CacheGenresFromIncluded( TidalResource data, List<TidalResource> included ) {
-            if (genreCache == null || string.IsNullOrWhiteSpace( data.Id )) {
+        private async Task CacheGenresFromIncludedAsync( TidalResource data, List<TidalResource> included ) {
+            List<TidalResourceIdentifier>? genreReferences = data.Relationships?.Genres?.Data;
+            if (string.IsNullOrWhiteSpace( data.Id ) || genreReferences == null) {
                 return;
             }
 
             // Get genre IDs from relationships
             HashSet<string> genreIds = [];
-            if (data.Relationships?.Genres?.Data != null) {
-                foreach (TidalResourceIdentifier genreRef in data.Relationships.Genres.Data) {
-                    if (genreRef.Type == "genres" && !string.IsNullOrWhiteSpace( genreRef.Id )) {
-                        _ = genreIds.Add( genreRef.Id );
-                    }
+            foreach (TidalResourceIdentifier genreRef in genreReferences) {
+                if (genreRef.Type == "genres" && !string.IsNullOrWhiteSpace( genreRef.Id )) {
+                    _ = genreIds.Add( genreRef.Id );
                 }
             }
-
-            if (genreIds.Count == 0) { return; }
 
             // Find matching genre names in included array
             List<string> genreNames = [];
@@ -679,22 +676,17 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
                     && !string.IsNullOrWhiteSpace( item.Id )
                     && genreIds.Contains( item.Id )
                     && item.Attributes != null
-                    && !string.IsNullOrWhiteSpace( item.Attributes.Name )
+                    && !string.IsNullOrWhiteSpace( item.Attributes.GenreName )
                 ) {
-                    genreNames.Add( item.Attributes.Name );
+                    genreNames.Add( item.Attributes.GenreName );
                 }
             }
 
-            if (genreNames.Count == 0) { return; }
-
-            // Fire and forget - don't block the response
-            _ = Task.Run( async ( ) => {
-                try {
-                    await genreCache.SetGenresAsync( SupportedProviders.Tidal, data.Id, genreNames );
-                } catch (Exception ex) {
-                    LogCacheGenresFailed( Logger, ex, data.Id );
-                }
-            } );
+            try {
+                await genreCache.SetGenresAsync( SupportedProviders.Tidal, data.Id, genreNames );
+            } catch (Exception ex) {
+                LogCacheGenresFailed( Logger, ex, data.Id );
+            }
         }
 
         #region LoggerMessage Methods

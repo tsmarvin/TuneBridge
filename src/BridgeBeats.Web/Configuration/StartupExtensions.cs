@@ -55,6 +55,10 @@ namespace BridgeBeats.Web.Configuration {
             // In tests, CustomWebApplicationFactory provides the connection string via Testcontainers
             builder.AddRedisClient( "redis" );
 
+            // Direct provider mode resolves Apple Music and Tidal lookups in this process,
+            // so their required track genre cache must be available here as well as in workers.
+            _ = builder.Services.AddGenreCache( );
+
             _ = builder.WebHost.ConfigureBridgeBeatsServices(
                 builder.Services,
                 builder.Configuration

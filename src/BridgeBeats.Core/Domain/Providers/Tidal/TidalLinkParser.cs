@@ -191,8 +191,8 @@ namespace BridgeBeats.Providers.Tidal {
             return Uri.EscapeDataString( value.Trim( ) );
         }
 
-        /// <summary>Template for the ISRC-filtered tracks request, side-loading albums and artists.</summary>
-        private const string TracksIsrcURI = "tracks?filter%5Bisrc%5D={isrc}&countryCode={storefront}&include=albums,artists";
+        /// <summary>Template for the ISRC-filtered tracks request, side-loading albums, artists, and genres.</summary>
+        private const string TracksIsrcURI = "tracks?filter%5Bisrc%5D={isrc}&countryCode={storefront}&include=albums,artists,genres";
 
         /// <summary>Template for the UPC-filtered albums request, side-loading artists and cover art.</summary>
         private const string AlbumsUpcURI = "albums?filter%5BbarcodeId%5D={upc}&countryCode={storefront}&include=artists,coverArt";
@@ -206,8 +206,8 @@ namespace BridgeBeats.Providers.Tidal {
         /// <summary>Template for the artist-tracks relationship request, fingerprint-collapsed and side-loading track resources.</summary>
         private const string ArtistTrackRelationshipsUri = "artists/{artistId}/relationships/tracks?countryCode={storefront}&collapseBy=FINGERPRINT&include=tracks";
 
-        /// <summary>Template for the track-by-id request, side-loading albums and artists.</summary>
-        private const string TrackIdUri = "tracks/{trackId}?countryCode={storefront}&include=albums,artists";
+        /// <summary>Template for the track-by-id request, side-loading albums, artists, and genres.</summary>
+        private const string TrackIdUri = "tracks/{trackId}?countryCode={storefront}&include=albums,artists,genres";
 
         /// <summary>Template for the album-by-id request, side-loading artists and cover art.</summary>
         private const string AlbumIdUri = "albums/{albumId}?countryCode={storefront}&include=artists,coverArt";
