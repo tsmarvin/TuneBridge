@@ -34,9 +34,7 @@ public sealed partial class SerilogOpenTelemetryForwardingTests {
             Assert.AreEqual( "track-123", entry.Properties["TrackId"] );
             Assert.AreEqual( "Probe {TrackId}", entry.Properties["{OriginalFormat}"] );
         } finally {
-            if (Directory.Exists( logDirectory )) {
-                Directory.Delete( logDirectory, recursive: true );
-            }
+            TryDeleteLogDirectory( logDirectory );
         }
     }
 
@@ -74,14 +72,30 @@ public sealed partial class SerilogOpenTelemetryForwardingTests {
             Assert.AreEqual( "track-456", entry.Properties["TrackId"] );
             Assert.AreEqual( "Generic host probe {TrackId}", entry.Properties["{OriginalFormat}"] );
         } finally {
-            if (Directory.Exists( logDirectory )) {
-                Directory.Delete( logDirectory, recursive: true );
-            }
+            TryDeleteLogDirectory( logDirectory );
         }
     }
 
     [LoggerMessage( EventId = 4300, Level = LogLevel.Information, Message = "Generic host probe {TrackId}" )]
     private static partial void LogGenericHostTelemetryProbe( ILogger logger, string trackId );
+
+    /// <summary>
+    /// Deletes the test's temporary log directory on a best-effort basis. A Serilog file-sink handle
+    /// held transiently at test teardown can make <see cref="Directory.Delete(string, bool)"/> throw
+    /// even though the test's assertions have already completed; that cleanup failure must not fail
+    /// an otherwise-passing test.
+    /// </summary>
+    private static void TryDeleteLogDirectory( string logDirectory ) {
+        if (!Directory.Exists( logDirectory )) {
+            return;
+        }
+
+        try {
+            Directory.Delete( logDirectory, recursive: true );
+        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
+            // Best-effort cleanup only; swallow transient file-lock failures.
+        }
+    }
 
     private sealed record CapturedLog( EventId EventId, IReadOnlyDictionary<string, object?> Properties );
 

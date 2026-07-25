@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using BridgeBeats.Contracts.Exceptions;
+using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Providers.Spotify;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -178,12 +179,14 @@ public class SpotifyBulkStatusMappingTests {
         _ = apiFactory.Setup( f => f.CreateClient( "spotify-api" ) ).Returns( apiClient );
 
         Mock<ILogger<SpotifyLookupService>> svcLogger = new( );
+        Mock<IGenreCacheService> genreCache = new( );
 
         return new SpotifyLookupService(
             handler: tokenHandler,
             factory: apiFactory.Object,
             logger: svcLogger.Object,
-            serializerOptions: new JsonSerializerOptions( )
+            serializerOptions: new JsonSerializerOptions( ),
+            genreCache: genreCache.Object
         );
     }
 

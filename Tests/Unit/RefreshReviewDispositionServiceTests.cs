@@ -39,6 +39,31 @@ public class RefreshReviewDispositionServiceTests {
         Assert.IsLessThan( reviewOrder, pdsOrder );
     }
 
+    /// <summary>
+    /// When the CAS-guarded review-entry cleanup finds the entry already changed concurrently
+    /// (a different actor or worker touched it between this method's read and its cleanup call),
+    /// the disposition still completes and reports the underlying delete outcome rather than
+    /// throwing or surfacing the skipped cleanup as a failure.
+    /// </summary>
+    [TestMethod]
+    public async Task Delete_CleanupCasMismatch_StillCompletesAndReturnsDeleted( ) {
+        Mock<IRefreshReviewStore> reviewStore = new( );
+        Mock<IATProtoStorageService> storage = new( );
+        _ = reviewStore.Setup( store => store.GetUnresolvedAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( [CreateEntry( )] );
+        _ = storage.Setup( service => service.DeleteMediaLinkResultAsync(
+                SourceUri, SourceCid, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( MediaLinkDeleteOutcome.Deleted );
+        _ = reviewStore.Setup( store => store.DeleteUnresolvedAsync(
+                SourceUri, "refresh-saga", SourceCid, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( false );
+
+        RefreshReviewDispositionOutcome outcome = await CreateService( reviewStore, storage ).DeleteAsync(
+            SourceUri, "refresh-saga", SourceCid, "admin", CancellationToken.None );
+
+        Assert.AreEqual( RefreshReviewDispositionOutcome.Deleted, outcome );
+    }
+
     /// <summary>A changed revision is preserved while its obsolete review entry is cleared.</summary>
     [TestMethod]
     public async Task Delete_RevisionChanged_PreservesCurrentRecordAndClearsReview( ) {

@@ -60,11 +60,18 @@ public sealed partial class RefreshReviewDispositionService(
 
             // Deleted, already-absent, and changed records all make the captured review entry
             // obsolete. In the changed case the newer PDS revision is deliberately preserved.
-            _ = await reviewStore.DeleteUnresolvedAsync(
+            bool cleanupCleared = await reviewStore.DeleteUnresolvedAsync(
                 sourceRecordUri,
                 expectedSagaId,
                 expectedSourceRecordCid,
                 cancellationToken );
+            if (!cleanupCleared) {
+                // The CAS guard found the review entry had already changed concurrently (a
+                // different actor or worker touched it after this method's own read above), so it
+                // was deliberately left in place rather than removed. Correct behavior, but worth
+                // recording in the audit trail since it means cleanup did not happen as expected.
+                LogCleanupSkipped( logger, actorId, sourceRecordUri, expectedSagaId, expectedSourceRecordCid );
+            }
 
             (RefreshReviewDispositionOutcome outcome, string auditOutcome) = deleteOutcome switch {
                 MediaLinkDeleteOutcome.Deleted => (RefreshReviewDispositionOutcome.Deleted, "deleted"),
@@ -102,4 +109,15 @@ public sealed partial class RefreshReviewDispositionService(
         string actorId,
         string sourceRecordUri,
         string sourceRecordCid );
+
+    [LoggerMessage(
+        EventId = Logging.LogEventIds.Controllers.RefreshReviewDispositionCleanupSkipped,
+        Level = LogLevel.Information,
+        Message = "Refresh-review cleanup by {ActorId} for {SourceRecordUri} skipped: review entry changed concurrently (expected saga {ExpectedSagaId}, CID {ExpectedSourceRecordCid})" )]
+    private static partial void LogCleanupSkipped(
+        ILogger logger,
+        string actorId,
+        string sourceRecordUri,
+        string expectedSagaId,
+        string expectedSourceRecordCid );
 }
