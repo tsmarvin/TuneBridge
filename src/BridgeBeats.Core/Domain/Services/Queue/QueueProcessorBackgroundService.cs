@@ -263,7 +263,6 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         MusicLookupResult? result = await PerformSingleLookupAsync(
             request.LookupType,
             request.LookupValue,
-            request.IsAlbum,
             request.Title,
             request.Artist,
             request.Storefront
@@ -278,7 +277,6 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         return await PerformSingleLookupAsync(
             request.FallbackLookupType.Value,
             request.FallbackLookupValue,
-            request.IsAlbum,
             request.Title,
             request.Artist,
             request.Storefront
@@ -288,7 +286,6 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
     private async Task<MusicLookupResult?> PerformSingleLookupAsync(
         LookupRequestType lookupType,
         string lookupValue,
-        bool isAlbum,
         string? title,
         string? artist,
         string? storefront

@@ -639,6 +639,38 @@ public class SagaCoordinatorBackgroundServiceTests {
             "The review entry must be durable before the saga is deleted." );
     }
 
+    /// <summary>A review-store outage does not strand a terminal saga or its deduplication waiters.</summary>
+    [TestMethod]
+    public async Task WriteFinalResult_ReviewStoreFailure_ReleasesAndDeletesSaga( ) {
+        Mock<IRefreshReviewStore> reviewStore = new( );
+        _ = reviewStore.Setup( store => store.MarkUnresolvedAsync(
+                TestSagaId, It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "Redis unavailable" ) );
+        _ = _sagaManagerMock.Setup( manager => manager.DeleteAsync(
+                TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( true );
+
+        LookupSagaState failedSaga = CreateCompleteSaga( ) with {
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: false,
+                    ResultJson: null,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: "Not found" )
+            }
+        };
+
+        await CreateService( reviewStore.Object ).InvokeFinalizeForTestAsync(
+            failedSaga, TestContext.CancellationToken );
+
+        _deduplicatorMock.Verify( deduplicator => deduplicator.ReleaseAsync(
+            failedSaga.LookupKey, null, It.IsAny<CancellationToken>( ) ), Times.Once );
+        _sagaManagerMock.Verify( manager => manager.DeleteAsync(
+            TestSagaId, It.IsAny<CancellationToken>( ) ), Times.Once );
+    }
+
     /// <summary>
     /// Verifies that finalizing a saga clears its partial flag (sets <c>IsPartial</c> false), so a
     /// finalized saga is no longer treated as partial.

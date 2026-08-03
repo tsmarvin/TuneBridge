@@ -188,7 +188,7 @@ public partial class ATProtoStorageService(
                 return cachedCid;
             }
         } finally {
-            _carCacheLock.Release( );
+            _ = _carCacheLock.Release( );
         }
 
         BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( cancellationToken );
@@ -265,7 +265,7 @@ public partial class ATProtoStorageService(
             _cachedCarTimestamp = default;
             _ = _cachedRecordCids.Remove( recordUri );
         } finally {
-            _carCacheLock.Release( );
+            _ = _carCacheLock.Release( );
         }
 
         return MediaLinkDeleteOutcome.Deleted;
@@ -280,7 +280,7 @@ public partial class ATProtoStorageService(
         try {
             _cachedRecordCids[recordUri] = cid;
         } finally {
-            _carCacheLock.Release( );
+            _ = _carCacheLock.Release( );
         }
     }
 
@@ -509,7 +509,7 @@ public partial class ATProtoStorageService(
             LogCarCacheMiss( logger, forceRefresh );
             LogCarCacheRefreshStart( logger );
 
-            List<(string AtUri, MediaLinkResult Result)> fresh =
+            (List<(string AtUri, MediaLinkResult Result)> fresh, Dictionary<string, string> freshRecordCids) =
                 await DownloadAndParseCarWithRetryAsync( pdsUri, userDid, cancellationToken );
 
             // Evict log: only when replacing a previously-expired entry, not on cold first populate.
@@ -519,6 +519,7 @@ public partial class ATProtoStorageService(
 
             _cachedCarRecords = fresh;
             _cachedCarTimestamp = DateTimeOffset.UtcNow;
+            _cachedRecordCids = freshRecordCids;
             LogCarCacheRefreshComplete( logger, fresh.Count, _cachedCarTimestamp );
 
             return fresh;
@@ -532,7 +533,8 @@ public partial class ATProtoStorageService(
     /// CarParseException, HttpRequestException, and HttpClient-deadline OperationCanceledException.
     /// Caller-token cancellation propagates immediately and is never retried.
     /// </summary>
-    private async Task<List<(string AtUri, MediaLinkResult Result)>> DownloadAndParseCarWithRetryAsync(
+    private async Task<(List<(string AtUri, MediaLinkResult Result)> Records, Dictionary<string, string> RecordCids)>
+        DownloadAndParseCarWithRetryAsync(
         Uri pdsUri,
         string userDid,
         CancellationToken cancellationToken
@@ -590,9 +592,13 @@ public partial class ATProtoStorageService(
     /// <param name="pdsUri">The base URI of the PDS hosting the repository.</param>
     /// <param name="userDid">The repository owner's DID.</param>
     /// <param name="cancellationToken">A token observed during download and enumeration.</param>
-    /// <returns>The fully-materialized list of valid <c>(AT-URI, result)</c> pairs.</returns>
+    /// <returns>
+    /// The fully-materialized list of valid <c>(AT-URI, result)</c> pairs and their record CIDs.
+    /// The caller publishes both caches together while holding <see cref="_carCacheLock"/>.
+    /// </returns>
     /// <exception cref="CarParseException">Thrown when the download is truncated or the CAR fails to parse.</exception>
-    private async Task<List<(string AtUri, MediaLinkResult Result)>> DownloadAndParseCarAsync(
+    private async Task<(List<(string AtUri, MediaLinkResult Result)> Records, Dictionary<string, string> RecordCids)>
+        DownloadAndParseCarAsync(
         Uri pdsUri,
         string userDid,
         CancellationToken cancellationToken
@@ -715,7 +721,6 @@ public partial class ATProtoStorageService(
 
             LogCarDownloaded( logger, carMemory.Length, enumResult.BlockCount, elapsedMs );
             LogCarEnumerated( logger, recordCount, skippedCount );
-            _cachedRecordCids = recordCids;
         } catch (CarParseException ex) {
             LogCarDownloadFailed( logger, ex );
             throw;
@@ -723,7 +728,7 @@ public partial class ATProtoStorageService(
             throw;
         }
 
-        return results;
+        return (results, recordCids);
     }
 
     #region Rkey validation

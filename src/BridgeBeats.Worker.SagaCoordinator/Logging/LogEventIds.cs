@@ -172,6 +172,9 @@ public static class LogEventIds {
     /// <summary>Post-release cache indexing failed; the result is already written and waiters are released, so the failure is swallowed.</summary>
     public const int PostReleaseIndexFailed = 5055;
 
+    /// <summary>Persisting a terminal zero-result saga for refresh review failed; terminal cleanup continues.</summary>
+    public const int RefreshReviewPersistenceFailed = 5056;
+
     #region Program Startup (5100-5124)
 
     /// <summary>The set of providers enabled for secondary lookups, logged once at startup after the logging pipeline is live.</summary>

@@ -437,11 +437,17 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 // Preserve stale-refresh context for operator review before discarding the saga.
                 // The store is idempotent, so the polling backstop can safely retry this sequence.
                 LogNoSuccessfulResults( _logger, saga.SagaId );
-                await _refreshReviewStore.MarkUnresolvedAsync(
-                    saga.SagaId,
-                    "All provider refresh legs completed without a result.",
-                    ct
-                );
+                try {
+                    await _refreshReviewStore.MarkUnresolvedAsync(
+                        saga.SagaId,
+                        "All provider refresh legs completed without a result.",
+                        ct
+                    );
+                } catch (Exception reviewEx) {
+                    // Review persistence is operational bookkeeping. A Redis outage must not
+                    // strand a terminal saga or leave its deduplication waiters blocked.
+                    LogRefreshReviewPersistenceFailed( _logger, reviewEx, saga.SagaId );
+                }
                 await _deduplicator.ReleaseAsync( saga.LookupKey, null, ct );
                 _ = await _sagaManager.DeleteAsync( saga.SagaId, ct );
             } else {
@@ -1111,6 +1117,16 @@ public sealed partial class SagaCoordinatorBackgroundService(
         Level = LogLevel.Warning,
         Message = "Saga {SagaId} completed with no successful results, cleaning up" )]
     private static partial void LogNoSuccessfulResults( ILogger logger, string sagaId );
+
+    /// <summary>Logs that a zero-result saga could not be persisted for operator review.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception raised by the review store.</param>
+    /// <param name="sagaId">The terminal saga whose review entry was not persisted.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshReviewPersistenceFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to persist zero-result saga {SagaId} for refresh review; continuing terminal cleanup" )]
+    private static partial void LogRefreshReviewPersistenceFailed( ILogger logger, Exception ex, string sagaId );
 
     /// <summary>Logs that this handler lost the finalize claim race and is deferring to the winner.</summary>
     /// <param name="logger">The logger to write to.</param>
