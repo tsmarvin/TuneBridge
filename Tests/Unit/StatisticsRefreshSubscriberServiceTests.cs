@@ -109,15 +109,24 @@ public class StatisticsRefreshSubscriberServiceTests {
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )]
     public async Task StartAsync_SubscribesToStatisticsRefreshRequestedChannel( ) {
+        // Signal deterministically when SubscribeAsync has been reached, instead of a fixed delay
+        // that can race the cancellation below and skip the subscribe call entirely.
+        TaskCompletionSource subscribedTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        _ = _subscriberMock
+            .Setup( s => s.SubscribeAsync(
+                It.IsAny<RedisChannel>( ), It.IsAny<Action<RedisChannel, RedisValue>>( ),
+                It.IsAny<CommandFlags>( ) ) )
+            .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
+                ( _, _, _ ) => subscribedTcs.TrySetResult( ) )
+            .Returns( Task.CompletedTask );
+
         using CancellationTokenSource cts = new( );
 
         StatisticsRefreshSubscriberService service = CreateSubscriberService( );
-        Task startTask = service.StartAsync( cts.Token );
+        _ = service.StartAsync( cts.Token );
 
-        // Give the subscription a moment to reach SubscribeAsync.
-        await Task.Delay( 200, TestContext.CancellationToken );
-        await cts.CancelAsync( );
-        await startTask;
+        await subscribedTcs.Task.WaitAsync( TestContext.CancellationToken );
+        await service.StopAsync( CancellationToken.None );
 
         _subscriberMock.Verify(
             s => s.SubscribeAsync(
@@ -134,15 +143,20 @@ public class StatisticsRefreshSubscriberServiceTests {
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )]
     public async Task OnMessage_RoutesToBootstrapServiceTrigger( ) {
-        // Capture the handler registered during SubscribeAsync.
+        // Capture the handler registered during SubscribeAsync, signalling deterministically once
+        // registration completes instead of racing a fixed delay.
         Action<RedisChannel, RedisValue>? capturedHandler = null;
+        TaskCompletionSource subscribedTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _subscriberMock
             .Setup( s => s.SubscribeAsync(
                 It.IsAny<RedisChannel>( ),
                 It.IsAny<Action<RedisChannel, RedisValue>>( ),
                 It.IsAny<CommandFlags>( ) ) )
             .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
-                ( _, handler, _ ) => capturedHandler = handler )
+                ( _, handler, _ ) => {
+                    capturedHandler = handler;
+                    _ = subscribedTcs.TrySetResult( );
+                } )
             .Returns( Task.CompletedTask );
 
         // Signal when ListAllRecordsAsync is called (= TriggerStatisticsRefreshAsync ran).
@@ -154,10 +168,10 @@ public class StatisticsRefreshSubscriberServiceTests {
 
         using CancellationTokenSource cts = new( );
         StatisticsRefreshSubscriberService service = CreateSubscriberService( );
-        Task startTask = service.StartAsync( cts.Token );
+        _ = service.StartAsync( cts.Token );
 
         // Wait for the subscription to be registered.
-        await Task.Delay( 100, TestContext.CancellationToken );
+        await subscribedTcs.Task.WaitAsync( TestContext.CancellationToken );
         Assert.IsNotNull( capturedHandler, "Handler must have been registered" );
 
         // Fire a message on the channel.
@@ -166,8 +180,7 @@ public class StatisticsRefreshSubscriberServiceTests {
         // The handler is fire-and-forget; wait for the trigger to propagate.
         await triggerFiredTcs.Task.WaitAsync( TestContext.CancellationToken );
 
-        await cts.CancelAsync( );
-        await startTask;
+        await service.StopAsync( CancellationToken.None );
     }
 
     /// <summary>
@@ -178,15 +191,20 @@ public class StatisticsRefreshSubscriberServiceTests {
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )]
     public async Task OnMessage_HandlerException_IsSwallowedAndServiceContinues( ) {
-        // Capture the handler.
+        // Capture the handler, signalling deterministically once registration completes instead of
+        // racing a fixed delay.
         Action<RedisChannel, RedisValue>? capturedHandler = null;
+        TaskCompletionSource subscribedTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
         _ = _subscriberMock
             .Setup( s => s.SubscribeAsync(
                 It.IsAny<RedisChannel>( ),
                 It.IsAny<Action<RedisChannel, RedisValue>>( ),
                 It.IsAny<CommandFlags>( ) ) )
             .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
-                ( _, handler, _ ) => capturedHandler = handler )
+                ( _, handler, _ ) => {
+                    capturedHandler = handler;
+                    _ = subscribedTcs.TrySetResult( );
+                } )
             .Returns( Task.CompletedTask );
 
         // Make TriggerStatisticsRefreshAsync (via ListAllRecordsAsync) throw.
@@ -210,39 +228,59 @@ public class StatisticsRefreshSubscriberServiceTests {
         StatisticsRefreshSubscriberService service = CreateSubscriberService( );
         _ = service.StartAsync( cts.Token );
 
-        await Task.Delay( 100, TestContext.CancellationToken );
+        await subscribedTcs.Task.WaitAsync( TestContext.CancellationToken );
         Assert.IsNotNull( capturedHandler );
 
         // Fire first message — handler will throw inside Task.Run.
         capturedHandler!( RedisChannel.Literal( RedisChannels.StatisticsRefreshRequested ), "trigger1" );
         await firstExceptionTcs.Task.WaitAsync( TestContext.CancellationToken );
-        await Task.Delay( 50, TestContext.CancellationToken ); // let the Task.Run complete
 
-        // Fire a second message — service must still be running and responsive.
+        // Fire a second message — service must still be running and responsive. No fixed delay is
+        // needed here: TryAcquire is stubbed to always return true, so the second trigger does not
+        // depend on the first trigger's fire-and-forget Task.Run having completed.
         capturedHandler!( RedisChannel.Literal( RedisChannels.StatisticsRefreshRequested ), "trigger2" );
         await secondCallTcs.Task.WaitAsync( TestContext.CancellationToken );
 
         // Service handled a second trigger successfully — it didn't crash after the first exception.
         Assert.AreEqual( 2, listAllCallCount, "Service must remain responsive after handler exception" );
 
-        await cts.CancelAsync( );
         await service.StopAsync( CancellationToken.None );
     }
 
     /// <summary>
     /// T12d: StopAsync (via cancellation) unsubscribes from the channel.
     /// </summary>
+    /// <remarks>
+    /// <c>BackgroundService.StartAsync</c> returns <c>Task.CompletedTask</c> unconditionally and
+    /// immediately — it schedules <c>ExecuteAsync</c> via <c>Task.Run</c> without waiting for it to
+    /// reach a first await, so awaiting the captured start task is a no-op and does not synchronize
+    /// with the post-cancellation <c>UnsubscribeAsync</c> call. The test instead awaits
+    /// <c>StopAsync</c>, which signals cancellation on the linked stopping token internally and
+    /// genuinely awaits the underlying execute task before returning, so the Verify below only runs
+    /// once <c>ExecuteAsync</c> has unwound past its cancellation-triggered unsubscribe.
+    /// </remarks>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )]
     public async Task StopAsync_UnsubscribesFromStatisticsRefreshChannel( ) {
+        // Signal deterministically when SubscribeAsync has been reached, instead of a fixed delay.
+        TaskCompletionSource subscribedTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        _ = _subscriberMock
+            .Setup( s => s.SubscribeAsync(
+                It.IsAny<RedisChannel>( ), It.IsAny<Action<RedisChannel, RedisValue>>( ),
+                It.IsAny<CommandFlags>( ) ) )
+            .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>(
+                ( _, _, _ ) => subscribedTcs.TrySetResult( ) )
+            .Returns( Task.CompletedTask );
+
         using CancellationTokenSource cts = new( );
         StatisticsRefreshSubscriberService service = CreateSubscriberService( );
-        Task startTask = service.StartAsync( cts.Token );
+        _ = service.StartAsync( cts.Token );
 
-        await Task.Delay( 100, TestContext.CancellationToken );
+        await subscribedTcs.Task.WaitAsync( TestContext.CancellationToken );
 
-        await cts.CancelAsync( );
-        await startTask;
+        // StopAsync cancels the service's internal (linked) stopping token and genuinely awaits
+        // ExecuteAsync's completion, including the post-cancellation UnsubscribeAsync call below.
+        await service.StopAsync( CancellationToken.None );
 
         _subscriberMock.Verify(
             s => s.UnsubscribeAsync(

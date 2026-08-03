@@ -18,22 +18,22 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
     /// This is the direct variant (it extends <see cref="MusicLookupServiceBase"/>); the proxy variant
     /// that forwards to a worker is <see cref="SpotifyHttpLookupService"/>. Title/artist resolution
     /// searches the artist, enumerates their albums, and matches a sanitized album title, falling back
-    /// to matching a sanitized song title across the artist's albums. When an optional
-    /// <see cref="IGenreCacheService"/> is supplied, track-to-artist genre mappings are cached as a
-    /// best-effort, fire-and-forget side effect whose failures are logged and swallowed. Bulk requests
-    /// surface a 429 as <see cref="Contracts.Exceptions.RetryAfterExceededException"/> rather than a partial result.
+    /// to matching a sanitized song title across the artist's albums. Track-to-artist genre mappings are
+    /// cached via <see cref="IGenreCacheService"/> as a best-effort, fire-and-forget side effect whose
+    /// failures are logged and swallowed. Bulk requests surface a 429 as
+    /// <see cref="Contracts.Exceptions.RetryAfterExceededException"/> rather than a partial result.
     /// </remarks>
     /// <param name="handler">Supplies the Spotify bearer token for authenticated API calls.</param>
     /// <param name="factory">Factory for the <c>spotify-api</c> HTTP client.</param>
     /// <param name="logger">Logger for lookup and parse diagnostics.</param>
     /// <param name="serializerOptions">JSON options for deserializing Spotify API responses.</param>
-    /// <param name="genreCache">Optional genre cache for best-effort track-to-artist mapping; <see langword="null"/> disables caching.</param>
+    /// <param name="genreCache">Genre cache used for best-effort track-to-artist mapping.</param>
     public sealed partial class SpotifyLookupService(
         SpotifyTokenHandler handler,
         IHttpClientFactory factory,
         ILogger<SpotifyLookupService> logger,
         JsonSerializerOptions serializerOptions,
-        IGenreCacheService? genreCache = null
+        IGenreCacheService genreCache
     ) : MusicLookupServiceBase( logger, serializerOptions ), IMusicLookupService, ISpotifyBulkLookupService {
 
         /// <summary>Gets the provider this service resolves against (<see cref="SupportedProviders.Spotify"/>).</summary>
@@ -512,7 +512,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// <param name="isPrimary">Whether to mark the result as the primary provider result.</param>
         /// <returns>
         /// The mapped result, or <see langword="null"/> when deserialization fails. As a side effect, a
-        /// track's artist mapping is cached when a genre cache is configured.
+        /// track's artist mapping is cached.
         /// </returns>
         private MusicLookupResult? ParseSpotifyResponse(
             JsonElement element,
@@ -717,12 +717,12 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         /// <param name="trackId">The Spotify track ID.</param>
         /// <param name="artists">The list of artists on the track; only those with a non-empty id are used.</param>
         /// <remarks>
-        /// No-ops when no genre cache is configured, the track id is blank, or no usable artist ids are
-        /// present. The cache work runs on a background task whose failures are logged and swallowed, so
-        /// the caller is never blocked or made to fail by caching errors.
+        /// No-ops when the track id is blank or no usable artist ids are present. The cache work runs on
+        /// a background task whose failures are logged and swallowed, so the caller is never blocked or
+        /// made to fail by caching errors.
         /// </remarks>
         private void CacheTrackArtistMapping( string trackId, List<SpotifyArtistSimplified> artists ) {
-            if (genreCache == null || string.IsNullOrWhiteSpace( trackId ) || artists.Count == 0) {
+            if (string.IsNullOrWhiteSpace( trackId ) || artists.Count == 0) {
                 return;
             }
 

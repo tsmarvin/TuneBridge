@@ -64,12 +64,33 @@ public sealed partial class CacheBootstrapBackgroundService(
     /// <summary>
     /// Runs an immediate bootstrap pass, then repeats on the configured interval until the host stops.
     /// A failure in a periodic pass is logged and does not stop the loop; cancellation ends it cleanly.
+    /// The first, startup pass is wrapped in the same <see cref="OperationCanceledException"/> guard
+    /// as the periodic loop below; that is the guard's real contribution — without it, cancelling
+    /// during this first, otherwise-unguarded call would let the exception escape <c>ExecuteAsync</c>
+    /// entirely, leaving the host's underlying task in the <c>Canceled</c> state instead of
+    /// <c>RanToCompletion</c> on an ordinary shutdown. The startup pass's <c>catch (Exception)</c>
+    /// branch is defense-in-depth rather than the primary rationale: <see cref="RunBootstrapAsync"/>'s
+    /// own internal handlers already absorb transient dependency failures (e.g. the PDS not yet
+    /// reachable right after a single-container host reboot) and record them in the written status
+    /// document. A Redis-unreachable failure is absorbed the same way but is not recorded in that
+    /// document — the status write is itself what fails in that case, so it is logged only (see
+    /// <see cref="UpdateStatusAsync"/>). Either way, little besides a genuinely unanticipated failure
+    /// is expected to reach this catch — it is kept so such a failure is logged rather than
+    /// preventing the periodic loop below from starting.
     /// </summary>
     /// <param name="stoppingToken">Signals when the host is shutting down.</param>
     /// <returns>A task that completes when the service stops.</returns>
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
-        // Run bootstrap immediately on startup
-        await RunBootstrapAsync( stoppingToken );
+        // Run bootstrap immediately on startup, under the loop's own cancellation/exception handling
+        // (see the periodic loop below) rather than unguarded — see the remarks above.
+        try {
+            await RunBootstrapAsync( stoppingToken );
+        } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+            LogBootstrapShuttingDown( logger );
+            return;
+        } catch (Exception ex) {
+            LogBootstrapStartupError( logger, ex );
+        }
 
         // Then run periodically at the configured interval
         using PeriodicTimer timer = new( settings.BootstrapInterval );
@@ -563,6 +584,15 @@ public sealed partial class CacheBootstrapBackgroundService(
         Level = LogLevel.Error,
         Message = "Error during periodic cache bootstrap, will retry at next interval" )]
     private static partial void LogBootstrapPeriodicError( ILogger logger, Exception ex );
+
+    /// <summary>Logs that the startup (first, immediate) bootstrap run failed; the periodic loop still starts.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="ex">The exception that was thrown.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.BootstrapStartupError,
+        Level = LogLevel.Error,
+        Message = "Error during startup cache bootstrap; the periodic loop will still start" )]
+    private static partial void LogBootstrapStartupError( ILogger logger, Exception ex );
 
     /// <summary>Logs that the bootstrap service is shutting down.</summary>
     /// <param name="logger">The logger to write to.</param>

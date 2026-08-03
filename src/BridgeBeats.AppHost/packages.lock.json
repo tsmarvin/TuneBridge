@@ -103,9 +103,9 @@
       },
       "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
-        "requested": "[10.0.5, )",
-        "resolved": "10.0.5",
-        "contentHash": "rCJ2ZNQxqNTEVoZ4REd2NEr8GR9dp2vE1wH6VZ9gIKYzQ0em/Ka+4AitXx7CXs3mdaTxUycoIiVRjQBsm8wV2w=="
+        "requested": "[10.0.9, )",
+        "resolved": "10.0.9",
+        "contentHash": "/zs/o28l6Hq8G9XgEfeYC8VkiSfv98zpNdWnZu4Y3pwoStzI0MNRO8xjFuSF6aI/fMdKf3+sVDRZGlxyBc88jA=="
       },
       "Aspire.Hosting": {
         "type": "Transitive",

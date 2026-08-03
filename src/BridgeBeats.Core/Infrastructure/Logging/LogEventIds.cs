@@ -1122,6 +1122,11 @@ public static class LogEventIds {
             /// </summary>
             public const int ResponseBodyTrace = 2502;
 
+            /// <summary>
+            /// EventId for <see cref="AppleMusicLookupService.LogCacheGenresFailed"/>.
+            /// </summary>
+            public const int CacheGenresFailed = 2503;
+
             // AppleJwtHandler (2600-2624)
         }
 

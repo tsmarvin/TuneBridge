@@ -125,11 +125,18 @@ public static class QueueMetrics {
 
     #region Observable Gauges
 
-    /// <summary>Guards against registering the observable gauges more than once.</summary>
+    /// <summary>Guards against creating the observable gauge instruments more than once.</summary>
     private static bool s_gaugesRegistered;
 
-    /// <summary>Serializes the one-time gauge registration.</summary>
+    /// <summary>Serializes gauge registration and updates to <see cref="s_redis"/>.</summary>
     private static readonly Lock s_gaugesLock = new( );
+
+    /// <summary>
+    /// The Redis connection the gauge callbacks currently read from. Updated on every call to
+    /// <see cref="RegisterQueueDepthGauges"/>, not just the first, so a later caller's live
+    /// connection always supersedes an earlier caller's — see the remarks below.
+    /// </summary>
+    private static volatile IConnectionMultiplexer? s_redis;
 
     /// <summary>
     /// Registers observable gauges for queue depth metrics, which poll live Redis stream lengths on
@@ -138,10 +145,16 @@ public static class QueueMetrics {
     /// <param name="redis">The Redis connection used to read stream lengths.</param>
     /// <remarks>
     /// Call this once during application startup after Redis is connected; the gauges automatically
-    /// poll queue depths on each metrics collection. Idempotent and thread-safe: registration
-    /// happens at most once per process even if this is called from several startup paths. Three
-    /// gauges are created: <c>bridgebeats.queue.depth</c> (one measurement per provider and priority
-    /// lane), <c>bridgebeats.queue.spotify.bulk.track.depth</c>, and
+    /// poll queue depths on each metrics collection. Thread-safe. The observable gauge instruments
+    /// are created only once per process (they cannot be re-created on the shared <see cref="Meter"/>
+    /// without duplicate-instrument warnings), but the Redis connection the gauge callbacks read from
+    /// is updated on <em>every</em> call, including calls after the first. This matters when several
+    /// independent hosts share this process (for example, multiple <c>WebApplicationFactory</c>
+    /// instances in a test run) and register with their own connection: without updating the
+    /// connection on each call, the gauges would stay bound to whichever caller registered first, and
+    /// silently report zero forever once that caller's connection is disposed. Three gauges are
+    /// created: <c>bridgebeats.queue.depth</c> (one measurement per provider and priority lane),
+    /// <c>bridgebeats.queue.spotify.bulk.track.depth</c>, and
     /// <c>bridgebeats.queue.spotify.bulk.album.depth</c> (the two dedicated Spotify bulk streams).
     /// </remarks>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="redis"/> is null.</exception>
@@ -149,6 +162,8 @@ public static class QueueMetrics {
         ArgumentNullException.ThrowIfNull( redis );
 
         lock (s_gaugesLock) {
+            s_redis = redis;
+
             if (s_gaugesRegistered) {
                 return;
             }
@@ -156,7 +171,7 @@ public static class QueueMetrics {
             // Create a single observable gauge that returns measurements for all provider/priority combinations
             _ = Meter.CreateObservableGauge(
                 "bridgebeats.queue.depth",
-                ( ) => GetQueueDepthMeasurements( redis ),
+                ( ) => GetQueueDepthMeasurements( s_redis ),
                 unit: "{requests}",
                 description: "Current number of requests in queue"
             );
@@ -164,14 +179,14 @@ public static class QueueMetrics {
             // Spotify type-specific bulk streams sit outside the generic priority layout and need separate gauges.
             _ = Meter.CreateObservableGauge(
                 "bridgebeats.queue.spotify.bulk.track.depth",
-                ( ) => GetSpotifyBulkStreamDepth( redis, SpotifyConstants.BulkTrackIdStream ),
+                ( ) => GetSpotifyBulkStreamDepth( s_redis, SpotifyConstants.BulkTrackIdStream ),
                 unit: "{requests}",
                 description: "Current depth of the Spotify bulk track-id stream (queue:spotify:bulk:track-id)"
             );
 
             _ = Meter.CreateObservableGauge(
                 "bridgebeats.queue.spotify.bulk.album.depth",
-                ( ) => GetSpotifyBulkStreamDepth( redis, SpotifyConstants.BulkAlbumIdStream ),
+                ( ) => GetSpotifyBulkStreamDepth( s_redis, SpotifyConstants.BulkAlbumIdStream ),
                 unit: "{requests}",
                 description: "Current depth of the Spotify bulk album-id stream (queue:spotify:bulk:album-id)"
             );
@@ -183,12 +198,24 @@ public static class QueueMetrics {
     /// <summary>
     /// Yields one queue-depth measurement per provider and priority lane (interactive,
     /// background, bulk) by reading the length of each <c>queue:{provider}:{priority}</c> stream.
-    /// A read failure for any single stream yields a depth of zero rather than throwing.
+    /// A read failure for any single stream yields a depth of zero rather than throwing. If a
+    /// database cannot be acquired from the current connection, no measurements are yielded.
     /// </summary>
-    /// <param name="redis">The Redis connection used to read stream lengths.</param>
+    /// <param name="redis">The Redis connection used to read stream lengths, if one is available.</param>
     /// <returns>One measurement per provider/priority combination, tagged with provider and priority.</returns>
-    private static IEnumerable<Measurement<long>> GetQueueDepthMeasurements( IConnectionMultiplexer redis ) {
-        IDatabase db = redis.GetDatabase( );
+    private static IEnumerable<Measurement<long>> GetQueueDepthMeasurements( IConnectionMultiplexer? redis ) {
+        if (redis is null) {
+            yield break;
+        }
+
+        IDatabase db;
+        try {
+            db = redis.GetDatabase( );
+        } catch {
+            // Observable callbacks must remain non-fatal during connection teardown or outages.
+            yield break;
+        }
+
         string[] priorities = ["interactive", "background", "bulk"];
 
         foreach (SupportedProviders provider in Enum.GetValues<SupportedProviders>( )) {
@@ -216,13 +243,25 @@ public static class QueueMetrics {
 
     /// <summary>
     /// Yields a single depth measurement for one Spotify type-specific bulk stream. A read failure
-    /// yields a depth of zero rather than throwing.
+    /// yields a depth of zero rather than throwing. If a database cannot be acquired from the
+    /// current connection, no measurement is yielded.
     /// </summary>
-    /// <param name="redis">The Redis connection used to read the stream length.</param>
+    /// <param name="redis">The Redis connection used to read the stream length, if one is available.</param>
     /// <param name="stream">The bulk stream key to measure (track-id or album-id stream).</param>
     /// <returns>One measurement tagged with provider "spotify" and the stream key.</returns>
-    private static IEnumerable<Measurement<long>> GetSpotifyBulkStreamDepth( IConnectionMultiplexer redis, string stream ) {
-        IDatabase db = redis.GetDatabase( );
+    private static IEnumerable<Measurement<long>> GetSpotifyBulkStreamDepth( IConnectionMultiplexer? redis, string stream ) {
+        if (redis is null) {
+            yield break;
+        }
+
+        IDatabase db;
+        try {
+            db = redis.GetDatabase( );
+        } catch {
+            // Observable callbacks must remain non-fatal during connection teardown or outages.
+            yield break;
+        }
+
         long length;
         try {
             length = db.StreamLength( stream );

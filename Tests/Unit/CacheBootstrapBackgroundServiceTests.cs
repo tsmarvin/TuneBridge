@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
@@ -248,20 +249,66 @@ public class CacheBootstrapBackgroundServiceTests {
     /// Verifies that cancelling the host token lets the service stop without throwing, confirming
     /// cooperative shutdown.
     /// </summary>
+    /// <remarks>
+    /// <c>BackgroundService.StartAsync</c> returns <c>Task.CompletedTask</c> unconditionally and
+    /// immediately — it schedules <c>ExecuteAsync</c> via <c>Task.Run</c> without waiting for it to
+    /// reach a first await — so awaiting that captured task is a no-op and would make this test pass
+    /// vacuously even if <c>StopAsync</c> itself threw. <c>StopAsync</c> genuinely awaits the
+    /// underlying execute task before returning, but on net10.0 it does so via
+    /// <c>WaitAsync(ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing)</c> and does not
+    /// re-throw a faulted or cancelled execute task — so a bare "<c>StopAsync</c> completes without
+    /// throwing" assertion cannot by itself tell a graceful stop apart from one where the first
+    /// bootstrap pass's <c>OperationCanceledException</c> escaped and faulted <c>ExecuteAsync</c>.
+    /// <c>ExecuteTask.Status</c> is the assertable surface for that distinction. The
+    /// <c>startedTcs</c> start-gate additionally proves <c>ExecuteAsync</c> (and its first,
+    /// unguarded-by-the-loop bootstrap pass) actually began before cancellation fires — without it, a
+    /// fast-enough cancellation could skip the first pass entirely before it ever installs its own
+    /// try/catch, leaving <c>Task.Run</c>'s own token-cancellation to end <c>ExecuteTask</c> as
+    /// <c>Canceled</c> rather than <c>RanToCompletion</c> — failing this assertion for a reason
+    /// unrelated to the startup-pass guard under test, not passing it vacuously.
+    /// </remarks>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ExecuteAsync_WhenCancelled_ShouldStopGracefully( ) {
-        // Arrange
-        SetupEmptyRecordList( );
+        // Arrange: the mocked PDS stream blocks on a cancellable infinite wait, so the first
+        // bootstrap pass is still genuinely in flight (not already completed) when cancellation
+        // fires below — a pass that had already finished and moved into the periodic loop's own
+        // wait would exit gracefully via the loop's pre-existing catch regardless of whether the
+        // startup-pass guard exists, masking a missing guard. startedTcs signals once the stream
+        // has been reached, proving ExecuteAsync's first pass actually began before we cancel.
+        TaskCompletionSource startedTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, ct, _ ) => BlockUntilCancelledAsync( startedTcs, ct ) );
         CacheBootstrapBackgroundService service = CreateService( );
 
         // Act
         using CancellationTokenSource cts = new( );
-        Task executeTask = service.StartAsync( cts.Token );
+        _ = service.StartAsync( cts.Token );
+        await startedTcs.Task.WaitAsync( TestContext.CancellationToken );
         await cts.CancelAsync( );
 
-        // Assert - Should complete without throwing
-        await executeTask;
+        // Assert - Should complete without throwing, and ExecuteAsync must reach RanToCompletion
+        // rather than Canceled/Faulted; StopAsync's WaitAsync(...).SuppressThrowing does not surface
+        // that distinction.
+        await service.StopAsync( CancellationToken.None );
+        Assert.AreEqual( TaskStatus.RanToCompletion, service.ExecuteTask!.Status,
+            "ExecuteAsync must reach RanToCompletion; Canceled/Faulted means the startup bootstrap "
+            + "pass's OperationCanceledException escaped the try/catch guard around the first call." );
+    }
+
+    /// <summary>
+    /// Async-iterator stream used by <see cref="ExecuteAsync_WhenCancelled_ShouldStopGracefully"/>:
+    /// signals <paramref name="startedTcs"/> once enumeration begins, then blocks on a cancellable
+    /// infinite delay so the caller's bootstrap pass is genuinely mid-flight when the token is
+    /// cancelled, rather than already completed.
+    /// </summary>
+    private static async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> BlockUntilCancelledAsync(
+        TaskCompletionSource startedTcs,
+        [EnumeratorCancellation] CancellationToken cancellationToken ) {
+        _ = startedTcs.TrySetResult( );
+        await Task.Delay( Timeout.InfiniteTimeSpan, cancellationToken );
+        yield break;
     }
 
     /// <summary>
@@ -1005,8 +1052,9 @@ public class CacheBootstrapBackgroundServiceTests {
     /// service sleeps 10 minutes, the 5-second <see cref="TimeoutAttribute"/> fires).
     /// </para>
     /// <para>
-    /// The prior version of this test awaited only <c>StartAsync</c>, which returns as soon as
-    /// <c>ExecuteAsync</c> yields its first await — making the test pass vacuously regardless of
+    /// The prior version of this test awaited only <c>StartAsync</c>, which returns
+    /// <c>Task.CompletedTask</c> unconditionally and immediately, without waiting for
+    /// <c>ExecuteAsync</c> to reach a first await — making the test pass vacuously regardless of
     /// whether the token was observed. This rework awaits <c>StopAsync</c> after cancellation so
     /// the test actually waits for <c>ExecuteAsync</c> to unwind. Additionally it asserts that the
     /// retry's second <c>ListAllRecordsAsync</c> call does NOT occur (the wait was cut short),
