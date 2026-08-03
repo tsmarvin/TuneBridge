@@ -4,6 +4,7 @@ using BridgeBeats.Core.Infrastructure.Extensions;
 using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Moq;
 using StackExchange.Redis;
 
 namespace BridgeBeats.Tests.Integration;
@@ -128,6 +129,46 @@ public class QueueMetricsIntegrationTests {
 
         // Assert - No exception means success
         Assert.IsNotNull( s_redis );
+    }
+
+    /// <summary>
+    /// Verifies observable gauge collection remains non-fatal when the current Redis multiplexer
+    /// cannot provide a database, as can happen while a host-owned connection is being torn down.
+    /// </summary>
+    [TestMethod]
+    public void QueueDepthGauges_WhenDatabaseAcquisitionFails_DoNotThrow( ) {
+        // Arrange: make every gauge callback encounter a connection-level failure before it can
+        // read an individual stream. MeterListener aggregates exceptions escaping observable
+        // callbacks, so RecordObservableInstruments below is the regression assertion.
+        Mock<IConnectionMultiplexer> unavailableRedis = new( MockBehavior.Strict );
+        _ = unavailableRedis
+            .Setup( redis => redis.GetDatabase( It.IsAny<int>( ), It.IsAny<object?>( ) ) )
+            .Throws( new ObjectDisposedException( nameof(IConnectionMultiplexer) ) );
+
+        QueueMetrics.RegisterQueueDepthGauges( unavailableRedis.Object );
+
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName
+                && instrument.Name is "bridgebeats.queue.depth"
+                    or "bridgebeats.queue.spotify.bulk.track.depth"
+                    or "bridgebeats.queue.spotify.bulk.album.depth") {
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+        listener.SetMeasurementEventCallback<long>( ( _, _, _, _ ) => { } );
+        listener.Start( );
+
+        try {
+            // Act & Assert: no AggregateException should escape metric collection.
+            listener.RecordObservableInstruments( );
+            unavailableRedis.Verify(
+                redis => redis.GetDatabase( It.IsAny<int>( ), It.IsAny<object?>( ) ),
+                Times.Exactly( 3 ) );
+        } finally {
+            // Restore the class's live connection for subsequent tests sharing the static gauges.
+            QueueMetrics.RegisterQueueDepthGauges( s_redis! );
+        }
     }
 
     /// <summary>
