@@ -75,6 +75,7 @@ For the bot to work properly, it needs these permissions in your channels:
 |-----------|---------|
 | **View Channel** | Detect supported music links in the channel |
 | **Send Messages** | Post conversion embeds |
+| **Embed Links** | Display music previews with rich formatting |
 | **Manage Messages** | Delete link-only messages to prevent multiple embeds for the same content |
 
 **Note:** If the bot lacks the **Manage Messages** permission, it will still convert links and post embeds, but won't be able to delete the original link-only messages.
@@ -96,7 +97,7 @@ If you want to limit where BridgeBeats operates in your server:
 ### Bot not responding
 
 1. **Check if the bot is online**: Look at the server member list. You should see the BridgeBeats bot with a green online indicator.
-2. **Verify permissions**: Make sure the bot has **View Channel** and **Send Messages** permissions.
+2. **Verify permissions**: Make sure the bot has **View Channel**, **Send Messages**, and **Embed Links** permissions.
 3. **Validate the link**: Ensure you're sharing a valid link from Spotify, Apple Music, or Tidal (not a screenshot or description).
 4. **Try directly on the BridgeBeats website**: Validate the link on [BridgeBeats](https://bridgebeats.link) to see if it can find matches.
 

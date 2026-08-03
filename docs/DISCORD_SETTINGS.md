@@ -34,12 +34,13 @@ For each channel where BridgeBeats should operate normally:
 | --- | --- |
 | **View Channel** | Detect supported music links posted in the channel. |
 | **Send Messages** | Post the converted music links back to the channel. |
+| **Embed Links** | Display the converted music links as rich embeds. |
 | **Manage Messages** | Delete the original message when it contains only supported music links. |
 
 All other channel permissions can be denied. BridgeBeats does not need them for its normal
 link-conversion behavior.
 
-![BridgeBeats channel role with View Channel, Send Messages, and Manage Messages allowed](images/Discord/Required-Permissions.png)
+![BridgeBeats channel role with View Channel, Send Messages, Embed Links, and Manage Messages allowed](images/Discord/Required-Permissions.png)
 
 > [!NOTE]
 > Category and server role permissions can affect the permissions that BridgeBeats ultimately has
@@ -51,8 +52,8 @@ BridgeBeats normally removes a user's message after posting the converted links 
 contains only supported music links. Messages that include other text are kept.
 
 To keep link-only messages too, select the red **X** for **Manage Messages** in the BridgeBeats
-channel permissions. Leave **View Channel** and **Send Messages** allowed so the bot can continue to
-detect links and respond.
+channel permissions. Leave **View Channel**, **Send Messages**, and **Embed Links** allowed so the
+bot can continue to detect links and respond with rich embeds.
 
 ![Manage Messages denied for the BridgeBeats channel role](images/Discord/Manage-Messages.png)
 
@@ -71,8 +72,8 @@ operate.
 
 ![BridgeBeats channel role with all permissions denied](images/Discord/Remove-From-Channel.png)
 
-To restore BridgeBeats later, allow **View Channel**, **Send Messages**, and **Manage Messages**
-again.
+To restore BridgeBeats later, allow **View Channel**, **Send Messages**, **Embed Links**, and
+**Manage Messages** again.
 
 If you need help configuring the bot, join the
 [BridgeBeats support server](https://discord.gg/T98sGP2nX8).
