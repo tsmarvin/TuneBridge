@@ -165,7 +165,7 @@ public static class LogEventIds {
         /// <summary>An operator's refresh-review disposition failed.</summary>
         public const int RefreshReviewDispositionFailed = 4326;
 
-        /// <summary>A refresh-review entry changed concurrently, so its cleanup was skipped.</summary>
+        /// <summary>A refresh-review entry no longer matched the expected saga/CID (already removed or replaced), so its cleanup was skipped.</summary>
         public const int RefreshReviewDispositionCleanupSkipped = 4327;
 
         // AppleMusicController (4250-4274)

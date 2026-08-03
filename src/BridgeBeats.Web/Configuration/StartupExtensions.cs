@@ -57,8 +57,8 @@ namespace BridgeBeats.Web.Configuration {
 
             // The direct-mode Apple Music, Tidal, and Spotify lookup services require the track genre
             // cache. It is registered unconditionally (not only in direct-provider mode) so that
-            // Development-time service validation (ValidateOnBuild) can resolve those services'
-            // dependencies regardless of which provider mode is configured.
+            // the ASP.NET Core Development-environment default for ValidateOnBuild can resolve those
+            // services' dependencies regardless of which provider mode is configured.
             _ = builder.Services.AddGenreCache( );
 
             _ = builder.WebHost.ConfigureBridgeBeatsServices(

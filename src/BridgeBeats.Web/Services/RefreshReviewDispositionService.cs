@@ -66,9 +66,10 @@ public sealed partial class RefreshReviewDispositionService(
                 expectedSourceRecordCid,
                 cancellationToken );
             if (!cleanupCleared) {
-                // The CAS guard found the review entry had already changed concurrently (a
-                // different actor or worker touched it after this method's own read above), so it
-                // was deliberately left in place rather than removed. Correct behavior, but worth
+                // The CAS guard did not find a matching review entry to remove: either it was
+                // already gone (a different actor or worker already resolved it after this
+                // method's own read above) or it still exists but no longer matches this saga/CID
+                // (superseded by a newer revision). Correct behavior either way, but worth
                 // recording in the audit trail since it means cleanup did not happen as expected.
                 LogCleanupSkipped( logger, actorId, sourceRecordUri, expectedSagaId, expectedSourceRecordCid );
             }
@@ -113,7 +114,7 @@ public sealed partial class RefreshReviewDispositionService(
     [LoggerMessage(
         EventId = Logging.LogEventIds.Controllers.RefreshReviewDispositionCleanupSkipped,
         Level = LogLevel.Information,
-        Message = "Refresh-review cleanup by {ActorId} for {SourceRecordUri} skipped: review entry changed concurrently (expected saga {ExpectedSagaId}, CID {ExpectedSourceRecordCid})" )]
+        Message = "Refresh-review cleanup by {ActorId} for {SourceRecordUri} skipped: review entry no longer matched the expected saga/CID (already removed or replaced; expected saga {ExpectedSagaId}, CID {ExpectedSourceRecordCid})" )]
     private static partial void LogCleanupSkipped(
         ILogger logger,
         string actorId,

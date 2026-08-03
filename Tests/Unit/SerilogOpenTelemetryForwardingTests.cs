@@ -6,8 +6,17 @@ using Microsoft.Extensions.Logging;
 
 namespace BridgeBeats.Tests.Unit;
 
-/// <summary>Regression coverage for forwarding Serilog events to registered logging providers.</summary>
+/// <summary>
+/// Regression coverage for forwarding Serilog events to registered logging providers.
+/// </summary>
+/// <remarks>
+/// [DoNotParallelize]: <c>ConfigureFileLogging</c> configures Serilog with
+/// <c>preserveStaticLogger: false</c>; the process-global <see cref="Serilog.Log.Logger"/> is
+/// reassigned when this test calls <c>Build()</c>. Under class-level parallelization this class
+/// would mutate that shared static concurrently with other test classes.
+/// </remarks>
 [TestClass]
+[DoNotParallelize]
 public sealed partial class SerilogOpenTelemetryForwardingTests {
     /// <summary>
     /// A structured event written through ILogger reaches another provider, which is
