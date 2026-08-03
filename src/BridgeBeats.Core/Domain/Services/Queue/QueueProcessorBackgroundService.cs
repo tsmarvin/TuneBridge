@@ -260,25 +260,67 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         // Check for cancellation before performing the lookup
         ct.ThrowIfCancellationRequested( );
 
+        MusicLookupResult? result = await PerformSingleLookupAsync(
+            request.LookupType,
+            request.LookupValue,
+            request.Title,
+            request.Artist,
+            request.Storefront
+        );
+
+        if (result is not null
+            || request.FallbackLookupType is null
+            || string.IsNullOrWhiteSpace( request.FallbackLookupValue )) {
+            return result;
+        }
+
+        return await PerformSingleLookupAsync(
+            request.FallbackLookupType.Value,
+            request.FallbackLookupValue,
+            request.Title,
+            request.Artist,
+            request.Storefront
+        );
+    }
+
+    private async Task<MusicLookupResult?> PerformSingleLookupAsync(
+        LookupRequestType lookupType,
+        string lookupValue,
+        string? title,
+        string? artist,
+        string? storefront
+    ) {
+        IStorefrontMusicLookupService? storefrontService = !string.IsNullOrWhiteSpace( storefront )
+            ? _lookupService as IStorefrontMusicLookupService
+            : null;
+
         // Map LookupRequestType to the appropriate lookup method
-        return request.LookupType switch {
-            LookupRequestType.UriLookup => await _lookupService.GetInfoAsync( request.LookupValue ),
-            LookupRequestType.IsrcLookup => await _lookupService.GetInfoByISRCAsync( request.LookupValue ),
-            LookupRequestType.UpcLookup => await _lookupService.GetInfoByUPCAsync( request.LookupValue ),
-            LookupRequestType.SongIdLookup => await _lookupService.GetInfoByIDAsync( request.LookupValue, false ),
-            LookupRequestType.AlbumIdLookup => await _lookupService.GetInfoByIDAsync( request.LookupValue, true ),
-            LookupRequestType.ArtistLookup when request is { Title: not null, Artist: not null } =>
-                await _lookupService.GetInfoAsync( request.Title, request.Artist ),
-            LookupRequestType.SongLookup when request is { Title: not null, Artist: not null } =>
-                await _lookupService.GetInfoAsync( request.Title, request.Artist ),
-            LookupRequestType.AlbumLookup when request is { Title: not null, Artist: not null } =>
-                await _lookupService.GetInfoAsync( request.Title, request.Artist ),
-            LookupRequestType.ArtistAlbumLookup when request is { Title: not null, Artist: not null } =>
-                await _lookupService.GetInfoAsync( request.Title, request.Artist ),
-            LookupRequestType.AlbumTrackLookup when request is { Title: not null, Artist: not null } =>
-                await _lookupService.GetInfoAsync( request.Title, request.Artist ),
+        return lookupType switch {
+            LookupRequestType.UriLookup => await _lookupService.GetInfoAsync( lookupValue ),
+            LookupRequestType.IsrcLookup when storefrontService is not null =>
+                await storefrontService.GetInfoByISRCAsync( lookupValue, storefront! ),
+            LookupRequestType.IsrcLookup => await _lookupService.GetInfoByISRCAsync( lookupValue ),
+            LookupRequestType.UpcLookup when storefrontService is not null =>
+                await storefrontService.GetInfoByUPCAsync( lookupValue, storefront! ),
+            LookupRequestType.UpcLookup => await _lookupService.GetInfoByUPCAsync( lookupValue ),
+            LookupRequestType.SongIdLookup when storefrontService is not null =>
+                await storefrontService.GetInfoByIDAsync( lookupValue, false, storefront! ),
+            LookupRequestType.SongIdLookup => await _lookupService.GetInfoByIDAsync( lookupValue, false ),
+            LookupRequestType.AlbumIdLookup when storefrontService is not null =>
+                await storefrontService.GetInfoByIDAsync( lookupValue, true, storefront! ),
+            LookupRequestType.AlbumIdLookup => await _lookupService.GetInfoByIDAsync( lookupValue, true ),
+            LookupRequestType.ArtistLookup when title is not null && artist is not null =>
+                await _lookupService.GetInfoAsync( title, artist ),
+            LookupRequestType.SongLookup when title is not null && artist is not null =>
+                await _lookupService.GetInfoAsync( title, artist ),
+            LookupRequestType.AlbumLookup when title is not null && artist is not null =>
+                await _lookupService.GetInfoAsync( title, artist ),
+            LookupRequestType.ArtistAlbumLookup when title is not null && artist is not null =>
+                await _lookupService.GetInfoAsync( title, artist ),
+            LookupRequestType.AlbumTrackLookup when title is not null && artist is not null =>
+                await _lookupService.GetInfoAsync( title, artist ),
             _ => throw new InvalidOperationException(
-                            $"Unsupported lookup type {request.LookupType} or missing required parameters"
+                            $"Unsupported lookup type {lookupType} or missing required parameters"
                         )
         };
     }

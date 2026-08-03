@@ -54,6 +54,9 @@ public static class LogEventIds {
     /// <summary>Reading the bootstrap status document from Redis failed.</summary>
     public const int StatusReadError = 5513;
 
+    /// <summary>The startup (first, immediate) bootstrap run failed; the periodic loop still starts.</summary>
+    public const int BootstrapStartupError = 5514;
+
     #endregion
 
     #region StaleCacheRefreshBackgroundService (5520-5549)

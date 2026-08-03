@@ -500,6 +500,19 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         QueuedLookupRequest request = message.Payload;
 
         try {
+            if (result is null
+                && request.FallbackLookupType is not null
+                && !string.IsNullOrWhiteSpace( request.FallbackLookupValue )) {
+                result = request.FallbackLookupType.Value switch {
+                    LookupRequestType.IsrcLookup =>
+                        await _lookupService.GetInfoByISRCAsync( request.FallbackLookupValue ),
+                    LookupRequestType.UpcLookup =>
+                        await _lookupService.GetInfoByUPCAsync( request.FallbackLookupValue ),
+                    _ => throw new InvalidOperationException(
+                        $"Unsupported Spotify bulk fallback type {request.FallbackLookupType.Value}." )
+                };
+            }
+
             // Ensure the saga exists. JetStream fire-and-forget messages pre-compute a
             // SagaId and enqueue without creating the saga (the generic worker normally does
             // this). GetOrCreateAsync is idempotent — if the saga already exists it returns it.

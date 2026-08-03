@@ -45,6 +45,8 @@ public class SagaCoordinatorBackgroundServiceTests {
     private HashSet<SupportedProviders> _enabledProviders = null!;
     /// <summary>Mock logger for the background service.</summary>
     private Mock<ILogger<SagaCoordinatorBackgroundService>> _loggerMock = null!;
+    /// <summary>Mock stale-refresh review store used by finalization lifecycle tests.</summary>
+    private Mock<IRefreshReviewStore> _refreshReviewStoreMock = null!;
 
     /// <summary>Fixed saga id used across the tests.</summary>
     private const string TestSagaId = "test-saga-id-12345678";
@@ -73,6 +75,13 @@ public class SagaCoordinatorBackgroundServiceTests {
         _queueResolverMock = new Mock<IProviderQueueResolver<QueuedLookupRequest>>( );
         _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic, SupportedProviders.Tidal];
         _loggerMock = new Mock<ILogger<SagaCoordinatorBackgroundService>>( );
+        _refreshReviewStoreMock = new Mock<IRefreshReviewStore>( );
+        _ = _refreshReviewStoreMock.Setup( store => store.MarkUnresolvedAsync(
+                It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+        _ = _refreshReviewStoreMock.Setup( store => store.CompleteAsync(
+                It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
 
         _ = _redisMock.Setup( r => r.GetSubscriber( It.IsAny<object>( ) ) ).Returns( _subscriberMock.Object );
 
@@ -122,7 +131,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _resultCombiner,
                 _queueResolverMock.Object,
                 _enabledProviders,
-                _loggerMock.Object
+                _loggerMock.Object,
+                _refreshReviewStoreMock.Object
             )
         );
     }
@@ -143,7 +153,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _resultCombiner,
                 _queueResolverMock.Object,
                 _enabledProviders,
-                _loggerMock.Object
+                _loggerMock.Object,
+                _refreshReviewStoreMock.Object
             )
         );
     }
@@ -164,7 +175,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _resultCombiner,
                 _queueResolverMock.Object,
                 _enabledProviders,
-                _loggerMock.Object
+                _loggerMock.Object,
+                _refreshReviewStoreMock.Object
             )
         );
     }
@@ -185,7 +197,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _resultCombiner,
                 _queueResolverMock.Object,
                 _enabledProviders,
-                _loggerMock.Object
+                _loggerMock.Object,
+                _refreshReviewStoreMock.Object
             )
         );
     }
@@ -206,7 +219,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _resultCombiner,
                 _queueResolverMock.Object,
                 _enabledProviders,
-                _loggerMock.Object
+                _loggerMock.Object,
+                _refreshReviewStoreMock.Object
             )
         );
     }
@@ -227,7 +241,8 @@ public class SagaCoordinatorBackgroundServiceTests {
                 null!,
                 _queueResolverMock.Object,
                 _enabledProviders,
-                _loggerMock.Object
+                _loggerMock.Object,
+                _refreshReviewStoreMock.Object
             )
         );
     }
@@ -248,6 +263,26 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _resultCombiner,
                 _queueResolverMock.Object,
                 _enabledProviders,
+                null!,
+                _refreshReviewStoreMock.Object
+            )
+        );
+    }
+
+    /// <summary>A missing refresh-review store fails construction instead of disabling review flow.</summary>
+    [TestMethod]
+    public void Constructor_WithNullRefreshReviewStore_ShouldThrowArgumentNullException( ) {
+        _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
+            new SagaCoordinatorBackgroundService(
+                _redisMock.Object,
+                _sagaManagerMock.Object,
+                _atProtoStorageMock.Object,
+                _cacheRepositoryMock.Object,
+                _deduplicatorMock.Object,
+                _resultCombiner,
+                _queueResolverMock.Object,
+                _enabledProviders,
+                _loggerMock.Object,
                 null!
             )
         );
@@ -397,6 +432,11 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Assert - Should have released the deduplication lock
         _deduplicatorMock.Verify(
             d => d.ReleaseAsync( completeSaga.LookupKey, TestRecordUri, It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+
+        _refreshReviewStoreMock.Verify(
+            store => store.CompleteAsync( completeSaga.SagaId, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
     }
@@ -559,6 +599,76 @@ public class SagaCoordinatorBackgroundServiceTests {
             s => s.DeleteAsync( failedSaga.SagaId, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
+    }
+
+    /// <summary>A zero-result stale refresh is persisted for review before its saga is deleted.</summary>
+    [TestMethod]
+    public async Task WriteFinalResult_RefreshWithNoResults_MarksReviewBeforeDeletingSaga( ) {
+        Mock<IRefreshReviewStore> reviewStore = new( );
+        int sequence = 0;
+        int reviewOrder = 0;
+        int deleteOrder = 0;
+        _ = reviewStore.Setup( store => store.MarkUnresolvedAsync(
+                TestSagaId, It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( ) => reviewOrder = Interlocked.Increment( ref sequence ) )
+            .Returns( Task.CompletedTask );
+        _ = _sagaManagerMock.Setup( manager => manager.DeleteAsync(
+                TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( ) => deleteOrder = Interlocked.Increment( ref sequence ) )
+            .ReturnsAsync( true );
+
+        LookupSagaState failedSaga = CreateCompleteSaga( ) with {
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: false,
+                    ResultJson: null,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: "Not found" )
+            }
+        };
+
+        await CreateService( reviewStore.Object ).InvokeFinalizeForTestAsync(
+            failedSaga, TestContext.CancellationToken );
+
+        reviewStore.Verify( store => store.MarkUnresolvedAsync(
+            TestSagaId, It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
+        Assert.IsGreaterThan( 0, reviewOrder );
+        Assert.IsLessThan( deleteOrder, reviewOrder,
+            "The review entry must be durable before the saga is deleted." );
+    }
+
+    /// <summary>A review-store outage does not strand a terminal saga or its deduplication waiters.</summary>
+    [TestMethod]
+    public async Task WriteFinalResult_ReviewStoreFailure_ReleasesAndDeletesSaga( ) {
+        Mock<IRefreshReviewStore> reviewStore = new( );
+        _ = reviewStore.Setup( store => store.MarkUnresolvedAsync(
+                TestSagaId, It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "Redis unavailable" ) );
+        _ = _sagaManagerMock.Setup( manager => manager.DeleteAsync(
+                TestSagaId, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( true );
+
+        LookupSagaState failedSaga = CreateCompleteSaga( ) with {
+            ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                [SupportedProviders.Spotify] = new(
+                    SupportedProviders.Spotify,
+                    IsComplete: true,
+                    IsSuccess: false,
+                    ResultJson: null,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: "Not found" )
+            }
+        };
+
+        await CreateService( reviewStore.Object ).InvokeFinalizeForTestAsync(
+            failedSaga, TestContext.CancellationToken );
+
+        _deduplicatorMock.Verify( deduplicator => deduplicator.ReleaseAsync(
+            failedSaga.LookupKey, null, It.IsAny<CancellationToken>( ) ), Times.Once );
+        _sagaManagerMock.Verify( manager => manager.DeleteAsync(
+            TestSagaId, It.IsAny<CancellationToken>( ) ), Times.Once );
     }
 
     /// <summary>
@@ -2795,7 +2905,7 @@ public class SagaCoordinatorBackgroundServiceTests {
     /// Builds a service wired to all the mocks, the real combiner, and the enabled-providers set.
     /// </summary>
     /// <returns>A service under test.</returns>
-    private SagaCoordinatorBackgroundService CreateService( ) {
+    private SagaCoordinatorBackgroundService CreateService( IRefreshReviewStore? reviewStore = null ) {
         return new SagaCoordinatorBackgroundService(
             _redisMock.Object,
             _sagaManagerMock.Object,
@@ -2805,7 +2915,8 @@ public class SagaCoordinatorBackgroundServiceTests {
             _resultCombiner,
             _queueResolverMock.Object,
             _enabledProviders,
-            _loggerMock.Object
+            _loggerMock.Object,
+            reviewStore ?? _refreshReviewStoreMock.Object
         );
     }
 

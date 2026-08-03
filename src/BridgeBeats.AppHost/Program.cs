@@ -151,7 +151,8 @@ IResourceBuilder<ExecutableResource> AddProductionExecutable(
 ) {
     string dllPath = $"/src/{projectName}/{projectName}.dll";
     IResourceBuilder<ExecutableResource> resource = builder.AddExecutable( name, "dotnet", workingDirectory, dllPath )
-        .WithReference(redis);
+        .WithReference(redis)
+        .WithOtlpExporter( );
 
     if (httpPort.HasValue) {
         resource = resource.WithHttpEndpoint( targetPort: httpPort.Value, name: "http" );

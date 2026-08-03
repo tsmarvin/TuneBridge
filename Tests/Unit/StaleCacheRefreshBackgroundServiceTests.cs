@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
@@ -25,6 +26,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
     private Mock<IConnectionMultiplexer> _redisMock = null!;
     private Mock<IDatabase> _redisDatabaseMock = null!;
     private Mock<ILogger<StaleCacheRefreshBackgroundService>> _loggerMock = null!;
+    private Mock<IRefreshReviewStore> _refreshReviewStoreMock = null!;
     private HashSet<SupportedProviders> _enabledProviders = null!;
     private CacheBootstrapSettings _settings = null!;
 
@@ -44,6 +46,18 @@ public class StaleCacheRefreshBackgroundServiceTests {
         _redisMock = new Mock<IConnectionMultiplexer>( );
         _redisDatabaseMock = new Mock<IDatabase>( );
         _loggerMock = new Mock<ILogger<StaleCacheRefreshBackgroundService>>( );
+        _refreshReviewStoreMock = new Mock<IRefreshReviewStore>( );
+
+        _ = _refreshReviewStoreMock.Setup( store => store.GetUnresolvedAsync(
+                It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( [] );
+        _ = _refreshReviewStoreMock.Setup( store => store.RegisterPendingAsync(
+                It.IsAny<RefreshReviewEntry>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        _ = _atProtoStorageMock.Setup( storage => storage.GetMediaLinkRecordCidAsync(
+                It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( "bafyreitestcid" );
 
         _ = _loggerMock.Setup( l => l.IsEnabled( It.IsAny<LogLevel>( ) ) ).Returns( true );
 
@@ -371,8 +385,10 @@ public class StaleCacheRefreshBackgroundServiceTests {
     /// the inner <c>try/catch</c> present the OCE from the backoff delay is caught and the loop
     /// exits via <c>break</c>, leaving <c>ExecuteAsync</c> at <c>RanToCompletion</c>. Without it
     /// the OCE escapes the outer catch, faulting or cancelling <c>ExecuteAsync</c> — a structural
-    /// defect the wall-clock assertion alone cannot detect because <c>BackgroundService.StopAsync</c>
-    /// awaits via <c>Task.WhenAny</c> and does not re-throw.
+    /// defect the wall-clock assertion alone cannot detect because on net10.0
+    /// <c>BackgroundService.StopAsync</c> awaits via
+    /// <c>WaitAsync(ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing)</c> and does not
+    /// re-throw.
     /// </para>
     /// <para>
     /// The wall-clock assertion independently guards against a backoff <c>Task.Delay</c> that drops
@@ -716,6 +732,92 @@ public class StaleCacheRefreshBackgroundServiceTests {
         Assert.IsTrue( legs[0].IsAlbum );
     }
 
+    /// <summary>A native Apple leg retains its stored storefront and carries the ISRC fallback.</summary>
+    [TestMethod]
+    public void DeriveRefreshLegs_NativeLeg_CarriesStorefrontAndExternalFallback( ) {
+        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
+        record.Results[SupportedProviders.AppleMusic] = new MusicLookupResult {
+            URL = "https://music.apple.com/jp/album/example/1234567890?i=9876543210",
+            ExternalId = "jp-test-isrc",
+            MarketRegion = "jp",
+            IsAlbum = false
+        };
+
+        IReadOnlyList<StaleCacheRefreshBackgroundService.RefreshLeg> legs =
+            StaleCacheRefreshBackgroundService.DeriveRefreshLegs( record, [SupportedProviders.AppleMusic] );
+
+        Assert.HasCount( 1, legs );
+        Assert.AreEqual( LookupRequestType.SongIdLookup, legs[0].LookupType );
+        Assert.AreEqual( "jp", legs[0].Storefront );
+        Assert.AreEqual( LookupRequestType.IsrcLookup, legs[0].FallbackLookupType );
+        Assert.AreEqual( "JP-TEST-ISRC", legs[0].FallbackLookupValue );
+    }
+
+    /// <summary>An Apple URL supplies the storefront only when the stored market is blank.</summary>
+    [TestMethod]
+    public void DeriveRefreshLegs_BlankMarket_UsesAppleUrlStorefrontFallback( ) {
+        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
+        record.Results[SupportedProviders.AppleMusic] = new MusicLookupResult {
+            URL = "https://music.apple.com/br/album/example/1234567890?i=9876543210",
+            ExternalId = "BRABC1234567",
+            MarketRegion = string.Empty,
+            IsAlbum = false
+        };
+
+        IReadOnlyList<StaleCacheRefreshBackgroundService.RefreshLeg> legs =
+            StaleCacheRefreshBackgroundService.DeriveRefreshLegs( record, [SupportedProviders.AppleMusic] );
+
+        Assert.HasCount( 1, legs );
+        Assert.AreEqual( "br", legs[0].Storefront );
+    }
+
+    /// <summary>A missing provider uses a region from a later result, independently of the id anchor.</summary>
+    [TestMethod]
+    public void DeriveRefreshLegs_MissingTidal_UsesLaterAppleStorefront( ) {
+        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
+        record.Results[SupportedProviders.Spotify] = new MusicLookupResult {
+            URL = "https://open.spotify.com/track/spotify-id",
+            ExternalId = "JPABC1234567",
+            IsAlbum = false
+        };
+        record.Results[SupportedProviders.AppleMusic] = new MusicLookupResult {
+            URL = "https://music.apple.com/jp/album/example/1234567890?i=9876543210",
+            ExternalId = "JPABC1234567",
+            MarketRegion = "jp",
+            IsAlbum = false
+        };
+
+        IReadOnlyList<StaleCacheRefreshBackgroundService.RefreshLeg> legs =
+            StaleCacheRefreshBackgroundService.DeriveRefreshLegs(
+                record,
+                [SupportedProviders.Spotify, SupportedProviders.AppleMusic, SupportedProviders.Tidal] );
+
+        StaleCacheRefreshBackgroundService.RefreshLeg tidal = legs.Single(
+            leg => leg.Provider == SupportedProviders.Tidal );
+        Assert.AreEqual( "JP", tidal.Storefront );
+    }
+
+    /// <summary>A storefront unsupported by the target provider is discarded before queueing.</summary>
+    [TestMethod]
+    public void DeriveRefreshLegs_AppleAllStorefront_DoesNotReachTidalWorker( ) {
+        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
+        record.Results[SupportedProviders.AppleMusic] = new MusicLookupResult {
+            URL = "https://music.apple.com/all/album/example/1234567890?i=9876543210",
+            ExternalId = "USRC12345678",
+            MarketRegion = "all",
+            IsAlbum = false
+        };
+
+        IReadOnlyList<StaleCacheRefreshBackgroundService.RefreshLeg> legs =
+            StaleCacheRefreshBackgroundService.DeriveRefreshLegs(
+                record,
+                [SupportedProviders.AppleMusic, SupportedProviders.Tidal] );
+
+        StaleCacheRefreshBackgroundService.RefreshLeg tidal = legs.Single(
+            leg => leg.Provider == SupportedProviders.Tidal );
+        Assert.IsNull( tidal.Storefront );
+    }
+
     /// <summary>
     /// Spotify+Apple present and parseable, Tidal absent, ISRC present → 2 native legs + 1 Tidal
     /// IsrcLookup fallback.
@@ -1056,6 +1158,54 @@ public class StaleCacheRefreshBackgroundServiceTests {
                 It.IsAny<CancellationToken>( ) ),
             Times.Never
         );
+    }
+
+    /// <summary>Records already in the unresolved review list are not selected again.</summary>
+    [TestMethod]
+    public async Task RunRefreshPass_UnresolvedRecord_IsSuppressed( ) {
+        const string AtUri = "at://did:plc:test/link.bridgebeats.lookup/track:unresolved";
+        SetupRecordList( [MakeStaleRecord( AtUri, DateTime.UtcNow.AddDays( -60 ) )] );
+
+        Mock<IRefreshReviewStore> reviewStore = new( );
+        _ = reviewStore.Setup( store => store.GetUnresolvedAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( [new RefreshReviewEntry {
+                SourceRecordUri = AtUri,
+                SagaId = "old-saga",
+                LookupType = LookupRequestType.IsrcLookup,
+                LookupValue = "ISRC_DEFAULT",
+                FailedAt = DateTimeOffset.UtcNow
+            }] );
+
+        await CreateService( reviewStore.Object ).RunRefreshPassAsync( TestContext.CancellationToken );
+
+        _queueMock.Verify( queue => queue.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ),
+            It.IsAny<QueuePriority>( ),
+            It.IsAny<CancellationToken>( ) ), Times.Never );
+    }
+
+    /// <summary>The refresh source URI is registered before provider work is dispatched.</summary>
+    [TestMethod]
+    public async Task RunRefreshPass_RegistersPendingReviewContext( ) {
+        const string AtUri = "at://did:plc:test/link.bridgebeats.lookup/track:pending";
+        SetupRecordList( [MakeStaleRecord( AtUri, DateTime.UtcNow.AddDays( -60 ), "PENDING_ISRC" )] );
+
+        Mock<IRefreshReviewStore> reviewStore = new( );
+        _ = reviewStore.Setup( store => store.GetUnresolvedAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( [] );
+        _ = reviewStore.Setup( store => store.RegisterPendingAsync(
+                It.IsAny<RefreshReviewEntry>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+
+        await CreateService( reviewStore.Object ).RunRefreshPassAsync( TestContext.CancellationToken );
+
+        reviewStore.Verify( store => store.RegisterPendingAsync(
+            It.Is<RefreshReviewEntry>( entry =>
+                entry.SourceRecordUri == AtUri &&
+                entry.SourceRecordCid == "bafyreitestcid" &&
+                entry.LookupType == LookupRequestType.IsrcLookup &&
+                entry.LookupValue == "PENDING_ISRC" ),
+            It.IsAny<CancellationToken>( ) ), Times.Once );
     }
 
     #endregion
@@ -1510,16 +1660,65 @@ public class StaleCacheRefreshBackgroundServiceTests {
     /// <summary>
     /// When the host cancels the service, the loop exits cleanly with no exception.
     /// </summary>
+    /// <remarks>
+    /// <c>BackgroundService.StartAsync</c> returns <c>Task.CompletedTask</c> unconditionally and
+    /// immediately — it schedules <c>ExecuteAsync</c> via <c>Task.Run</c> without waiting for it to
+    /// reach a first await — so awaiting that captured task is a no-op and would make this test pass
+    /// vacuously even if <c>StopAsync</c> itself threw. <c>StopAsync</c> genuinely awaits the
+    /// underlying execute task before returning, but on net10.0 it does so via
+    /// <c>WaitAsync(ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing)</c> and does not
+    /// re-throw a faulted or cancelled execute task — so "<c>StopAsync</c> completes without
+    /// throwing" alone cannot distinguish a graceful stop from an
+    /// <c>OperationCanceledException</c> escaping one of the loop's guarded await points and
+    /// faulting/cancelling <c>ExecuteAsync</c>. <c>ExecuteTask.Status</c> is the assertable surface
+    /// for that distinction. The <c>startedTcs</c> start-gate additionally proves the pass actually
+    /// reached <c>ListAllRecordsAsync</c> before cancellation fires — without it, a fast-enough
+    /// cancel could skip dispatch entirely before <c>ExecuteAsync</c> ever installs its own
+    /// try/catch, leaving <c>Task.Run</c>'s own token-cancellation to end <c>ExecuteTask</c> as
+    /// <c>Canceled</c> rather than <c>RanToCompletion</c> — failing this assertion for a reason
+    /// unrelated to the guard under test, not passing it vacuously.
+    /// </remarks>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
     public async Task ExecuteAsync_WhenCancelled_StopsGracefully( ) {
+        // Arrange: zero startup grace/jitter, and a PDS stream that blocks on a cancellable infinite
+        // wait once reached, so the first pass is genuinely in flight (not already completed) when
+        // cancellation fires below — a pass that had already finished and moved on to the next loop
+        // wait would exit gracefully via that wait's own catch regardless of whether this pass's own
+        // guard exists, masking a missing guard. startedTcs signals once the stream is reached,
+        // proving ExecuteAsync's first pass actually began before cancellation.
+        TaskCompletionSource startedTcs = new( TaskCreationOptions.RunContinuationsAsynchronously );
+        _ = _atProtoStorageMock
+            .Setup( x => x.ListAllRecordsAsync( It.IsAny<Uri>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ), It.IsAny<bool>( ) ) )
+            .Returns<Uri, string, CancellationToken, bool>( ( _, _, ct, _ ) => BlockUntilCancelledAsync( startedTcs, ct ) );
+
         StaleCacheRefreshBackgroundService service = CreateService( );
+        service._startupGrace = TimeSpan.Zero;
+        service._maxJitter = TimeSpan.Zero;
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource( TestContext.CancellationToken );
-        Task executeTask = service.StartAsync( cts.Token );
+        _ = service.StartAsync( cts.Token );
+        await startedTcs.Task.WaitAsync( TestContext.CancellationToken );
         await cts.CancelAsync( );
 
-        await executeTask; // must not throw
+        await service.StopAsync( CancellationToken.None ); // must not throw
+        Assert.AreEqual( TaskStatus.RanToCompletion, service.ExecuteTask!.Status,
+            "ExecuteAsync must reach RanToCompletion; Canceled/Faulted means an OperationCanceledException "
+            + "escaped one of the loop's guarded await points instead of being caught and exiting cleanly." );
+    }
+
+    /// <summary>
+    /// Async-iterator stream used by <see cref="ExecuteAsync_WhenCancelled_StopsGracefully"/>:
+    /// signals <paramref name="startedTcs"/> once enumeration begins, then blocks on a cancellable
+    /// infinite delay so the caller's refresh pass is genuinely mid-flight when the token is
+    /// cancelled, rather than already completed.
+    /// </summary>
+    private static async IAsyncEnumerable<(string AtUri, MediaLinkResult Result)> BlockUntilCancelledAsync(
+        TaskCompletionSource startedTcs,
+        [EnumeratorCancellation] CancellationToken cancellationToken ) {
+        _ = startedTcs.TrySetResult( );
+        await Task.Delay( Timeout.InfiniteTimeSpan, cancellationToken );
+        yield break;
     }
 
     #endregion
@@ -1828,7 +2027,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
     #region Helper Methods
 
-    private StaleCacheRefreshBackgroundService CreateService( ) =>
+    private StaleCacheRefreshBackgroundService CreateService( IRefreshReviewStore? reviewStore = null ) =>
         new(
             _atProtoStorageMock.Object,
             _sagaManagerMock.Object,
@@ -1836,7 +2035,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
             _redisMock.Object,
             _enabledProviders,
             _settings,
-            _loggerMock.Object
+            _loggerMock.Object,
+            reviewStore ?? _refreshReviewStoreMock.Object
         );
 
     private CacheBootstrapSettings MakeSettings(

@@ -195,7 +195,8 @@ public class SagaFinalizeClaimIntegrationTests {
                 resultCombiner,
                 queueResolverMock.Object,
                 enabledProviders,
-                loggerMock.Object
+                loggerMock.Object,
+                Mock.Of<IRefreshReviewStore>( )
             );
 
             // All paths converge on WriteFinalResultAsync internally; invoke via polling path

@@ -185,7 +185,8 @@ public class SagaWriteGenerationIntegrationTests {
                 resultCombiner,
                 queueResolverMock.Object,
                 enabledProviders,
-                loggerMock.Object
+                loggerMock.Object,
+                Mock.Of<IRefreshReviewStore>( )
             );
         }
 
@@ -313,7 +314,8 @@ public class SagaWriteGenerationIntegrationTests {
                 resultCombiner,
                 queueResolverMock.Object,
                 enabledProviders,
-                loggerMock.Object
+                loggerMock.Object,
+                Mock.Of<IRefreshReviewStore>( )
             );
         }
 

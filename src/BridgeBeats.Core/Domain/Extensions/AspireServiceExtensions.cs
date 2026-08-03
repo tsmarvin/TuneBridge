@@ -218,11 +218,9 @@ public static class AspireServiceExtensions {
 
         bool hasCustomEndpoint = TryGetOtlpEndpoint( otlpEndpoint, out Uri? otlpUri );
 
-        ResourceBuilder resourceBuilder = ResourceBuilder.CreateDefault( )
-            .AddService(
-                serviceName: builder.Environment.ApplicationName,
-                serviceVersion: GetServiceVersion( )
-            );
+        ResourceBuilder resourceBuilder = CreateResourceBuilder(
+            builder.Configuration,
+            builder.Environment.ApplicationName );
 
         _ = builder.Logging.AddOpenTelemetry( options => {
             _ = options.SetResourceBuilder( resourceBuilder );
@@ -237,8 +235,7 @@ public static class AspireServiceExtensions {
             } );
         } );
 
-        OpenTelemetryBuilder openTelemetryBuilder = builder.Services.AddOpenTelemetry( )
-            .ConfigureResource( resource => resource.AddService( builder.Environment.ApplicationName ) );
+        OpenTelemetryBuilder openTelemetryBuilder = builder.Services.AddOpenTelemetry( );
 
         if (enableTracing) {
             _ = openTelemetryBuilder.WithTracing( tracing => {
@@ -300,11 +297,9 @@ public static class AspireServiceExtensions {
 
         bool hasCustomEndpoint = TryGetOtlpEndpoint( otlpEndpoint, out Uri? otlpUri );
 
-        ResourceBuilder resourceBuilder = ResourceBuilder.CreateDefault( )
-            .AddService(
-                serviceName: builder.Environment.ApplicationName,
-                serviceVersion: GetServiceVersion( )
-            );
+        ResourceBuilder resourceBuilder = CreateResourceBuilder(
+            builder.Configuration,
+            builder.Environment.ApplicationName );
 
         _ = builder.Logging.AddOpenTelemetry( options => {
             _ = options.SetResourceBuilder( resourceBuilder );
@@ -319,8 +314,7 @@ public static class AspireServiceExtensions {
             } );
         } );
 
-        OpenTelemetryBuilder openTelemetryBuilder = builder.Services.AddOpenTelemetry( )
-            .ConfigureResource( resource => resource.AddService( builder.Environment.ApplicationName ) );
+        OpenTelemetryBuilder openTelemetryBuilder = builder.Services.AddOpenTelemetry( );
 
         if (enableTracing) {
             _ = openTelemetryBuilder.WithTracing( tracing => {
@@ -392,6 +386,27 @@ public static class AspireServiceExtensions {
     }
 
     /// <summary>
+    /// Creates a common OpenTelemetry resource for all signals. Aspire supplies
+    /// <c>OTEL_SERVICE_NAME</c> for each resource; standalone processes fall back to
+    /// the entry application's name. <see cref="ResourceBuilder.CreateDefault"/>
+    /// retains standard <c>OTEL_RESOURCE_ATTRIBUTES</c>, including Aspire's instance id.
+    /// </summary>
+    private static ResourceBuilder CreateResourceBuilder(
+        IConfiguration configuration,
+        string fallbackServiceName
+    ) {
+        string serviceName = configuration["OTEL_SERVICE_NAME"]?.Trim( ) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace( serviceName )) {
+            serviceName = fallbackServiceName;
+        }
+
+        return ResourceBuilder.CreateDefault( )
+            .AddService(
+                serviceName: serviceName,
+                serviceVersion: GetServiceVersion( ) );
+    }
+
+    /// <summary>
     /// Returns the entry assembly's version string for the OpenTelemetry resource, falling back to
     /// <c>"0.0.1"</c> when no entry assembly or version is available.
     /// </summary>
@@ -430,8 +445,9 @@ public static class AspireServiceExtensions {
             return builder;
         }
 
-        Log.Logger = new LoggerConfiguration( )
-            .ReadFrom.Configuration( builder.Configuration )
+        _ = builder.Host.UseSerilog( ( context, services, loggerConfiguration ) => loggerConfiguration
+            .ReadFrom.Configuration( context.Configuration )
+            .ReadFrom.Services( services )
             .Filter.ByExcluding( logEvent => {
                 // Exclude successful health check requests from logs (but keep failures)
                 // This filters out Information level logs for /health endpoint
@@ -481,10 +497,9 @@ public static class AspireServiceExtensions {
                 retainedFileCountLimit: 5, // 5 days retention
                 rollOnFileSizeLimit: true,
                 shared: false
-            )
-            .CreateLogger( );
-
-        _ = builder.Host.UseSerilog( );
+            ),
+            preserveStaticLogger: false,
+            writeToProviders: true );
 
         return builder;
     }
@@ -518,8 +533,9 @@ public static class AspireServiceExtensions {
             return builder;
         }
 
-        Log.Logger = new LoggerConfiguration( )
+        _ = builder.Services.AddSerilog( ( services, loggerConfiguration ) => loggerConfiguration
             .ReadFrom.Configuration( builder.Configuration )
+            .ReadFrom.Services( services )
             .WriteTo.Console( )
             .WriteTo.File(
                 path: logPath,
@@ -528,10 +544,9 @@ public static class AspireServiceExtensions {
                 retainedFileCountLimit: 5, // 5 days retention
                 rollOnFileSizeLimit: true,
                 shared: false
-            )
-            .CreateLogger( );
-
-        _ = builder.Services.AddSerilog( );
+            ),
+            preserveStaticLogger: false,
+            writeToProviders: true );
 
         return builder;
     }

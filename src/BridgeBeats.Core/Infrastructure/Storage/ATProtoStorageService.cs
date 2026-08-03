@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -68,6 +69,7 @@ public partial class ATProtoStorageService(
     private readonly SemaphoreSlim _carCacheLock = new( 1, 1 );
     private List<(string AtUri, MediaLinkResult Result)>? _cachedCarRecords; // null = never populated / evicted
     private DateTimeOffset _cachedCarTimestamp;                              // UTC stamp of the last accepted populate
+    private Dictionary<string, string> _cachedRecordCids = new( StringComparer.Ordinal );
 
     /// <summary>
     /// Stores a media-link result on the PDS, upserting under a deterministic record key.
@@ -103,6 +105,7 @@ public partial class ATProtoStorageService(
 
             if (putResult.Succeeded && putResult.Result is not null) {
                 string uri = putResult.Result.Uri.ToString( );
+                await CacheRecordCidAsync( uri, putResult.Result.Cid.ToString( ), cancellationToken );
                 if (logger.IsEnabled( LogLevel.Information )) {
                     LogUpdatedRecord( logger, uri );
                 }
@@ -124,6 +127,7 @@ public partial class ATProtoStorageService(
             }
 
             string recordUri = createResult.Result.Uri.ToString( );
+            await CacheRecordCidAsync( recordUri, createResult.Result.Cid.ToString( ), cancellationToken );
             if (logger.IsEnabled( LogLevel.Information )) {
                 LogCreatedRecord( logger, recordUri );
             }
@@ -168,6 +172,115 @@ public partial class ATProtoStorageService(
         } catch (Exception ex) {
             LogRetrieveError( logger, ex, recordUri );
             return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<string?> GetMediaLinkRecordCidAsync(
+        string recordUri,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( recordUri );
+
+        await _carCacheLock.WaitAsync( cancellationToken );
+        try {
+            if (_cachedRecordCids.TryGetValue( recordUri, out string? cachedCid )) {
+                return cachedCid;
+            }
+        } finally {
+            _ = _carCacheLock.Release( );
+        }
+
+        BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( cancellationToken );
+        AtUri atUri = new( recordUri );
+        AtProtoHttpResult<AtProtoRepositoryRecord<MediaLinkResultRecord>> result =
+            await agent.GetRecord<MediaLinkResultRecord>(
+                uri: atUri,
+                cid: null,
+                cancellationToken: cancellationToken
+            );
+
+        if (result.Succeeded && result.Result is not null) {
+            string cid = result.Result.Cid.ToString( );
+            await CacheRecordCidAsync( recordUri, cid, cancellationToken );
+            return cid;
+        }
+
+        return result.StatusCode == HttpStatusCode.NotFound
+            || string.Equals( result.AtErrorDetail?.Error, "RecordNotFound", StringComparison.Ordinal )
+                ? null
+                : throw new InvalidOperationException(
+                    $"Failed to read record CID from ATProto PDS: {(result.AtErrorDetail?.Message ?? $"HTTP {result.StatusCode}").SanitizeForLogging( )}" );
+    }
+
+    /// <inheritdoc/>
+    public async Task<MediaLinkDeleteOutcome> DeleteMediaLinkResultAsync(
+        string recordUri,
+        string expectedCid,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( recordUri );
+        ArgumentException.ThrowIfNullOrWhiteSpace( expectedCid );
+
+        BlueskyAgent agent = await sessionManager.GetAuthenticatedAgentAsync( cancellationToken );
+        AtUri atUri = new( recordUri );
+        if (atUri.Collection != s_mediaLinkResultCollection || atUri.RecordKey is null) {
+            throw new ArgumentException( "Record URI is not a BridgeBeats media-link record.", nameof( recordUri ) );
+        }
+        if (agent.Did is null
+            || !string.Equals( atUri.Authority.ToString( ), agent.Did.ToString( ), StringComparison.Ordinal )) {
+            throw new ArgumentException(
+                "Record URI does not belong to the authenticated ATProto repository.",
+                nameof( recordUri ) );
+        }
+
+        var deleteResult = await agent.DeleteRecord(
+            collection: s_mediaLinkResultCollection,
+            rKey: atUri.RecordKey,
+            swapRecord: new idunno.AtProto.Cid( expectedCid ),
+            swapCommit: null,
+            serviceProxy: null,
+            cancellationToken: cancellationToken
+        );
+
+        if (!deleteResult.Succeeded) {
+            if (deleteResult.StatusCode == HttpStatusCode.NotFound
+                || string.Equals( deleteResult.AtErrorDetail?.Error, "RecordNotFound", StringComparison.Ordinal )) {
+                return MediaLinkDeleteOutcome.NotFound;
+            }
+
+            if (deleteResult.StatusCode == HttpStatusCode.Conflict
+                || string.Equals( deleteResult.AtErrorDetail?.Error, "InvalidSwap", StringComparison.Ordinal )) {
+                return MediaLinkDeleteOutcome.RevisionConflict;
+            }
+
+            string error = (deleteResult.AtErrorDetail?.Message ?? $"HTTP {deleteResult.StatusCode}")
+                .SanitizeForLogging( );
+            throw new InvalidOperationException( $"Failed to delete record from ATProto PDS: {error}" );
+        }
+
+        await _carCacheLock.WaitAsync( cancellationToken );
+        try {
+            _cachedCarRecords = null;
+            _cachedCarTimestamp = default;
+            _ = _cachedRecordCids.Remove( recordUri );
+        } finally {
+            _ = _carCacheLock.Release( );
+        }
+
+        return MediaLinkDeleteOutcome.Deleted;
+    }
+
+    private async Task CacheRecordCidAsync(
+        string recordUri,
+        string cid,
+        CancellationToken cancellationToken
+    ) {
+        await _carCacheLock.WaitAsync( cancellationToken );
+        try {
+            _cachedRecordCids[recordUri] = cid;
+        } finally {
+            _ = _carCacheLock.Release( );
         }
     }
 
@@ -396,7 +509,7 @@ public partial class ATProtoStorageService(
             LogCarCacheMiss( logger, forceRefresh );
             LogCarCacheRefreshStart( logger );
 
-            List<(string AtUri, MediaLinkResult Result)> fresh =
+            (List<(string AtUri, MediaLinkResult Result)> fresh, Dictionary<string, string> freshRecordCids) =
                 await DownloadAndParseCarWithRetryAsync( pdsUri, userDid, cancellationToken );
 
             // Evict log: only when replacing a previously-expired entry, not on cold first populate.
@@ -406,6 +519,7 @@ public partial class ATProtoStorageService(
 
             _cachedCarRecords = fresh;
             _cachedCarTimestamp = DateTimeOffset.UtcNow;
+            _cachedRecordCids = freshRecordCids;
             LogCarCacheRefreshComplete( logger, fresh.Count, _cachedCarTimestamp );
 
             return fresh;
@@ -419,7 +533,8 @@ public partial class ATProtoStorageService(
     /// CarParseException, HttpRequestException, and HttpClient-deadline OperationCanceledException.
     /// Caller-token cancellation propagates immediately and is never retried.
     /// </summary>
-    private async Task<List<(string AtUri, MediaLinkResult Result)>> DownloadAndParseCarWithRetryAsync(
+    private async Task<(List<(string AtUri, MediaLinkResult Result)> Records, Dictionary<string, string> RecordCids)>
+        DownloadAndParseCarWithRetryAsync(
         Uri pdsUri,
         string userDid,
         CancellationToken cancellationToken
@@ -477,9 +592,13 @@ public partial class ATProtoStorageService(
     /// <param name="pdsUri">The base URI of the PDS hosting the repository.</param>
     /// <param name="userDid">The repository owner's DID.</param>
     /// <param name="cancellationToken">A token observed during download and enumeration.</param>
-    /// <returns>The fully-materialized list of valid <c>(AT-URI, result)</c> pairs.</returns>
+    /// <returns>
+    /// The fully-materialized list of valid <c>(AT-URI, result)</c> pairs and their record CIDs.
+    /// The caller publishes both caches together while holding <see cref="_carCacheLock"/>.
+    /// </returns>
     /// <exception cref="CarParseException">Thrown when the download is truncated or the CAR fails to parse.</exception>
-    private async Task<List<(string AtUri, MediaLinkResult Result)>> DownloadAndParseCarAsync(
+    private async Task<(List<(string AtUri, MediaLinkResult Result)> Records, Dictionary<string, string> RecordCids)>
+        DownloadAndParseCarAsync(
         Uri pdsUri,
         string userDid,
         CancellationToken cancellationToken
@@ -543,6 +662,7 @@ public partial class ATProtoStorageService(
         // results is declared here so each attempt starts from an empty list — a partial list
         // from a failed mid-walk is never concatenated with a fresh walk on retry.
         List<(string AtUri, MediaLinkResult Result)> results = [];
+        Dictionary<string, string> recordCids = new( StringComparer.Ordinal );
 
         try {
             CarEnumerationResult enumResult =
@@ -555,7 +675,7 @@ public partial class ATProtoStorageService(
             int recordCount = 0;
             int skippedCount = 0;
 
-            foreach ((string rkey, System.Text.Json.Nodes.JsonNode recordNode) in enumResult.Records) {
+            foreach ((string rkey, string cid, System.Text.Json.Nodes.JsonNode recordNode) in enumResult.Records) {
                 cancellationToken.ThrowIfCancellationRequested( );
 
                 // Validate rkey before building AT-URI or logging it verbatim.
@@ -591,6 +711,7 @@ public partial class ATProtoStorageService(
 
                     string atUri = ATProtoUriHelper.BuildLookupRecordUri( userDid, rkey );
                     results.Add( (atUri, converted) );
+                    recordCids[atUri] = cid;
                     recordCount++;
                 } catch (Exception ex) when (ex is not OperationCanceledException) {
                     LogCarRecordSkipped( logger, rkey, ex.Message.SanitizeForLogging( ) );
@@ -607,7 +728,7 @@ public partial class ATProtoStorageService(
             throw;
         }
 
-        return results;
+        return (results, recordCids);
     }
 
     #region Rkey validation

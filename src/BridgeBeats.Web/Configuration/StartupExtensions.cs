@@ -55,6 +55,12 @@ namespace BridgeBeats.Web.Configuration {
             // In tests, CustomWebApplicationFactory provides the connection string via Testcontainers
             builder.AddRedisClient( "redis" );
 
+            // The direct-mode Apple Music, Tidal, and Spotify lookup services require the track genre
+            // cache. It is registered unconditionally (not only in direct-provider mode) so that
+            // the ASP.NET Core Development-environment default for ValidateOnBuild can resolve those
+            // services' dependencies regardless of which provider mode is configured.
+            _ = builder.Services.AddGenreCache( );
+
             _ = builder.WebHost.ConfigureBridgeBeatsServices(
                 builder.Services,
                 builder.Configuration
@@ -648,6 +654,7 @@ namespace BridgeBeats.Web.Configuration {
             // routing Spotify SongIdLookup/AlbumIdLookup to the type-specific bulk streams.
             _ = services.AddQueueInfrastructure( );
             _ = services.AddAllProviderQueues<QueuedLookupRequest>( );
+            _ = services.AddScoped<IRefreshReviewDispositionService, RefreshReviewDispositionService>( );
 
         }
 

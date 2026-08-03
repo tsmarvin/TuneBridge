@@ -74,4 +74,24 @@ public sealed record QueuedLookupRequest : IQueueableRequest {
     /// </remarks>
     [JsonPropertyName( "originPriority" )]
     public QueuePriority OriginPriority { get; init; } = QueuePriority.Background;
+
+    /// <summary>
+    /// Catalog storefront to use for providers whose catalogs vary by country. A blank value lets
+    /// the provider apply its normal default.
+    /// </summary>
+    [JsonPropertyName( "storefront" )]
+    [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
+    public string? Storefront { get; init; }
+
+    /// <summary>
+    /// Lookup strategy to try within this provider leg when the native id no longer resolves.
+    /// </summary>
+    [JsonPropertyName( "fallbackLookupType" )]
+    [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
+    public LookupRequestType? FallbackLookupType { get; init; }
+
+    /// <summary>The ISRC or UPC paired with <see cref="FallbackLookupType"/>.</summary>
+    [JsonPropertyName( "fallbackLookupValue" )]
+    [JsonIgnore( Condition = JsonIgnoreCondition.WhenWritingNull )]
+    public string? FallbackLookupValue { get; init; }
 }
