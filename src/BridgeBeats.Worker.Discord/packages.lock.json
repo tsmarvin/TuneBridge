@@ -14,11 +14,11 @@
       },
       "NetCord.Hosting": {
         "type": "Direct",
-        "requested": "[1.0.0-beta.11, )",
-        "resolved": "1.0.0-beta.11",
-        "contentHash": "81v1p+ns7Z/ky822idTHKEGy4tt8trC6MY+hB2i0k0rKqguCsSxo8syXMNlvksYBk+TLiQzJgHkfQ+aA+VmXJA==",
+        "requested": "[1.0.0-beta.12, )",
+        "resolved": "1.0.0-beta.12",
+        "contentHash": "6f2Tv3juHFu9jNh+jK9sGGAmQ4AtsGgy6qGPVccghJXGMowzBl4DtMa8D/fieQF6l5xjs3btRf92RkAGEiwDVg==",
         "dependencies": {
-          "NetCord": "1.0.0-beta.11"
+          "NetCord": "1.0.0-beta.12"
         }
       },
       "Aspire.StackExchange.Redis": {
@@ -296,8 +296,8 @@
       },
       "NetCord": {
         "type": "Transitive",
-        "resolved": "1.0.0-beta.11",
-        "contentHash": "1mzToSQ3J6wtHt1NirCJ4O9Dt1Ou/G9sSiLrFpub3KwWFpUWZqi/bncjAeCCMymosBYTasbqI+M5r6m/3DoLHg=="
+        "resolved": "1.0.0-beta.12",
+        "contentHash": "FpHP7AABQ0dvr3+sYAaMPMDMsfzzdtdpuLAmEfnZU7N+eyOmEK//cnYk0RAkEoj2jDHH4O1+xCUDn5zIBYbRsw=="
       },
       "OpenTelemetry": {
         "type": "Transitive",
