@@ -14,8 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="idunno.AtProto" Version="3.0.0" />
-    <PackageReference Include="idunno.Bluesky" Version="3.0.0" />
+    <PackageReference Include="idunno.AtProto" Version="3.1.0" />
+    <PackageReference Include="idunno.Bluesky" Version="3.1.0" />
   </ItemGroup>
 
   <ItemGroup>
