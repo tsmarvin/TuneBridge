@@ -217,27 +217,27 @@
       },
       "idunno.AtProto": {
         "type": "Transitive",
-        "resolved": "3.0.0",
-        "contentHash": "2c58YetcEjktBmu6lYzxKJRyqp6/6nATBjuNxyDPMfYL+dB4S6GQimqducAYFzDQOdv6468QYp99qv0TBji92g==",
+        "resolved": "3.1.0",
+        "contentHash": "OGyxErD82RXt4IOWFeSXgW2fWjLsj+PClt20L2UwW5M7shUy2gN/GS7fCoN6mWh9oCYddKagju5DOhT+t/kyoQ==",
         "dependencies": {
           "DnsClient": "1.8.0",
           "Duende.IdentityModel.OidcClient": "7.1.0",
           "Duende.IdentityModel.OidcClient.Extensions": "7.1.0",
-          "Microsoft.IdentityModel.JsonWebTokens": "8.19.1",
-          "OpenTelemetry.Extensions.Hosting": "1.16.0",
+          "Microsoft.IdentityModel.JsonWebTokens": "8.21.0",
+          "OpenTelemetry.Extensions.Hosting": "1.17.0",
           "PeterO.Cbor": "4.5.5",
-          "SimpleBase": "5.6.1",
+          "SimpleBase": "5.6.3",
           "ZstdSharp.Port": "0.8.8",
-          "idunno.AtProto.Types": "3.0.0",
-          "idunno.Security.Ssrf": "5.3.0"
+          "idunno.AtProto.Types": "3.1.0",
+          "idunno.Security.Ssrf": "5.4.0"
         }
       },
       "idunno.AtProto.Types": {
         "type": "Transitive",
-        "resolved": "3.0.0",
-        "contentHash": "y25DNCgzpey3qjHbCnP6bgI0229JHQXtuv6/fr69H731YcQ3JDrQ5BTTS16DsdxIyNz51XGZIURWdStwTIydmQ==",
+        "resolved": "3.1.0",
+        "contentHash": "iNszVvNsVX69vZu9MfEAuUJnp2OQHSoYoE24A/K49Hiy3GzOEclQDWAKzmodPGm2LtKYYQgXgcOYYheDfC8x0g==",
         "dependencies": {
-          "SimpleBase": "5.6.1"
+          "SimpleBase": "5.6.3"
         }
       },
       "idunno.Bluesky": {
@@ -433,32 +433,32 @@
       },
       "Microsoft.IdentityModel.Abstractions": {
         "type": "Transitive",
-        "resolved": "8.19.1",
-        "contentHash": "gFA8THIk23uNF/vMdOHnjIdXD1LyA2g12cHzMJ+Xag6WpgWLw6E/6uCXxvA0gp9d2yAvkRt3xzFzMUiO/hofnQ=="
+        "resolved": "8.21.0",
+        "contentHash": "XYgEmYpUvng0oYIagDJ+uebboQSnWtCV7q9zMyXlBw6ZqLLCHcmGUb7TpXvQ3HWY4OzbOCUQm2Ac0saPSnwqSw=="
       },
       "Microsoft.IdentityModel.JsonWebTokens": {
         "type": "Transitive",
-        "resolved": "8.19.1",
-        "contentHash": "6eeY+y2QFyjj3XnCz/8gJdoP5smYHTS9ow1bw2nsZzDIPjPhBZlackYTIduSMipVpxnoT/B62LkrXX2jPggOXg==",
+        "resolved": "8.21.0",
+        "contentHash": "iiA5uimwlRe4Drd8YKOaB8IQkgGOjxGjO6mu5zCGFjaEBpB6yNOluZ33zJFXiW5MQYRC6ypMnOXsiR5SPrO+tw==",
         "dependencies": {
-          "Microsoft.IdentityModel.Tokens": "8.19.1"
+          "Microsoft.IdentityModel.Tokens": "8.21.0"
         }
       },
       "Microsoft.IdentityModel.Logging": {
         "type": "Transitive",
-        "resolved": "8.19.1",
-        "contentHash": "H+sMrMpdbWnwkQnpb/ESkQovtOgdefmj0ecGCcP40mDKzE5i4dUYkH6599M9mWYFNGNJnTp92l/9wLubYXWimw==",
+        "resolved": "8.21.0",
+        "contentHash": "LgIWUUX386xCbvjq2ex8iXGIu2raDWrrIQ4OyYZKaNWMhzvN8YOTbAYMFJC+iHmKnkNBM8g7mLak9KQodldH3g==",
         "dependencies": {
-          "Microsoft.IdentityModel.Abstractions": "8.19.1"
+          "Microsoft.IdentityModel.Abstractions": "8.21.0"
         }
       },
       "Microsoft.IdentityModel.Tokens": {
         "type": "Transitive",
-        "resolved": "8.19.1",
-        "contentHash": "KDiuSLXud2AFVNAOottd8ztVysfPeHyr4r8gofU3/VKUXlI7oytzGTnPsNJ/B3nui17rgz8wAdWNJOtzPjkUxw==",
+        "resolved": "8.21.0",
+        "contentHash": "xFnFEl4VrhAJEbqtRrpgfAACgkm6NYo7cWYKYROH00N9/M5OYrRwTP0lHsginnLrqPrseLcSqAueQNRCyGNsdw==",
         "dependencies": {
           "Microsoft.Bcl.Cryptography": "10.0.2",
-          "Microsoft.IdentityModel.Logging": "8.19.1"
+          "Microsoft.IdentityModel.Logging": "8.21.0"
         }
       },
       "Microsoft.VisualStudio.SolutionPersistence": {
@@ -607,8 +607,8 @@
       },
       "SimpleBase": {
         "type": "Transitive",
-        "resolved": "5.6.1",
-        "contentHash": "gCexR8/Laso8JFm8myi3uJfo6NYyZElg5qgRyGHok6jFNY/wQwLJHr0D4tb6645SBV2D6L8e/xV2RMSSKXYd5Q=="
+        "resolved": "5.6.3",
+        "contentHash": "ayL730f1gdQVYmFFLKSX83QcoltyKSMBsV94qfCBpZHMaJz/e3ALuXKZDD8SkseWbNHxBe0HxLRBe5OOpQ9HpA=="
       },
       "SourceGear.sqlite3": {
         "type": "Transitive",
@@ -728,7 +728,7 @@
       "bridgebeats.contracts": {
         "type": "Project",
         "dependencies": {
-          "idunno.AtProto": "[3.0.0, )",
+          "idunno.AtProto": "[3.1.0, )",
           "idunno.Bluesky": "[3.0.0, )"
         }
       }
