@@ -333,11 +333,6 @@ public static class LogEventIds {
             public const int RedisRequestQueueMessageNotFoundForRequeue = 1256;
 
             /// <summary>
-            /// EventId for <see cref="RedisRequestQueue.LogDelayedRequeueNotImplemented"/>.
-            /// </summary>
-            public const int RedisRequestQueueDelayedRequeueNotImplemented = 1257;
-
-            /// <summary>
             /// EventId for <see cref="RedisRequestQueue.LogRequeued"/>.
             /// </summary>
             public const int RedisRequestQueueRequeued = 1258;
@@ -1015,11 +1010,6 @@ public static class LogEventIds {
             public const int ParseBulkArtistsError = 2007;
 
             /// <summary>
-            /// EventId for <see cref="SpotifyLookupService.LogBulkRateLimited"/>.
-            /// </summary>
-            public const int BulkRateLimited = 2008;
-
-            /// <summary>
             /// EventId for <see cref="SpotifyLookupService.LogBulkRequestFailed"/>.
             /// </summary>
             public const int BulkRequestFailed = 2009;
@@ -1161,6 +1151,11 @@ public static class LogEventIds {
             /// </summary>
             public const int UnexpectedError = 2754;
 
+            /// <summary>
+            /// EventId for unexpected exceptions handled by worker HTTP lookup endpoints.
+            /// </summary>
+            public const int UnexpectedWorkerLookupFailure = 2755;
+
             // MusicLookupServiceBase (2800-2824)
 
             /// <summary>
@@ -1283,6 +1278,11 @@ public static class LogEventIds {
             /// requeued at Background priority, deferring it to the bulk-stream retry lane.
             /// </summary>
             public const int InteractiveDeferredToBackground = 3018;
+
+            /// <summary>EventId for a queue message whose saga identity does not match its payload.</summary>
+            public const int SagaIdentityMismatch = 3019;
+            /// <summary>EventId for a failed identity quarantine operation.</summary>
+            public const int SagaIdentityQuarantineFailed = 3020;
 
             // SagaResultCombiner (3100-3149)
 

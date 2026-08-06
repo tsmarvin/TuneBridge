@@ -131,6 +131,27 @@ public class QueueMetricsIntegrationTests {
         Assert.IsNotNull( s_redis );
     }
 
+    /// <summary>Consumer-group pending, oldest-age, and lag gauges are all published.</summary>
+    [TestMethod]
+    public void RegisterQueueDepthGauges_PublishesConsumerHealthGauges( ) {
+        QueueMetrics.RegisterQueueDepthGauges( s_redis! );
+        HashSet<string> published = [];
+        using MeterListener listener = new( );
+        listener.InstrumentPublished = ( instrument, meterListener ) => {
+            if (instrument.Meter.Name == QueueMetrics.MeterName) {
+                _ = published.Add( instrument.Name );
+                meterListener.EnableMeasurementEvents( instrument );
+            }
+        };
+
+        listener.Start( );
+        listener.RecordObservableInstruments( );
+
+        Assert.Contains( "bridgebeats.queue.pending", published );
+        Assert.Contains( "bridgebeats.queue.pending.oldest_age", published );
+        Assert.Contains( "bridgebeats.queue.consumer.lag", published );
+    }
+
     /// <summary>
     /// Verifies observable gauge collection remains non-fatal when the current Redis multiplexer
     /// cannot provide a database, as can happen while a host-owned connection is being torn down.
@@ -143,7 +164,7 @@ public class QueueMetricsIntegrationTests {
         Mock<IConnectionMultiplexer> unavailableRedis = new( MockBehavior.Strict );
         _ = unavailableRedis
             .Setup( redis => redis.GetDatabase( It.IsAny<int>( ), It.IsAny<object?>( ) ) )
-            .Throws( new ObjectDisposedException( nameof(IConnectionMultiplexer) ) );
+            .Throws( new ObjectDisposedException( nameof( IConnectionMultiplexer ) ) );
 
         QueueMetrics.RegisterQueueDepthGauges( unavailableRedis.Object );
 

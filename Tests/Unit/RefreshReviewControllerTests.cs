@@ -1,9 +1,9 @@
+using System.Security.Claims;
+using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
-using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Web.Controllers;
 using BridgeBeats.Web.Services;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Moq;
@@ -48,7 +48,7 @@ public class RefreshReviewControllerTests {
         IActionResult result = await controller.Delete(
             SourceUri, string.Empty, string.Empty, CancellationToken.None );
 
-        Assert.IsInstanceOfType<BadRequestResult>( result );
+        _ = Assert.IsInstanceOfType<BadRequestResult>( result );
         disposition.Verify( service => service.DeleteAsync(
             It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<string>( ),
             It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
@@ -78,7 +78,7 @@ public class RefreshReviewControllerTests {
         IActionResult result = await controller.Delete(
             SourceUri, "refresh-saga", "bafyreihash", CancellationToken.None );
 
-        Assert.IsInstanceOfType<RedirectToActionResult>( result );
+        _ = Assert.IsInstanceOfType<RedirectToActionResult>( result );
         disposition.Verify( service => service.DeleteAsync(
             SourceUri, "refresh-saga", "bafyreihash", "admin-123", It.IsAny<CancellationToken>( ) ), Times.Once );
     }
@@ -100,7 +100,7 @@ public class RefreshReviewControllerTests {
         IActionResult result = await controller.Delete(
             SourceUri, "refresh-saga", "bafyreihash", CancellationToken.None );
 
-        Assert.IsInstanceOfType<NotFoundResult>( result );
+        _ = Assert.IsInstanceOfType<NotFoundResult>( result );
     }
 
     /// <summary>A replacement review entry is surfaced as a conflict so the operator must reload.</summary>
@@ -121,6 +121,6 @@ public class RefreshReviewControllerTests {
         IActionResult result = await controller.Delete(
             SourceUri, "refresh-saga", "bafyreihash", CancellationToken.None );
 
-        Assert.IsInstanceOfType<ConflictObjectResult>( result );
+        _ = Assert.IsInstanceOfType<ConflictObjectResult>( result );
     }
 }

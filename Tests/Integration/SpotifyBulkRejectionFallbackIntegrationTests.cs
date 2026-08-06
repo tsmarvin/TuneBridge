@@ -18,8 +18,8 @@ namespace BridgeBeats.Tests.Integration;
 /// <summary>
 /// Integration test for the 4xx bulk-rejection fallback: seeds the bulk track stream, mocks the
 /// lookup service to throw <see cref="SpotifyBulkRejectedException"/>, runs one cycle, and verifies
-/// that the bulk stream drains to 0 and each item is forwarded to the inner queue at Interactive
-/// priority rather than being re-added to the bulk stream.
+/// that the bulk stream drains to 0 and each item is atomically forwarded to the interactive
+/// stream rather than being re-added to the bulk stream.
 /// </summary>
 /// <remarks>
 /// Guards against a regression where the rejection path silently discards items (the stream drains
@@ -69,6 +69,7 @@ public class SpotifyBulkRejectionFallbackIntegrationTests {
     public async Task TestInitialize( ) {
         IDatabase db = s_redis!.GetDatabase( );
         _ = await db.KeyDeleteAsync( SpotifyConstants.BulkTrackIdStream );
+        _ = await db.KeyDeleteAsync( SpotifyConstants.BackgroundStream );
     }
 
     /// <summary>
@@ -124,16 +125,9 @@ public class SpotifyBulkRejectionFallbackIntegrationTests {
         _ = lookupServiceMock.Setup( s => s.GetTracksByIdsAsync( It.IsAny<IEnumerable<string>>( ) ) )
             .ThrowsAsync( new SpotifyBulkRejectedException( 400, null, SupportedProviders.Spotify ) );
 
-        // Mock the inner request queue to capture Interactive re-enqueues
-        List<(QueuedLookupRequest Request, QueuePriority Priority)> capturedEnqueues = [];
+        // The handoff now writes atomically through Redis; the generic queue remains required by
+        // the service for unrelated DLQ paths but is not involved in rejection forwarding.
         Mock<IRequestQueue<QueuedLookupRequest>> requestQueueMock = new( );
-        _ = requestQueueMock.Setup( q => q.EnqueueAsync(
-                It.IsAny<QueuedLookupRequest>( ),
-                It.IsAny<QueuePriority>( ),
-                It.IsAny<CancellationToken>( ) ) )
-            .Callback( ( QueuedLookupRequest r, QueuePriority p, CancellationToken _ ) =>
-                capturedEnqueues.Add( (r, p) ) )
-            .Returns( Task.CompletedTask );
 
         // Wire up remaining mocks
         Mock<IRateLimitTracker> rateLimitTrackerMock = new( );
@@ -185,14 +179,91 @@ public class SpotifyBulkRejectionFallbackIntegrationTests {
         Assert.AreEqual( 0L, depthAfter,
             "Bulk track stream must be empty after the 4xx rejection cycle — original entries must be acknowledged" );
 
-        // Assert (b): items forwarded to the inner queue at Interactive priority, not re-added to bulk
-        Assert.HasCount( 2, capturedEnqueues,
-            "Both items must be forwarded to the inner queue as individual Interactive lookups" );
-        Assert.IsTrue( capturedEnqueues.All( e => e.Priority == QueuePriority.Interactive ),
-            "All re-enqueued items must carry Interactive priority" );
+        // Assert (b): exactly two items were atomically forwarded to the single-item background stream.
+        StreamEntry[] background = await db.StreamRangeAsync( SpotifyConstants.BackgroundStream );
+        Assert.HasCount( 2, background,
+            "Both items must be forwarded as individual background lookups" );
+        List<QueuedLookupRequest?> forwarded = [.. background
+            .Select( entry => JsonSerializer.Deserialize<QueuedLookupRequest>(
+                entry[QueueStreamFieldNames.Payload].ToString( ), s_jsonOptions ) )];
         Assert.IsTrue(
-            capturedEnqueues.Any( e => e.Request.LookupValue == TrackId1 ) &&
-            capturedEnqueues.Any( e => e.Request.LookupValue == TrackId2 ),
+            forwarded.Any( request => request?.LookupValue == TrackId1 ) &&
+            forwarded.Any( request => request?.LookupValue == TrackId2 ),
             "Both track IDs must appear in the re-enqueued items" );
+        Assert.IsTrue( forwarded.All( request => request?.EnqueueOrigin == QueueEnqueueOrigin.Requeue ) );
+        Assert.IsTrue( forwarded.All( request => request?.BypassBulkRouting == true ) );
+        requestQueueMock.Verify( queue => queue.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Never );
+    }
+
+    /// <summary>
+    /// A delivery left pending in this consumer's PEL is returned on the next dequeue without
+    /// waiting for the aged XAUTOCLAIM threshold; this is the recovery path after a lost XACK.
+    /// </summary>
+    [TestMethod]
+    public async Task BulkTrackOwnPelEntry_IsRecoveredBeforeAutoClaimIdleThreshold( ) {
+        IDatabase db = s_redis!.GetDatabase( );
+        const string TrackId = "spotifyOwnPelRecoveryTrack";
+        QueuedLookupRequest request = new( ) {
+            RequestId = Guid.NewGuid( ).ToString( "N" ),
+            Provider = SupportedProviders.Spotify,
+            LookupType = LookupRequestType.SongIdLookup,
+            LookupValue = TrackId,
+            SagaId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            OriginPriority = QueuePriority.Bulk,
+            AttemptCount = 0
+        };
+        _ = await db.StreamAddAsync( SpotifyConstants.BulkTrackIdStream, [
+            new NameValueEntry( QueueStreamFieldNames.Payload, JsonSerializer.Serialize( request, s_jsonOptions ) ),
+            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, DateTimeOffset.UtcNow.ToString( "O" ) )
+        ] );
+
+        SpotifyBatchQueueHelper helper = new(
+            s_redis,
+            new Mock<ILogger<SpotifyBatchQueueHelper>>( ).Object );
+        await helper.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+
+        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> first =
+            await helper.DequeueTrackIdBatchAsync( 1, TestContext.CancellationToken );
+        Assert.HasCount( 1, first );
+
+        // Do not ACK: this is the lost-ACK state. The entry remains owned by this helper's consumer.
+        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> recovered =
+            await helper.DequeueTrackIdBatchAsync( 1, TestContext.CancellationToken );
+
+        Assert.HasCount( 1, recovered );
+        Assert.AreEqual( first[0].MessageId, recovered[0].MessageId );
+    }
+
+    /// <summary>A repeated rejection handoff cannot create a second interactive replacement.</summary>
+    [TestMethod]
+    public async Task ForwardToBackground_RepeatedForSameSource_IsIdempotent( ) {
+        IDatabase db = s_redis!.GetDatabase( );
+        QueuedLookupRequest request = new( ) {
+            RequestId = Guid.NewGuid( ).ToString( "N" ),
+            Provider = SupportedProviders.Spotify,
+            LookupType = LookupRequestType.SongIdLookup,
+            LookupValue = "spotifyAtomicHandoffTrack",
+            SagaId = "dddddddddddddddddddddddddddddddd",
+            OriginPriority = QueuePriority.Bulk
+        };
+        _ = await db.StreamAddAsync( SpotifyConstants.BulkTrackIdStream, [
+            new NameValueEntry( QueueStreamFieldNames.Payload, JsonSerializer.Serialize( request, s_jsonOptions ) ),
+            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, DateTimeOffset.UtcNow.ToString( "O" ) )
+        ] );
+        SpotifyBatchQueueHelper helper = new(
+            s_redis!, new Mock<ILogger<SpotifyBatchQueueHelper>>( ).Object );
+        await helper.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+        QueuedMessage<QueuedLookupRequest> message = (await helper.DequeueTrackIdBatchAsync(
+            1, TestContext.CancellationToken )).Single( );
+
+        bool first = await helper.ForwardToSingleItemAsync( message, TestContext.CancellationToken );
+        bool repeated = await helper.ForwardToSingleItemAsync( message, TestContext.CancellationToken );
+
+        Assert.IsTrue( first );
+        Assert.IsFalse( repeated );
+        Assert.AreEqual( 0L, await db.StreamLengthAsync( SpotifyConstants.BulkTrackIdStream ) );
+        Assert.AreEqual( 1L, await db.StreamLengthAsync( SpotifyConstants.BackgroundStream ) );
     }
 }

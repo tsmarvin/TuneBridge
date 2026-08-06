@@ -28,6 +28,7 @@ public class JetStreamWatcherServiceTests {
     private Mock<IRequestQueue<QueuedLookupRequest>> _queueMock = null!;
     /// <summary>Mocked logger used to assert log-level and EventId assertions.</summary>
     private Mock<ILogger<JetStreamWatcherService>> _loggerMock = null!;
+    private Mock<ISagaStateManager> _sagaManagerMock = null!;
 
     /// <summary>MSTest-injected test context; provides per-test cancellation.</summary>
     public TestContext TestContext { get; set; } = null!;
@@ -38,6 +39,19 @@ public class JetStreamWatcherServiceTests {
         _queueResolverMock = new Mock<IProviderQueueResolver<QueuedLookupRequest>>( );
         _queueMock = new Mock<IRequestQueue<QueuedLookupRequest>>( );
         _loggerMock = new Mock<ILogger<JetStreamWatcherService>>( );
+        _sagaManagerMock = new Mock<ISagaStateManager>( );
+        _ = _sagaManagerMock.Setup( manager => manager.GetOrCreateAsync(
+                It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ),
+                It.IsAny<string>( ), It.IsAny<QueuePriority?>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( string sagaId, string lookupKey, LookupRequestType lookupType,
+                string lookupValue, QueuePriority? priority, CancellationToken _ ) => new LookupSagaState {
+                    SagaId = sagaId,
+                    LookupKey = lookupKey,
+                    LookupType = lookupType,
+                    LookupValue = lookupValue,
+                    OriginPriority = priority ?? QueuePriority.Background,
+                    InstanceToken = "jetstream-instance"
+                } );
 
         // Stub IsEnabled true so [LoggerMessage]-gated calls reach Log() and Verify() is non-vacuous.
         // This is required because [LoggerMessage] source-generated code gates every call with
@@ -294,7 +308,7 @@ public class JetStreamWatcherServiceTests {
     /// Builds a <see cref="JetStreamWatcherService"/> with mocked dependencies.
     /// </summary>
     private JetStreamWatcherService CreateService( ) =>
-        new( _loggerMock.Object, _queueResolverMock.Object );
+        new( _loggerMock.Object, _queueResolverMock.Object, _sagaManagerMock.Object );
 }
 
 #pragma warning restore CS1591

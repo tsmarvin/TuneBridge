@@ -141,7 +141,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
 
         // Assert — at least one leg enqueued and registered set captured.
         Assert.IsNotEmpty( enqueuedLegs, "Refresh pass must enqueue at least one leg." );
-        Assert.IsNotNull( registeredProviders, "InitializeProviderStatesAsync must have been called." );
+        Assert.IsNotNull( registeredProviders, "TryInitializeProviderStatesAsync must have been called." );
 
         HashSet<SupportedProviders> registered = [.. registeredProviders];
         string sagaId = enqueuedLegs[0].SagaId;
@@ -154,9 +154,12 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             "Registered provider set must equal the enqueued-leg provider set (mode-B fix)." );
 
         // Now complete all enqueued legs: write a successful ProviderLookupState for each.
+        LookupSagaState? initializedSaga = await _sagaManager.GetAsync( sagaId, TestContext.CancellationToken );
+        Assert.IsNotNull( initializedSaga );
+        Assert.IsFalse( string.IsNullOrWhiteSpace( initializedSaga!.InstanceToken ) );
         foreach (QueuedLookupRequest leg in enqueuedLegs) {
             string resultJson = BuildResultJson( leg.Provider, TestIsrc );
-            await _sagaManager.UpdateProviderStateAsync(
+            bool updated = await _sagaManager.TryUpdateProviderStateAsync(
                 sagaId,
                 new ProviderLookupState(
                     Provider: leg.Provider,
@@ -165,7 +168,9 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
                     ResultJson: resultJson,
                     CompletedAt: DateTimeOffset.UtcNow,
                     ErrorMessage: null ),
+                initializedSaga.InstanceToken!,
                 TestContext.CancellationToken );
+            Assert.IsTrue( updated, $"Provider state update for {leg.Provider} must use the active saga instance." );
         }
 
         // Read the saga back and verify IsComplete.
@@ -214,7 +219,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             sagaId, LookupKey, LookupRequestType.IsrcLookup, TestIsrc,
             QueuePriority.Bulk, TestContext.CancellationToken );
 
-        await _sagaManager.InitializeProviderStatesAsync(
+        await _sagaManager.TryInitializeProviderStatesAsync(
             sagaId, [SupportedProviders.Spotify], TestContext.CancellationToken );
 
         await _sagaManager.UpdateProviderStateAsync(
@@ -375,6 +380,24 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             firstPassLegs.Select( l => l.Provider ).ToArray( ),
             "First pass must produce one leg per enabled provider." );
 
+        // The first pass has drained its two legs before the record is selected again. Mark both
+        // provider legs terminal so FIX 5's active-saga guard does not suppress the intentional
+        // cross-window fallback scenario below.
+        foreach (SupportedProviders provider in firstPassLegs.Select( l => l.Provider ).Distinct( )) {
+            await _sagaManager.UpdateProviderStateAsync(
+                firstPassLegs[0].SagaId,
+                new ProviderLookupState(
+                    Provider: provider,
+                    IsComplete: true,
+                    IsSuccess: false,
+                    ResultJson: null,
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    ErrorMessage: "Simulated first-pass completion"
+                ),
+                TestContext.CancellationToken
+            );
+        }
+
         // ── Step 2: Simulate Apple lookup failure — write back record with Spotify only. ──────
         // The age-only rule: LookedUpAt must be past the cache window for re-selection.
         MediaLinkResult partialRecord = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -61 ) };
@@ -439,7 +462,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
 
     /// <summary>
     /// Builds a saga manager wrapper that delegates all calls to the real <see cref="RedisSagaStateManager"/>
-    /// but also invokes <paramref name="captureRegistered"/> when <c>InitializeProviderStatesAsync</c> is called.
+    /// but also invokes <paramref name="captureRegistered"/> when <c>TryInitializeProviderStatesAsync</c> is called.
     /// </summary>
     private static Mock<ISagaStateManager> BuildSagaManagerWrapper(
         RedisSagaStateManager realManager,
@@ -455,11 +478,11 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
                 realManager.GetOrCreateAsync( id, key, type, val, prio, ct ) );
 
         _ = wrapper
-            .Setup( s => s.InitializeProviderStatesAsync(
-                It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns( ( string id, IEnumerable<SupportedProviders> providers, CancellationToken ct ) => {
+            .Setup( s => s.TryInitializeProviderStatesAsync(
+                It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( async ( string id, IEnumerable<SupportedProviders> providers, string token, CancellationToken ct ) => {
                 captureRegistered?.Invoke( providers );
-                return realManager.InitializeProviderStatesAsync( id, providers, ct );
+                return await realManager.TryInitializeProviderStatesAsync( id, providers, token, ct );
             } );
 
         _ = wrapper
@@ -467,10 +490,10 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             .Returns( ( string id, CancellationToken ct ) => realManager.GetAsync( id, ct ) );
 
         _ = wrapper
-            .Setup( s => s.UpdateProviderStateAsync(
-                It.IsAny<string>( ), It.IsAny<ProviderLookupState>( ), It.IsAny<CancellationToken>( ) ) )
-            .Returns( ( string id, ProviderLookupState state, CancellationToken ct ) =>
-                realManager.UpdateProviderStateAsync( id, state, ct ) );
+            .Setup( s => s.TryUpdateProviderStateAsync(
+                It.IsAny<string>( ), It.IsAny<ProviderLookupState>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( ( string id, ProviderLookupState state, string token, CancellationToken ct ) =>
+                realManager.TryUpdateProviderStateAsync( id, state, token, ct ) );
 
         return wrapper;
     }
@@ -615,10 +638,10 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
                 It.IsAny<RefreshReviewEntry>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( Task.CompletedTask );
         _ = store.Setup( candidate => candidate.MarkUnresolvedAsync(
-                It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+                It.IsAny<RefreshReviewEntry>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( Task.CompletedTask );
         _ = store.Setup( candidate => candidate.CompleteAsync(
-                It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+                It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( Task.CompletedTask );
         return store.Object;
     }

@@ -40,7 +40,7 @@
                     {
                         <tr>
                             <td>@entry.FailedAt?.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</td>
-                            <td>@(entry.IsAlbum ? "Album" : "Track")</td>
+                            <td>@(entry.IsAlbum is null ? "Unknown" : entry.IsAlbum.Value ? "Album" : "Track")</td>
                             <td><code>@entry.LookupValue</code></td>
                             <td>
                                 @if (entry.SourceResult?.Results.Count > 0)

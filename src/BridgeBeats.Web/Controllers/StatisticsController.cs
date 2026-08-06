@@ -64,8 +64,9 @@ public partial class StatisticsController(
 
             // Overlay live bootstrap status so the page reflects the current run state
             // without waiting for the full statistics cache to expire.
-            CacheBootstrapStatus? liveStatus =
-                await statisticsService.GetLiveBootstrapStatusAsync( HttpContext?.RequestAborted ?? CancellationToken.None );
+            CacheBootstrapStatus? liveStatus = User.IsInRole(Roles.AspireDashboardAccess)
+                ? await statisticsService.GetLiveBootstrapStatusAsync( HttpContext?.RequestAborted ?? CancellationToken.None )
+                : null;
             LookupStatistics displayStats = snapshot.WithBootstrapStatus( liveStatus );
 
             ViewBag.IsRefreshing = isRunning;

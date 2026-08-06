@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Tidal.Models;
@@ -415,6 +416,8 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
                 if (data != null && included != null) {
                     return await ParseTidalResponse( data, included, lookupKey, kind, isPrimary, storefront );
                 }
+            } catch (ProviderRateLimitException) {
+                throw;
             } catch (Exception ex) {
                 LogParseResponseError( Logger, ex, lookupKey );
                 LogResponseBodySerialized( Logger, body, SerializerOptions );
@@ -485,6 +488,8 @@ namespace BridgeBeats.Core.Domain.Providers.Tidal {
                 }
 
                 return result;
+            } catch (ProviderRateLimitException) {
+                throw;
             } catch (Exception ex) {
                 LogParseResponseError( Logger, ex, lookupKey );
                 LogDataSerialized( Logger, data, SerializerOptions );

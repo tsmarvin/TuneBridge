@@ -93,17 +93,16 @@ record present on the PDS but missing from Redis can still be served.
 `CheckRecordFreshness` marks a record stale on age alone: the record is stale when its `lookedUpAt`
 timestamp is older than `CacheDays`. Nothing else drives the freshness check.
 
-Partiality does not affect cache freshness. API partiality is transient metadata derived from the
-active saga and is not persisted to PDS records. A record read through the PDS/cache path is assumed
-complete; when it ages past the window it remains a complete-but-stale response and is eligible for
-refresh. This is the same age-based rule the bulk sweep applies, so interactive lookups and the sweep
-agree on what counts as stale.
+Partiality does not affect cache freshness. Interactive lookups may publish an interim PDS result
+while secondary provider legs are outstanding so their synchronous waiters can receive available
+links. The terminal write replaces that interim body once every leg reaches a terminal state.
 
-A partial saga generation can briefly occupy the deterministic PDS record before the final
-generation replaces it. A concurrent cache reader may treat that body as complete because fresh
-cache hits deliberately avoid an additional saga read. This bounded consistency window is accepted
-for the current single-service topology; a subsequent read after saga completion receives the final
-replacement.
+Maintenance refreshes are different: a pending refresh context suppresses all interim PDS writes.
+The saga still records each provider leg independently, and only failed legs are retried. Once all
+legs are terminal, one refresh write preserves every successful sibling result even if another
+provider exhausted its retries. Only a refresh with no successful provider result is promoted to the
+unresolved-review workflow. Thus one provider outage neither discards other providers nor causes an
+incomplete refresh body to replace the currently served record.
 
 ### Storage flow
 

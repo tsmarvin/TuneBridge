@@ -2,8 +2,10 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Spotify;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -15,15 +17,15 @@ namespace BridgeBeats.Tests.Unit;
 /// <see cref="SpotifyLookupService"/>'s bulk methods (<c>GetTracksByIdsAsync</c> and
 /// <c>GetAlbumsByIdsAsync</c>). Each test drives the concrete service through a stub
 /// <see cref="HttpMessageHandler"/>; no interfaces are substituted at the lookup-service
-/// boundary, so a change to the throw predicate in <c>NewBulkMusicApiRequest</c> is
-/// immediately observable here.
+/// boundary. The API stub includes the terminal provider-rate-limit handler used by the production
+/// named client, so status classification is exercised at its transport boundary.
 /// </summary>
 /// <remarks>
 /// Coverage panel:
 /// <list type="bullet">
 ///   <item>400 → <see cref="SpotifyBulkRejectedException"/> (HttpStatusCode == 400)</item>
 ///   <item>401, 403, 404, 500, 503 → empty dictionary, no throw (negative panel)</item>
-///   <item>429 → <see cref="RetryAfterExceededException"/> (rate-limit precedence)</item>
+///   <item>429 → <see cref="ProviderRateLimitException"/> (rate-limit precedence)</item>
 /// </list>
 /// All six panels are exercised against both <c>GetTracksByIdsAsync</c> and
 /// <c>GetAlbumsByIdsAsync</c>.
@@ -116,34 +118,55 @@ public class SpotifyBulkStatusMappingTests {
             $"GetAlbumsByIdsAsync must return an empty dictionary for HTTP {statusCode}, not throw" );
     }
 
-    // ──── 429 → RetryAfterExceededException ────────────────────────────────────
+    // ──── 429 → ProviderRateLimitException ─────────────────────────────────────
 
     /// <summary>
     /// Verifies that a 429 response from the tracks bulk endpoint throws
-    /// <see cref="RetryAfterExceededException"/>, confirming rate-limit precedence over the 400 path.
+    /// <see cref="ProviderRateLimitException"/>, confirming rate-limit precedence over the 400 path.
     /// </summary>
     [TestMethod]
-    public async Task GetTracksByIdsAsync_When429_ShouldThrowRetryAfterExceededException( ) {
+    public async Task GetTracksByIdsAsync_When429_ShouldThrowProviderRateLimitException( ) {
         HttpResponseMessage rateLimitResponse = new( HttpStatusCode.TooManyRequests );
         rateLimitResponse.Headers.RetryAfter = new RetryConditionHeaderValue( TimeSpan.FromSeconds( 60 ) );
         SpotifyLookupService svc = CreateService( rateLimitResponse );
 
-        _ = await Assert.ThrowsExactlyAsync<RetryAfterExceededException>(
+        _ = await Assert.ThrowsExactlyAsync<ProviderRateLimitException>(
             ( ) => svc.GetTracksByIdsAsync( [TestTrackId] ) );
     }
 
     /// <summary>
     /// Verifies that a 429 response from the albums bulk endpoint throws
-    /// <see cref="RetryAfterExceededException"/>, confirming rate-limit precedence over the 400 path.
+    /// <see cref="ProviderRateLimitException"/>, confirming rate-limit precedence over the 400 path.
     /// </summary>
     [TestMethod]
-    public async Task GetAlbumsByIdsAsync_When429_ShouldThrowRetryAfterExceededException( ) {
+    public async Task GetAlbumsByIdsAsync_When429_ShouldThrowProviderRateLimitException( ) {
         HttpResponseMessage rateLimitResponse = new( HttpStatusCode.TooManyRequests );
         rateLimitResponse.Headers.RetryAfter = new RetryConditionHeaderValue( TimeSpan.FromSeconds( 60 ) );
         SpotifyLookupService svc = CreateService( rateLimitResponse );
 
-        _ = await Assert.ThrowsExactlyAsync<RetryAfterExceededException>(
+        _ = await Assert.ThrowsExactlyAsync<ProviderRateLimitException>(
             ( ) => svc.GetAlbumsByIdsAsync( [TestAlbumId] ) );
+    }
+
+    /// <summary>Direct provider authentication failures remain operational failures, not no-results.</summary>
+    [TestMethod]
+    [DataRow( 401 )]
+    [DataRow( 403 )]
+    public async Task GetInfoByISRCAsync_WhenAuthenticationFails_ShouldThrow( int statusCode ) {
+        SpotifyLookupService service = CreateService( new HttpResponseMessage( (HttpStatusCode)statusCode ) );
+
+        HttpRequestException exception = await Assert.ThrowsExactlyAsync<HttpRequestException>(
+            ( ) => service.GetInfoByISRCAsync( "USRC17607839" ) );
+
+        Assert.AreEqual( (HttpStatusCode)statusCode, exception.StatusCode );
+    }
+
+    /// <summary>A deterministic direct-provider 404 remains an authoritative no-result.</summary>
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_WhenNotFound_ShouldReturnNull( ) {
+        SpotifyLookupService service = CreateService( new HttpResponseMessage( HttpStatusCode.NotFound ) );
+
+        Assert.IsNull( await service.GetInfoByISRCAsync( "USRC17607839" ) );
     }
 
     // ──── Harness ───────────────────────────────────────────────────────────────
@@ -172,7 +195,10 @@ public class SpotifyBulkStatusMappingTests {
         SpotifyTokenHandler tokenHandler = new( credentials, tokenFactory.Object, tokenLogger.Object );
 
         // API-endpoint stub: returns apiResponse for every GET to the spotify-api client.
-        HttpClient apiClient = new( new FixedResponseHandler( apiResponse ) ) {
+        TerminalProviderRateLimitHandler terminalRateLimitHandler = new( SupportedProviders.Spotify ) {
+            InnerHandler = new FixedResponseHandler( apiResponse )
+        };
+        HttpClient apiClient = new( terminalRateLimitHandler ) {
             BaseAddress = new Uri( "https://api.spotify.com/v1/" )
         };
         Mock<IHttpClientFactory> apiFactory = new( );

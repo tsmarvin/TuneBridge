@@ -228,6 +228,18 @@ public class QueueContractsTests {
         Assert.AreEqual( original, deserialized );
     }
 
+    /// <summary>Delivery-lane priority is derived at dequeue time and is not persisted.</summary>
+    [TestMethod]
+    public void QueuedMessage_Serialization_OmitsDerivedPriority( ) {
+        QueuedMessage<string> message = new( "msg-789", "payload", DateTimeOffset.UtcNow ) {
+            Priority = QueuePriority.Interactive
+        };
+
+        string json = JsonSerializer.Serialize( message, s_jsonOptions );
+
+        Assert.DoesNotContain( "\"priority\"", json );
+    }
+
     #endregion
 
     #region QueueDepth Tests

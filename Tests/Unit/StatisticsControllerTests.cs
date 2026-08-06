@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Web.Controllers;
@@ -252,7 +253,7 @@ public class StatisticsControllerTests {
             .Setup( x => x.GetLiveBootstrapStatusAsync( It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( liveStatus );
 
-        StatisticsController controller = CreateController( );
+        StatisticsController controller = CreateController( WithAdminClaim( "bootstrap-admin" ) );
 
         IActionResult result = await controller.Index( );
 
@@ -262,6 +263,26 @@ public class StatisticsControllerTests {
         Assert.IsTrue( model.CacheBootstrapStatus.IsRunning );
         Assert.AreEqual( 247404, model.CacheBootstrapStatus.LastSuccessCount );
         Assert.AreEqual( 100, model.TotalRecords );
+    }
+
+    [TestMethod]
+    public async Task Index_WithAuthenticatedLowRole_DoesNotFetchOrExposeBootstrapStatus( ) {
+        CacheBootstrapStatus sentinel = new( ) { IsRunning = true, LastSuccessCount = 987654 };
+        _ = _statisticsServiceMock.Setup( x => x.GetLiveBootstrapStatusAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( sentinel );
+        LookupStatistics cached = CreateTestStatistics( ).WithBootstrapStatus( new CacheBootstrapStatus { LastSuccessCount = 111111 } );
+        _ = _statisticsServiceMock.Setup( x => x.GetStatus( ) )
+            .Returns( new StatisticsStatus { Snapshot = cached } );
+
+        ClaimsPrincipal lowRole = new( new ClaimsIdentity(
+            [new Claim( ClaimTypes.Name, "reader" ), new Claim( ClaimTypes.Role, "Reader" )], "test" ) );
+        StatisticsController controller = CreateController( lowRole );
+
+        ViewResult result = Assert.IsInstanceOfType<ViewResult>( await controller.Index( ) );
+        LookupStatistics model = Assert.IsInstanceOfType<LookupStatistics>( result.Model );
+        Assert.IsNull( model.CacheBootstrapStatus );
+        Assert.AreNotEqual( 111111, model.CacheBootstrapStatus?.LastSuccessCount );
+        _statisticsServiceMock.Verify( x => x.GetLiveBootstrapStatusAsync( It.IsAny<CancellationToken>( ) ), Times.Never );
     }
 
     /// <summary>
@@ -454,7 +475,7 @@ public class StatisticsControllerTests {
     /// </summary>
     private static ClaimsPrincipal WithAdminClaim( string adminId ) {
         return new ClaimsPrincipal( new ClaimsIdentity(
-            [new Claim( ClaimTypes.NameIdentifier, adminId )],
+            [new Claim( ClaimTypes.NameIdentifier, adminId ), new Claim( ClaimTypes.Role, Roles.AspireDashboardAccess )],
             authenticationType: "Test"
         ) );
     }
