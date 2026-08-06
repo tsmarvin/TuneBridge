@@ -605,7 +605,7 @@ public class HomeControllerRenderingTests {
             .ReturnsAsync( stubResult );
         _ = mock
             .Setup( s => s.GetInfoAsync( It.IsAny<string>( ) ) )
-            .Returns( (string _) => YieldResult( stubResult ) );
+            .Returns( ( string _ ) => YieldResult( stubResult ) );
         return mock.Object;
     }
 

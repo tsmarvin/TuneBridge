@@ -348,6 +348,16 @@ public sealed partial class LookupOrchestrator(
             // straight to the final-result wait, which honors the rate-limit escape hatch
             // and time budget (during a rate-limit window no publish would ever arrive)
             LookupSagaState? inFlightSaga = await _sagaManager.GetAsync( inFlightSagaId );
+            if (inFlightSaga is not null) {
+                await PromotePendingSagaAsync(
+                    inFlightSaga,
+                    lookupType,
+                    lookupValue,
+                    isAlbum,
+                    title,
+                    artist,
+                    initialProvider );
+            }
             string? storedResultUri = inFlightSaga?.FinalResultUri ?? inFlightSaga?.PartialResultUri;
             if (!string.IsNullOrEmpty( storedResultUri )) {
                 LogInFlightSagaHasStoredResult( _logger, inFlightSagaId );
@@ -405,6 +415,49 @@ public sealed partial class LookupOrchestrator(
     }
 
     /// <summary>
+    /// Atomically promotes an existing maintenance generation and publishes interactive copies of
+    /// its unfinished provider legs. Only the caller that changes the persisted priority publishes,
+    /// so concurrent manual lookups cannot create an interactive fan-out storm.
+    /// </summary>
+    private async Task PromotePendingSagaAsync(
+        LookupSagaState saga,
+        LookupRequestType lookupType,
+        string lookupValue,
+        bool isAlbum,
+        string? title,
+        string? artist,
+        SupportedProviders? initialProvider
+    ) {
+        if (string.IsNullOrWhiteSpace( saga.InstanceToken )
+            || !await _sagaManager.TryPromoteToInteractiveAsync( saga.SagaId, saga.InstanceToken )) {
+            return;
+        }
+
+        IEnumerable<SupportedProviders> candidates = initialProvider.HasValue
+            ? [initialProvider.Value]
+            : _enabledProviders;
+        foreach (SupportedProviders provider in candidates) {
+            if (saga.ProviderStates.TryGetValue( provider, out ProviderLookupState? state ) && state.IsComplete) {
+                continue;
+            }
+
+            IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( provider );
+            await queue.EnqueueAsync( new QueuedLookupRequest {
+                RequestId = Guid.NewGuid( ).ToString( "N" ),
+                Provider = provider,
+                LookupType = lookupType,
+                LookupValue = lookupValue,
+                SagaId = saga.SagaId,
+                SagaInstanceToken = saga.InstanceToken,
+                IsAlbum = isAlbum,
+                Title = title,
+                Artist = artist,
+                OriginPriority = QueuePriority.Interactive
+            }, QueuePriority.Interactive );
+        }
+    }
+
+    /// <summary>
     /// Creates (or resumes) the saga for an acquired lookup and drives it to a result. Generates the
     /// saga id from the lookup key, gets-or-creates the saga, and — if it already carries a stored
     /// result — releases the dedup lock with that URI and waits for the final result. Otherwise it
@@ -436,7 +489,8 @@ public sealed partial class LookupOrchestrator(
         string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
 
         // Create a saga, or resume one already started for this deterministic lookup key.
-        LookupSagaState saga = await _sagaManager.GetOrCreateAsync( sagaId, lookupKey, lookupType, lookupValue );
+        LookupSagaState saga = await _sagaManager.GetOrCreateAsync(
+            sagaId, lookupKey, lookupType, lookupValue, QueuePriority.Interactive );
 
         DateTimeOffset deadline = DateTimeOffset.UtcNow + waitTimeout;
 
@@ -456,6 +510,9 @@ public sealed partial class LookupOrchestrator(
 
         // Determine which provider to queue first
         SupportedProviders firstProvider = initialProvider ?? _enabledProviders.First();
+        if (!string.IsNullOrWhiteSpace( saga.InstanceToken )) {
+            _ = await _sagaManager.TryPromoteToInteractiveAsync( sagaId, saga.InstanceToken );
+        }
 
         // For direct lookups (ISRC/UPC without initialProvider), initialize all enabled providers
         // For URL lookups (with initialProvider), only initialize the first provider
@@ -465,22 +522,40 @@ public sealed partial class LookupOrchestrator(
             ? [firstProvider]
             : [.. _enabledProviders];
 
-        await _sagaManager.InitializeProviderStatesAsync( sagaId, providersToInitialize );
+        if (string.IsNullOrWhiteSpace( saga.InstanceToken )
+            || !await _sagaManager.TryInitializeProviderStatesAsync( sagaId, providersToInitialize, saga.InstanceToken )) {
+            throw new InvalidOperationException( $"Saga instance was replaced before provider initialization for {sagaId}." );
+        }
 
         // If we have an initial provider (from URL lookup), set it
         if (initialProvider.HasValue) {
-            await _sagaManager.SetInitialProviderAsync( sagaId, initialProvider.Value );
+            if (!await _sagaManager.TrySetInitialProviderAsync( sagaId, initialProvider.Value, saga.InstanceToken )) {
+                throw new InvalidOperationException( $"Saga instance was replaced before initial-provider registration for {sagaId}." );
+            }
         }
 
-        // Queue the initial provider lookup at Interactive priority,
-        // unless the resumed saga already has this provider queued or completed
-        if (!saga.ProviderStates.ContainsKey( firstProvider )) {
+        // Direct external-id lookups own one independent leg per enabled provider. URL lookups
+        // intentionally start with only the URL's provider and let the coordinator derive
+        // secondary identifiers. When a maintenance saga is promoted, enqueue an interactive copy
+        // for every still-pending direct leg; the generation fence makes the old bulk copy stale
+        // after the first successful commit.
+        IReadOnlyList<SupportedProviders> providersToEnqueue = initialProvider.HasValue
+            ? [firstProvider]
+            : providersToInitialize;
+        foreach (SupportedProviders provider in providersToEnqueue) {
+            bool providerMissing = !saga.ProviderStates.TryGetValue(
+                provider, out ProviderLookupState? queuedProviderState );
+            if (!providerMissing && queuedProviderState!.IsComplete) {
+                continue;
+            }
+
             QueuedLookupRequest request = new( ) {
                 RequestId = Guid.NewGuid( ).ToString( "N" ),
-                Provider = firstProvider,
+                Provider = provider,
                 LookupType = lookupType,
                 LookupValue = lookupValue,
                 SagaId = sagaId,
+                SagaInstanceToken = saga.InstanceToken,
                 IsAlbum = isAlbum,
                 Title = title,
                 Artist = artist,
@@ -489,10 +564,10 @@ public sealed partial class LookupOrchestrator(
                 OriginPriority = QueuePriority.Interactive
             };
 
-            IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( firstProvider );
+            IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue( provider );
             await queue.EnqueueAsync( request, QueuePriority.Interactive );
 
-            LogSagaCreated( _logger, sagaId, firstProvider, lookupType, lookupValue );
+            LogSagaCreated( _logger, sagaId, provider, lookupType, lookupValue );
         }
 
         // Wait for initial result via deduplicator subscription

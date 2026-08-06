@@ -1,6 +1,7 @@
 using System.Reflection;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Exceptions;
+using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry;
@@ -35,8 +36,8 @@ public static class AspireServiceExtensions {
     /// Adds the Aspire service defaults to a web-application host: service discovery, health checks,
     /// the standard HTTP resilience pipeline, and OpenTelemetry. The resilience pipeline uses
     /// exponential backoff with jitter, honors server <c>Retry-After</c> headers, and is explicitly
-    /// configured <b>not</b> to retry <see cref="BridgeBeats.Contracts.Exceptions.RetryAfterExceededException"/>
-    /// (the provider fail-fast signal). Retry/timeout values are read from <c>BridgeBeats:Resilience:*</c>
+    /// configured <b>not</b> to retry <see cref="BridgeBeats.Contracts.Exceptions.ProviderRateLimitException"/>
+    /// (including its provider fail-fast subtype). Retry/timeout values are read from <c>BridgeBeats:Resilience:*</c>
     /// configuration, falling back to built-in defaults.
     /// </summary>
     /// <param name="builder">The web-application host builder to configure.</param>
@@ -62,12 +63,12 @@ public static class AspireServiceExtensions {
                 options.Retry.ShouldRetryAfterHeader = true;
                 options.Retry.DisableForUnsafeHttpMethods( );
 
-                // Exclude RetryAfterExceededException from retry logic - this is thrown intentionally
-                // to fail fast when Retry-After headers exceed the configured threshold
+                // Exclude ProviderRateLimitException (including RetryAfterExceededException) from
+                // retry logic; these are handled by the provider queue's rate-limit path.
                 Func<RetryPredicateArguments<HttpResponseMessage>, ValueTask<bool>> originalShouldHandle = options.Retry.ShouldHandle;
                 options.Retry.ShouldHandle = args => {
-                    // If the exception is RetryAfterExceededException, do not retry
-                    return args.Outcome.Exception is RetryAfterExceededException ? ValueTask.FromResult( false ) : originalShouldHandle( args );
+                    // ProviderRateLimitException is intentionally handled by the queue consumer.
+                    return args.Outcome.Exception is ProviderRateLimitException ? ValueTask.FromResult( false ) : originalShouldHandle( args );
                 };
 
                 options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( totalTimeoutMinutes );
@@ -129,7 +130,7 @@ public static class AspireServiceExtensions {
     /// standard HTTP resilience pipeline, and OpenTelemetry. This is the worker counterpart to the
     /// <see cref="AddServiceDefaults(WebApplicationBuilder)"/> overload and shares the same resilience
     /// configuration, including not retrying
-    /// <see cref="BridgeBeats.Contracts.Exceptions.RetryAfterExceededException"/>. Health checks are
+    /// <see cref="BridgeBeats.Contracts.Exceptions.ProviderRateLimitException"/>. Health checks are
     /// not registered here because generic hosts do not expose the HTTP health endpoint.
     /// </summary>
     /// <param name="builder">The generic host builder to configure.</param>
@@ -154,12 +155,12 @@ public static class AspireServiceExtensions {
                 options.Retry.ShouldRetryAfterHeader = true;
                 options.Retry.DisableForUnsafeHttpMethods( );
 
-                // Exclude RetryAfterExceededException from retry logic - this is thrown intentionally
-                // to fail fast when Retry-After headers exceed the configured threshold
+                // Exclude ProviderRateLimitException (including RetryAfterExceededException) from
+                // retry logic; these are handled by the provider queue's rate-limit path.
                 Func<RetryPredicateArguments<HttpResponseMessage>, ValueTask<bool>> originalShouldHandle = options.Retry.ShouldHandle;
                 options.Retry.ShouldHandle = args => {
-                    // If the exception is RetryAfterExceededException, do not retry
-                    return args.Outcome.Exception is RetryAfterExceededException ? ValueTask.FromResult( false ) : originalShouldHandle( args );
+                    // ProviderRateLimitException is intentionally handled by the queue consumer.
+                    return args.Outcome.Exception is ProviderRateLimitException ? ValueTask.FromResult( false ) : originalShouldHandle( args );
                 };
 
                 options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes( totalTimeoutMinutes );
@@ -242,7 +243,8 @@ public static class AspireServiceExtensions {
                 _ = tracing
                     .SetResourceBuilder( resourceBuilder )
                     .AddAspNetCoreInstrumentation( )
-                    .AddHttpClientInstrumentation( );
+                    .AddHttpClientInstrumentation( )
+                    .AddSource( QueueMetrics.ActivitySourceName );
 
                 _ = tracing.AddOtlpExporter( otlpOptions => {
                     if (hasCustomEndpoint) {
@@ -263,7 +265,7 @@ public static class AspireServiceExtensions {
                     .AddAspNetCoreInstrumentation( )
                     .AddHttpClientInstrumentation( )
                     .AddRuntimeInstrumentation( )
-                    .AddMeter( "BridgeBeats.Queue" )
+                    .AddMeter( QueueMetrics.MeterName )
                     .AddMeter( "BridgeBeats.Providers" )
                     .AddMeter( "BridgeBeats.Spotify.Batch" );
 
@@ -321,7 +323,8 @@ public static class AspireServiceExtensions {
                 // Note: No AddAspNetCoreInstrumentation() for non-web hosts
                 _ = tracing
                     .SetResourceBuilder( resourceBuilder )
-                    .AddHttpClientInstrumentation( );
+                    .AddHttpClientInstrumentation( )
+                    .AddSource( QueueMetrics.ActivitySourceName );
 
                 _ = tracing.AddOtlpExporter( otlpOptions => {
                     if (hasCustomEndpoint) {
@@ -342,7 +345,7 @@ public static class AspireServiceExtensions {
                     .SetResourceBuilder( resourceBuilder )
                     .AddHttpClientInstrumentation( )
                     .AddRuntimeInstrumentation( )
-                    .AddMeter( "BridgeBeats.Queue" )
+                    .AddMeter( QueueMetrics.MeterName )
                     .AddMeter( "BridgeBeats.Providers" )
                     .AddMeter( "BridgeBeats.Spotify.Batch" );
 

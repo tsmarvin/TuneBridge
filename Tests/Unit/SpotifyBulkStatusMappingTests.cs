@@ -146,6 +146,27 @@ public class SpotifyBulkStatusMappingTests {
             ( ) => svc.GetAlbumsByIdsAsync( [TestAlbumId] ) );
     }
 
+    /// <summary>Direct provider authentication failures remain operational failures, not no-results.</summary>
+    [TestMethod]
+    [DataRow( 401 )]
+    [DataRow( 403 )]
+    public async Task GetInfoByISRCAsync_WhenAuthenticationFails_ShouldThrow( int statusCode ) {
+        SpotifyLookupService service = CreateService( new HttpResponseMessage( (HttpStatusCode)statusCode ) );
+
+        HttpRequestException exception = await Assert.ThrowsExactlyAsync<HttpRequestException>(
+            ( ) => service.GetInfoByISRCAsync( "USRC17607839" ) );
+
+        Assert.AreEqual( (HttpStatusCode)statusCode, exception.StatusCode );
+    }
+
+    /// <summary>A deterministic direct-provider 404 remains an authoritative no-result.</summary>
+    [TestMethod]
+    public async Task GetInfoByISRCAsync_WhenNotFound_ShouldReturnNull( ) {
+        SpotifyLookupService service = CreateService( new HttpResponseMessage( HttpStatusCode.NotFound ) );
+
+        Assert.IsNull( await service.GetInfoByISRCAsync( "USRC17607839" ) );
+    }
+
     // ──── Harness ───────────────────────────────────────────────────────────────
 
     /// <summary>

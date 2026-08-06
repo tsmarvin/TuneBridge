@@ -4,6 +4,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Utilities;
+using BridgeBeats.Core.Infrastructure.Queue;
 using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Worker.Maintenance.Logging;
 using StackExchange.Redis;
@@ -45,6 +46,9 @@ public sealed partial class StaleCacheRefreshBackgroundService(
 
     /// <summary>Redis key that records the UTC instant the most recent refresh pass started.</summary>
     private const string LastRunMarkerKey = "cache:refresh:last-run";
+
+    /// <summary>Number of stale selections without a completed refresh before direct review quarantine.</summary>
+    internal const int MaxRefreshSweepAttemptsBeforeReview = 3;
 
     /// <summary>Fixed grace period at startup before the first scan is allowed to run.</summary>
     private static readonly TimeSpan s_startupGrace = TimeSpan.FromSeconds( 120 );
@@ -151,11 +155,37 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         int errors = 0;
 
         foreach ((string atUri, MediaLinkResult result) in selected) {
+            QueueMetrics.RecordMaintenanceOutcome( "selected" );
             try {
                 IReadOnlyList<RefreshLeg> legs = DeriveRefreshLegs( result, enabledProviders );
 
                 if (legs.Count == 0) {
+                    int sweepAttempt = await refreshReviewStore.IncrementSweepAttemptAsync( atUri, cancellationToken );
+                    if (sweepAttempt >= MaxRefreshSweepAttemptsBeforeReview) {
+                        string lookupKey = LookupKeyBuilder.UrlKey( atUri );
+                        string? sourceRecordCid = await atProtoStorage.GetMediaLinkRecordCidAsync( atUri, cancellationToken );
+                        bool anchorResolved = TryResolveAnchor(
+                            result, out _, out bool resolvedIsAlbum, out _, out _ );
+                        bool? recordIsAlbum = anchorResolved
+                            ? resolvedIsAlbum
+                            : result.Results.Values
+                                .Select( value => value.IsAlbum )
+                                .FirstOrDefault( value => value.HasValue );
+                        await refreshReviewStore.PromoteDirectAsync(
+                            new RefreshReviewEntry {
+                                SourceRecordUri = atUri,
+                                SourceRecordCid = sourceRecordCid,
+                                SagaId = ISagaStateManager.GenerateSagaId( lookupKey ),
+                                LookupType = LookupRequestType.UriLookup,
+                                LookupValue = atUri,
+                                IsAlbum = recordIsAlbum,
+                                SourceResult = result
+                            },
+                            "No completed refresh after three sweeps.",
+                            cancellationToken );
+                    }
                     LogRefreshRecordSkipped( logger, atUri );
+                    QueueMetrics.RecordMaintenanceOutcome( "no_legs" );
                     skipped++;
                     continue;
                 }
@@ -163,6 +193,7 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                 bool didEnqueue = await EnqueueRecordAsync( atUri, result, legs, cancellationToken );
                 if (didEnqueue) {
                     enqueued++;
+                    QueueMetrics.RecordMaintenanceOutcome( "dispatched" );
                 } else {
                     skipped++;
                 }
@@ -170,6 +201,7 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                 throw;
             } catch (Exception ex) {
                 errors++;
+                QueueMetrics.RecordMaintenanceOutcome( "enqueue_error" );
                 LogRefreshEnqueueError( logger, ex, atUri );
             }
         }
@@ -258,9 +290,15 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         LookupRequestType sagaLookupType;
         string sagaLookupValue;
 
-        if (TryResolveAnchor( result, out string recordExternalId, out bool recordIsAlbum, out _, out _ )
+        bool anchorResolved = TryResolveAnchor(
+            result, out string recordExternalId, out bool resolvedIsAlbum, out _, out _ );
+        bool? recordIsAlbum = anchorResolved
+            ? resolvedIsAlbum
+            : result.Results.Values.Select( value => value.IsAlbum ).FirstOrDefault( value => value.HasValue );
+
+        if (anchorResolved
             && !string.IsNullOrEmpty( recordExternalId )) {
-            if (recordIsAlbum) {
+            if (resolvedIsAlbum) {
                 sagaLookupValue = recordExternalId;
                 sagaLookupKey = $"{LookupRequestType.UpcLookup}:{sagaLookupValue}";
                 sagaLookupType = LookupRequestType.UpcLookup;
@@ -281,8 +319,61 @@ public sealed partial class StaleCacheRefreshBackgroundService(
         }
 
         string sagaId = ISagaStateManager.GenerateSagaId( sagaLookupKey );
+        string? sourceRecordCid = await atProtoStorage.GetMediaLinkRecordCidAsync( atUri, cancellationToken );
+        RefreshReviewEntry recordContext = new( ) {
+            SourceRecordUri = atUri,
+            SourceRecordCid = sourceRecordCid,
+            SagaId = sagaId,
+            LookupType = sagaLookupType,
+            LookupValue = sagaLookupValue,
+            IsAlbum = recordIsAlbum,
+            SourceResult = result
+        };
 
-        _ = await sagaManager.GetOrCreateAsync(
+        LookupSagaState? activeSaga = await sagaManager.GetAsync( sagaId, cancellationToken );
+        if (activeSaga is { IsComplete: false }) {
+            int activeAttempt = await refreshReviewStore.IncrementSweepAttemptAsync( atUri, cancellationToken );
+            if (activeAttempt > 1) QueueMetrics.RecordMaintenanceOutcome( "reselected" );
+            if (activeAttempt >= MaxRefreshSweepAttemptsBeforeReview) {
+                RefreshReviewEntry? activeContext = await refreshReviewStore.GetPendingAsync( atUri, cancellationToken );
+                if (activeContext is not null
+                    && activeContext.SagaId == sagaId
+                    && activeContext.InstanceToken == activeSaga.InstanceToken) {
+                    // The active owner still has a live refresh attempt. Promote its existing
+                    // context directly so the review entry suppresses reselection without
+                    // deleting the pending slot needed by terminal completion.
+                    await refreshReviewStore.PromoteDirectAsync( activeContext, "No completed refresh after three sweeps.", cancellationToken );
+                } else {
+                    // This record shares an active saga owned by another source record. Promote its
+                    // own context at the threshold, but never delete the shared saga or overwrite the
+                    // owner's pending slot.
+                    await refreshReviewStore.PromoteDirectAsync(
+                        recordContext with { InstanceToken = activeSaga.InstanceToken },
+                        "No completed refresh after three sweeps.",
+                        cancellationToken );
+                }
+            }
+            LogRefreshRecordSkipped( logger, atUri );
+            QueueMetrics.RecordMaintenanceOutcome( "active_saga_suppressed" );
+            return false;
+        }
+
+        int sweepAttempt = await refreshReviewStore.IncrementSweepAttemptAsync( atUri, cancellationToken );
+        if (sweepAttempt > 1) QueueMetrics.RecordMaintenanceOutcome( "reselected" );
+        if (sweepAttempt >= MaxRefreshSweepAttemptsBeforeReview) {
+            RefreshReviewEntry? pending = await refreshReviewStore.GetPendingAsync( atUri, cancellationToken );
+            if (pending is not null && pending.SagaId == sagaId) {
+                await refreshReviewStore.MarkUnresolvedAsync( pending, "No completed refresh after three sweeps.", cancellationToken );
+            } else {
+                await refreshReviewStore.PromoteDirectAsync(
+                    recordContext,
+                    "No completed refresh after three sweeps.",
+                    cancellationToken );
+            }
+            return false;
+        }
+
+        LookupSagaState seededSaga = await sagaManager.GetOrCreateAsync(
             sagaId,
             sagaLookupKey,
             sagaLookupType,
@@ -290,25 +381,24 @@ public sealed partial class StaleCacheRefreshBackgroundService(
             originPriority: QueuePriority.Bulk,
             cancellationToken: cancellationToken
         );
-
-        string? sourceRecordCid = await atProtoStorage.GetMediaLinkRecordCidAsync( atUri, cancellationToken );
-        await refreshReviewStore.RegisterPendingAsync(
-            new RefreshReviewEntry {
-                SourceRecordUri = atUri,
-                SourceRecordCid = sourceRecordCid,
-                SagaId = sagaId,
-                LookupType = sagaLookupType,
-                LookupValue = sagaLookupValue,
-                IsAlbum = recordIsAlbum,
-                SourceResult = result
-            },
-            cancellationToken
-        );
+        if (string.IsNullOrWhiteSpace( seededSaga.InstanceToken )) {
+            LogRefreshRecordSkipped( logger, atUri );
+            return false;
+        }
+        string instanceToken = seededSaga.InstanceToken;
 
         // Initialize exactly the providers we are enqueuing legs for — the mode-B fix.
-        await sagaManager.InitializeProviderStatesAsync(
+        if (!await sagaManager.TryInitializeProviderStatesAsync(
             sagaId,
             legs.Select( l => l.Provider ).Distinct( ),
+            instanceToken,
+            cancellationToken
+        )) {
+            LogRefreshRecordSkipped( logger, atUri );
+            return false;
+        }
+
+        await refreshReviewStore.RegisterPendingAsync( recordContext with { InstanceToken = instanceToken },
             cancellationToken
         );
 
@@ -319,23 +409,27 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                 LookupType = leg.LookupType,
                 LookupValue = leg.LookupValue,
                 SagaId = sagaId,
+                SagaInstanceToken = instanceToken,
                 IsAlbum = leg.IsAlbum,
                 Title = leg.Title,
                 Artist = leg.Artist,
                 OriginPriority = QueuePriority.Bulk,
                 Storefront = leg.Storefront,
                 FallbackLookupType = leg.FallbackLookupType,
-                FallbackLookupValue = leg.FallbackLookupValue
+                FallbackLookupValue = leg.FallbackLookupValue,
+                EnqueueOrigin = QueueEnqueueOrigin.RefreshSweep
             };
 
             IRequestQueue<QueuedLookupRequest> queue = queueResolver.GetQueue( leg.Provider );
             try {
                 await queue.EnqueueAsync( request, QueuePriority.Bulk, cancellationToken );
+                QueueMetrics.RecordRefreshLegEnqueued( leg.Provider, sweepAttempt > 1 );
             } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
                 throw;
             } catch (Exception ex) {
                 LogRefreshLegEnqueueFailed( logger, ex, atUri, leg.Provider );
-                await sagaManager.UpdateProviderStateAsync(
+                QueueMetrics.RecordMaintenanceOutcome( "leg_enqueue_failure", leg.Provider );
+                if (!await sagaManager.TryUpdateProviderStateAsync(
                     sagaId,
                     new ProviderLookupState(
                         Provider: leg.Provider,
@@ -345,8 +439,12 @@ public sealed partial class StaleCacheRefreshBackgroundService(
                         CompletedAt: DateTimeOffset.UtcNow,
                         ErrorMessage: $"Refresh leg enqueue failed: {ex.Message}"
                     ),
+                    instanceToken,
                     cancellationToken
-                );
+                )) {
+                    LogRefreshRecordSkipped( logger, atUri );
+                    return false;
+                }
             }
         }
 

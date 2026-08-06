@@ -208,7 +208,8 @@ public static class ServiceExtensions {
             sp.GetRequiredService<ISagaStateManager>( ),
             sp.GetRequiredService<TLookupService>( ),
             provider,
-            sp.GetRequiredService<ILogger<QueueProcessorBackgroundService>>( )
+            sp.GetRequiredService<ILogger<QueueProcessorBackgroundService>>( ),
+            sp.GetRequiredService<IOptions<QueueSettings>>( ).Value
         ) );
 
         return services;
@@ -253,7 +254,8 @@ public static class ServiceExtensions {
             sp.GetRequiredService<ISagaStateManager>( ),
             lookupServiceFactory( sp ),
             provider,
-            sp.GetRequiredService<ILogger<QueueProcessorBackgroundService>>( )
+            sp.GetRequiredService<ILogger<QueueProcessorBackgroundService>>( ),
+            sp.GetRequiredService<IOptions<QueueSettings>>( ).Value
         ) );
 
         return services;

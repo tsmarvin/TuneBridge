@@ -609,7 +609,7 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
                         }
                     }
                 } while (response?.Artists?.Next != null);
-            } catch (Exception ex) {
+            } catch (JsonException ex) {
                 LogParseArtistListError( Logger, ex );
             }
 

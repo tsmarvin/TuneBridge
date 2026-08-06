@@ -21,7 +21,7 @@ public sealed class ProviderTrackGenreCachingTests {
     /// <summary>Apple Music song genre names are cached under the song's catalog id.</summary>
     [TestMethod]
     public async Task AppleMusicTrackLookup_CachesGenreNames( ) {
-        const string response = """
+        const string Response = """
             {
               "data": [{
                 "id": "123456",
@@ -48,7 +48,7 @@ public sealed class ProviderTrackGenreCachingTests {
 
         using ECDsa key = ECDsa.Create( ECCurve.NamedCurves.nistP256 );
         AppleJwtHandler jwtHandler = new( "team", "key", key.ExportPkcs8PrivateKeyPem( ) );
-        Mock<IHttpClientFactory> factory = CreateFactory( "musickit-api", response, "https://api.music.apple.com/v1/catalog/" );
+        Mock<IHttpClientFactory> factory = CreateFactory( "musickit-api", Response, "https://api.music.apple.com/v1/catalog/" );
         AppleMusicLookupService service = new(
             jwtHandler,
             factory.Object,
@@ -64,8 +64,8 @@ public sealed class ProviderTrackGenreCachingTests {
     /// <summary>Tidal genre resources use genreName and are cached under the track id.</summary>
     [TestMethod]
     public async Task TidalTrackLookup_CachesIncludedGenreNames( ) {
-        const string tokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
-        const string trackResponse = """
+        const string TokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
+        const string TrackResponse = """
             {
               "data": {
                 "id": "12345",
@@ -99,9 +99,9 @@ public sealed class ProviderTrackGenreCachingTests {
 
         Mock<IHttpClientFactory> factory = new( );
         _ = factory.Setup( item => item.CreateClient( "tidal-auth" ) )
-            .Returns( CreateClient( tokenResponse, "https://auth.tidal.com/" ) );
+            .Returns( CreateClient( TokenResponse, "https://auth.tidal.com/" ) );
         _ = factory.Setup( item => item.CreateClient( "tidal-api" ) )
-            .Returns( CreateClient( trackResponse, "https://openapi.tidal.com/v2/" ) );
+            .Returns( CreateClient( TrackResponse, "https://openapi.tidal.com/v2/" ) );
 
         TidalTokenHandler tokenHandler = new(
             new TidalCredentials( "client", "secret" ),
@@ -130,8 +130,8 @@ public sealed class ProviderTrackGenreCachingTests {
     /// </summary>
     [TestMethod]
     public async Task TidalAlbumLookup_NeverCachesGenres( ) {
-        const string tokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
-        const string albumResponse = """
+        const string TokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
+        const string AlbumResponse = """
             {
               "data": {
                 "id": "999999",
@@ -157,9 +157,9 @@ public sealed class ProviderTrackGenreCachingTests {
 
         Mock<IHttpClientFactory> factory = new( );
         _ = factory.Setup( item => item.CreateClient( "tidal-auth" ) )
-            .Returns( CreateClient( tokenResponse, "https://auth.tidal.com/" ) );
+            .Returns( CreateClient( TokenResponse, "https://auth.tidal.com/" ) );
         _ = factory.Setup( item => item.CreateClient( "tidal-api" ) )
-            .Returns( CreateClient( albumResponse, "https://openapi.tidal.com/v2/" ) );
+            .Returns( CreateClient( AlbumResponse, "https://openapi.tidal.com/v2/" ) );
 
         TidalTokenHandler tokenHandler = new(
             new TidalCredentials( "client", "secret" ),
@@ -193,8 +193,8 @@ public sealed class ProviderTrackGenreCachingTests {
     /// </summary>
     [TestMethod]
     public async Task TidalTrackLookup_UnresolvedGenreRelationship_CachesEmptyGenreList( ) {
-        const string tokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
-        const string trackResponse = """
+        const string TokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
+        const string TrackResponse = """
             {
               "data": {
                 "id": "12345",
@@ -226,9 +226,9 @@ public sealed class ProviderTrackGenreCachingTests {
 
         Mock<IHttpClientFactory> factory = new( );
         _ = factory.Setup( item => item.CreateClient( "tidal-auth" ) )
-            .Returns( CreateClient( tokenResponse, "https://auth.tidal.com/" ) );
+            .Returns( CreateClient( TokenResponse, "https://auth.tidal.com/" ) );
         _ = factory.Setup( item => item.CreateClient( "tidal-api" ) )
-            .Returns( CreateClient( trackResponse, "https://openapi.tidal.com/v2/" ) );
+            .Returns( CreateClient( TrackResponse, "https://openapi.tidal.com/v2/" ) );
 
         TidalTokenHandler tokenHandler = new(
             new TidalCredentials( "client", "secret" ),
@@ -254,8 +254,8 @@ public sealed class ProviderTrackGenreCachingTests {
     /// </summary>
     [TestMethod]
     public async Task TidalTrackLookup_GenreCacheThrows_StillReturnsResult( ) {
-        const string tokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
-        const string trackResponse = """
+        const string TokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
+        const string TrackResponse = """
             {
               "data": {
                 "id": "12345",
@@ -288,9 +288,9 @@ public sealed class ProviderTrackGenreCachingTests {
 
         Mock<IHttpClientFactory> factory = new( );
         _ = factory.Setup( item => item.CreateClient( "tidal-auth" ) )
-            .Returns( CreateClient( tokenResponse, "https://auth.tidal.com/" ) );
+            .Returns( CreateClient( TokenResponse, "https://auth.tidal.com/" ) );
         _ = factory.Setup( item => item.CreateClient( "tidal-api" ) )
-            .Returns( CreateClient( trackResponse, "https://openapi.tidal.com/v2/" ) );
+            .Returns( CreateClient( TrackResponse, "https://openapi.tidal.com/v2/" ) );
 
         TidalTokenHandler tokenHandler = new(
             new TidalCredentials( "client", "secret" ),
@@ -316,7 +316,7 @@ public sealed class ProviderTrackGenreCachingTests {
     /// </summary>
     [TestMethod]
     public async Task AppleMusicTrackLookup_GenreCacheThrows_StillReturnsResult( ) {
-        const string response = """
+        const string Response = """
             {
               "data": [{
                 "id": "123456",
@@ -343,7 +343,7 @@ public sealed class ProviderTrackGenreCachingTests {
 
         using ECDsa key = ECDsa.Create( ECCurve.NamedCurves.nistP256 );
         AppleJwtHandler jwtHandler = new( "team", "key", key.ExportPkcs8PrivateKeyPem( ) );
-        Mock<IHttpClientFactory> factory = CreateFactory( "musickit-api", response, "https://api.music.apple.com/v1/catalog/" );
+        Mock<IHttpClientFactory> factory = CreateFactory( "musickit-api", Response, "https://api.music.apple.com/v1/catalog/" );
         AppleMusicLookupService service = new(
             jwtHandler,
             factory.Object,

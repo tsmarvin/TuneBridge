@@ -93,17 +93,19 @@ public class StaleCacheRefreshBackgroundServiceTests {
                 It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( MakeMinimalSaga( ) );
         _ = _sagaManagerMock
-            .Setup( m => m.InitializeProviderStatesAsync(
+            .Setup( m => m.TryInitializeProviderStatesAsync(
                 It.IsAny<string>( ),
                 It.IsAny<IEnumerable<SupportedProviders>>( ),
+                It.IsAny<string>( ),
                 It.IsAny<CancellationToken>( ) ) )
-            .Returns( Task.CompletedTask );
+            .ReturnsAsync( true );
         _ = _sagaManagerMock
-            .Setup( m => m.UpdateProviderStateAsync(
+            .Setup( m => m.TryUpdateProviderStateAsync(
                 It.IsAny<string>( ),
                 It.IsAny<ProviderLookupState>( ),
+                It.IsAny<string>( ),
                 It.IsAny<CancellationToken>( ) ) )
-            .Returns( Task.CompletedTask );
+            .ReturnsAsync( true );
 
         _enabledProviders = [SupportedProviders.Spotify];
 
@@ -1213,7 +1215,7 @@ public class StaleCacheRefreshBackgroundServiceTests {
     #region Mode-B Pin — Registration Set
 
     /// <summary>
-    /// THE MODE-B PIN: InitializeProviderStatesAsync receives the exact enqueued-leg provider set,
+    /// THE MODE-B PIN: TryInitializeProviderStatesAsync receives the exact enqueued-leg provider set,
     /// NOT all enabledProviders. For a record where only Spotify+Apple are present/parseable and there
     /// is no external id, Tidal must NOT appear in the registered set.
     /// </summary>
@@ -1239,18 +1241,19 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         IEnumerable<SupportedProviders>? capturedProviders = null;
         _ = _sagaManagerMock
-            .Setup( m => m.InitializeProviderStatesAsync(
+            .Setup( m => m.TryInitializeProviderStatesAsync(
                 It.IsAny<string>( ),
                 It.IsAny<IEnumerable<SupportedProviders>>( ),
+                It.IsAny<string>( ),
                 It.IsAny<CancellationToken>( ) ) )
-            .Callback<string, IEnumerable<SupportedProviders>, CancellationToken>(
-                ( _, providers, _ ) => capturedProviders = [.. providers] )
-            .Returns( Task.CompletedTask );
+            .Callback<string, IEnumerable<SupportedProviders>, string, CancellationToken>(
+                ( _, providers, _, _ ) => capturedProviders = [.. providers] )
+            .ReturnsAsync( true );
 
         StaleCacheRefreshBackgroundService service = CreateService( );
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
 
-        Assert.IsNotNull( capturedProviders, "InitializeProviderStatesAsync must be called" );
+        Assert.IsNotNull( capturedProviders, "TryInitializeProviderStatesAsync must be called" );
         HashSet<SupportedProviders> registered = [.. capturedProviders];
 
         // Positive: exactly {Spotify, Apple} registered.
@@ -1286,11 +1289,11 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         IEnumerable<SupportedProviders>? capturedProviders = null;
         _ = _sagaManagerMock
-            .Setup( m => m.InitializeProviderStatesAsync(
-                It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<CancellationToken>( ) ) )
-            .Callback<string, IEnumerable<SupportedProviders>, CancellationToken>(
-                ( _, providers, _ ) => capturedProviders = [.. providers] )
-            .Returns( Task.CompletedTask );
+            .Setup( m => m.TryInitializeProviderStatesAsync(
+                It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Callback<string, IEnumerable<SupportedProviders>, string, CancellationToken>(
+                ( _, providers, _, _ ) => capturedProviders = [.. providers] )
+            .ReturnsAsync( true );
 
         StaleCacheRefreshBackgroundService service = CreateService( );
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
@@ -1323,11 +1326,11 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         IEnumerable<SupportedProviders>? capturedProviders = null;
         _ = _sagaManagerMock
-            .Setup( m => m.InitializeProviderStatesAsync(
-                It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<CancellationToken>( ) ) )
-            .Callback<string, IEnumerable<SupportedProviders>, CancellationToken>(
-                ( _, providers, _ ) => capturedProviders = [.. providers] )
-            .Returns( Task.CompletedTask );
+            .Setup( m => m.TryInitializeProviderStatesAsync(
+                It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Callback<string, IEnumerable<SupportedProviders>, string, CancellationToken>(
+                ( _, providers, _, _ ) => capturedProviders = [.. providers] )
+            .ReturnsAsync( true );
 
         StaleCacheRefreshBackgroundService service = CreateService( );
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
@@ -1337,6 +1340,61 @@ public class StaleCacheRefreshBackgroundServiceTests {
         Assert.DoesNotContain( SupportedProviders.Tidal, registered,
             "Tidal has no leg and must not be registered" );
         Assert.Contains( SupportedProviders.Spotify, registered );
+    }
+
+    /// <summary>
+    /// A stale record with no derivable refresh legs still consumes sweep attempts and is promoted
+    /// to review on the third selection, after which the unresolved index suppresses selection.
+    /// </summary>
+    [TestMethod]
+    public async Task RunRefreshPass_NoLegRecord_QuarantinesAfterThreeSweepsAndSuppressesLaterSelection( ) {
+        const string RecordUri = "at://no-leg-quarantine";
+        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
+        record.Results[SupportedProviders.Spotify] = new MusicLookupResult {
+            URL = string.Empty,
+            ExternalId = string.Empty,
+            IsAlbum = false
+        };
+        _enabledProviders = [SupportedProviders.Spotify];
+        SetupRecordList( [(RecordUri, record)] );
+
+        int attempts = 0;
+        bool promoted = false;
+        _ = _refreshReviewStoreMock.Setup( store => store.IncrementSweepAttemptAsync(
+                RecordUri, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => ++attempts );
+        _ = _refreshReviewStoreMock.Setup( store => store.GetUnresolvedAsync( It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => promoted
+                ? [new RefreshReviewEntry {
+                    SourceRecordUri = RecordUri,
+                    SagaId = "no-leg-saga",
+                    LookupType = LookupRequestType.UriLookup,
+                    LookupValue = RecordUri
+                }]
+                : [] );
+        _ = _refreshReviewStoreMock.Setup( store => store.PromoteDirectAsync(
+                It.IsAny<RefreshReviewEntry>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( ) => promoted = true )
+            .Returns( Task.CompletedTask );
+
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+
+        Assert.AreEqual( StaleCacheRefreshBackgroundService.MaxRefreshSweepAttemptsBeforeReview, attempts );
+        _refreshReviewStoreMock.Verify( store => store.PromoteDirectAsync(
+            It.Is<RefreshReviewEntry>( entry => entry.SourceRecordUri == RecordUri
+                && entry.LookupType == LookupRequestType.UriLookup
+                && entry.LookupValue == RecordUri
+                && entry.SourceRecordCid == "bafyreitestcid" ),
+            It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
+        _sagaManagerMock.Verify( manager => manager.GetOrCreateAsync(
+            It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ), It.IsAny<string>( ),
+            It.IsAny<QueuePriority?>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _queueMock.Verify( queue => queue.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
     }
 
     #endregion
@@ -1518,6 +1576,112 @@ public class StaleCacheRefreshBackgroundServiceTests {
         );
     }
 
+    /// <summary>
+    /// A shared deterministic saga is owned by record A while record B is observed across three
+    /// sweeps. B is promoted directly from its concrete context without overwriting A's pending
+    /// slot or deleting the shared active saga.
+    /// </summary>
+    [TestMethod]
+    public async Task RunRefreshPass_SharedSaga_ThreeSweepsPromotesBWithoutDeletingAOwner( ) {
+        const string RecordA = "at://shared/a";
+        const string RecordB = "at://shared/b";
+        const string SharedIsrc = "SHARED_THREE_SWEEP";
+        SetupRecordList( [
+            MakeStaleRecord( RecordA, DateTime.UtcNow.AddDays( -60 ), isrc: SharedIsrc ),
+            MakeStaleRecord( RecordB, DateTime.UtcNow.AddDays( -60 ), isrc: SharedIsrc )
+        ] );
+
+        string sharedSagaId = ISagaStateManager.GenerateSagaId( $"{LookupRequestType.IsrcLookup}:{SharedIsrc}" );
+        LookupSagaState activeSaga = MakeMinimalSaga( ) with { SagaId = sharedSagaId, InstanceToken = "owner-a" };
+        int getCount = 0;
+        _ = _sagaManagerMock.Setup( manager => manager.GetAsync(
+                It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => Interlocked.Increment( ref getCount ) == 1 ? null : activeSaga );
+        _ = _sagaManagerMock.Setup( manager => manager.GetOrCreateAsync(
+                It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ),
+                It.IsAny<string>( ), It.IsAny<QueuePriority?>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( activeSaga );
+        Dictionary<string, int> attempts = new( StringComparer.Ordinal );
+        _ = _refreshReviewStoreMock.Setup( store => store.IncrementSweepAttemptAsync(
+                It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( string uri, CancellationToken _ ) => {
+                if (uri == RecordA) { return 1; }
+                attempts[uri] = attempts.GetValueOrDefault( uri ) + 1;
+                return attempts[uri];
+            } );
+        RefreshReviewEntry ownerContext = new( ) {
+            SourceRecordUri = RecordA,
+            SagaId = activeSaga.SagaId,
+            InstanceToken = activeSaga.InstanceToken,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = SharedIsrc
+        };
+        _ = _refreshReviewStoreMock.Setup( store => store.GetPendingAsync(
+                RecordA, It.IsAny<CancellationToken>( ) ) ).ReturnsAsync( ownerContext );
+        _ = _refreshReviewStoreMock.Setup( store => store.GetPendingAsync(
+                RecordB, It.IsAny<CancellationToken>( ) ) ).ReturnsAsync( (RefreshReviewEntry?)null );
+        RefreshReviewEntry? promoted = null;
+        _ = _refreshReviewStoreMock.Setup( store => store.PromoteDirectAsync(
+                It.IsAny<RefreshReviewEntry>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .Callback<RefreshReviewEntry, string, CancellationToken>( ( entry, _, _ ) => promoted = entry )
+            .Returns( Task.CompletedTask );
+
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+
+        _refreshReviewStoreMock.Verify( store => store.PromoteDirectAsync(
+            It.Is<RefreshReviewEntry>( entry => entry.SourceRecordUri == RecordB ),
+            It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
+        Assert.IsNotNull( promoted );
+        Assert.AreEqual( activeSaga.SagaId, promoted!.SagaId );
+        Assert.AreEqual( activeSaga.InstanceToken, promoted.InstanceToken );
+        _refreshReviewStoreMock.Verify( store => store.MarkUnresolvedAsync(
+            It.Is<RefreshReviewEntry>( entry => entry.SourceRecordUri == RecordA ),
+            It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _sagaManagerMock.Verify( manager => manager.TryDeleteAsync(
+            It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _queueMock.Verify( queue => queue.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
+    }
+
+    /// <summary>An active owner is quarantined after three sweeps without deleting its saga.</summary>
+    [TestMethod]
+    public async Task RunRefreshPass_ActiveOwner_ReachesThreeSweepsWithoutDeletingSaga( ) {
+        const string RecordUri = "at://active-owner";
+        const string Isrc = "ACTIVE_OWNER_THREE_SWEEPS";
+        SetupRecordList( [MakeStaleRecord( RecordUri, DateTime.UtcNow.AddDays( -60 ), Isrc )] );
+        string sagaId = ISagaStateManager.GenerateSagaId( $"{LookupRequestType.IsrcLookup}:{Isrc}" );
+        LookupSagaState activeSaga = MakeMinimalSaga( ) with { SagaId = sagaId, InstanceToken = "active-owner" };
+        _ = _sagaManagerMock.Setup( manager => manager.GetAsync( sagaId, It.IsAny<CancellationToken>( ) ) ).ReturnsAsync( activeSaga );
+        int attempts = 0;
+        _ = _refreshReviewStoreMock.Setup( store => store.IncrementSweepAttemptAsync( RecordUri, It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => ++attempts );
+        RefreshReviewEntry pending = new( ) {
+            SourceRecordUri = RecordUri,
+            SagaId = sagaId,
+            InstanceToken = activeSaga.InstanceToken,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = Isrc
+        };
+        _ = _refreshReviewStoreMock.Setup( store => store.GetPendingAsync( RecordUri, It.IsAny<CancellationToken>( ) ) ).ReturnsAsync( pending );
+
+        StaleCacheRefreshBackgroundService service = CreateService( );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+        await service.RunRefreshPassAsync( TestContext.CancellationToken );
+
+        _refreshReviewStoreMock.Verify( store => store.PromoteDirectAsync(
+            It.Is<RefreshReviewEntry>( entry => entry.SourceRecordUri == RecordUri && entry.InstanceToken == activeSaga.InstanceToken ),
+            It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
+        _refreshReviewStoreMock.Verify( store => store.MarkUnresolvedAsync(
+            It.IsAny<RefreshReviewEntry>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _sagaManagerMock.Verify( manager => manager.TryDeleteAsync( It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _refreshReviewStoreMock.Verify( store => store.RegisterPendingAsync( It.IsAny<RefreshReviewEntry>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _queueMock.Verify( queue => queue.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+    }
+
     #endregion
 
     #region Fire-and-Forget Tests
@@ -1543,13 +1707,69 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         _sagaManagerMock.Verify(
             m => m.GetAsync( It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Never
+            Times.Exactly( 2 )
         );
     }
 
     #endregion
 
     #region Reliability Tests
+
+    /// <summary>A replaced saga before token-fenced initialization leaves no pending context or queued legs.</summary>
+    [TestMethod]
+    public async Task EnqueueRecordAsync_WhenInitializationFenceIsLost_DoesNotRegisterOrEnqueue( ) {
+        _enabledProviders = [SupportedProviders.Spotify];
+        SetupRecordList( [MakeStaleRecord( "at://init-replaced", DateTime.UtcNow.AddDays( -60 ), isrc: "INIT_REPLACED" )] );
+        _ = _sagaManagerMock.Setup( manager => manager.TryInitializeProviderStatesAsync(
+                It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( false );
+
+        await CreateService( ).RunRefreshPassAsync( TestContext.CancellationToken );
+
+        _refreshReviewStoreMock.Verify( store => store.RegisterPendingAsync(
+            It.IsAny<RefreshReviewEntry>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _queueMock.Verify( queue => queue.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+    }
+
+    /// <summary>A replacement during enqueue-failure completion stops the remaining legs without mutation.</summary>
+    [TestMethod]
+    public async Task EnqueueRecordAsync_WhenEnqueueFailureCasIsLost_DoesNotEnqueueRemainingLegs( ) {
+        _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic];
+        MediaLinkResult record = new( ) { LookedUpAt = DateTime.UtcNow.AddDays( -60 ) };
+        record.Results[SupportedProviders.Spotify] = new MusicLookupResult {
+            URL = "https://open.spotify.com/track/3SPOTID12345",
+            ExternalId = "CAS_LOST",
+            IsAlbum = false
+        };
+        record.Results[SupportedProviders.AppleMusic] = new MusicLookupResult {
+            URL = "https://music.apple.com/us/album/x/1234567890?i=9876543210",
+            ExternalId = "CAS_LOST",
+            IsAlbum = false
+        };
+        SetupRecordList( [("at://enqueue-cas-lost", record)] );
+
+        Mock<IRequestQueue<QueuedLookupRequest>> spotifyQueue = new( );
+        Mock<IRequestQueue<QueuedLookupRequest>> appleQueue = new( );
+        _ = spotifyQueue.Setup( queue => queue.EnqueueAsync(
+                It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "enqueue failed" ) );
+        _ = appleQueue.Setup( queue => queue.EnqueueAsync(
+                It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .Returns( Task.CompletedTask );
+        _ = _queueResolverMock.Setup( resolver => resolver.GetQueue( SupportedProviders.Spotify ) ).Returns( spotifyQueue.Object );
+        _ = _queueResolverMock.Setup( resolver => resolver.GetQueue( SupportedProviders.AppleMusic ) ).Returns( appleQueue.Object );
+        _ = _sagaManagerMock.Setup( manager => manager.TryUpdateProviderStateAsync(
+                It.IsAny<string>( ), It.IsAny<ProviderLookupState>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( false );
+
+        await CreateService( ).RunRefreshPassAsync( TestContext.CancellationToken );
+
+        _refreshReviewStoreMock.Verify( store => store.RegisterPendingAsync(
+            It.IsAny<RefreshReviewEntry>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
+        appleQueue.Verify( queue => queue.EnqueueAsync(
+            It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+    }
 
     /// <summary>
     /// When enqueuing one record throws, it is counted as an error and skipped; the remaining
@@ -1764,12 +1984,13 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         List<ProviderLookupState> recordedStates = [];
         _ = _sagaManagerMock
-            .Setup( m => m.UpdateProviderStateAsync(
+            .Setup( m => m.TryUpdateProviderStateAsync(
                 It.IsAny<string>( ),
                 It.IsAny<ProviderLookupState>( ),
+                It.IsAny<string>( ),
                 It.IsAny<CancellationToken>( ) ) )
-            .Callback<string, ProviderLookupState, CancellationToken>( ( _, state, _ ) => recordedStates.Add( state ) )
-            .Returns( Task.CompletedTask );
+            .Callback<string, ProviderLookupState, string, CancellationToken>( ( _, state, _, _ ) => recordedStates.Add( state ) )
+            .ReturnsAsync( true );
 
         StaleCacheRefreshBackgroundService service = CreateService( );
         await service.RunRefreshPassAsync( TestContext.CancellationToken );
@@ -1788,11 +2009,6 @@ public class StaleCacheRefreshBackgroundServiceTests {
         Assert.DoesNotContain( s => s.Provider == SupportedProviders.AppleMusic, recordedStates,
             "A successful leg must not be recorded as failed" );
 
-        // SetIsPartialAsync must never be called.
-        _sagaManagerMock.Verify(
-            m => m.SetIsPartialAsync( It.IsAny<string>( ), It.IsAny<bool>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Never,
-            "SetIsPartialAsync must not be called when a leg fails; marking the provider complete-as-failed is sufficient" );
     }
 
     /// <summary>
@@ -1825,12 +2041,13 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         List<ProviderLookupState> recordedStates = [];
         _ = _sagaManagerMock
-            .Setup( m => m.UpdateProviderStateAsync(
+            .Setup( m => m.TryUpdateProviderStateAsync(
                 It.IsAny<string>( ),
                 It.IsAny<ProviderLookupState>( ),
+                It.IsAny<string>( ),
                 It.IsAny<CancellationToken>( ) ) )
-            .Callback<string, ProviderLookupState, CancellationToken>( ( _, state, _ ) => recordedStates.Add( state ) )
-            .Returns( Task.CompletedTask );
+            .Callback<string, ProviderLookupState, string, CancellationToken>( ( _, state, _, _ ) => recordedStates.Add( state ) )
+            .ReturnsAsync( true );
 
         StaleCacheRefreshBackgroundService service = CreateService( );
 
@@ -1845,11 +2062,6 @@ public class StaleCacheRefreshBackgroundServiceTests {
         Assert.IsTrue( recordedStates.All( s => !s.IsSuccess ),
             "All failing legs must be marked IsSuccess=false" );
 
-        // SetIsPartialAsync must never be called.
-        _sagaManagerMock.Verify(
-            m => m.SetIsPartialAsync( It.IsAny<string>( ), It.IsAny<bool>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Never,
-            "SetIsPartialAsync must not be called when all legs fail" );
     }
 
     #endregion
@@ -2128,7 +2340,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
             LookupKey = "test:key",
             LookupType = LookupRequestType.IsrcLookup,
             LookupValue = "TESTISRC",
-            OriginPriority = QueuePriority.Bulk
+            OriginPriority = QueuePriority.Bulk,
+            InstanceToken = "test-instance"
         };
 
     #endregion
