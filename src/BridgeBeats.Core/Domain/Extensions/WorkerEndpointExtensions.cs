@@ -87,7 +87,7 @@ public static partial class WorkerEndpointExtensions {
     private static async Task<IResult> ExecuteLookupAsync( Func<Task<MusicLookupResult?>> lookupFunc, HttpContext context ) {
         try {
             MusicLookupResult? result = await lookupFunc( );
-            return Results.Ok( result is null ? ProviderLookupResponse.NotFound( ) : ProviderLookupResponse.Ok( result ) );
+            return Results.Ok( ProviderLookupResponse.Ok( result ) );
         } catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) {
             throw;
         } catch (OperationCanceledException) {

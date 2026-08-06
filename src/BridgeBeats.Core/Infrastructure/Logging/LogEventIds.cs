@@ -1010,11 +1010,6 @@ public static class LogEventIds {
             public const int ParseBulkArtistsError = 2007;
 
             /// <summary>
-            /// EventId for <see cref="SpotifyLookupService.LogBulkRateLimited"/>.
-            /// </summary>
-            public const int BulkRateLimited = 2008;
-
-            /// <summary>
             /// EventId for <see cref="SpotifyLookupService.LogBulkRequestFailed"/>.
             /// </summary>
             public const int BulkRequestFailed = 2009;

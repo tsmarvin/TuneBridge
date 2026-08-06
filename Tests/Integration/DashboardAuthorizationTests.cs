@@ -26,6 +26,7 @@ namespace BridgeBeats.Tests.Integration;
 /// role.
 /// </summary>
 [TestClass]
+[DoNotParallelize] // Uses the process-wide Redis statistics keys also exercised by StatisticsStatusIntegrationTests.
 public class DashboardAuthorizationTests : IDisposable {
     /// <summary>The test web application factory with the stub authentication scheme installed.</summary>
     private DashboardTestWebApplicationFactory? _factory;

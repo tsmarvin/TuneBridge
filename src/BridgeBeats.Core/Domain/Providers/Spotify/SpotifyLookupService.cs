@@ -376,15 +376,14 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
         }
 
         /// <summary>
-        /// Performs an API request for bulk lookup operations with a custom endpoint key for rate
-        /// limiting, translating a 429 into a rate-limit exception.
+        /// Performs an API request for bulk lookup operations, using a custom endpoint key for
+        /// failure diagnostics.
         /// </summary>
         /// <param name="requestUri">The API endpoint URI.</param>
         /// <param name="endpointKey">The endpoint key for rate limit tracking.</param>
-        /// <returns>The response body on success, or <see langword="null"/> on any non-2xx status other than 400 and 429 (which throw — see exceptions below); 401, 403, 404, and 5xx return <see langword="null"/>.</returns>
-        /// <exception cref="Contracts.Exceptions.RetryAfterExceededException">
-        /// Thrown when the response is HTTP 429; the <c>Retry-After</c> delta (or 30 seconds when absent)
-        /// is carried on the exception.
+        /// <returns>The response body on success, or <see langword="null"/> on any non-2xx status other than 400 (which throws — see exceptions below); 401, 403, 404, and 5xx return <see langword="null"/>.</returns>
+        /// <exception cref="Contracts.Exceptions.ProviderRateLimitException">
+        /// Thrown by the provider HTTP pipeline when its Polly retry policy exhausts an HTTP 429.
         /// </exception>
         /// <exception cref="Contracts.Exceptions.SpotifyBulkRejectedException">
         /// Thrown when the response is HTTP 400 Bad Request. A 400 indicates a malformed or otherwise
@@ -398,19 +397,6 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
 
             if (response.IsSuccessStatusCode) {
                 return await response.Content.ReadAsStringAsync( );
-            }
-
-            // Handle rate limiting with custom endpoint key
-            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests) {
-                TimeSpan retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds( 30 );
-                LogBulkRateLimited( Logger, endpointKey, retryAfter );
-                // Use the standard threshold - bulk requests are always thrown for requeue
-                throw new Contracts.Exceptions.RetryAfterExceededException(
-                    retryAfter,
-                    TimeSpan.Zero, // Threshold is 0 since bulk requests are always queued
-                    new Uri( client.BaseAddress!, requestUri ),
-                    SupportedProviders.Spotify
-                );
             }
 
             // Only a 400 Bad Request indicates a malformed id; other failures fall through to
@@ -813,16 +799,6 @@ namespace BridgeBeats.Core.Domain.Providers.Spotify {
             Level = LogLevel.Error,
             Message = "An error occurred while parsing bulk artists response from Spotify." )]
         internal static partial void LogParseBulkArtistsError( ILogger logger, Exception ex );
-
-        /// <summary>Logs rate limiting on bulk endpoint.</summary>
-        /// <param name="logger">The logger to write to.</param>
-        /// <param name="endpoint">The bulk endpoint label.</param>
-        /// <param name="retryAfter">The wait before retrying.</param>
-        [LoggerMessage(
-            EventId = LogEventIds.Providers.Spotify.BulkRateLimited,
-            Level = LogLevel.Warning,
-            Message = "Rate limited on bulk endpoint {Endpoint}, retry after {RetryAfter}" )]
-        internal static partial void LogBulkRateLimited( ILogger logger, string endpoint, TimeSpan retryAfter );
 
         /// <summary>Logs bulk API request failure.</summary>
         /// <param name="logger">The logger to write to.</param>

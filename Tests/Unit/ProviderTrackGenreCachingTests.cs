@@ -1,11 +1,14 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Domain.Providers.AppleMusic;
+using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Tidal;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -310,6 +313,76 @@ public sealed class ProviderTrackGenreCachingTests {
     }
 
     /// <summary>
+    /// A rate limit from Tidal's secondary album lookup escapes both parsing layers so the queue
+    /// retries the provider leg instead of persisting a false no-match.
+    /// </summary>
+    [TestMethod]
+    public async Task TidalTrackLookup_AlbumArtRateLimit_PropagatesTypedException( ) {
+        const string TokenResponse = """{"access_token":"token","expires_in":3600,"token_type":"Bearer"}""";
+        const string TrackResponse = """
+            {
+              "data": {
+                "id": "12345",
+                "type": "tracks",
+                "attributes": {
+                  "title": "Track",
+                  "isrc": "USAAA0000001",
+                  "externalLinks": [{"href":"https://tidal.com/browse/track/12345"}]
+                },
+                "relationships": {
+                  "artists": {"data":[{"id":"artist-1","type":"artists"}]},
+                  "albums": {"data":[{"id":"67890","type":"albums"}]}
+                }
+              },
+              "included": [
+                {"id":"artist-1","type":"artists","attributes":{"name":"Artist"}},
+                {"id":"67890","type":"albums","attributes":{"title":"Album"}}
+              ]
+            }
+            """;
+
+        Mock<IGenreCacheService> genreCache = new( MockBehavior.Strict );
+        Mock<IHttpClientFactory> factory = new( );
+        _ = factory.Setup( item => item.CreateClient( "tidal-auth" ) )
+            .Returns( CreateClient( TokenResponse, "https://auth.tidal.com/" ) );
+
+        SequencedResponseHandler apiHandler = new(
+            new HttpResponseMessage( HttpStatusCode.OK ) {
+                Content = new StringContent( TrackResponse, Encoding.UTF8, "application/json" )
+            },
+            CreateRateLimitedResponse( TimeSpan.FromSeconds( 17 ) )
+        );
+        _ = factory.Setup( item => item.CreateClient( "tidal-api" ) )
+            .Returns( ( ) => {
+                TerminalProviderRateLimitHandler terminalRateLimitHandler = new( SupportedProviders.Tidal ) {
+                    InnerHandler = apiHandler
+                };
+                return new HttpClient( terminalRateLimitHandler, disposeHandler: false ) {
+                    BaseAddress = new Uri( "https://openapi.tidal.com/v2/" )
+                };
+            } );
+
+        TidalTokenHandler tokenHandler = new(
+            new TidalCredentials( "client", "secret" ),
+            factory.Object,
+            NullLogger<TidalTokenHandler>.Instance );
+        TidalLookupService service = new(
+            tokenHandler,
+            factory.Object,
+            NullLogger<TidalLookupService>.Instance,
+            new JsonSerializerOptions( ),
+            genreCache.Object );
+
+        ProviderRateLimitException exception = await Assert.ThrowsExactlyAsync<ProviderRateLimitException>(
+            ( ) => service.GetInfoByIDAsync( "12345", false )
+        );
+
+        Assert.AreEqual( 2, apiHandler.CallCount, "Expected a primary lookup followed by an album-art lookup." );
+        Assert.AreEqual( TimeSpan.FromSeconds( 17 ), exception.RetryAfterValue );
+        Assert.AreEqual( SupportedProviders.Tidal, exception.Provider );
+    }
+
+    /// <summary>
     /// A genre-cache write failure never fails the Apple Music lookup:
     /// <c>ParseAppleMusicSongResponse</c> catches and logs the exception rather than letting it
     /// propagate, so the mapped result is still returned.
@@ -367,6 +440,12 @@ public sealed class ProviderTrackGenreCachingTests {
     private static HttpClient CreateClient( string body, string baseAddress )
         => new( new FixedResponseHandler( body ) ) { BaseAddress = new Uri( baseAddress ) };
 
+    private static HttpResponseMessage CreateRateLimitedResponse( TimeSpan retryAfter ) {
+        HttpResponseMessage response = new( HttpStatusCode.TooManyRequests );
+        response.Headers.RetryAfter = new RetryConditionHeaderValue( retryAfter );
+        return response;
+    }
+
     private sealed class FixedResponseHandler( string body ) : HttpMessageHandler {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -375,5 +454,21 @@ public sealed class ProviderTrackGenreCachingTests {
             Content = new StringContent( body, Encoding.UTF8, "application/json" ),
             RequestMessage = request
         } );
+    }
+
+    private sealed class SequencedResponseHandler( params HttpResponseMessage[] responses ) : HttpMessageHandler {
+        private int _nextResponse;
+
+        public int CallCount => _nextResponse;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        ) {
+            int index = Interlocked.Increment( ref _nextResponse ) - 1;
+            HttpResponseMessage response = responses[index];
+            response.RequestMessage = request;
+            return Task.FromResult( response );
+        }
     }
 }
