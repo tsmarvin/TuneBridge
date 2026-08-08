@@ -67,7 +67,7 @@ public class CredentialsAtRestEncryptionTests {
     /// </summary>
     [TestMethod]
     public void EncryptConverter_RoundTrip_ReturnsOriginalPlaintext( ) {
-        string keyPath = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+        string keyPath = TestArtifacts.CreateDirectory( "bb-dp-test" );
         try {
             IDataProtector protector = BuildProtector( keyPath, ApplicationDbContext.TokenProtectorPurpose );
 
@@ -93,7 +93,7 @@ public class CredentialsAtRestEncryptionTests {
     /// </summary>
     [TestMethod]
     public void EncryptConverter_NullProtect_ReturnsNull( ) {
-        string keyPath = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+        string keyPath = TestArtifacts.CreateDirectory( "bb-dp-test" );
         try {
             IDataProtector protector = BuildProtector( keyPath, ApplicationDbContext.TokenProtectorPurpose );
 
@@ -116,7 +116,7 @@ public class CredentialsAtRestEncryptionTests {
     /// </summary>
     [TestMethod]
     public void EncryptConverter_NullUnprotect_ReturnsNull( ) {
-        string keyPath = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+        string keyPath = TestArtifacts.CreateDirectory( "bb-dp-test" );
         try {
             IDataProtector protector = BuildProtector( keyPath, ApplicationDbContext.TokenProtectorPurpose );
 
@@ -141,7 +141,7 @@ public class CredentialsAtRestEncryptionTests {
     /// </summary>
     [TestMethod]
     public void EncryptConverter_Protect_ProducesCiphertextNotEqualToPlaintext( ) {
-        string keyPath = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+        string keyPath = TestArtifacts.CreateDirectory( "bb-dp-test" );
         try {
             IDataProtector protector = BuildProtector( keyPath, ApplicationDbContext.TokenProtectorPurpose );
 
@@ -167,7 +167,7 @@ public class CredentialsAtRestEncryptionTests {
     /// </summary>
     [TestMethod]
     public void EncryptConverter_WrongAppName_CannotDecrypt( ) {
-        string keyPath = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+        string keyPath = TestArtifacts.CreateDirectory( "bb-dp-test" );
         try {
             // Build a protector under the BridgeBeats app name.
             ServiceCollection services = new( );
@@ -205,7 +205,7 @@ public class CredentialsAtRestEncryptionTests {
     /// </summary>
     [TestMethod]
     public void EncryptConverter_WrongPurpose_CannotDecrypt( ) {
-        string keyPath = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+        string keyPath = TestArtifacts.CreateDirectory( "bb-dp-test" );
         try {
             IDataProtectionProvider provider = BuildServiceProvider( keyPath );
 
@@ -295,7 +295,7 @@ public class CredentialsAtRestEncryptionTests {
     public void ProtectorForSessionManager_Protect_ProducesCiphertextNotContainingToken( ) {
         const string RefreshToken = "super-secret-refresh-token-xyz";
 
-        string keyPath = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+        string keyPath = TestArtifacts.CreateDirectory( "bb-dp-test" );
         try {
             IDataProtector protector = BuildProtector( keyPath, RedisATProtoSessionManager.SessionProtectorPurpose );
 
@@ -345,8 +345,8 @@ public class CredentialsAtRestEncryptionTests {
     public async Task SessionManager_KeyRingMismatchOnRead_DegradesToFreshLogin( ) {
         // Arrange: seed Redis with ciphertext encrypted by a DIFFERENT protector (simulates
         // key-ring rotation or a pre-encrypt plaintext value that happens to be valid UTF-8).
-        string keyPath1 = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
-        string keyPath2 = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+        string keyPath1 = TestArtifacts.CreateDirectory( "bb-dp-test" );
+        string keyPath2 = TestArtifacts.CreateDirectory( "bb-dp-test" );
         try {
             IDataProtector protectorA = BuildProtector( keyPath1, RedisATProtoSessionManager.SessionProtectorPurpose );
             IDataProtector protectorB = BuildProtector( keyPath2, RedisATProtoSessionManager.SessionProtectorPurpose );
@@ -449,7 +449,7 @@ public class CredentialsAtRestEncryptionTests {
         await AssertPersistAsync( sessionTtlDays: 45, RefreshToken );
 
         static async Task AssertPersistAsync( int sessionTtlDays, string refreshToken ) {
-            string keyPath = Path.Combine( Path.GetTempPath( ), $"bb-dp-test-{Guid.NewGuid():N}" );
+            string keyPath = TestArtifacts.CreateDirectory( "bb-dp-test" );
             try {
                 IDataProtector protector = BuildProtector( keyPath, RedisATProtoSessionManager.SessionProtectorPurpose );
 

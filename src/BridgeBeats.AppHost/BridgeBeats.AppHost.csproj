@@ -22,6 +22,7 @@
     <PackageReference Include="Aspire.Hosting.Redis" Version="13.4.6" />
     <PackageReference Include="MessagePack" Version="3.1.8" />
 
+    <ProjectReference Include="..\BridgeBeats.Core\BridgeBeats.Core.csproj" IsAspireProjectResource="false" />
     <ProjectReference Include="..\BridgeBeats.Web\BridgeBeats.Web.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.Discord\BridgeBeats.Worker.Discord.csproj" />
     <ProjectReference Include="..\BridgeBeats.Worker.Spotify\BridgeBeats.Worker.Spotify.csproj" />

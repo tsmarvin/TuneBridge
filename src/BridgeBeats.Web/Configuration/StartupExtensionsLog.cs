@@ -36,4 +36,13 @@ internal static partial class StartupExtensionsLog {
         Level = LogLevel.Error,
         Message = "Failed to initialize Redis cache connection" )]
     internal static partial void LogRedisFailed( ILogger logger, Exception ex );
+
+    /// <summary>Logs the immutable database settings revision consumed by this Web process.</summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="revision">The non-secret settings revision, or <c>standalone</c>.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.Configuration.StartupExtensionsSettingsRevision,
+        Level = LogLevel.Information,
+        Message = "BridgeBeats: running application settings revision {Revision}" )]
+    internal static partial void LogSettingsRevision( ILogger logger, string revision );
 }

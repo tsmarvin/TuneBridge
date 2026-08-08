@@ -26,9 +26,15 @@ Ever wanted to share your favorite song, only to realize your friend uses a diff
 
 ## 🚀 Quick Start
 
+Application settings live in encrypted database storage. Production does not use `appsettings.json`,
+`.env`, or provider-secret mounts. See the
+[database-backed configuration model](docs/DATABASE_CONFIGURATION.md).
+
 ### Using the one-line installer
 
-The installer downloads the Compose files, creates `.env` and the `secrets/` directory, and generates the secrets that must be auto-generated (including the required `INTERNAL_SERVICE_KEY` and the ATProto OAuth signing key):
+The installer downloads the Compose and Caddy files and prepares persistent directories. It creates
+the Redis credential on first start; ASP.NET Core keeps its required Data Protection key ring in the
+persistent `./data/dp-keys` directory.
 
 ```bash
 # Linux / macOS
@@ -40,7 +46,11 @@ curl -sSL https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/contain
 iwr -useb https://raw.githubusercontent.com/tsmarvin/BridgeBeats/develop/containers/install.ps1 | iex
 ```
 
-Then add at least one music provider's credentials and start the stack.
+Review all site-specific values in `docker-compose.yml`, then start the stack. To supply a Redis
+password, export a 32–128 character base64 or base64url `REDIS_PASSWORD` and initialize it with
+`docker compose run --rm -e REDIS_PASSWORD bridgebeats-bootstrap` before the first start. The
+one-shot container is removed so the supplied value is not retained in container metadata. When
+omitted, BridgeBeats generates a password.
 
 ### Using Docker Compose manually
 
@@ -48,25 +58,16 @@ Then add at least one music provider's credentials and start the stack.
 git clone https://github.com/tsmarvin/BridgeBeats.git
 cd BridgeBeats/containers
 
-# Create the secrets directory and placeholder files
-mkdir -p secrets && chmod 700 secrets
-touch secrets/apple_key.p8 secrets/spotify_client_secret.txt \
-      secrets/tidal_client_secret.txt secrets/discord_token.txt \
-      secrets/atproto_password.txt
-openssl rand -base64 32 > secrets/api_key_salt.txt
-openssl rand -base64 32 > secrets/redis_password.txt
-openssl rand -base64 32 > secrets/internal_service_key.txt
-chmod 600 secrets/*
-# Edit the secret files with your credentials
-
-cp .env.example .env
-# Edit .env with your configuration
+# Review all site-specific values in docker-compose.yml.
+# Optional, before first start:
+# docker compose run --rm -e REDIS_PASSWORD bridgebeats-bootstrap
 docker compose up -d
 ```
 
-`secrets/internal_service_key.txt` is required: it is the shared key the worker processes present to authenticate to the web API, and the container will not start without it. The installer generates it for you.
-
-`docker compose up -d` starts four containers: `bridgebeats` (the app, which also spawns the worker processes), `redis` (cache, request queue, and rate-limit tracking), `bridgebeats-pds` (a Bluesky Personal Data Server for ATProto caching), and `bridgebeats-caddy` (the reverse proxy that terminates HTTPS). Only Caddy publishes ports to the host (80 and 443); the app listens on port 10000 inside the internal Docker network and is reached through Caddy.
+`docker compose up -d` starts BridgeBeats, Redis, and Caddy. The bundled Bluesky PDS is an optional
+Compose profile and can be started later with `docker compose --profile pds up -d` after its
+third-party server settings are supplied. Application-facing PDS credentials and URI are stored in
+the encrypted BridgeBeats settings aggregate.
 
 Visit `https://localhost` to start converting links (accept the self-signed certificate warning for `localhost`).
 
@@ -85,8 +86,10 @@ Visit `https://localhost` to start converting links (accept the self-signed cert
      --project src/BridgeBeats.AppHost/BridgeBeats.AppHost.csproj
    ```
 
-4. Add at least one provider's credentials through user secrets or environment
-   variables (see [Configuration Guide](docs/CONFIGURATION.md))
+4. Seed the empty settings database from .NET user-secrets. Enable
+   `BridgeBeats:Bootstrap:SeedSettings`, set a 32-character `BridgeBeats:ApiKeySalt`, and provide at
+   least one complete provider credential group. See the
+   [database configuration guide](docs/DATABASE_CONFIGURATION.md#one-time-startup-seeding).
 
 Then start the host from the repository root:
 
@@ -151,8 +154,9 @@ You share the music, not the platform.
 
 Add BridgeBeats to your Discord server to automatically convert music links in conversations:
 
-1. Get a Discord bot token (see [Configuration Guide](docs/CONFIGURATION.md#discord-bot-token))
-2. Put the token in `secrets/discord_token.txt` and restart the stack
+1. Get a Discord bot token from the Discord Developer Portal
+2. Include it as `BridgeBeats:DiscordToken` in the one-time startup seed together with a
+   32-character `BridgeBeats:InternalServiceKey`, then restart AppHost
 3. Invite the bot to your server
 
 When someone shares a Spotify link, BridgeBeats responds with a card showing Apple Music and Tidal alternatives, and vice versa. See the [Discord Bot Guide](docs/DISCORD_BOT.md) for full setup.
@@ -175,7 +179,8 @@ When someone shares a Spotify link, BridgeBeats responds with a card showing App
 - Input URLs with tracking parameters are kept private (not stored on ATProto PDS)
 - The identifier and name-search lookup endpoints (`isrc`, `upc`, `title`) are rate limited per user (default 20 requests/hour); the public URL endpoints are not rate limited
 - Worker processes authenticate to the web API with a shared internal service key
-- Credentials are provided as Docker secrets (and as environment variables or user secrets in local development)
+- Application credentials are encrypted in the database and projected to runtime processes; the
+  Redis bootstrap credential and persistent Data Protection key ring remain deployment infrastructure
 
 ## 🌍 Deployment Options
 

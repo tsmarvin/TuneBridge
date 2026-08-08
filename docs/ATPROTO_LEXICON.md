@@ -117,13 +117,15 @@ See the lexicon file for the complete JSON schema definition.
 
 Use [goat](https://github.com/bluesky-social/goat) to create the schema records.
 
-> The commands below are recovered from the prior version of this guide. Verify the PDS hostname (`stage-atproto.pds.bridgebeats.link`), the secrets path, and the current `goat` CLI flags against your deployment before running them; they were not re-validated against a running PDS for this revision.
+> Verify the PDS hostname and current `goat` CLI flags against your deployment before running these
+> commands; they were not re-validated against a running PDS for this revision. Read the app password
+> securely from your operator secret manager rather than a repository file.
 
 ### Lookup lexicon
 
 ```sh
 cp BridgeBeats/src/BridgeBeats.Web/wwwroot/.well-known/atproto-lexicon/link.bridgebeats.lookup ./link.bridgebeats.lookup.json
-goat account login -u "stage-atproto.pds.bridgebeats.link" --app-password $(cat BridgeBeats/secrets/atproto_password.txt)
+goat account login -u "stage-atproto.pds.bridgebeats.link" --app-password "$ATPROTO_APP_PASSWORD"
 goat record create --rkey link.bridgebeats.lookup ./link.bridgebeats.lookup.json
 ```
 
@@ -131,7 +133,7 @@ goat record create --rkey link.bridgebeats.lookup ./link.bridgebeats.lookup.json
 
 ```sh
 cp BridgeBeats/src/BridgeBeats.Web/wwwroot/.well-known/atproto-lexicon/link.bridgebeats.playlist ./link.bridgebeats.playlist.json
-goat account login -u "stage-atproto.pds.bridgebeats.link" --app-password $(cat BridgeBeats/secrets/atproto_password.txt)
+goat account login -u "stage-atproto.pds.bridgebeats.link" --app-password "$ATPROTO_APP_PASSWORD"
 goat record create --rkey link.bridgebeats.playlist ./link.bridgebeats.playlist.json
 ```
 

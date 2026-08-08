@@ -6,6 +6,8 @@
   href: API.md
 - name: Configuration
   href: CONFIGURATION.md
+- name: Database-backed configuration
+  href: DATABASE_CONFIGURATION.md
 - name: Caching and Storage
   href: CACHING.md
 - name: Local Development

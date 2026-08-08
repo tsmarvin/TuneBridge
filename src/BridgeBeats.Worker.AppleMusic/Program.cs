@@ -73,12 +73,14 @@ public static class Program {
         // Add Redis client from Aspire (for queue processing)
         builder.AddRedisClient( "redis" );
 
+        _ = builder.Services.AddQueueSettingsSnapshot( builder.Configuration );
+
         // Read and validate credentials
-        (string teamId, string keyId, string keyPath, int maxRetryAfterSeconds) = ValidateConfiguration( builder );
+        (string teamId, string keyId, string privateKey, int maxRetryAfterSeconds) = ValidateConfiguration( builder );
 
         // Register Apple Music services
         HashSet<SupportedProviders> enabledProviders = [];
-        _ = builder.Services.AddAppleMusicServices( teamId, keyId, keyPath, enabledProviders, maxRetryAfterSeconds );
+        _ = builder.Services.AddAppleMusicServicesFromPrivateKey( teamId, keyId, privateKey, enabledProviders, maxRetryAfterSeconds );
 
         // Register JSON serializer options (required by AppleMusicLookupService)
         _ = builder.Services.AddSingleton( new JsonSerializerOptions { WriteIndented = true } );
@@ -95,28 +97,28 @@ public static class Program {
     /// </summary>
     /// <param name="builder">The web application builder whose configuration is read.</param>
     /// <returns>
-    /// A tuple of the Apple team id, key id, key file path, and the maximum honored
+    /// A tuple of the Apple team id, key id, private-key contents, and the maximum honored
     /// <c>Retry-After</c> value in seconds (defaulting to 120 when unset).
     /// </returns>
     /// <exception cref="InvalidOperationException">
     /// Thrown when any of <c>BridgeBeats:AppleTeamId</c>, <c>BridgeBeats:AppleKeyId</c>, or
-    /// <c>BridgeBeats:AppleKeyPath</c> is missing or blank.
+    /// <c>BridgeBeats:ApplePrivateKey</c> is missing or blank.
     /// </exception>
-    private static (string TeamId, string KeyId, string KeyPath, int MaxRetryAfterSeconds) ValidateConfiguration(
+    private static (string TeamId, string KeyId, string PrivateKey, int MaxRetryAfterSeconds) ValidateConfiguration(
         WebApplicationBuilder builder
     ) {
         string? teamId = builder.Configuration["BridgeBeats:AppleTeamId"];
         string? keyId = builder.Configuration["BridgeBeats:AppleKeyId"];
-        string? keyPath = builder.Configuration["BridgeBeats:AppleKeyPath"];
+        string? privateKey = builder.Configuration["BridgeBeats:ApplePrivateKey"];
         int maxRetryAfterSeconds = builder.Configuration.GetValue("BridgeBeats:Resilience:MaxRetryAfterSeconds", 120);
 
         return string.IsNullOrWhiteSpace( teamId ) ||
             string.IsNullOrWhiteSpace( keyId ) ||
-            string.IsNullOrWhiteSpace( keyPath )
+            string.IsNullOrWhiteSpace( privateKey )
             ? throw new InvalidOperationException(
-                "Apple Music credentials are required. Set BridgeBeats:AppleTeamId, BridgeBeats:AppleKeyId, and BridgeBeats:AppleKeyPath."
+                "Apple Music credentials are required. Set BridgeBeats:AppleTeamId, BridgeBeats:AppleKeyId, and BridgeBeats:ApplePrivateKey."
             )
-            : ((string TeamId, string KeyId, string KeyPath, int MaxRetryAfterSeconds))(teamId, keyId, keyPath, maxRetryAfterSeconds);
+            : ((string TeamId, string KeyId, string PrivateKey, int MaxRetryAfterSeconds))(teamId, keyId, privateKey, maxRetryAfterSeconds);
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
@@ -14,6 +15,67 @@ namespace BridgeBeats.Core.Infrastructure.Extensions;
 /// queues, and queue settings.
 /// </summary>
 public static class QueueServiceExtensions {
+
+    private static readonly JsonSerializerOptions s_snapshotJsonOptions = new( ) {
+        PropertyNameCaseInsensitive = true
+    };
+
+    /// <summary>
+    /// Registers one immutable settings snapshot projected by AppHost. Standalone hosts and tests may
+    /// fall back to ordinary configuration binding when no projected snapshot is present.
+    /// </summary>
+    /// <typeparam name="TSettings">The settings type to register.</typeparam>
+    /// <param name="services">The service collection to populate.</param>
+    /// <param name="configuration">The process configuration containing the snapshot.</param>
+    /// <param name="snapshotKey">The configuration key containing serialized JSON.</param>
+    /// <param name="fallbackSectionKey">The section used when no snapshot was projected.</param>
+    /// <returns>The supplied service collection.</returns>
+    public static IServiceCollection AddSettingsSnapshot<TSettings>(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        string snapshotKey,
+        string fallbackSectionKey
+    ) where TSettings : class, new( ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( snapshotKey );
+        ArgumentException.ThrowIfNullOrWhiteSpace( fallbackSectionKey );
+
+        string? json = configuration[snapshotKey];
+        TSettings settings;
+        if (string.IsNullOrWhiteSpace( json )) {
+            settings = configuration.GetSection( fallbackSectionKey ).Get<TSettings>( ) ?? new TSettings( );
+        } else {
+            try {
+                settings = JsonSerializer.Deserialize<TSettings>( json, s_snapshotJsonOptions )
+                    ?? throw new InvalidOperationException( $"The AppHost settings snapshot '{snapshotKey}' was empty." );
+            } catch (JsonException exception) {
+                throw new InvalidOperationException(
+                    $"The AppHost settings snapshot '{snapshotKey}' was malformed.",
+                    exception
+                );
+            }
+        }
+
+        _ = services.AddSingleton( Options.Create( settings ) );
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the queue settings snapshot distributed by AppHost, falling back to ordinary
+    /// configuration binding for isolated tests and standalone worker development.
+    /// </summary>
+    /// <param name="services">The service collection to populate.</param>
+    /// <param name="configuration">The process configuration containing the snapshot.</param>
+    /// <returns>The supplied service collection.</returns>
+    public static IServiceCollection AddQueueSettingsSnapshot(
+        this IServiceCollection services,
+        IConfiguration configuration
+    ) {
+        return services.AddSettingsSnapshot<QueueSettings>(
+            configuration,
+            "BridgeBeats:QueueSnapshot",
+            "BridgeBeats:Queue"
+        );
+    }
 
     /// <summary>
     /// Registers the shared queue infrastructure singletons: the request deduplicator, the

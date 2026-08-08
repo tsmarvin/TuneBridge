@@ -119,9 +119,7 @@ public static class Program {
         _ = builder.Services.AddSingleton( enabledProviders );
 
         // Queue settings (required by the saga manager and provider queues)
-        _ = builder.Services.Configure<QueueSettings>(
-            builder.Configuration.GetSection( "BridgeBeats:Queue" )
-        );
+        _ = builder.Services.AddQueueSettingsSnapshot( builder.Configuration );
 
         // Queue infrastructure: deduplicator, rate-limit tracker, saga state manager
         _ = builder.Services.AddQueueInfrastructure( );
@@ -209,7 +207,7 @@ public static class Program {
 
         if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleTeamId"] ) &&
             !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyId"] ) &&
-            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyPath"] )) {
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:ApplePrivateKey"] )) {
             _ = enabledProviders.Add( SupportedProviders.AppleMusic );
         }
 

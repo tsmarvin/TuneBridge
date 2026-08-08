@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BridgeBeats.Tests.Integration;
@@ -26,6 +27,66 @@ public class ApplicationSettingsServiceIntegrationTests {
 
     /// <summary>Gets the MSTest context used for cooperative cancellation.</summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Verifies AppHost bootstrap can migrate a brand-new database and represent the absence of the
+    /// singleton settings record without inventing defaults.
+    /// </summary>
+    [TestMethod]
+    public async Task Bootstrapper_EmptyDatabase_ReturnsSetupRequiredState( ) {
+        string root = TestArtifacts.CreateDirectory( "bb-settings-bootstrap" );
+        string databasePath = Path.Combine( root, "bridgebeats.db" );
+        string keyPath = Path.Combine( root, "keys" );
+        _ = Directory.CreateDirectory( root );
+
+        try {
+            ApplicationSettingsSnapshot? snapshot = await ApplicationSettingsBootstrapper.MigrateAndLoadAsync(
+                $"Data Source={databasePath}",
+                keyPath,
+                cancellationToken: TestContext.CancellationToken
+            );
+
+            Assert.IsNull( snapshot );
+            Assert.IsTrue( File.Exists( databasePath ) );
+        } finally {
+            Directory.Delete( root, recursive: true );
+        }
+    }
+
+    /// <summary>
+    /// Verifies explicit startup seeding accepts ordinary .NET configuration once and never uses a
+    /// later startup value to overwrite the authoritative database row.
+    /// </summary>
+    [TestMethod]
+    public async Task Bootstrapper_SeedMode_SeedsOnlyAnEmptyStore( ) {
+        string root = TestArtifacts.CreateDirectory( "bb-settings-seed" );
+        string databasePath = Path.Combine( root, "bridgebeats.db" );
+        string keyPath = Path.Combine( root, "keys" );
+        IConfiguration firstConfiguration = SeedConfiguration( "first-client", "first-secret" );
+
+        try {
+            ApplicationSettingsSnapshot? first = await ApplicationSettingsBootstrapper.MigrateSeedAndLoadAsync(
+                $"Data Source={databasePath}",
+                keyPath,
+                firstConfiguration,
+                TestContext.CancellationToken
+            );
+            ApplicationSettingsSnapshot? restarted = await ApplicationSettingsBootstrapper.MigrateSeedAndLoadAsync(
+                $"Data Source={databasePath}",
+                keyPath,
+                SeedConfiguration( "replacement-client", "replacement-secret" ),
+                TestContext.CancellationToken
+            );
+
+            Assert.IsNotNull( first );
+            Assert.IsNotNull( restarted );
+            Assert.AreEqual( first.Revision, restarted.Revision );
+            Assert.AreEqual( "first-client", restarted.Values.SpotifyClientId );
+            Assert.AreEqual( "first-secret", restarted.Secrets.SpotifyClientSecret.Reveal( ) );
+        } finally {
+            Directory.Delete( root, recursive: true );
+        }
+    }
 
     /// <summary>
     /// Verifies an options-only context factory cannot cause plaintext persistence and that raw-value
@@ -86,7 +147,7 @@ public class ApplicationSettingsServiceIntegrationTests {
     public async Task DifferentKeyRing_FailsWithUnreadableSettingsException( ) {
         await using TestStore store = await TestStore.CreateAsync( TestContext.CancellationToken );
         _ = await store.CreateService( ).UpdateAsync( CreateInitialUpdate( ), TestContext.CancellationToken );
-        string wrongKeyPath = Path.Combine( Path.GetTempPath( ), $"bb-settings-wrong-keys-{Guid.NewGuid( ):N}" );
+        string wrongKeyPath = Path.Combine( TestArtifacts.Root, $"bb-settings-wrong-keys-{Guid.NewGuid( ):N}" );
 
         try {
             DatabaseApplicationSettingsService wrongKeyService = store.CreateServiceWithNewProvider( wrongKeyPath );
@@ -335,9 +396,20 @@ public class ApplicationSettingsServiceIntegrationTests {
     private static ApplicationSettingsUpdate CreateInitialUpdate( ) => new( ) {
         Values = CreateValues( ),
         Secrets = new ApplicationSettingsSecretUpdates {
-            SpotifyClientSecret = ApplicationSecretUpdate.Replace( SpotifySecret )
+            SpotifyClientSecret = ApplicationSecretUpdate.Replace( SpotifySecret ),
+            ApiKeySalt = ApplicationSecretUpdate.Replace( "integration-test-api-key-salt-000000000000" )
         }
     };
+
+    private static IConfiguration SeedConfiguration( string clientId, string clientSecret ) =>
+        new ConfigurationBuilder( )
+            .AddInMemoryCollection( new Dictionary<string, string?> {
+                [ApplicationSettingsBootstrapper.SeedSettingsKey] = "true",
+                ["BridgeBeats:SpotifyClientId"] = clientId,
+                ["BridgeBeats:SpotifyClientSecret"] = clientSecret,
+                ["BridgeBeats:ApiKeySalt"] = "integration-seed-api-key-salt-000000000000"
+            } )
+            .Build( );
 
     private static ApplicationSettingsValues CreateValues( ) => new( ) {
         SpotifyClientId = "spotify-client-id"
@@ -379,11 +451,9 @@ public class ApplicationSettingsServiceIntegrationTests {
         public string KeyPath { get; }
 
         public static async Task<TestStore> CreateAsync( CancellationToken cancellationToken ) {
-            string directory = Path.Combine( Path.GetTempPath( ), $"bb-settings-{Guid.NewGuid( ):N}" );
+            string directory = TestArtifacts.CreateDirectory( "bb-settings" );
             string keyPath = Path.Combine( directory, "keys" );
             string dbPath = Path.Combine( directory, "settings.db" );
-            _ = Directory.CreateDirectory( directory );
-
             DbContextOptions<ApplicationDbContext> options = new DbContextOptionsBuilder<ApplicationDbContext>( )
                 .UseSqlite( $"Data Source={dbPath}" )
                 .Options;

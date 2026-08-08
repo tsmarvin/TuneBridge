@@ -21,7 +21,7 @@ public partial class LoggingConfigurationTests {
     [TestMethod]
     public void ConfigureSerilog_WithDefaultFilePath_ShouldCreateLogger( ) {
         // Arrange
-        string logPath = Path.Combine( Path.GetTempPath( ), $"test-log-{Guid.NewGuid( )}", "test-.log" );
+        string logPath = Path.Combine( TestArtifacts.CreateDirectory( "test-log" ), "test-.log" );
         _ = Directory.CreateDirectory( Path.GetDirectoryName( logPath )! );
 
         try {
@@ -68,7 +68,7 @@ public partial class LoggingConfigurationTests {
     [TestMethod]
     public void ConfigureSerilog_WithFileRotation_ShouldRespectRetentionPolicy( ) {
         // Arrange
-        string logDir = Path.Combine( Path.GetTempPath( ), $"test-log-rotation-{Guid.NewGuid( )}" );
+        string logDir = TestArtifacts.CreateDirectory( "test-log-rotation" );
         string logPath = Path.Combine( logDir, "test-.log" );
         _ = Directory.CreateDirectory( logDir );
 
@@ -163,7 +163,7 @@ public partial class LoggingConfigurationTests {
     [TestMethod]
     public void LoggingConfiguration_ShouldSupportBothFileAndOpenTelemetry( ) {
         // Arrange
-        string logPath = Path.Combine( Path.GetTempPath( ), $"test-dual-log-{Guid.NewGuid( )}", "test-.log" );
+        string logPath = Path.Combine( TestArtifacts.CreateDirectory( "test-dual-log" ), "test-.log" );
         _ = Directory.CreateDirectory( Path.GetDirectoryName( logPath )! );
 
         try {
@@ -219,7 +219,7 @@ public partial class LoggingConfigurationTests {
     [TestMethod]
     public void HealthCheckLoggingFilter_ShouldExcludeSuccessfulHealthChecks( ) {
         // Arrange
-        string logPath = Path.Combine( Path.GetTempPath( ), $"test-health-filter-{Guid.NewGuid( )}.log" );
+        string logPath = TestArtifacts.CreateFilePath( "test-health-filter", ".log" );
 
         try {
             // Create logger with health check filter (mimicking StartupExtensions.ConfigureSerilog)
@@ -349,7 +349,7 @@ public partial class LoggingConfigurationTests {
     [TestMethod]
     public void ConfigureSerilog_ShouldConfigureConsoleLogging( ) {
         // Arrange
-        string logPath = Path.Combine( Path.GetTempPath( ), $"test-console-log-{Guid.NewGuid( )}.log" );
+        string logPath = TestArtifacts.CreateFilePath( "test-console-log", ".log" );
 
         try {
             // Act - Create logger with both console and file output (mimicking StartupExtensions.ConfigureSerilog)

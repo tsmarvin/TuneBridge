@@ -34,7 +34,9 @@ export ConnectionStrings__redis="localhost:6379"
 
 ## Quick Start
 
-From the repository root, with Redis running and its connection string set:
+From the repository root, with Redis running, its connection string set, and an empty database
+seed configured as described in
+[Database-backed configuration](DATABASE_CONFIGURATION.md#one-time-startup-seeding):
 
 ```bash
 aspire run
@@ -72,20 +74,11 @@ The AppHost provisions the web application plus the provider workers (Spotify, A
 
 ## Environment Variables
 
-The AppHost threads configuration and secrets through as Aspire parameters using the `BridgeBeats__Section__Key` (double-underscore) convention. Provide them through any of:
-
-1. **User Secrets** (recommended for development):
-
-   ```bash
-   dotnet user-secrets set "Parameters:SpotifyClientId" "your-client-id" \
-     --project src/BridgeBeats.AppHost/BridgeBeats.AppHost.csproj
-   ```
-
-   The AppHost reads provider credentials from the `Parameters:` configuration section (env-var form `Parameters__SpotifyClientId`).
-
-2. **Environment variables**: set in your shell or IDE launch configuration.
-
-3. **appsettings.json**: for non-sensitive configuration only.
+AppHost loads application and provider settings from the encrypted SQLite settings aggregate. The
+development database path is the internal `bridgebeats.db` convention. Normal .NET configuration
+may seed the first record only when `BridgeBeats:Bootstrap:SeedSettings` is enabled; a later startup
+never overwrites the database. Redis, domain, and other deployment topology remain AppHost process
+configuration. Restart AppHost after changing persisted settings.
 
 ## Aspire vs Production Docker Compose
 
@@ -96,7 +89,7 @@ The AppHost threads configuration and secrets through as Aspire parameters using
 | **Hot reload** | Supported (project resources) | Requires rebuild |
 | **Reverse proxy** | Not included | Caddy with SSL/TLS |
 | **Redis** | You run it; set the connection string | Run by the compose file |
-| **Secrets** | Environment / user secrets | Docker secrets |
+| **Secrets** | Encrypted database settings | Encrypted database settings + persistent key ring and Redis bootstrap volume |
 
 ### When to Use Each
 

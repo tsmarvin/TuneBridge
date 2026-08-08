@@ -61,11 +61,11 @@ public class CredentialsAtRestIntegrationTests {
 
     /// <summary>Creates a temp directory path (does not create the directory yet).</summary>
     private static string TempKeyPath( ) =>
-        Path.Combine( Path.GetTempPath( ), $"bb-dp-int-{Guid.NewGuid( ):N}" );
+        Path.Combine( TestArtifacts.Root, $"bb-dp-int-{Guid.NewGuid( ):N}" );
 
     /// <summary>Creates a temp SQLite database file path.</summary>
     private static string TempDbPath( ) =>
-        Path.Combine( Path.GetTempPath( ), $"bb-int-test-{Guid.NewGuid( ):N}.db" );
+        TestArtifacts.CreateFilePath( "bb-int-test", ".db" );
 
     /// <summary>
     /// Builds an <see cref="IDataProtectionProvider"/> registered under app name <c>BridgeBeats</c>
@@ -537,28 +537,16 @@ public class CredentialsAtRestIntegrationTests {
     // ---------------------------------------------------------------------------
 
     /// <summary>
-    /// Regression lock for the Critical finding: simulates the production DI registration path
-    /// (ConfigureDatabases then ConfigureIdentity) and asserts that (a) exactly one scoped
-    /// <see cref="ApplicationDbContext"/> descriptor survives — the protector-bearing one from
-    /// <see cref="BridgeBeats.Core.Infrastructure.Extensions.IdentityServiceExtensions.AddBridgeBeatsIdentity"/> —
-    /// and (b) the resolved scoped context stores token columns as ciphertext, not plaintext.
+    /// Regression lock for the production DI registration path (ConfigureDatabases then
+    /// ConfigureIdentity). It asserts that exactly one protector-bearing scoped
+    /// <see cref="ApplicationDbContext"/> descriptor survives and that the resolved context stores
+    /// token columns as ciphertext, not plaintext.
     ///
     /// <para>
-    /// <c>AddDbContextFactory&lt;ApplicationDbContext&gt;</c> auto-registers a scoped
-    /// <see cref="ApplicationDbContext"/> with a null token protector alongside the factory.
-    /// The production fix removes this auto-registered null-protector descriptor immediately after
-    /// <c>AddDbContextFactory</c> so it cannot win resolution regardless of call order. This test
-    /// verifies the fix by asserting the descriptor count is exactly 1 after cleanup (assertion a)
-    /// and that the raw at-rest value is ciphertext (assertion b). If the removal is absent, two
-    /// scoped descriptors survive and the last-registered wins per MS DI semantics.
+    /// The shared database extension owns both the protected context factory and scoped context.
+    /// Identity uses <c>TryAddScoped</c>, so it cannot introduce a competing registration or a
+    /// context without the token protector.
     /// </para>
-    ///
-    /// Failure-first evidence: removing the <c>services.Remove(nullScopedCtx)</c> step from the
-    /// simulated registration flow below causes two scoped <c>ApplicationDbContext</c> descriptors
-    /// to survive. When the null-protector descriptor is the last one (dangerous call order) the
-    /// <c>Assert.AreEqual(1, ...)</c> descriptor-count assertion fails with count = 2, and if the
-    /// null-protector descriptor also wins resolution the raw SQLite read returns the plaintext
-    /// refresh token, causing the <c>Assert.AreNotEqual</c> assertion to fail.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -570,9 +558,7 @@ public class CredentialsAtRestIntegrationTests {
         try {
             ServiceCollection services = new( );
 
-            // Step 1: call the REAL production ConfigureDatabases — the descriptor-removal block
-            // we are verifying lives inside it. An AppSettings with the temp db path is sufficient
-            // because ConfigureDatabases reads only IdentityConnectionString.
+            // Step 1: call the real production database registration using the temporary database.
             AppSettings settings = new( ) { IdentityConnectionString = $"Data Source={dbPath}" };
             StartupExtensions.ConfigureDatabases( services, settings );
 
@@ -580,13 +566,10 @@ public class CredentialsAtRestIntegrationTests {
             // Registers DataProtection + IdentityCore + a scoped ApplicationDbContext via factory.
             _ = services.AddBridgeBeatsIdentity( keyPath );
 
-            // Assertion (a): exactly one scoped ApplicationDbContext descriptor must survive.
-            // This assertion is now checked against the production removal block in ConfigureDatabases.
-            // Deleting the services.Remove(nullScopedContext) call there produces count = 2, failing here.
+            // Assertion (a): Identity must not add a competing scoped context registration.
             int scopedCtxCount = services.Count( d => d.ServiceType == typeof( ApplicationDbContext ) );
             Assert.AreEqual( 1, scopedCtxCount,
-                "Exactly one scoped ApplicationDbContext descriptor must survive after cleanup. " +
-                "A count > 1 means the production null-protector removal in ConfigureDatabases is broken." );
+                "Exactly one protected ApplicationDbContext descriptor must survive production registration." );
 
             await using ServiceProvider sp = services.BuildServiceProvider( );
 

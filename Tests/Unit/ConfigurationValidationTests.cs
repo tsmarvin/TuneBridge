@@ -13,83 +13,12 @@ namespace BridgeBeats.Tests.Unit;
 /// </summary>
 /// <remarks>
 /// Each test builds an in-memory configuration and asserts the specific exception (and message
-/// fragment) the registration raises: a missing or empty Apple key file, no provider credentials at
-/// all, and non-positive card-cache tuning values. One test confirms the happy path where only Spotify
-/// credentials are present and <see cref="IMediaLinkService"/> ends up registered.
+/// fragment) the registration raises for no provider credentials and non-positive card-cache tuning
+/// values. One test confirms the happy path where only Spotify credentials are present and
+/// <see cref="IMediaLinkService"/> ends up registered.
 /// </remarks>
 [TestClass]
 public class ConfigurationValidationTests {
-    /// <summary>
-    /// Verifies that a configured Apple key path pointing at a nonexistent file throws
-    /// <see cref="FileNotFoundException"/> whose message references the <c>.p8</c> key.
-    /// </summary>
-    [TestMethod]
-    public void AddBridgeBeatsServices_WithMissingAppleKeyFile_ShouldThrowFileNotFoundException( ) {
-        // Arrange - provide ALL Apple credentials (TeamId, KeyId, AND KeyPath) with missing key file
-        // This ensures we hit the file validation logic
-        Dictionary<string, string?> overrides = new( ) {
-            ["BridgeBeats:AppleTeamId"] = "TEAM123456",
-            ["BridgeBeats:AppleKeyId"] = "KEY1234567",
-            ["BridgeBeats:AppleKeyPath"] = "/nonexistent/path/key.p8",
-            ["BridgeBeats:SpotifyClientId"] = string.Empty,
-            ["BridgeBeats:SpotifyClientSecret"] = string.Empty,
-            ["BridgeBeats:TidalClientId"] = string.Empty,
-            ["BridgeBeats:TidalClientSecret"] = string.Empty,
-            ["BridgeBeats:DiscordToken"] = string.Empty,
-            ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
-            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-            ["BridgeBeats:ATProtoIdentifier"] = string.Empty,
-            ["BridgeBeats:ATProtoPassword"] = string.Empty,
-        };
-        IServiceCollection services = new ServiceCollection( );
-        IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
-
-        // Act & Assert
-        FileNotFoundException ex = Assert.ThrowsExactly<FileNotFoundException>( () => {
-            _ = services.AddBridgeBeatsServices( config );
-        } );
-        Assert.Contains( ".p8", ex.Message );
-    }
-
-    /// <summary>
-    /// Verifies that an Apple key file that exists but is empty throws
-    /// <see cref="InvalidDataException"/> whose message notes the missing contents. The temporary file
-    /// is cleaned up in a <c>finally</c> block.
-    /// </summary>
-    [TestMethod]
-    public void AddBridgeBeatsServices_WithEmptyAppleKeyFile_ShouldThrowInvalidDataException( ) {
-        // Arrange - create empty temp key file
-        string emptyKeyPath = Path.Combine( Path.GetTempPath( ), $"empty_key_{Guid.NewGuid()}.p8" );
-        File.WriteAllText( emptyKeyPath, string.Empty );
-
-        try {
-            Dictionary<string, string?> overrides = new( ) {
-                ["BridgeBeats:AppleTeamId"] = "TEAM123456",
-                ["BridgeBeats:AppleKeyId"] = "KEY1234567",
-                ["BridgeBeats:AppleKeyPath"] = emptyKeyPath,
-                ["BridgeBeats:SpotifyClientId"] = string.Empty,
-                ["BridgeBeats:SpotifyClientSecret"] = string.Empty,
-                ["BridgeBeats:TidalClientId"] = string.Empty,
-                ["BridgeBeats:TidalClientSecret"] = string.Empty,
-                ["BridgeBeats:DiscordToken"] = string.Empty,
-                ["BridgeBeats:IdentityConnectionString"] = "Data Source=Identity;Mode=Memory;Cache=Shared",
-                ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
-                ["BridgeBeats:ATProtoIdentifier"] = string.Empty,
-                ["BridgeBeats:ATProtoPassword"] = string.Empty,
-            };
-            IServiceCollection services = new ServiceCollection( );
-            IConfiguration config = new ConfigurationBuilder( ).AddInMemoryCollection( overrides ).Build( );
-
-            // Act & Assert
-            InvalidDataException ex = Assert.ThrowsExactly<InvalidDataException>( () => {
-                _ = services.AddBridgeBeatsServices( config );
-            } );
-            Assert.Contains( "missing contents", ex.Message );
-        } finally {
-            if (File.Exists( emptyKeyPath )) { File.Delete( emptyKeyPath ); }
-        }
-    }
-
     /// <summary>
     /// Verifies that supplying no provider credentials at all throws
     /// <see cref="InvalidOperationException"/> reporting that required settings are missing.
@@ -101,7 +30,7 @@ public class ConfigurationValidationTests {
         Dictionary<string, string?> overrides = new( ) {
             ["BridgeBeats:AppleTeamId"] = string.Empty,
             ["BridgeBeats:AppleKeyId"] = string.Empty,
-            ["BridgeBeats:AppleKeyPath"] = string.Empty,
+            ["BridgeBeats:ApplePrivateKey"] = string.Empty,
             ["BridgeBeats:SpotifyClientId"] = string.Empty,
             ["BridgeBeats:SpotifyClientSecret"] = string.Empty,
             ["BridgeBeats:TidalClientId"] = string.Empty,
@@ -133,7 +62,7 @@ public class ConfigurationValidationTests {
             ["BridgeBeats:NodeNumber"] = "1",
             ["BridgeBeats:AppleTeamId"] = string.Empty,
             ["BridgeBeats:AppleKeyId"] = string.Empty,
-            ["BridgeBeats:AppleKeyPath"] = string.Empty,
+            ["BridgeBeats:ApplePrivateKey"] = string.Empty,
             ["BridgeBeats:SpotifyClientId"] = "spotify_client_id",
             ["BridgeBeats:SpotifyClientSecret"] = "spotify_secret",
             ["BridgeBeats:TidalClientId"] = string.Empty,

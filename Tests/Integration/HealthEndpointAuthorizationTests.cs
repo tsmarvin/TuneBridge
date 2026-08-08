@@ -24,9 +24,8 @@ public class HealthEndpointAuthorizationTests {
     /// <param name="_">The MSTest class context (unused).</param>
     [ClassInitialize]
     public static async Task Setup( TestContext _ ) {
-        // Load configuration from appsettings.json and user secrets
+        // Load optional real-provider credentials for this test environment.
         IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
             .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables()
             .Build();

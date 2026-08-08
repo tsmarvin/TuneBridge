@@ -39,7 +39,6 @@ public class CardStoreServiceDisabledTests : IDisposable {
     [TestInitialize]
     public async Task Setup( ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
             .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables()
             .Build();

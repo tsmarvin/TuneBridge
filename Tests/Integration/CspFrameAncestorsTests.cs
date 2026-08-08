@@ -27,7 +27,6 @@ public class CspFrameAncestorsTests {
     [ClassInitialize]
     public static async Task Setup( TestContext _ ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
             .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables()
             .Build();

@@ -40,9 +40,8 @@ public class MusicLookupControllerTests {
     /// <param name="context">The MSTest class context, used for its cancellation token.</param>
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext context ) {
-        // Load configuration from appsettings.json and user secrets
+        // Load optional real-provider credentials for this test environment.
         IConfigurationRoot configuration = new ConfigurationBuilder()
-            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
             .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables()
             .Build();
@@ -54,10 +53,7 @@ public class MusicLookupControllerTests {
             .Where( kv => !kv.Key.EndsWith( "ConnectionString", StringComparison.OrdinalIgnoreCase ) )
             .ToDictionary( );
 
-        // Inject a known internal-service key via environment variable so it is available
-        // during service registration (AddBridgeBeatsServices runs before ConfigureAppConfiguration
-        // test overrides are applied, so environment variables are the reliable injection point).
-        Environment.SetEnvironmentVariable( "BridgeBeats__InternalServiceKey", TestInternalServiceKey );
+        // Seed a known internal-service key through the factory's isolated startup configuration.
         configData["BridgeBeats:InternalServiceKey"] = TestInternalServiceKey;
         // Force Discord token to null to prevent Discord service registration
         configData["BridgeBeats:DiscordToken"] = string.Empty;
@@ -128,12 +124,11 @@ public class MusicLookupControllerTests {
     }
 
     /// <summary>
-    /// Disposes the test host and clears the internal service key environment variable.
+    /// Disposes the test host.
     /// </summary>
     [ClassCleanup]
     public static void ClassCleanup( ) {
         s_factory?.Dispose( );
-        Environment.SetEnvironmentVariable( "BridgeBeats__InternalServiceKey", null );
     }
 
     /// <summary>

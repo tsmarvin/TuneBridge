@@ -3,9 +3,9 @@ using Microsoft.Extensions.Configuration;
 namespace BridgeBeats.Tests;
 
 /// <summary>
-/// Loads configuration for tests that need real provider credentials, layering the web app's
-/// <c>appsettings.json</c>, user secrets, and environment variables. Also exposes helpers that report
-/// which provider credentials are present and builds the Aspire parameter arguments for app-host tests.
+/// Loads configuration for tests that need real provider credentials from .NET user-secrets or
+/// environment variables.
+/// Also exposes helpers that report which provider credentials are present.
 /// </summary>
 public static class TestConfiguration {
     /// <summary>Guards lazy, thread-safe construction of the configuration root.</summary>
@@ -26,13 +26,12 @@ public static class TestConfiguration {
     }
 
     /// <summary>
-    /// Builds the configuration root from the web app's <c>appsettings.json</c>, the web app's user
-    /// secrets, and environment variables.
+    /// Builds the configuration root using the same user-secrets identifier as Web/AppHost, with
+    /// test-process environment variables taking precedence for CI.
     /// </summary>
     private static IConfiguration LoadConfiguration( ) {
         return new ConfigurationBuilder( )
-            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
-            .AddUserSecrets<BridgeBeats.Web.Program>( optional: true )
+            .AddUserSecrets<Web.Program>( optional: true )
             .AddEnvironmentVariables( )
             .Build( );
     }
@@ -56,13 +55,13 @@ public static class TestConfiguration {
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:SpotifyClientSecret" ) );
 
     /// <summary>
-    /// Reports whether the Apple Music team id, key id, and key path are all configured.
+    /// Reports whether the Apple Music team id, key id, and private-key contents are all configured.
     /// </summary>
     /// <returns><c>true</c> when Apple Music credentials are present.</returns>
     public static bool HasAppleMusicCredentials( ) =>
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:AppleTeamId" ) ) &&
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:AppleKeyId" ) ) &&
-        !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:AppleKeyPath" ) );
+        !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:ApplePrivateKey" ) );
 
     /// <summary>
     /// Reports whether both the Tidal client id and secret are configured.
@@ -72,44 +71,4 @@ public static class TestConfiguration {
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:TidalClientId" ) ) &&
         !string.IsNullOrWhiteSpace( GetValue( "BridgeBeats:TidalClientSecret" ) );
 
-    /// <summary>
-    /// Builds the command-line parameter arguments passed to the Aspire app host for distributed
-    /// tests. Provider credentials are included only when present; the API key salt defaults to a test
-    /// value, and the Discord and ATProto parameters are passed empty to disable those integrations.
-    /// </summary>
-    /// <returns>The array of <c>Parameters:*</c> argument strings for the app host.</returns>
-    public static string[] BuildAspireParameterArgs( ) {
-        List<string> args = [ ];
-
-        // Spotify
-        if (HasSpotifyCredentials( )) {
-            args.Add( $"Parameters:SpotifyClientId={GetValue( "BridgeBeats:SpotifyClientId" )}" );
-            args.Add( $"Parameters:SpotifyClientSecret={GetValue( "BridgeBeats:SpotifyClientSecret" )}" );
-        }
-
-        // Apple Music
-        if (HasAppleMusicCredentials( )) {
-            args.Add( $"Parameters:AppleTeamId={GetValue( "BridgeBeats:AppleTeamId" )}" );
-            args.Add( $"Parameters:AppleKeyId={GetValue( "BridgeBeats:AppleKeyId" )}" );
-            args.Add( $"Parameters:AppleKeyPath={GetValue( "BridgeBeats:AppleKeyPath" )}" );
-        }
-
-        // Tidal
-        if (HasTidalCredentials( )) {
-            args.Add( $"Parameters:TidalClientId={GetValue( "BridgeBeats:TidalClientId" )}" );
-            args.Add( $"Parameters:TidalClientSecret={GetValue( "BridgeBeats:TidalClientSecret" )}" );
-        }
-
-        // Security - always required for tests
-        args.Add( $"Parameters:ApiKeySalt={GetValue( "BridgeBeats:ApiKeySalt" ) ?? "test_salt"}" );
-
-        // Disable Discord in tests
-        args.Add( "Parameters:DiscordToken=" );
-
-        // Disable ATProto for direct mode tests (no queue)
-        args.Add( "Parameters:ATProtoIdentifier=" );
-        args.Add( "Parameters:ATProtoPassword=" );
-
-        return [.. args];
-    }
 }

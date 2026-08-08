@@ -155,8 +155,8 @@ Before you start contributing:
    ```
 
 4. **Configure API credentials** (optional for some contributions):
-   - Use `dotnet user-secrets` for sensitive data (recommended for development)
-   - Or copy `.env.example` to `.env` and add your credentials (for Docker deployments)
+   - Application credentials belong in the encrypted application-settings aggregate
+   - Credentialed tests accept explicitly injected test configuration or environment variables
    - See [Configuration Guide](../docs/CONFIGURATION.md) for details
 
 ### Running the Application
@@ -261,7 +261,8 @@ We welcome pull requests for bug fixes, features, and documentation improvements
 - **Respond to review feedback** promptly and professionally
 - **Keep your branch updated** with the latest `main` branch
 - **Ensure CI passes** - all tests and checks must pass
-- **Don't commit secrets** - use environment variables, dotnet secrets, or GitHub secrets
+- **Don't commit secrets** - use the encrypted settings store, test-process environment variables,
+  or GitHub secrets as appropriate
 
 ### After Submitting
 
@@ -298,13 +299,14 @@ BridgeBeats follows .NET coding conventions and includes specific style guidelin
 - **Resilience patterns**: Use standard HTTP resilience with exponential backoff
 - **No inline comments** unless necessary to explain complex logic (match existing style)
 - **Use existing libraries** - avoid adding new dependencies unless necessary
-- **Never commit secrets** - all credentials via environment variables
+- **Never commit secrets** - application credentials belong in the encrypted settings store
 
 ### Security Guidelines
 
 - **Input validation**: Always validate and sanitize user input
 - **Authentication**: Use ASP.NET Core Identity patterns
-- **Secrets management**: Use environment variables, never hardcode credentials
+- **Secrets management**: Use the encrypted application-settings store; use environment variables
+  only for explicitly injected test credentials and bootstrap process configuration
 - **Dependencies**: Keep dependencies updated (Dependabot enabled). Note: You'll need the most up-to-date .NET version matching your lockfile as CI uses the latest version.
 - **Error handling**: Never expose sensitive information in error messages
 

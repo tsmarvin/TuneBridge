@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Storage;
 
@@ -38,8 +39,6 @@ internal static class ApplicationSettingsValidator {
         RequireString( values.ATProtoIdentifier, nameof( values.ATProtoIdentifier ), errors );
         RequireString( values.ATProtoUserDid, nameof( values.ATProtoUserDid ), errors );
         RequireString( values.ATProtoPdsUri, nameof( values.ATProtoPdsUri ), errors );
-        RequireString( values.Domain, nameof( values.Domain ), errors );
-
         if (values.Workers is null) {
             errors.Add( "Workers cannot be null." );
         }
@@ -66,6 +65,10 @@ internal static class ApplicationSettingsValidator {
 
         if (values.Maintenance is null) {
             errors.Add( "Maintenance cannot be null." );
+        }
+
+        if (values.Spotify?.Batch is null) {
+            errors.Add( "Spotify.Batch cannot be null." );
         }
 
         return errors;
@@ -124,6 +127,12 @@ internal static class ApplicationSettingsValidator {
         RequirePositive( values.Maintenance.RefreshIntervalHours, "Maintenance.RefreshIntervalHours", errors );
         RequirePositive( values.Maintenance.MaxRecordsPerRun, "Maintenance.MaxRecordsPerRun", errors );
         RequirePositive( values.Maintenance.RefreshRetryMinutes, "Maintenance.RefreshRetryMinutes", errors );
+        RequirePositive( values.Spotify.Batch.LingerMs, "Spotify.Batch.LingerMs", errors );
+        RequirePositive(
+            values.Spotify.Batch.RequestFailureCooldownSeconds,
+            "Spotify.Batch.RequestFailureCooldownSeconds",
+            errors
+        );
 
         ValidatePair(
             "Spotify",
@@ -155,12 +164,29 @@ internal static class ApplicationSettingsValidator {
             errors.Add( "ATProtoPdsUri must be an absolute HTTPS URI." );
         }
 
-        if (HasValue( secrets.ApiKeySalt ) && secrets.ApiKeySalt!.Length < 32) {
+        if (!HasValue( secrets.ApiKeySalt )) {
+            errors.Add( "ApiKeySalt is required." );
+        } else if (secrets.ApiKeySalt!.Length < 32) {
             errors.Add( "ApiKeySalt must contain at least 32 characters." );
         }
 
         if (HasValue( secrets.InternalServiceKey ) && secrets.InternalServiceKey!.Length < 32) {
             errors.Add( "InternalServiceKey must contain at least 32 characters." );
+        }
+
+        if (HasValue( secrets.DiscordToken ) && !HasValue( secrets.InternalServiceKey )) {
+            errors.Add( "DiscordToken requires InternalServiceKey so the worker can authenticate to Web." );
+        }
+
+        if (HasValue( secrets.ApplePrivateKey )) {
+            try {
+                using ECDsa key = ECDsa.Create( );
+                key.ImportFromPem( secrets.ApplePrivateKey );
+            } catch (ArgumentException) {
+                errors.Add( "ApplePrivateKey must contain a valid PEM-encoded elliptic-curve private key." );
+            } catch (CryptographicException) {
+                errors.Add( "ApplePrivateKey must contain a valid PEM-encoded elliptic-curve private key." );
+            }
         }
 
         return errors;

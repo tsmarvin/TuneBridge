@@ -78,6 +78,8 @@ public static class Program {
         // Add Redis client from Aspire
         builder.AddRedisClient( "redis" );
 
+        _ = builder.Services.AddQueueSettingsSnapshot( builder.Configuration );
+
         // Lane B: Data Protection — must use the same app name and key path as Web so
         // values encrypted in one process (Web, SagaCoordinator, Maintenance) can be
         // decrypted by any other.
@@ -202,7 +204,7 @@ public static class Program {
 
         if (!string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleTeamId"] ) &&
             !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyId"] ) &&
-            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:AppleKeyPath"] )) {
+            !string.IsNullOrWhiteSpace( builder.Configuration["BridgeBeats:ApplePrivateKey"] )) {
             _ = enabledProviders.Add( SupportedProviders.AppleMusic );
         }
 

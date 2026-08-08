@@ -260,5 +260,8 @@ public static class LogEventIds {
 
         /// <summary>Initializing the Redis cache connection failed.</summary>
         public const int StartupExtensionsRedisFailed = 4752;
+
+        /// <summary>The Web process selected an immutable application-settings revision.</summary>
+        public const int StartupExtensionsSettingsRevision = 4753;
     }
 }

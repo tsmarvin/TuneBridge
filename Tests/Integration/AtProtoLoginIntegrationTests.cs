@@ -22,11 +22,6 @@ namespace BridgeBeats.Tests.Integration;
 /// key hash) and signs them in, that an existing DID has its tokens updated without duplicating the user,
 /// and that multiple ATProto users with null email can coexist.
 /// </summary>
-/// <remarks>
-/// [DoNotParallelize]: the factory ctor sets process-wide env vars (BridgeBeats__Workers__UseWorkerServices,
-/// BridgeBeats__SpotifyClientId/Secret) and restores them in Dispose. Running in parallel with
-/// another class that mutates overlapping keys would cause order-dependent contamination.
-/// </remarks>
 [TestClass]
 [DoNotParallelize]
 public class AtProtoLoginIntegrationTests : IDisposable {
@@ -327,69 +322,23 @@ public class AtProtoLoginIntegrationTests : IDisposable {
         private readonly Mock<IATProtoOAuthService> _oauthMock = new( );
         public readonly string TestState = Guid.NewGuid( ).ToString( "N" );
 
-        // Per-instance snapshot of env var values captured immediately before this factory
-        // mutates them. Instance field (not static) so each factory construction records the
-        // values actually in effect at that moment, preventing cross-test contamination when
-        // another fixture has modified these vars between process start and this construction.
-        private readonly (string EnvVar, string? PriorValue)[] _envVarRestoreList;
-
         private static readonly Dictionary<string, string?> s_configOverrides = new( ) {
-            // In-memory config-data overrides (DashboardAuthorizationTests.cs:54 pattern).
-            // These are the primary override path; env vars below are a belt-and-braces guard
-            // for environments where user secrets or host env vars would otherwise set
-            // UseWorkerServices=true or supply non-test Spotify credentials before the in-memory
-            // config source is added. See CustomWebApplicationFactory comment for full explanation.
+            // These values seed this factory's isolated settings database.
             ["BridgeBeats:Workers:UseWorkerServices"] = "false",
             ["BridgeBeats:DiscordToken"] = "",
             ["BridgeBeats:ATProtoIdentifier"] = "",
             ["BridgeBeats:ATProtoPassword"] = "",
             ["BridgeBeats:ATProtoUserDID"] = "",
-            // Blank Apple credentials so AddAppleMusicJwtHandler skips File.ReadAllText during
-            // service registration — prevents UnauthorizedAccessException on machines where Apple
-            // Music user secrets or host env vars supply a real key path.
+            // Blank Apple credentials so host configuration cannot enable the provider for this fixture.
             ["BridgeBeats:AppleTeamId"] = "",
             ["BridgeBeats:AppleKeyId"] = "",
-            ["BridgeBeats:AppleKeyPath"] = "",
+            ["BridgeBeats:ApplePrivateKey"] = "",
             // Provide Spotify credentials so at least one IMusicLookupService is registered
             ["BridgeBeats:SpotifyClientId"] = "test",
             ["BridgeBeats:SpotifyClientSecret"] = "test"
         };
 
         public AtProtoTestWebApplicationFactory( ) : base( s_configOverrides ) {
-            // Capture prior env var values BEFORE mutating them so Dispose() restores the values
-            // that were in effect immediately before this factory ran — not process-start values.
-            // WebApplicationFactory builds the host lazily (on first Server/CreateClient access),
-            // so capture in the constructor body (after base()) is safe: base() does not start
-            // the host or read these env vars.
-            _envVarRestoreList = [
-                ("BridgeBeats__Workers__UseWorkerServices",
-                 Environment.GetEnvironmentVariable( "BridgeBeats__Workers__UseWorkerServices" )),
-                ("BridgeBeats__SpotifyClientId",
-                 Environment.GetEnvironmentVariable( "BridgeBeats__SpotifyClientId" )),
-                ("BridgeBeats__SpotifyClientSecret",
-                 Environment.GetEnvironmentVariable( "BridgeBeats__SpotifyClientSecret" )),
-                ("BridgeBeats__AppleTeamId",
-                 Environment.GetEnvironmentVariable( "BridgeBeats__AppleTeamId" )),
-                ("BridgeBeats__AppleKeyId",
-                 Environment.GetEnvironmentVariable( "BridgeBeats__AppleKeyId" )),
-                ("BridgeBeats__AppleKeyPath",
-                 Environment.GetEnvironmentVariable( "BridgeBeats__AppleKeyPath" )),
-            ];
-
-            // Belt-and-braces: also set env vars so these values are visible during the earliest
-            // configuration-binding phase (before ConfigureAppConfiguration callbacks run).
-            // Must be set before CreateClient() / Server access triggers host build.
-            // Prior values are captured above in _envVarRestoreList and restored in Dispose().
-            Environment.SetEnvironmentVariable( "BridgeBeats__Workers__UseWorkerServices", "false" );
-            Environment.SetEnvironmentVariable( "BridgeBeats__SpotifyClientId", "test" );
-            Environment.SetEnvironmentVariable( "BridgeBeats__SpotifyClientSecret", "test" );
-            // Belt-and-braces for Apple: blank env vars before host build reads them.
-            // AddAppleMusicJwtHandler calls File.ReadAllText during service registration; if any of
-            // these three env vars is non-empty on the host, the handler attempts to open the key file.
-            Environment.SetEnvironmentVariable( "BridgeBeats__AppleTeamId", "" );
-            Environment.SetEnvironmentVariable( "BridgeBeats__AppleKeyId", "" );
-            Environment.SetEnvironmentVariable( "BridgeBeats__AppleKeyPath", "" );
-
             // Default: CompleteAuthorizationAsync returns a failure so tests must call SetupOAuthResult
             _ = _oauthMock
                 .Setup( s => s.CompleteAuthorizationAsync(
@@ -398,15 +347,6 @@ public class AtProtoLoginIntegrationTests : IDisposable {
                     It.IsAny<string>( ),
                     It.IsAny<CancellationToken>( ) ) )
                 .ThrowsAsync( new InvalidOperationException( "No OAuth result configured for this test" ) );
-        }
-
-        /// <inheritdoc/>
-        protected override void Dispose( bool disposing ) {
-            // Restore env vars to prevent process-wide contamination of parallel test classes.
-            foreach ((string envVar, string? prior) in _envVarRestoreList) {
-                Environment.SetEnvironmentVariable( envVar, prior );
-            }
-            base.Dispose( disposing );
         }
 
         public void SetupOAuthResult( ATProtoOAuthResult result ) {

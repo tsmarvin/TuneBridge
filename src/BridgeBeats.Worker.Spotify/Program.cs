@@ -84,6 +84,8 @@ public static class Program {
         // Add Redis client from Aspire (for queue processing)
         builder.AddRedisClient( "redis" );
 
+        _ = builder.Services.AddQueueSettingsSnapshot( builder.Configuration );
+
         // Read and validate credentials
         (string clientId, string clientSecret, int maxRetryAfterSeconds) = ValidateConfiguration( builder );
 
@@ -101,8 +103,10 @@ public static class Program {
         _ = builder.Services.AddQueueProcessor<SpotifyLookupService>( SupportedProviders.Spotify );
 
         // Configure Spotify batch settings (linger, configurable under BridgeBeats:Spotify:Batch)
-        _ = builder.Services.Configure<SpotifyBatchSettings>(
-            builder.Configuration.GetSection( SpotifyBatchSettings.SectionKey )
+        _ = builder.Services.AddSettingsSnapshot<SpotifyBatchSettings>(
+            builder.Configuration,
+            "BridgeBeats:SpotifyBatchSnapshot",
+            SpotifyBatchSettings.SectionKey
         );
 
         // Register Spotify-specific batch queue helper and bulk processor service
