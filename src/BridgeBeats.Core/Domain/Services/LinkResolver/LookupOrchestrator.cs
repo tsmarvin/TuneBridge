@@ -402,13 +402,16 @@ public sealed partial class LookupOrchestrator(
                 title,
                 artist,
                 initialProvider,
-                waitTimeout
+                waitTimeout,
+                dedup.LeaseToken
             );
         } catch (Exception ex) {
             LogLookupError( _logger, ex, lookupKey );
 
             // Release the lock on error
-            await _deduplicator.ReleaseAsync( lookupKey, null );
+            if (!string.IsNullOrWhiteSpace( dedup.LeaseToken )) {
+                _ = await _deduplicator.ReleaseOwnedAsync( lookupKey, dedup.LeaseToken, null );
+            }
 
             throw;
         }
@@ -474,6 +477,7 @@ public sealed partial class LookupOrchestrator(
     /// <param name="artist">The artist, for metadata lookups; otherwise null.</param>
     /// <param name="initialProvider">The originating provider for URL/provider-id lookups; null for fan-out lookups.</param>
     /// <param name="waitTimeout">How long to wait for completion before returning a partial.</param>
+    /// <param name="leaseToken">Unique token for the single-flight lease acquired by this caller.</param>
     /// <returns>The lookup outcome: a final or partial result.</returns>
     private async Task<LookupResult> CreateSagaAndQueueLookupAsync(
         string lookupKey,
@@ -483,7 +487,8 @@ public sealed partial class LookupOrchestrator(
         string? title,
         string? artist,
         SupportedProviders? initialProvider,
-        TimeSpan waitTimeout
+        TimeSpan waitTimeout,
+        string? leaseToken
     ) {
         // Generate deterministic saga ID from lookup key
         string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
@@ -503,7 +508,15 @@ public sealed partial class LookupOrchestrator(
             // no work, so nothing else would release it (the coordinator runs in another
             // process and its release is ownership-checked). Publishing the known URI
             // hands the stored result to callers already blocked in WaitForCompletionAsync.
-            await _deduplicator.ReleaseAsync( lookupKey, knownResultUri );
+            if (!string.IsNullOrWhiteSpace( knownResultUri )) {
+                if (string.IsNullOrWhiteSpace( leaseToken )) {
+                    throw new InvalidOperationException( $"Acquired lookup lease is missing for {sagaId}." );
+                }
+                _ = await _deduplicator.ReleaseOwnedAsync(
+                    lookupKey,
+                    leaseToken,
+                    knownResultUri );
+            }
 
             return await WaitForFinalResultAsync( lookupKey, sagaId, knownResultUri, deadline );
         }

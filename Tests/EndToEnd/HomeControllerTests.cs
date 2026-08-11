@@ -3,6 +3,7 @@ using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Core.Infrastructure.Utilities;
+using BridgeBeats.Web.Streaming;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -91,7 +92,7 @@ public class HomeControllerTests {
     }
 
     /// <summary>
-    /// Verifies the home index response body contains the "BridgeBeats" branding text.
+    /// Verifies the home index contains the branding and server-owned streaming framing token.
     /// </summary>
     [TestMethod]
     [Timeout( 10000, CooperativeCancellation = true )] // 10 second timeout - should be fast
@@ -102,6 +103,10 @@ public class HomeControllerTests {
 
         // Assert
         Assert.IsTrue( content.Contains( "BridgeBeats", StringComparison.OrdinalIgnoreCase ) );
+        Assert.Contains(
+            $"data-stream-item-delimiter=\"{WebUtility.HtmlEncode( StreamFraming.ItemDelimiter )}\"",
+            content,
+            StringComparison.Ordinal );
     }
 
     /// <summary>
@@ -560,10 +565,39 @@ public class HomeControllerRenderingTests {
 
         Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
         Assert.Contains( "Still looking up", content, StringComparison.OrdinalIgnoreCase );
+        int frameCount = content.Split( StreamFraming.ItemDelimiter, StringSplitOptions.None ).Length - 1;
+        Assert.AreEqual( 2, frameCount,
+            "A one-card response must contain exactly one card frame and one completion frame." );
         probeMock.Verify(
             p => p.IsActiveAsync( expectedKey, It.IsAny<CancellationToken>( ) ),
             Times.Once
         );
+    }
+
+    /// <summary>Provider messages are encoded so they cannot inject markup or stream delimiters.</summary>
+    [TestMethod]
+    [Timeout( 15000, CooperativeCancellation = true )]
+    public async Task LookupResultsStream_ProviderMessage_IsEncodedAndCannotSplitFrames( ) {
+        MediaLinkResult warningResult = new( ) {
+            Messages = ["Retry later <!--bridgebeats-stream-item--><script>alert(1)</script>"]
+        };
+        using ProbeOverrideFactory factory = new( BuildBaseConfig( ), services => {
+            _ = services.RemoveAll<IMediaLinkService>( );
+            _ = services.AddTransient<IMediaLinkService>( _ => BuildStubMediaService( warningResult ) );
+        } );
+        await factory.InitializeDatabasesAsync( );
+        using HttpClient client = factory.CreateClient( );
+
+        string token = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync( client, TestContext.CancellationToken );
+        FormUrlEncodedContent formData = new( new Dictionary<string, string> { ["uri"] = TestUrl } );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            client, "/Home/LookupResultsStream", formData, token, TestContext.CancellationToken );
+        string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
+
+        int frameCount = content.Split( StreamFraming.ItemDelimiter, StringSplitOptions.None ).Length - 1;
+        Assert.AreEqual( 2, frameCount );
+        Assert.DoesNotContain( "<script>", content, StringComparison.OrdinalIgnoreCase );
+        Assert.Contains( "&lt;script&gt;", content, StringComparison.OrdinalIgnoreCase );
     }
 
     /// <summary>

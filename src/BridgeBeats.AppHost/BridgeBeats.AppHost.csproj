@@ -18,6 +18,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\BridgeBeats.Contracts\BridgeBeats.Contracts.csproj" IsAspireProjectResource="false" />
     <PackageReference Include="Aspire.Hosting.AppHost" Version="13.4.6" />
     <PackageReference Include="Aspire.Hosting.Redis" Version="13.4.6" />
     <PackageReference Include="MessagePack" Version="3.1.8" />

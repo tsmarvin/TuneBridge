@@ -9,8 +9,8 @@ namespace BridgeBeats.Tests.Integration;
 
 /// <summary>
 /// Integration tests for <see cref="RedisRateLimitTracker"/> against a real Redis instance (the shared
-/// Testcontainers Redis). Verifies storing and reading per-provider, per-endpoint rate-limit state with
-/// TTL, that already-expired limits are not stored, clearing, listing all rate-limited endpoints for a
+/// Testcontainers Redis). Verifies storing and reading policy-derived provider/endpoint rate-limit state with
+/// TTL, that already-expired limits are not stored, clearing, listing all rate-limited scopes for a
 /// provider, cross-provider isolation, and automatic expiry. Requires Docker to be running on the host
 /// machine.
 /// </summary>
@@ -125,6 +125,26 @@ public class RedisRateLimitTrackerTests {
         Assert.IsLessThan( TimeSpan.FromSeconds( 1 ), diff, $"RetryAfter diff was {diff}" );
     }
 
+    /// <summary>A shorter concurrent observation cannot reduce an active provider cooldown.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task SetRateLimitedAsync_ShorterWindowAfterLonger_ShouldPreserveLongerWindow( ) {
+        DateTimeOffset longer = DateTimeOffset.UtcNow.AddMinutes( 6 );
+        DateTimeOffset shorter = DateTimeOffset.UtcNow.AddMinutes( 2 );
+
+        await _tracker.SetRateLimitedAsync(
+            SupportedProviders.Spotify, "/v1/tracks", longer, TestContext.CancellationToken );
+        await _tracker.SetRateLimitedAsync(
+            SupportedProviders.Spotify, "/v1/search", shorter, TestContext.CancellationToken );
+
+        RateLimitState state = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify, "/v1/albums", TestContext.CancellationToken );
+
+        Assert.IsTrue( state.IsRateLimited );
+        Assert.IsNotNull( state.RetryAfter );
+        Assert.IsLessThan( TimeSpan.FromMilliseconds( 2 ), (state.RetryAfter.Value - longer).Duration( ) );
+    }
+
     /// <summary>
     /// Verifies setting a rate limit whose retry-after is already in the past stores nothing, so the
     /// state reports not rate limited.
@@ -214,12 +234,37 @@ public class RedisRateLimitTrackerTests {
             await _tracker.GetAllRateLimitedAsync( SupportedProviders.AppleMusic, TestContext.CancellationToken );
 
         // Assert
-        Assert.HasCount( 2, spotifyEndpoints );
+        Assert.HasCount( 1, spotifyEndpoints );
         Assert.HasCount( 1, appleEndpoints );
 
-        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/search", spotifyEndpoints );
-        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/tracks", spotifyEndpoints );
+        Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "provider"
+            && Math.Abs( (e.RetryAfter - retryAfter.AddMinutes( 1 )).TotalMilliseconds ) < 2,
+            spotifyEndpoints );
         Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/catalog", appleEndpoints );
+    }
+
+    /// <summary>A lowercase legacy bulk member still arms the Spotify provider-wide gate.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task GetStateAsync_LowercaseLegacyBulkKey_IsMigratedAtReadBoundary( ) {
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddMinutes( 2 );
+        IDatabase db = s_redis!.GetDatabase( );
+        _ = await db.StringSetAsync(
+            "ratelimit:Spotify:bulktracks",
+            retryAfter.ToString( "O" ),
+            TimeSpan.FromMinutes( 2 ) );
+        _ = await db.SortedSetAddAsync(
+            "ratelimit:active:spotify",
+            "bulktracks",
+            retryAfter.ToUnixTimeMilliseconds( ) );
+
+        RateLimitState state = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify,
+            "tracks/:id",
+            TestContext.CancellationToken );
+
+        Assert.IsTrue( state.IsRateLimited );
+        Assert.IsGreaterThan( TimeSpan.Zero, state.TimeRemaining.GetValueOrDefault( ) );
     }
 
     /// <summary>

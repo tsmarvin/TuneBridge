@@ -119,9 +119,7 @@ public static class Program {
         _ = builder.Services.AddSingleton( enabledProviders );
 
         // Queue settings (required by the saga manager and provider queues)
-        _ = builder.Services.Configure<QueueSettings>(
-            builder.Configuration.GetSection( "BridgeBeats:Queue" )
-        );
+        _ = builder.Services.AddValidatedQueueSettings( builder.Configuration );
 
         // Queue infrastructure: deduplicator, rate-limit tracker, saga state manager
         _ = builder.Services.AddQueueInfrastructure( );

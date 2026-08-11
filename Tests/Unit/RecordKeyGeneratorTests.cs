@@ -108,6 +108,24 @@ namespace BridgeBeats.Tests.Unit {
             Assert.AreEqual( "track:US-RC1-23-45678", rkey );
         }
 
+        /// <summary>An unusable first external id does not hide a later valid provider identity.</summary>
+        [TestMethod]
+        public void GenerateRkey_WithFirstInvalidExternalId_UsesLaterValidId( ) {
+            MediaLinkResult result = new( );
+            result.Results.Add( SupportedProviders.Spotify, new MusicLookupResult {
+                ExternalId = "@@@",
+                IsAlbum = false
+            } );
+            result.Results.Add( SupportedProviders.AppleMusic, new MusicLookupResult {
+                ExternalId = "USRC12345678",
+                IsAlbum = false
+            } );
+
+            string rkey = RecordKeyGenerator.GenerateRkey( result );
+
+            Assert.AreEqual( "track:USRC12345678", rkey );
+        }
+
         /// <summary>
         /// The direct <c>GenerateRkey(externalId, isAlbum)</c> overload produces <c>track:{id}</c>
         /// when <c>isAlbum</c> is false.

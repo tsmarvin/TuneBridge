@@ -7,6 +7,7 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
@@ -497,7 +498,9 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
 
             // Get all currently rate-limited endpoints for this provider
             IReadOnlyList<RateLimitedEndpoint> rateLimitedEndpoints = await rateLimitTracker.GetAllRateLimitedAsync( _provider, cancellationToken );
-            HashSet<string> blockedEndpoints = rateLimitedEndpoints.Select( e => e.Endpoint ).ToHashSet( StringComparer.OrdinalIgnoreCase );
+            HashSet<string> blockedEndpoints = rateLimitedEndpoints
+                .Select( endpoint => ProviderRateLimitPolicy.ToTrackingKey( _provider, endpoint.Endpoint ) )
+                .ToHashSet( StringComparer.OrdinalIgnoreCase );
 
             // Determine stream order: interactive-first with aging and bulk gating.
             unchecked { _dequeueCounter++; }
@@ -804,13 +807,13 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
     }
 
     /// <summary>
-    /// Determines whether a request targets a currently rate-limited (blocked) endpoint, based on
-    /// its lookup type.
+    /// Determines whether a deferred request targets a currently rate-limited endpoint using the
+    /// exact endpoint key recorded by the outbound handler.
     /// </summary>
     /// <param name="request">The request to test.</param>
     /// <param name="blockedEndpoints">The set of blocked endpoint keys.</param>
     /// <returns>
-    /// True if the request is a lookup request whose lookup type matches a blocked endpoint;
+    /// True if the request is a lookup request whose recorded endpoint matches a blocked endpoint;
     /// otherwise false. Non-lookup request types are never treated as blocked.
     /// </returns>
     private bool IsMessageBlocked( T request, HashSet<string> blockedEndpoints ) {
@@ -820,9 +823,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
                 RecordScheduledWake( notBefore );
                 return true;
             }
-            // Use the LookupType as the endpoint key for rate limiting
-            string endpointKey = lookupRequest.LookupType.ToString( );
-            return blockedEndpoints.Contains( endpointKey );
+            return ProviderRateLimitPolicy.IsBlocked(
+                _provider,
+                blockedEndpoints,
+                lookupRequest.RateLimitedEndpoint );
         }
 
         // For other request types, don't block
@@ -922,6 +926,7 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
                 payload = JsonSerializer.Serialize( queued with {
                     EnqueueOrigin = QueueEnqueueOrigin.Requeue,
                     AttemptCount = delay is null ? queued.AttemptCount + 1 : queued.AttemptCount,
+                    RateLimitedEndpoint = delay is null ? null : queued.RateLimitedEndpoint,
                     NotBefore = DateTimeOffset.UtcNow + retryDelay
                 }, _jsonOptions );
             }

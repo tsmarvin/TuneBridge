@@ -1,3 +1,4 @@
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Logging;
@@ -15,9 +16,9 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// <param name="logger">Logger for deduplication diagnostics.</param>
 /// <remarks>
 /// The first caller for a request key acquires an in-flight lock (<c>inflight:{requestKey}</c>,
-/// set with NX and a timeout, holding this instance's id); concurrent callers see the lock and
-/// are told the request is already in flight. When the owner finishes it releases the lock
-/// (only if it still owns it) and publishes the result URI on the <c>complete:{requestKey}</c>
+/// set with NX and a timeout, holding a unique lease token); concurrent callers see the lock and
+/// are told the request is already in flight. A caller-owned release compares that token before
+/// deleting the lock and publishing the result URI on the <c>complete:{requestKey}</c>
 /// Pub/Sub channel. Waiters subscribe to that channel, with a pre-subscription "already done?"
 /// check that closes the lost-wakeup race. This is the mechanism that turns the asynchronous
 /// saga pipeline into a synchronous response for interactive callers.
@@ -36,16 +37,18 @@ public sealed partial class RedisRequestDeduplicator(
                                                                ?? throw new ArgumentNullException( nameof( logger ) );
 
     /// <summary>
-    /// Identity of this process instance (<c>{machine}:{guid}</c>, truncated to 32 chars), written
-    /// as the lock holder so that only the owner can release a lock.
+    /// Identity used only for diagnostics from publisher-only releases.
     /// </summary>
     private readonly string _instanceId = $"{Environment.MachineName}:{Guid.NewGuid( ):N}"[..32];
 
+    private const string ReleaseOwnedScript = """
+        if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end
+        redis.call('del', KEYS[1])
+        return 1
+        """;
+
     /// <summary>Key prefix for in-flight locks. Literal value: <c>"inflight:"</c>.</summary>
     private const string InFlightPrefix = "inflight:";
-
-    /// <summary>Channel prefix for completion notifications. Literal value: <c>"complete:"</c>.</summary>
-    private const string CompleteChannelPrefix = "complete:";
 
     /// <summary>
     /// Attempts to become the single in-flight processor for a request key.
@@ -69,10 +72,11 @@ public sealed partial class RedisRequestDeduplicator(
         string lockKey = $"{InFlightPrefix}{requestKey}";
         IDatabase db = _redis.GetDatabase( );
 
-        // Try to acquire the lock using SETNX with TTL
+        string leaseToken = Guid.NewGuid( ).ToString( "N" );
+        // Try to acquire the lock using SETNX with a unique lease token and TTL.
         bool acquired = await db.StringSetAsync(
             lockKey,
-            _instanceId,
+            leaseToken,
             timeout,
             When.NotExists
         );
@@ -80,13 +84,14 @@ public sealed partial class RedisRequestDeduplicator(
         if (acquired) {
             if (_logger.IsEnabled( LogLevel.Debug )) {
                 string sanitizedRequestKey = requestKey.SanitizeForLogging( );
-                LogLockAcquired( _logger, sanitizedRequestKey, _instanceId );
+                LogLockAcquired( _logger, sanitizedRequestKey, leaseToken );
             }
 
             return new DeduplicationResult(
                 Acquired: true,
                 AlreadyInFlight: false,
-                RequestKey: requestKey
+                RequestKey: requestKey,
+                LeaseToken: leaseToken
             );
         }
 
@@ -104,7 +109,8 @@ public sealed partial class RedisRequestDeduplicator(
         return new DeduplicationResult(
             Acquired: false,
             AlreadyInFlight: true,
-            RequestKey: requestKey
+            RequestKey: requestKey,
+            LeaseToken: null
         );
     }
 
@@ -112,7 +118,7 @@ public sealed partial class RedisRequestDeduplicator(
     /// Releases the in-flight lock for a request key and notifies any waiters of the result.
     /// </summary>
     /// <param name="requestKey">The request key to release.</param>
-    /// <param name="resultUri">The result URI to publish, or null to publish an empty message.</param>
+    /// <param name="resultUri">The result URI to publish, or null to notify waiters that no result is available.</param>
     /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
     /// <returns>A task that completes once the lock is released and completion is published.</returns>
     /// <remarks>
@@ -121,24 +127,80 @@ public sealed partial class RedisRequestDeduplicator(
     /// is published on <c>complete:{requestKey}</c> regardless, so waiters always get woken.
     /// </remarks>
     /// <exception cref="ArgumentException">Thrown when <paramref name="requestKey"/> is null or whitespace.</exception>
-    public async Task ReleaseAsync(
+    public Task ReleaseAsync(
         string requestKey,
+        string? resultUri,
+        CancellationToken cancellationToken = default
+    ) => ReleaseCoreAsync(
+        requestKey,
+        resultUri ?? LookupConstants.NoResultSentinel,
+        hasResult: resultUri is not null,
+        cancellationToken );
+
+    /// <inheritdoc/>
+    public async Task<bool> ReleaseOwnedAsync(
+        string requestKey,
+        string leaseToken,
         string? resultUri,
         CancellationToken cancellationToken = default
     ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( requestKey );
+        ArgumentException.ThrowIfNullOrWhiteSpace( leaseToken );
 
         string lockKey = $"{InFlightPrefix}{requestKey}";
-        string channelKey = $"{CompleteChannelPrefix}{requestKey}";
+        RedisResult result = await _redis.GetDatabase( ).ScriptEvaluateAsync(
+            ReleaseOwnedScript,
+            [lockKey],
+            [leaseToken] );
+        if ((int)result != 1) {
+            LogReleaseDenied(
+                _logger,
+                requestKey.SanitizeForLogging( ),
+                "newer-or-foreign-lease",
+                leaseToken.SanitizeForLogging( ) );
+            return false;
+        }
+
+        string message = resultUri ?? LookupConstants.NoResultSentinel;
+        string channelKey = $"{LookupConstants.CompletionChannelPrefix}{requestKey}";
+        _ = await _redis.GetSubscriber( ).PublishAsync(
+            RedisChannel.Literal( channelKey ),
+            message );
+        if (_logger.IsEnabled( LogLevel.Debug )) {
+            string sanitizedRequestKey = requestKey.SanitizeForLogging( );
+            LogLockReleased( _logger, sanitizedRequestKey, resultUri is not null );
+        }
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public Task ReleaseResultNotPersistedAsync(
+        string requestKey,
+        CancellationToken cancellationToken = default
+    ) => ReleaseCoreAsync(
+        requestKey,
+        LookupConstants.ResultNotPersistedSentinel,
+        hasResult: false,
+        cancellationToken );
+
+    private async Task ReleaseCoreAsync(
+        string requestKey,
+        string message,
+        bool hasResult,
+        CancellationToken cancellationToken
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( requestKey );
+
+        string lockKey = $"{InFlightPrefix}{requestKey}";
+        string channelKey = $"{LookupConstants.CompletionChannelPrefix}{requestKey}";
 
         IDatabase db = _redis.GetDatabase( );
         ISubscriber subscriber = _redis.GetSubscriber( );
 
-        // Only delete the lock if we own it (prevent accidental release of another instance's lock)
+        // Publisher-only releases (for example, the saga coordinator) cannot prove ownership of
+        // the Web process's lease. Never delete a lock here; acquired callers use ReleaseOwnedAsync.
         RedisValue currentHolder = await db.StringGetAsync( lockKey );
-        if (!currentHolder.HasValue || currentHolder.ToString( ) == _instanceId) {
-            _ = await db.KeyDeleteAsync( lockKey );
-        } else {
+        if (currentHolder.HasValue) {
             LogReleaseDenied(
                 _logger,
                 requestKey.SanitizeForLogging( ),
@@ -147,14 +209,11 @@ public sealed partial class RedisRequestDeduplicator(
             );
         }
 
-        // Always publish completion notification so waiting clients can receive the result
-        // (even if we don't own the lock, the coordinator needs to notify waiters)
-        string message = resultUri ?? string.Empty;
+        // Always publish: the coordinator owns saga completion, not the Web acquisition lease.
         _ = await subscriber.PublishAsync( RedisChannel.Literal( channelKey ), message );
 
         if (_logger.IsEnabled( LogLevel.Debug )) {
             string sanitizedRequestKey = requestKey.SanitizeForLogging( );
-            bool hasResult = !string.IsNullOrEmpty( resultUri );
             LogLockReleased( _logger, sanitizedRequestKey, hasResult );
         }
     }
@@ -180,7 +239,7 @@ public sealed partial class RedisRequestDeduplicator(
     ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( requestKey );
 
-        string channelKey = $"{CompleteChannelPrefix}{requestKey}";
+        string channelKey = $"{LookupConstants.CompletionChannelPrefix}{requestKey}";
         ISubscriber subscriber = _redis.GetSubscriber( );
 
         RedisChannel channel = RedisChannel.Literal( channelKey );
@@ -213,6 +272,9 @@ public sealed partial class RedisRequestDeduplicator(
             try {
                 await foreach (ChannelMessage message in messageQueue.WithCancellation( cts.Token )) {
                     string result = message.Message.ToString( );
+                    if (IsTerminalWithoutResult( result )) {
+                        return null;
+                    }
                     if (!string.IsNullOrEmpty( result )) {
                         return result;
                     }
@@ -260,7 +322,7 @@ public sealed partial class RedisRequestDeduplicator(
     ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( requestKey );
 
-        string channelKey = $"{CompleteChannelPrefix}{requestKey}";
+        string channelKey = $"{LookupConstants.CompletionChannelPrefix}{requestKey}";
         ISubscriber subscriber = _redis.GetSubscriber( );
 
         RedisChannel channel = RedisChannel.Literal( channelKey );
@@ -292,6 +354,9 @@ public sealed partial class RedisRequestDeduplicator(
             try {
                 await foreach (ChannelMessage message in messageQueue.WithCancellation( cts.Token )) {
                     string result = message.Message.ToString( );
+                    if (IsTerminalWithoutResult( result )) {
+                        return null;
+                    }
                     if (!string.IsNullOrEmpty( result )) {
                         return result;
                     }
@@ -309,6 +374,10 @@ public sealed partial class RedisRequestDeduplicator(
             messageQueue.Unsubscribe( );
         }
     }
+
+    private static bool IsTerminalWithoutResult( string value ) =>
+        value == LookupConstants.NoResultSentinel
+        || value == LookupConstants.ResultNotPersistedSentinel;
 
     /// <summary>
     /// Builds the canonical request key from a lookup type and value so that duplicate lookups

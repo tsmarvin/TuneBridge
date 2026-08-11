@@ -660,26 +660,34 @@ public sealed partial class SpotifyBatchQueueHelper : IQueueWorkSignal {
     }
 
     /// <summary>
-    /// Requeues a bulk-stream message with an incremented attempt count, enforcing the retry cap.
+    /// Requeues a bulk-stream message, optionally preserving its attempt count for a deferral.
     /// </summary>
     /// <param name="messageId">The composite message id (<c>"{stream}:{redisId}"</c>) to requeue.</param>
     /// <param name="sagaId">The saga id associated with the message, used for diagnostic logging.</param>
+    /// <param name="preserveAttemptCount">Whether this is a deferral that must not consume the retry budget.</param>
+    /// <param name="rateLimitedEndpoint">The endpoint responsible for a rate-limit deferral, when applicable.</param>
+    /// <param name="notBefore">Earliest eligibility instant for a durable rate-limit deferral.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>
-    /// <see cref="RequeueOutcome.Requeued"/> when the message was re-added with an incremented
-    /// attempt; <see cref="RequeueOutcome.CapReached"/> when the retry cap was reached (the
+    /// <see cref="RequeueOutcome.Requeued"/> when the message was re-added; <see cref="RequeueOutcome.CapReached"/>
+    /// when an attempt-consuming retry reached the cap (the
     /// original delivery remains pending until the caller records terminal saga state); or
     /// <see cref="RequeueOutcome.NotFound"/> when the original entry no longer exists.
     /// </returns>
     /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before work begins.</exception>
     /// <remarks>
     /// A fresh replacement is added before the original entry is acknowledged and deleted, with a
-    /// new <c>enqueuedAt</c> timestamp and <c>AttemptCount + 1</c>. The caller
-    /// is responsible for finalizing the saga when the cap is reached.
+    /// new <c>enqueuedAt</c> timestamp. Attempt-consuming retries write <c>AttemptCount + 1</c>;
+    /// deferrals preserve the existing count. Ordinary retries clear prior rate-limit endpoint and
+    /// eligibility metadata; durable deferrals supply both values explicitly. The caller finalizes
+    /// the saga when the cap is reached.
     /// </remarks>
     public async Task<RequeueOutcome> RequeueAsync(
         string messageId,
         string sagaId,
+        bool preserveAttemptCount = false,
+        string? rateLimitedEndpoint = null,
+        DateTimeOffset? notBefore = null,
         CancellationToken cancellationToken = default
     ) {
         cancellationToken.ThrowIfCancellationRequested( );
@@ -712,7 +720,7 @@ public sealed partial class SpotifyBatchQueueHelper : IQueueWorkSignal {
 
         int currentAttempt = request?.AttemptCount ?? 0;
 
-        if (currentAttempt >= LookupConstants.MaxQueueRetryAttempts - 1) {
+        if (!preserveAttemptCount && currentAttempt >= LookupConstants.MaxQueueRetryAttempts - 1) {
             // The retry budget counts total executions: attempts 0..Max-2 may be replaced;
             // the final execution at Max-1 is terminal and must not create a sixth delivery.
             // The caller must durably record terminal saga state before removing this final
@@ -735,9 +743,13 @@ public sealed partial class SpotifyBatchQueueHelper : IQueueWorkSignal {
             return RequeueOutcome.CapReached;
         }
 
-        // Build re-serialized payload with AttemptCount + 1
+        int nextAttempt = preserveAttemptCount ? currentAttempt : currentAttempt + 1;
+        // Ordinary attempt-consuming retries intentionally clear any elapsed rate-limit deferral;
+        // durable deferrals pass the endpoint and eligibility time explicitly.
         QueuedLookupRequest requeuedRequest = request with {
-            AttemptCount = currentAttempt + 1,
+            AttemptCount = nextAttempt,
+            RateLimitedEndpoint = rateLimitedEndpoint,
+            NotBefore = notBefore,
             EnqueueOrigin = QueueEnqueueOrigin.Requeue
         };
 
@@ -774,7 +786,7 @@ public sealed partial class SpotifyBatchQueueHelper : IQueueWorkSignal {
         QueueMetrics.RecordDeliveryRemoved( SupportedProviders.Spotify, QueuePriority.Bulk );
         QueueMetrics.RecordRequeue( SupportedProviders.Spotify );
 
-        LogMessageRequeued( _logger, stream, currentAttempt + 1 );
+        LogMessageRequeued( _logger, stream, nextAttempt );
         return RequeueOutcome.Requeued;
     }
 

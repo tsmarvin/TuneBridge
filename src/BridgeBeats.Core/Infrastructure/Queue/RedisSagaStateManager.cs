@@ -20,8 +20,10 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// <remarks>
 /// A saga's core fields live in hash <c>saga:{sagaId}</c>; each provider's progress lives in
 /// <c>saga:{sagaId}:provider:{provider}</c>; sagas awaiting finalization are tracked in the set
-/// <c>saga:pending</c>. Every write refreshes the saga's TTL to the configured job-expiration
-/// window, so a stalled saga self-expires and can be retried. Saga completeness is not stored: it
+/// <c>saga:pending</c>. State-changing writes normally refresh the saga TTL to the configured
+/// job-expiration window. Provider initialization renews neither the core saga nor an existing
+/// provider leg, preventing redelivery alone from keeping a stalled saga alive forever; a newly
+/// created provider leg receives its initial TTL. Saga completeness is not stored: it
 /// is computed from the per-provider hashes at read time, so a saga reads as complete when all of
 /// its initialized providers report complete. Redis here is transport and working state, not the
 /// system of record — final results live in the ATProto PDS, referenced by the URIs stored here.
@@ -108,6 +110,41 @@ public sealed partial class RedisSagaStateManager(
         "if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[1]) ~= ARGV[2] then return 0 end; " +
         "local removed = redis.call('hdel', KEYS[1], ARGV[3]); redis.call('hdel', KEYS[1], ARGV[4]); " +
         "if removed == 1 then redis.call('expire', KEYS[1], tonumber(ARGV[5])) end; return removed";
+    private const string TokenGuardedMergeRateLimitInfoScript = """
+        if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[1]) ~= ARGV[2] then
+            return 0
+        end
+        local current = {}
+        local currentJson = redis.call('hget', KEYS[1], ARGV[3])
+        if currentJson and currentJson ~= '' then
+            local ok, decoded = pcall(cjson.decode, currentJson)
+            if ok and type(decoded) == 'table' then current = decoded end
+        end
+        local incoming = cjson.decode(ARGV[4])
+        for _, candidate in ipairs(incoming) do
+            local replaced = false
+            for index, existing in ipairs(current) do
+                local existingProvider = tonumber(existing.provider)
+                local candidateProvider = tonumber(candidate.provider)
+                if existingProvider and candidateProvider and existingProvider == candidateProvider then
+                    local existingRetryAfter = tonumber(existing.retryAfterUnixMilliseconds)
+                    local candidateRetryAfter = tonumber(candidate.retryAfterUnixMilliseconds)
+                    if not existingRetryAfter or candidateRetryAfter >= existingRetryAfter then
+                        current[index] = candidate
+                    end
+                    replaced = true
+                    break
+                end
+            end
+            if not replaced then table.insert(current, candidate) end
+        end
+        -- The C# boundary rejects an empty incoming list. Keep the Redis boundary defensive too:
+        -- cjson encodes an empty Lua table as {}, which cannot deserialize as the expected JSON list.
+        if #current == 0 then return 0 end
+        redis.call('hset', KEYS[1], ARGV[3], cjson.encode(current))
+        redis.call('expire', KEYS[1], tonumber(ARGV[5]))
+        return 1
+        """;
     private const string TokenGuardedResetScript =
         "if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[4]) ~= ARGV[5] then return 0 end; " +
         "local cur = tonumber(redis.call('hget', KEYS[1], ARGV[1]) or '0'); if cur == tonumber(ARGV[2]) then " +
@@ -121,8 +158,8 @@ public sealed partial class RedisSagaStateManager(
         "redis.call('expire', KEYS[1], tonumber(ARGV[7])); redis.call('sadd', KEYS[2], ARGV[8]); return 1";
     private const string TokenGuardedProviderInitScript =
         "if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[1]) ~= ARGV[2] then return 0 end; " +
-        "if redis.call('exists', KEYS[2]) == 0 then redis.call('hset', KEYS[2], 'isComplete', 'False', 'isSuccess', 'False', 'resultJson', '', 'completedAt', '', 'errorMessage', ''); end; " +
-        "redis.call('expire', KEYS[1], tonumber(ARGV[3])); redis.call('expire', KEYS[2], tonumber(ARGV[3])); return 1";
+        "if redis.call('exists', KEYS[2]) == 0 then redis.call('hset', KEYS[2], 'isComplete', 'False', 'isSuccess', 'False', 'resultJson', '', 'completedAt', '', 'errorMessage', ''); " +
+        "end; redis.call('expire', KEYS[2], tonumber(ARGV[3])); return 1";
     private const string TokenGuardedProviderUpdateScript =
         "if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[1]) ~= ARGV[2] then return 0 end; " +
         "redis.call('hset', KEYS[2], 'isComplete', ARGV[3], 'isSuccess', ARGV[4], 'resultJson', ARGV[5], 'completedAt', ARGV[6], 'errorMessage', ARGV[7]); " +
@@ -430,15 +467,26 @@ public sealed partial class RedisSagaStateManager(
         return (int)result == 1;
     }
 
-    /// <summary>Stores rate-limit information only when the saga instance token still matches.</summary>
+    /// <summary>
+    /// Atomically merges per-provider rate-limit information while the saga token still matches.
+    /// Concurrent provider legs therefore cannot erase a sibling provider's cooldown entry.
+    /// </summary>
     public async Task<bool> TrySetRateLimitInfoAsync( string sagaId, List<ProviderRateLimitInfo> rateLimitInfo, string expectedInstanceToken, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
         ArgumentNullException.ThrowIfNull( rateLimitInfo );
         ArgumentException.ThrowIfNullOrWhiteSpace( expectedInstanceToken );
-        string json = System.Text.Json.JsonSerializer.Serialize( rateLimitInfo );
+        if (rateLimitInfo.Count == 0) {
+            throw new ArgumentException( "At least one rate-limit entry is required.", nameof( rateLimitInfo ) );
+        }
+        string json = System.Text.Json.JsonSerializer.Serialize( rateLimitInfo.Select( info => new {
+            provider = (int)info.Provider,
+            retryAfter = info.RetryAfter.ToUniversalTime( ),
+            retryAfterUnixMilliseconds = info.RetryAfter.ToUnixTimeMilliseconds( ),
+            endpoint = info.Endpoint
+        } ) );
         TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
         RedisResult result = await _redis.GetDatabase( ).ScriptEvaluateAsync(
-            "if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[1]) ~= ARGV[2] then return 0 end; redis.call('hset', KEYS[1], ARGV[3], ARGV[4]); redis.call('expire', KEYS[1], ARGV[5]); return 1",
+            TokenGuardedMergeRateLimitInfoScript,
             [GetSagaKey( sagaId )], [FieldInstanceToken, expectedInstanceToken, FieldRateLimitInfo, json, (long)ttl.TotalSeconds] );
         bool updated = (int)result == 1;
         if (updated) LogRateLimitInfoSet( _logger, sagaId, rateLimitInfo.Count );

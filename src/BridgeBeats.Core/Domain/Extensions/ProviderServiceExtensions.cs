@@ -1,10 +1,12 @@
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Providers.AppleMusic;
 using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Domain.Providers.Spotify;
 using BridgeBeats.Core.Domain.Providers.Tidal;
 using idunno.Security;
+using Microsoft.Extensions.Options;
 
 namespace BridgeBeats.Core.Domain.Extensions {
 
@@ -75,8 +77,17 @@ namespace BridgeBeats.Core.Domain.Extensions {
         internal static Func<IServiceProvider, RetryAfterLimitHandler> CreateRetryAfterLimitHandlerFactory( int maxRetryAfterSeconds )
             => sp => new RetryAfterLimitHandler(
                 maxRetryAfterSeconds,
-                sp.GetRequiredService<ILoggerFactory>( ).CreateLogger<RetryAfterLimitHandler>( )
+                sp.GetRequiredService<IOptions<QueueSettings>>( ).Value,
+                sp.GetRequiredService<ILoggerFactory>( ).CreateLogger<RetryAfterLimitHandler>( ),
+                sp.GetService<IRateLimitTracker>( )
             );
+
+        private static WorkerRateLimitHandler CreateWorkerRateLimitHandler(
+            IServiceProvider serviceProvider,
+            SupportedProviders provider
+        ) => new(
+            provider,
+            serviceProvider.GetService<IOptions<QueueSettings>>( )?.Value ?? new QueueSettings( ) );
 
         #region Service Provider Registration
 
@@ -165,8 +176,6 @@ namespace BridgeBeats.Core.Domain.Extensions {
             } )
             .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
                 connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
-            .ConfigureAdditionalHttpMessageHandlers( ( handlers, _ ) =>
-                handlers.Insert( 0, new TerminalProviderRateLimitHandler( SupportedProviders.AppleMusic ) ) )
             .AddHttpMessageHandler( CreateRetryAfterLimitHandlerFactory( maxRetryAfterSeconds ) )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "applemusic" ) );
 
@@ -217,8 +226,6 @@ namespace BridgeBeats.Core.Domain.Extensions {
             } )
             .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
                 connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
-            .ConfigureAdditionalHttpMessageHandlers( ( handlers, _ ) =>
-                handlers.Insert( 0, new TerminalProviderRateLimitHandler( SupportedProviders.Spotify ) ) )
             .AddHttpMessageHandler( handlerFactory )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "spotify" ) );
 
@@ -273,8 +280,6 @@ namespace BridgeBeats.Core.Domain.Extensions {
             } )
             .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
                 connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
-            .ConfigureAdditionalHttpMessageHandlers( ( handlers, _ ) =>
-                handlers.Insert( 0, new TerminalProviderRateLimitHandler( SupportedProviders.Tidal ) ) )
             .AddHttpMessageHandler( handlerFactory )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "tidal" ) );
 
@@ -352,7 +357,7 @@ namespace BridgeBeats.Core.Domain.Extensions {
             // Register named HTTP client with base address for Aspire service discovery
             _ = services.AddHttpClient( SpotifyWorkerHttpClientName, client => {
                 client.BaseAddress = new Uri( "http://spotify-worker" );
-            } );
+            } ).AddHttpMessageHandler( sp => CreateWorkerRateLimitHandler( sp, SupportedProviders.Spotify ) );
 
             // Register the HTTP adapter as the IMusicLookupService for Spotify
             _ = services.AddTransient( sp =>
@@ -381,7 +386,7 @@ namespace BridgeBeats.Core.Domain.Extensions {
             // Register named HTTP client with base address for Aspire service discovery
             _ = services.AddHttpClient( AppleMusicWorkerHttpClientName, client => {
                 client.BaseAddress = new Uri( "http://applemusic-worker" );
-            } );
+            } ).AddHttpMessageHandler( sp => CreateWorkerRateLimitHandler( sp, SupportedProviders.AppleMusic ) );
 
             // Register the HTTP adapter as the IMusicLookupService for Apple Music
             _ = services.AddTransient( sp =>
@@ -410,7 +415,7 @@ namespace BridgeBeats.Core.Domain.Extensions {
             // Register named HTTP client with base address for Aspire service discovery
             _ = services.AddHttpClient( TidalWorkerHttpClientName, client => {
                 client.BaseAddress = new Uri( "http://tidal-worker" );
-            } );
+            } ).AddHttpMessageHandler( sp => CreateWorkerRateLimitHandler( sp, SupportedProviders.Tidal ) );
 
             // Register the HTTP adapter as the IMusicLookupService for Tidal
             _ = services.AddTransient( sp =>

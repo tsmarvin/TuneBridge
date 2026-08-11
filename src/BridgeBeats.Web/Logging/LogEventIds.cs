@@ -202,6 +202,9 @@ public static class LogEventIds {
 
         /// <summary>Processing an Apple Music song failed.</summary>
         public const int AppleMusicControllerProcessSongError = 4260;
+
+        /// <summary>Unexpected failure while writing the playlist result stream.</summary>
+        public const int AppleMusicControllerPlaylistResultsStreamError = 4261;
     }
 
     /// <summary>

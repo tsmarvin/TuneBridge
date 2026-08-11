@@ -394,7 +394,7 @@ public class LookupOrchestratorTests {
 
         _queueMock.Verify( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ) ), Times.Never );
         _deduplicatorMock.Verify( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ), Times.Never );
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedAsync( It.IsAny<string>( ), "test-lease", null ), Times.Once );
     }
 
     /// <summary>
@@ -736,7 +736,7 @@ public class LookupOrchestratorTests {
 
         _queueMock.Verify( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ) ), Times.Never );
         _deduplicatorMock.Verify( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ), Times.Never );
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedAsync( It.IsAny<string>( ), "test-lease", null ), Times.Once );
         _sagaManagerMock.Verify( s => s.TryInitializeProviderStatesAsync(
             It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
     }
@@ -1473,8 +1473,8 @@ public class LookupOrchestratorTests {
         _ = await _orchestrator.LookupByIsrcAsync( TestIsrc );
 
         // Assert - released with the known URI (not null: an empty publish would leave waiters stuck)
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), PartialUri ), Times.Once );
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Never );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedAsync( It.IsAny<string>( ), "test-lease", PartialUri ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedAsync( It.IsAny<string>( ), "test-lease", null ), Times.Never );
     }
 
     /// <summary>
@@ -1852,7 +1852,7 @@ public class LookupOrchestratorTests {
             _orchestrator.LookupByIsrcAsync( TestIsrc )
         );
 
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedAsync( It.IsAny<string>( ), "test-lease", null ), Times.Once );
     }
 
     #endregion
@@ -1990,7 +1990,11 @@ public class LookupOrchestratorTests {
     private void SetupDeduplicationAcquired( ) {
         _ = _deduplicatorMock
             .Setup( d => d.TryAcquireAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( new DeduplicationResult( Acquired: true, AlreadyInFlight: false, RequestKey: "test-key" ) );
+            .ReturnsAsync( new DeduplicationResult(
+                Acquired: true,
+                AlreadyInFlight: false,
+                RequestKey: "test-key",
+                LeaseToken: "test-lease" ) );
     }
 
     /// <summary>

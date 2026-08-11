@@ -22,6 +22,7 @@ public sealed partial class RedisRefreshReviewStore(
     private const string UnresolvedSagaIndexKey = "cache:refresh:unresolved:sagas";
     private const string CorruptKey = "cache:refresh:unresolved:corrupt";
     private const string SweepAttemptsPrefix = "cache:refresh:attempts:";
+    private const string TargetWriteAttemptsPrefix = "cache:refresh:target-write-attempts:";
     private const string IncrementSweepAttemptScript = """
         local value = redis.call('INCR', KEYS[1])
         redis.call('PEXPIRE', KEYS[1], ARGV[1])
@@ -61,6 +62,7 @@ public sealed partial class RedisRefreshReviewStore(
         redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
         redis.call('HSET', KEYS[2], ARGV[3], ARGV[1])
         redis.call('DEL', KEYS[3])
+        redis.call('DEL', KEYS[4])
         return 1
         """;
     private const string DeleteUnresolvedScript = """
@@ -104,6 +106,7 @@ public sealed partial class RedisRefreshReviewStore(
         if redis.call('HGET', KEYS[4], ARGV[1]) == ARGV[3] then redis.call('HDEL', KEYS[4], ARGV[1]) end
         redis.call('SREM', KEYS[5], ARGV[3])
         redis.call('DEL', KEYS[6])
+        redis.call('DEL', KEYS[7])
         return shouldPromote and 1 or 0
         """;
     private const string CompleteRecordScript = """
@@ -126,6 +129,7 @@ public sealed partial class RedisRefreshReviewStore(
         if redis.call('HGET', KEYS[4], ARGV[1]) == ARGV[3] then redis.call('HDEL', KEYS[4], ARGV[1]) end
         redis.call('SREM', KEYS[5], ARGV[3])
         redis.call('DEL', KEYS[6])
+        redis.call('DEL', KEYS[7])
         return 1
         """;
 
@@ -206,7 +210,8 @@ public sealed partial class RedisRefreshReviewStore(
         string json = JsonSerializer.Serialize( unresolved, s_jsonOptions );
         _ = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             PromoteDirectScript,
-            keys: [UnresolvedKey, UnresolvedSagaIndexKey, SweepAttemptsPrefix + entry.SourceRecordUri],
+            keys: [UnresolvedKey, UnresolvedSagaIndexKey, SweepAttemptsPrefix + entry.SourceRecordUri,
+                TargetWriteAttemptsPrefix + entry.SourceRecordUri],
             values: [entry.SourceRecordUri, json, entry.SagaId] );
         QueueMetrics.RecordMaintenanceOutcome( "promoted_to_review" );
     }
@@ -219,7 +224,8 @@ public sealed partial class RedisRefreshReviewStore(
         RedisResult result = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             MarkUnresolvedRecordScript,
             [PendingPrefix + entry.SourceRecordUri, UnresolvedKey, UnresolvedSagaIndexKey, PendingSagaIndexKey,
-                PendingSagaSetPrefix + entry.SagaId, SweepAttemptsPrefix + entry.SourceRecordUri],
+                PendingSagaSetPrefix + entry.SagaId, SweepAttemptsPrefix + entry.SourceRecordUri,
+                TargetWriteAttemptsPrefix + entry.SourceRecordUri],
             [entry.SagaId, entry.InstanceToken, entry.SourceRecordUri, JsonSerializer.Serialize( unresolved, s_jsonOptions ),
                 entry.CreatedAtUnixMilliseconds] );
         if ((int)result == 1) {
@@ -235,7 +241,8 @@ public sealed partial class RedisRefreshReviewStore(
         RedisResult result = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             CompleteRecordScript,
             [PendingPrefix + entry.SourceRecordUri, UnresolvedKey, UnresolvedSagaIndexKey, PendingSagaIndexKey,
-                PendingSagaSetPrefix + entry.SagaId, SweepAttemptsPrefix + entry.SourceRecordUri],
+                PendingSagaSetPrefix + entry.SagaId, SweepAttemptsPrefix + entry.SourceRecordUri,
+                TargetWriteAttemptsPrefix + entry.SourceRecordUri],
             [entry.SagaId, entry.InstanceToken, entry.SourceRecordUri, entry.CreatedAtUnixMilliseconds] );
         if ((int)result == 1) {
             QueueMetrics.RecordMaintenanceOutcome( "terminal_completion" );
@@ -267,6 +274,30 @@ public sealed partial class RedisRefreshReviewStore(
         ArgumentException.ThrowIfNullOrWhiteSpace( sourceRecordUri );
         cancellationToken.ThrowIfCancellationRequested( );
         _ = await _redis.GetDatabase( ).KeyDeleteAsync( SweepAttemptsPrefix + sourceRecordUri );
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> IncrementTargetWriteAttemptAsync(
+        string sourceRecordUri,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( sourceRecordUri );
+        cancellationToken.ThrowIfCancellationRequested( );
+        RedisResult value = await _redis.GetDatabase( ).ScriptEvaluateAsync(
+            IncrementSweepAttemptScript,
+            [TargetWriteAttemptsPrefix + sourceRecordUri],
+            [Math.Max( 1L, (long)_pendingTtl.TotalMilliseconds )] );
+        return (int)value;
+    }
+
+    /// <inheritdoc/>
+    public async Task ClearTargetWriteAttemptsAsync(
+        string sourceRecordUri,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentException.ThrowIfNullOrWhiteSpace( sourceRecordUri );
+        cancellationToken.ThrowIfCancellationRequested( );
+        _ = await _redis.GetDatabase( ).KeyDeleteAsync( TargetWriteAttemptsPrefix + sourceRecordUri );
     }
 
     /// <inheritdoc/>

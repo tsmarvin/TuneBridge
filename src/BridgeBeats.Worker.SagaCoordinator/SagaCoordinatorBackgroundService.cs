@@ -1,10 +1,13 @@
 using System.Text.Json;
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
+using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Services.Queue;
 using BridgeBeats.Core.Infrastructure.Queue;
+using BridgeBeats.Core.Infrastructure.Utilities;
 using BridgeBeats.Worker.SagaCoordinator.Logging;
 using StackExchange.Redis;
 
@@ -61,7 +64,7 @@ namespace BridgeBeats.Worker.SagaCoordinator;
 public sealed partial class SagaCoordinatorBackgroundService(
     IConnectionMultiplexer redis,
     ISagaStateManager sagaManager,
-    IATProtoStorageService atProtoStorage,
+    ITargetedATProtoStorageService atProtoStorage,
     IMediaLinkCacheRepository cacheRepository,
     IRequestDeduplicator deduplicator,
     SagaResultCombiner resultCombiner,
@@ -74,8 +77,8 @@ public sealed partial class SagaCoordinatorBackgroundService(
                                                    ?? throw new ArgumentNullException( nameof( redis ) );
     private readonly ISagaStateManager _sagaManager = sagaManager
                                                     ?? throw new ArgumentNullException( nameof( sagaManager ) );
-    private readonly IATProtoStorageService _atProtoStorage = atProtoStorage
-                                                            ?? throw new ArgumentNullException( nameof( atProtoStorage ) );
+    private readonly ITargetedATProtoStorageService _atProtoStorage = atProtoStorage
+                                                                    ?? throw new ArgumentNullException( nameof( atProtoStorage ) );
     private readonly IMediaLinkCacheRepository _cacheRepository = cacheRepository
                                                                 ?? throw new ArgumentNullException( nameof( cacheRepository ) );
     private readonly IRequestDeduplicator _deduplicator = deduplicator
@@ -92,10 +95,11 @@ public sealed partial class SagaCoordinatorBackgroundService(
                                                                ?? throw new ArgumentNullException( nameof( refreshReviewStore ) );
 
     private const string SagaCompletedChannel = "saga:completed";
-    private const string LookupCompleteChannelPattern = "complete:*";
+    private const string LookupCompleteChannelPattern = LookupConstants.CompletionChannelPrefix + "*";
     private static readonly TimeSpan s_pollingInterval = TimeSpan.FromSeconds( 30 );
     private static readonly TimeSpan s_minimumSagaAge = TimeSpan.FromSeconds( 15 );
     private const int PollingBatchLimit = 100;
+    private const int MaxRefreshTargetWriteAttempts = 3;
 
     /// <summary>
     /// Serializer options used when writing a cached provider result into per-provider saga state.
@@ -161,12 +165,12 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 // Extract lookup key from channel (format: complete:{lookupKey})
                 string channelStr = channel.ToString( );
                 LogReceivedLookupCompletionEvent( _logger, channelStr );
-                if (!channelStr.StartsWith( "complete:", StringComparison.Ordinal )) {
+                if (!channelStr.StartsWith( LookupConstants.CompletionChannelPrefix, StringComparison.Ordinal )) {
                     LogIgnoringChannel( _logger, channelStr );
                     return;
                 }
 
-                string lookupKey = channelStr["complete:".Length..];
+                string lookupKey = channelStr[LookupConstants.CompletionChannelPrefix.Length..];
                 string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
 
                 try {
@@ -447,11 +451,15 @@ public sealed partial class SagaCoordinatorBackgroundService(
         if (!terminal) {
             IReadOnlyList<RefreshReviewEntry> pendingRefresh = await _refreshReviewStore.GetPendingForSagaAsync(
                 saga.SagaId, ct ) ?? [];
-            if (pendingRefresh.Any( entry => entry.InstanceToken == instanceToken )) {
+            if (pendingRefresh.Count > 0) {
+                if (pendingRefresh.Any( entry => entry.InstanceToken != instanceToken )) {
+                    LogRefreshReviewTokenMismatch( _logger, saga.SagaId, instanceToken );
+                }
                 return;
             }
         }
 
+        IReadOnlyList<RefreshReviewEntry> terminalRefreshTargets = [];
         if (terminal) {
             LogAssemblingFinalResult( _logger, saga.SagaId, saga.ProviderStates.Count );
         } else if (_logger.IsEnabled( LogLevel.Information )) {
@@ -469,7 +477,12 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 QueueMetrics.RecordSagaLifecycleOutcome( "finalize_claim_lost" );
                 return;
             }
-
+            IReadOnlyList<RefreshReviewEntry>? currentTargets = await TryReadCurrentRefreshTargetsAsync(
+                saga.SagaId, instanceToken, ct );
+            if (currentTargets is null) {
+                return;
+            }
+            terminalRefreshTargets = currentTargets;
         }
 
         MediaLinkResult? finalResult = _resultCombiner.CombineResults( saga, allowIncomplete: !terminal );
@@ -480,9 +493,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 // The store is idempotent, so the polling backstop can safely retry this sequence.
                 LogNoSuccessfulResults( _logger, saga.SagaId );
                 try {
-                    IReadOnlyList<RefreshReviewEntry> pending = [.. (await _refreshReviewStore.GetPendingForSagaAsync( saga.SagaId, ct ) ?? [])
-                        .Where( entry => entry.InstanceToken == instanceToken )];
-                    foreach (RefreshReviewEntry entry in pending) {
+                    foreach (RefreshReviewEntry entry in terminalRefreshTargets) {
                         await _refreshReviewStore.MarkUnresolvedAsync(
                             entry,
                             "All provider refresh legs completed without a result.",
@@ -527,14 +538,74 @@ public sealed partial class SagaCoordinatorBackgroundService(
             // previous partial was written — the CAS would refuse to advance and the saga
             // would never finalize. The finalize claim (HSETNX) provides the single-winner
             // guarantee for this path.
-            bool pdsWritten = false;
+            bool pdsWriteSequenceComplete = false;
             bool uriRecorded = false;
             string? durableRecordUri = null;
+            IReadOnlyList<RefreshReviewEntry> refreshTargets = [.. terminalRefreshTargets
+                .DistinctBy( entry => entry.SourceRecordUri, StringComparer.Ordinal )
+                .OrderBy( entry => entry.SourceRecordUri, StringComparer.Ordinal )];
 
             try {
-                string recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( finalResult, ct );
-                durableRecordUri = recordUri;
-                pdsWritten = true;
+                string recordUri;
+                if (refreshTargets.Count > 0) {
+                    string? canonicalRecordUri = null;
+                    foreach (RefreshReviewEntry refreshTarget in refreshTargets) {
+                        try {
+                            string updatedUri = await _atProtoStorage.StoreMediaLinkResultAtUriAsync(
+                                finalResult, refreshTarget.SourceRecordUri, ct );
+                            canonicalRecordUri ??= updatedUri;
+                            durableRecordUri ??= updatedUri;
+                            await _refreshReviewStore.ClearTargetWriteAttemptsAsync(
+                                refreshTarget.SourceRecordUri, ct );
+                        } catch (InvalidTargetRecordException targetEx) {
+                            // The target itself is invalid and retrying it cannot succeed. Move only
+                            // this record to operator review while allowing valid sibling targets to
+                            // complete. Transient PDS failures continue to escape to the outer retry path.
+                            LogFailedToWriteFinal( _logger, targetEx, saga.SagaId );
+                            await _refreshReviewStore.MarkUnresolvedAsync(
+                                refreshTarget,
+                                $"Refresh target is invalid: {targetEx.Message}",
+                                ct );
+                        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+                            throw;
+                        } catch (Exception targetEx) {
+                            int attempt = await _refreshReviewStore.IncrementTargetWriteAttemptAsync(
+                                refreshTarget.SourceRecordUri, ct );
+                            if (attempt < MaxRefreshTargetWriteAttempts) {
+                                throw;
+                            }
+                            LogRefreshTargetRetryExhausted(
+                                _logger,
+                                targetEx,
+                                saga.SagaId,
+                                refreshTarget.SourceRecordUri,
+                                attempt );
+                            await _refreshReviewStore.MarkUnresolvedAsync(
+                                refreshTarget,
+                                $"Refresh target write failed after {attempt} attempts: {targetEx.Message}",
+                                ct );
+                        }
+                    }
+                    if (canonicalRecordUri is null) {
+                        // Every target was deterministic poison and has been retained for review.
+                        // Delete the transport saga before releasing its waiters so a release or
+                        // cleanup failure cannot reconcile it through the deterministic write path.
+                        if (!await _sagaManager.TryDeleteAsync( saga.SagaId, instanceToken, ct )) {
+                            // False means the saga is already absent or its instance token changed.
+                            // In either case this claim no longer belongs to a live matching saga;
+                            // releasing by the stale token must not affect a replacement instance.
+                            return;
+                        }
+                        await _deduplicator.ReleaseResultNotPersistedAsync( saga.LookupKey, ct );
+                        QueueMetrics.RecordResultNotPersisted( "all_targets_invalid" );
+                        return;
+                    }
+                    recordUri = canonicalRecordUri;
+                } else {
+                    recordUri = await _atProtoStorage.StoreMediaLinkResultAsync( finalResult, ct );
+                    durableRecordUri = recordUri;
+                }
+                pdsWriteSequenceComplete = true;
 
                 LogWroteFinalToAtProto( _logger, saga.SagaId, recordUri );
 
@@ -564,15 +635,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 }
                 uriRecorded = true;
 
-                try {
-                    await _refreshReviewStore.CompleteAsync( saga.SagaId, instanceToken, ct );
-                } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
-                    throw;
-                } catch (Exception cleanupEx) {
-                    // Pending context has the saga TTL and self-expires. A cleanup failure must
-                    // not turn an already-durable PDS write into a failed finalization.
-                    LogRefreshReviewPersistenceFailed( _logger, cleanupEx, saga.SagaId );
-                }
+                await CompleteRefreshReviewBestEffortAsync( saga.SagaId, instanceToken, ct );
 
                 if (!await ReleaseDurableResultAsync( saga, recordUri, ct )) {
                     return;
@@ -590,11 +653,10 @@ public sealed partial class SagaCoordinatorBackgroundService(
                     LogPostReleaseIndexFailed( _logger, indexEx, saga.SagaId );
                 }
             } catch (OperationCanceledException) {
-                // Before the durability line: release the claim so the next host restart can
-                // re-finalize. After the durability line: retain the claim — re-entering would
-                // issue a second PDS write against an already-recorded URI. The dedup lock is
-                // not released here in either case.
-                if (!pdsWritten) {
+                // Until every target write completes, release the claim so reconciliation can
+                // retry the full target set. Once the complete write sequence is durable,
+                // retain the claim and recover its authoritative URI instead.
+                if (!pdsWriteSequenceComplete) {
                     _ = await _sagaManager.TryReleaseFinalizeClaimAsync( saga.SagaId, instanceToken, CancellationToken.None );
                 } else if (durableRecordUri is not null) {
                     _ = await RecoverDurableResultAsync(
@@ -604,12 +666,12 @@ public sealed partial class SagaCoordinatorBackgroundService(
             } catch (Exception ex) {
                 LogFailedToWriteFinal( _logger, ex, saga.SagaId );
 
-                // Only release the claim before the durability line. After the URI is recorded,
-                // retaining the claim prevents a re-entrant PDS write; releasing the dedup lock
-                // with null would hand waiters an empty result for a saga that succeeded.
-                if (!pdsWritten) {
+                // A retryable write failure must not publish the terminal no-result sentinel.
+                // Until every target write completes, retain the waiters and release the claim
+                // so reconciliation can retry. After the complete PDS sequence is durable,
+                // recover and publish its authoritative URI instead.
+                if (!pdsWriteSequenceComplete) {
                     _ = await _sagaManager.TryReleaseFinalizeClaimAsync( saga.SagaId, instanceToken, ct );
-                    await _deduplicator.ReleaseAsync( saga.LookupKey, null, ct );
                 } else if (durableRecordUri is not null) {
                     _ = await RecoverDurableResultAsync(
                         saga, durableRecordUri, uriRecorded, CancellationToken.None );
@@ -719,6 +781,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 return false;
             }
 
+            await CompleteRefreshReviewBestEffortAsync( saga.SagaId, instanceToken, ct );
             return await ReleaseDurableResultAsync( authoritative, authoritativeUri, ct );
         } catch (Exception recoveryEx) {
             LogFailedToWriteFinal( _logger, recoveryEx, saga.SagaId );
@@ -733,6 +796,55 @@ public sealed partial class SagaCoordinatorBackgroundService(
                 LogFailedToWriteFinal( _logger, claimEx, saga.SagaId );
             }
             return false;
+        }
+    }
+
+    private async Task CompleteRefreshReviewBestEffortAsync(
+        string sagaId,
+        string instanceToken,
+        CancellationToken ct
+    ) {
+        try {
+            await _refreshReviewStore.CompleteAsync( sagaId, instanceToken, ct );
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+            throw;
+        } catch (Exception cleanupEx) {
+            // Review cleanup is not part of the PDS durability transaction. Retrying a completed
+            // cleanup must never select a different canonical URI or trigger a deterministic write.
+            LogRefreshReviewPersistenceFailed( _logger, cleanupEx, sagaId );
+        }
+    }
+
+    private async Task<IReadOnlyList<RefreshReviewEntry>?> TryReadCurrentRefreshTargetsAsync(
+        string sagaId,
+        string instanceToken,
+        CancellationToken ct
+    ) {
+        try {
+            IReadOnlyList<RefreshReviewEntry> targets =
+                await _refreshReviewStore.GetPendingForSagaAsync( sagaId, ct ) ?? [];
+            if (targets.Any( entry => entry.InstanceToken != instanceToken )) {
+                LogRefreshReviewTokenMismatch( _logger, sagaId, instanceToken );
+                QueueMetrics.RecordSagaLifecycleOutcome( "refresh_target_token_mismatch" );
+                _ = await _sagaManager.TryReleaseFinalizeClaimAsync(
+                    sagaId, instanceToken, CancellationToken.None );
+                return null;
+            }
+            return targets;
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+            _ = await _sagaManager.TryReleaseFinalizeClaimAsync(
+                sagaId, instanceToken, CancellationToken.None );
+            throw;
+        } catch (Exception reviewEx) {
+            LogRefreshReviewReadFailed( _logger, reviewEx, sagaId );
+            QueueMetrics.RecordSagaLifecycleOutcome( "refresh_targets_unavailable" );
+            try {
+                _ = await _sagaManager.TryReleaseFinalizeClaimAsync(
+                    sagaId, instanceToken, CancellationToken.None );
+            } catch (Exception claimEx) {
+                LogFailedToWriteFinal( _logger, claimEx, sagaId );
+            }
+            return null;
         }
     }
 
@@ -1353,6 +1465,35 @@ public sealed partial class SagaCoordinatorBackgroundService(
         Level = LogLevel.Warning,
         Message = "Failed to persist zero-result saga {SagaId} for refresh review; continuing terminal cleanup" )]
     private static partial void LogRefreshReviewPersistenceFailed( ILogger logger, Exception ex, string sagaId );
+
+    /// <summary>Logs that refresh targets could not be read before a terminal write.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshReviewReadFailed,
+        Level = LogLevel.Warning,
+        Message = "Failed to read refresh targets for saga {SagaId}; deferring finalization" )]
+    private static partial void LogRefreshReviewReadFailed( ILogger logger, Exception ex, string sagaId );
+
+    /// <summary>Logs a pending refresh context belonging to another saga generation.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshReviewTokenMismatch,
+        Level = LogLevel.Warning,
+        Message = "Refresh target generation mismatch for saga {SagaId}; deferring generation {InstanceToken}" )]
+    private static partial void LogRefreshReviewTokenMismatch(
+        ILogger logger,
+        string sagaId,
+        string instanceToken );
+
+    /// <summary>Logs promotion of a repeatedly failing target to operator review.</summary>
+    [LoggerMessage(
+        EventId = LogEventIds.RefreshTargetRetryExhausted,
+        Level = LogLevel.Error,
+        Message = "Refresh target write exhausted {AttemptCount} attempts for saga {SagaId}, target {SourceRecordUri}" )]
+    private static partial void LogRefreshTargetRetryExhausted(
+        ILogger logger,
+        Exception ex,
+        string sagaId,
+        string sourceRecordUri,
+        int attemptCount );
 
     /// <summary>Logs that this handler lost the finalize claim race and is deferring to the winner.</summary>
     /// <param name="logger">The logger to write to.</param>

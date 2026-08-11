@@ -10,12 +10,22 @@ namespace BridgeBeats.Contracts.Records;
 /// </summary>
 public sealed record QueueSettings {
 
-    /// <summary>
-    /// The threshold for re-queuing rate-limited requests. If a Retry-After value exceeds this
-    /// threshold, the request is queued for later processing. Defaults to 2 minutes.
-    /// </summary>
-    [JsonPropertyName( "rateLimitRetryThreshold" )]
-    public TimeSpan RateLimitRetryThreshold { get; init; } = TimeSpan.FromMinutes( 2 );
+    /// <summary>Default fallback delay for provider responses without retry metadata.</summary>
+    public static readonly TimeSpan DefaultRateLimitRetryAfter = TimeSpan.FromMinutes( 1 );
+
+    /// <summary>Default minimum durable rate-limit deferral.</summary>
+    public static readonly TimeSpan DefaultMinimumRateLimitRetryAfter = TimeSpan.FromSeconds( 5 );
+
+    /// <summary>Default absolute job expiration in minutes.</summary>
+    public const int DefaultJobExpirationMinutes = 2880;
+
+    /// <summary>Fallback delay used when a 429 response omits <c>Retry-After</c>.</summary>
+    [JsonPropertyName( "rateLimitDefaultRetryAfter" )]
+    public TimeSpan RateLimitDefaultRetryAfter { get; init; } = DefaultRateLimitRetryAfter;
+
+    /// <summary>Minimum durable deferral applied to an expired or implausibly short retry window.</summary>
+    [JsonPropertyName( "rateLimitMinimumRetryAfter" )]
+    public TimeSpan RateLimitMinimumRetryAfter { get; init; } = DefaultMinimumRateLimitRetryAfter;
 
     /// <summary>
     /// The number of minutes before an incomplete job or saga expires. Defaults to <c>2880</c>
@@ -29,7 +39,7 @@ public sealed record QueueSettings {
     /// for the trade-off.
     /// </remarks>
     [JsonPropertyName( "jobExpirationMinutes" )]
-    public int JobExpirationMinutes { get; init; } = 2880;
+    public int JobExpirationMinutes { get; init; } = DefaultJobExpirationMinutes;
 
     /// <summary>
     /// The total time budget (in seconds) an interactive caller waits for a complete lookup
@@ -107,4 +117,9 @@ public sealed record QueueSettings {
             : DefaultProviderConcurrency;
         return Math.Clamp( configured, 1, 32 );
     }
+
+    /// <summary>Returns whether a job has reached its absolute configured expiration.</summary>
+    public bool IsPastAbsoluteDeadline( DateTimeOffset createdAt, DateTimeOffset now ) =>
+        createdAt <= now
+        && now - createdAt >= TimeSpan.FromMinutes( JobExpirationMinutes );
 }

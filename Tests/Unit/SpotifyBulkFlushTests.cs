@@ -632,7 +632,7 @@ public class SpotifyBulkFlushTests {
         SpotifyBulkProcessorService service = CreateService( );
 
         // Act
-        await service.HandleBulkRateLimitAsync( messages, SpotifyConstants.BulkTracksEndpoint, ex, TestContext.CancellationToken );
+        await service.HandleBulkRateLimitAsync( messages, SpotifyConstants.TracksEndpoint, ex, TestContext.CancellationToken );
 
         _sagaManagerMock.Verify( m => m.GetAsync( request.SagaId, It.IsAny<CancellationToken>( ) ), Times.AtLeastOnce );
         _sagaManagerMock.Verify( m => m.TrySetIsPartialAsync(
@@ -685,7 +685,7 @@ public class SpotifyBulkFlushTests {
         meterListener.SetMeasurementEventCallback<double>( ( _, _, _, _ ) => wallSamples++ );
         meterListener.Start( );
 
-        await CreateService( ).HandleBulkRateLimitAsync( messages, SpotifyConstants.BulkTracksEndpoint, ex, TestContext.CancellationToken );
+        await CreateService( ).HandleBulkRateLimitAsync( messages, SpotifyConstants.TracksEndpoint, ex, TestContext.CancellationToken );
 
         Assert.AreEqual( 2, wallSamples );
         Assert.HasCount( 2, wallSpans );
@@ -954,7 +954,8 @@ public class SpotifyBulkFlushTests {
             _lookupServiceMock.Object,
             _innerQueueMock.Object,
             _serviceLoggerMock.Object,
-            options );
+            options,
+            Options.Create( new QueueSettings( ) ) );
     }
 
     /// <summary>

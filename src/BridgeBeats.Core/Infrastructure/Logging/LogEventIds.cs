@@ -1169,6 +1169,9 @@ public static class LogEventIds {
             /// EventId for <see cref="RetryAfterLimitHandler.LogRateLimitExceeded"/>.
             /// </summary>
             public const int RateLimitExceeded = 2850;
+
+            /// <summary>EventId for best-effort shared rate-limit tracker failures.</summary>
+            public const int RateLimitTrackerUnavailable = 2851;
         }
     }
 
@@ -1305,6 +1308,9 @@ public static class LogEventIds {
             /// EventId for <see cref="SagaResultCombiner.LogCombinedResults"/>.
             /// </summary>
             public const int CombinedResults = 3103;
+
+            /// <summary>EventId for a successful provider payload that cannot be persisted.</summary>
+            public const int NonPersistableResultSkipped = 3104;
         }
 
         /// <summary>

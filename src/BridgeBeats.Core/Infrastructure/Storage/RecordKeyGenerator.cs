@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using BridgeBeats.Contracts.DTOs;
+using BridgeBeats.Core.Domain.Services;
 
 namespace BridgeBeats.Core.Infrastructure.Storage;
 
@@ -31,9 +32,9 @@ public static class RecordKeyGenerator {
             throw new ArgumentException( "MediaLinkResult must contain at least one result", nameof( result ) );
         }
 
-        // Find the first result with a non-empty externalId
+        // Find the first result with an external id that survives rkey sanitization.
         MusicLookupResult? firstResultWithId = result.Results.Values
-            .FirstOrDefault( r => !string.IsNullOrWhiteSpace( r.ExternalId ) );
+            .FirstOrDefault( MediaLookupResultIdentity.HasUsableExternalId );
 
         if (firstResultWithId != null) {
             string? rkey = GenerateRkey( firstResultWithId.ExternalId, firstResultWithId.IsAlbum ?? false );
