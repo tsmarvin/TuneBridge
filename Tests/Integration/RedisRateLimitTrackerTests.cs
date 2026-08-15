@@ -2,6 +2,7 @@ using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using StackExchange.Redis;
 
@@ -67,6 +68,7 @@ public class RedisRateLimitTrackerTests {
 
         _tracker = new RedisRateLimitTracker(
             s_redis,
+            Options.Create( new QueueSettings( ) ),
             _mockLogger.Object
         );
     }
@@ -123,6 +125,45 @@ public class RedisRateLimitTrackerTests {
         // RetryAfter should be close to what we set (within a second due to timing)
         TimeSpan diff = (retryAfter - state.RetryAfter.Value).Duration( );
         Assert.IsLessThan( TimeSpan.FromSeconds( 1 ), diff, $"RetryAfter diff was {diff}" );
+    }
+
+    /// <summary>An extreme provider retry window is bounded before it enters durable shared state.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task SetRateLimitedAsync_ClampsExtremeFutureWindow( ) {
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+
+        await _tracker.SetRateLimitedAsync(
+            SupportedProviders.Spotify,
+            "/v1/search",
+            DateTimeOffset.MaxValue,
+            TestContext.CancellationToken );
+
+        RateLimitState state = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify, "/v1/search", TestContext.CancellationToken );
+        Assert.IsTrue( state.IsRateLimited );
+        Assert.IsNotNull( state.RetryAfter );
+        Assert.IsLessThanOrEqualTo(
+            before.Add( QueueSettings.DefaultMaximumRateLimitRetryAfter ).AddSeconds( 1 ),
+            state.RetryAfter.Value );
+    }
+
+    /// <summary>Legacy far-future tracker state is removed instead of suppressing dequeue indefinitely.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task GetStateAsync_RemovesLegacyFarFutureWindow( ) {
+        DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddYears( 10 );
+        IDatabase db = s_redis!.GetDatabase( );
+        _ = await db.StringSetAsync(
+            "ratelimit:Spotify:provider", retryAfter.ToString( "O" ), TimeSpan.FromHours( 2 ) );
+        _ = await db.SortedSetAddAsync(
+            "ratelimit:active:spotify", "provider", retryAfter.ToUnixTimeMilliseconds( ) );
+
+        RateLimitState state = await _tracker.GetStateAsync(
+            SupportedProviders.Spotify, "/v1/search", TestContext.CancellationToken );
+
+        Assert.IsFalse( state.IsRateLimited );
+        Assert.IsFalse( await db.KeyExistsAsync( "ratelimit:Spotify:provider" ) );
     }
 
     /// <summary>A shorter concurrent observation cannot reduce an active provider cooldown.</summary>

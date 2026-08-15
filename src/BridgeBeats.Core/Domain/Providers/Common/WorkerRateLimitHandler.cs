@@ -10,7 +10,8 @@ namespace BridgeBeats.Core.Domain.Providers.Common;
 
 /// <summary>
 /// Converts worker-proxy HTTP 429 envelopes into the typed provider signal excluded by the shared
-/// resilience pipeline.
+/// resilience pipeline. It deliberately does not publish to <c>IRateLimitTracker</c>: the direct
+/// provider handler inside the worker is the single writer for the shared cooldown window.
 /// </summary>
 internal sealed class WorkerRateLimitHandler(
     SupportedProviders provider,
@@ -35,23 +36,18 @@ internal sealed class WorkerRateLimitHandler(
                 // Treat an unsupported error content type the same as an absent envelope.
             }
 
-            double? retrySeconds = envelope?.RetryAfterSeconds;
-            TimeSpan retryAfter = retrySeconds.HasValue && IsValidSeconds( retrySeconds.Value )
-                ? TimeSpan.FromSeconds( retrySeconds.Value )
+            TimeSpan observedRetryAfter = TryGetDuration( envelope?.RetryAfterSeconds, out TimeSpan envelopeRetryAfter )
+                ? envelopeRetryAfter
                 : RetryAfterLimitHandler.GetRetryAfterValue( response )
                     ?? queueSettings.RateLimitDefaultRetryAfter;
-            if (retryAfter < queueSettings.RateLimitMinimumRetryAfter) {
-                retryAfter = queueSettings.RateLimitMinimumRetryAfter;
-            }
+            TimeSpan retryAfter = queueSettings.ClampRateLimitRetryAfter( observedRetryAfter );
 
             string? endpoint = envelope?.RateLimitedEndpoint;
-            double? thresholdSeconds = envelope?.RetryThresholdSeconds;
-            if (thresholdSeconds.HasValue
-                && IsValidSeconds( thresholdSeconds.Value )
-                && retryAfter > TimeSpan.FromSeconds( thresholdSeconds.Value )) {
+            if (TryGetDuration( envelope?.RetryThresholdSeconds, out TimeSpan threshold )
+                && observedRetryAfter > threshold) {
                 throw new RetryAfterExceededException(
                     retryAfter,
-                    TimeSpan.FromSeconds( thresholdSeconds.Value ),
+                    threshold,
                     request.RequestUri,
                     provider,
                     endpoint );
@@ -67,8 +63,19 @@ internal sealed class WorkerRateLimitHandler(
         }
     }
 
-    private static bool IsValidSeconds( double seconds ) =>
-        double.IsFinite( seconds )
-        && seconds >= 0
-        && seconds <= TimeSpan.MaxValue.TotalSeconds;
+    private static bool TryGetDuration( double? seconds, out TimeSpan duration ) {
+        duration = default;
+        if (!seconds.HasValue || !double.IsFinite( seconds.Value ) || seconds.Value < 0) {
+            return false;
+        }
+
+        // TimeSpan.MaxValue.TotalSeconds is rounded as a double and can itself overflow when passed
+        // back to FromSeconds. Saturate before conversion so malformed or hostile worker envelopes
+        // still produce the typed rate-limit signal this handler promises.
+        double maxConvertibleSeconds = Math.Floor( TimeSpan.MaxValue.TotalSeconds );
+        duration = seconds.Value >= maxConvertibleSeconds
+            ? TimeSpan.MaxValue
+            : TimeSpan.FromSeconds( seconds.Value );
+        return true;
+    }
 }

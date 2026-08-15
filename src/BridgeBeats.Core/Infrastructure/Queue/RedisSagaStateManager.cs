@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
@@ -21,9 +23,8 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// A saga's core fields live in hash <c>saga:{sagaId}</c>; each provider's progress lives in
 /// <c>saga:{sagaId}:provider:{provider}</c>; sagas awaiting finalization are tracked in the set
 /// <c>saga:pending</c>. State-changing writes normally refresh the saga TTL to the configured
-/// job-expiration window. Provider initialization renews neither the core saga nor an existing
-/// provider leg, preventing redelivery alone from keeping a stalled saga alive forever; a newly
-/// created provider leg receives its initial TTL. Saga completeness is not stored: it
+/// job-expiration window. Provider initialization does not renew the core saga, but it does renew
+/// every initialized provider leg, including an existing one. Saga completeness is not stored: it
 /// is computed from the per-provider hashes at read time, so a saga reads as complete when all of
 /// its initialized providers report complete. Redis here is transport and working state, not the
 /// system of record — final results live in the ATProto PDS, referenced by the URIs stored here.
@@ -94,6 +95,14 @@ public sealed partial class RedisSagaStateManager(
     /// <summary>Core hash field: the highest provider-count already durably written to the PDS. Literal: <c>"writeGeneration"</c>.</summary>
     private const string FieldWriteGeneration = "writeGeneration";
     private const string FieldInstanceToken = "instanceToken";
+
+    /// <summary>JSON shape consumed by the atomic Redis rate-limit merge script.</summary>
+    private sealed record RateLimitInfoStorage(
+        [property: JsonPropertyName( "provider" )] int Provider,
+        [property: JsonPropertyName( "retryAfter" )] DateTimeOffset RetryAfter,
+        [property: JsonPropertyName( "retryAfterUnixMilliseconds" )] long RetryAfterUnixMilliseconds,
+        [property: JsonPropertyName( "endpoint" )] string? Endpoint );
+
     private const string TokenGuardedUriScript =
         "if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[1]) ~= ARGV[2] then return 0 end; " +
         "redis.call('hset', KEYS[1], ARGV[3], ARGV[4]); redis.call('expire', KEYS[1], tonumber(ARGV[5])); return 1";
@@ -342,9 +351,7 @@ public sealed partial class RedisSagaStateManager(
                 ? parsedProvider
                 : null;
 
-        List<ProviderRateLimitInfo>? rateLimitInfo = !string.IsNullOrEmpty( rateLimitInfoJson )
-            ? System.Text.Json.JsonSerializer.Deserialize<List<ProviderRateLimitInfo>>( rateLimitInfoJson )
-            : null;
+        List<ProviderRateLimitInfo>? rateLimitInfo = DeserializeRateLimitInfo( rateLimitInfoJson, sagaId );
 
         // Missing field (sagas persisted before this field existed) defaults to Background
         // so old sagas are never promoted to interactive.
@@ -478,12 +485,11 @@ public sealed partial class RedisSagaStateManager(
         if (rateLimitInfo.Count == 0) {
             throw new ArgumentException( "At least one rate-limit entry is required.", nameof( rateLimitInfo ) );
         }
-        string json = System.Text.Json.JsonSerializer.Serialize( rateLimitInfo.Select( info => new {
-            provider = (int)info.Provider,
-            retryAfter = info.RetryAfter.ToUniversalTime( ),
-            retryAfterUnixMilliseconds = info.RetryAfter.ToUnixTimeMilliseconds( ),
-            endpoint = info.Endpoint
-        } ) );
+        string json = JsonSerializer.Serialize( rateLimitInfo.Select( info => new RateLimitInfoStorage(
+            (int)info.Provider,
+            info.RetryAfter.ToUniversalTime( ),
+            info.RetryAfter.ToUnixTimeMilliseconds( ),
+            info.Endpoint ) ) );
         TimeSpan ttl = TimeSpan.FromMinutes( _settings.JobExpirationMinutes );
         RedisResult result = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             TokenGuardedMergeRateLimitInfoScript,
@@ -823,6 +829,24 @@ public sealed partial class RedisSagaStateManager(
     private static string GetProviderKey( string sagaId, SupportedProviders provider ) =>
         $"{SagaPrefix}{sagaId}{ProviderSuffix}{provider}";
 
+    private List<ProviderRateLimitInfo>? DeserializeRateLimitInfo(
+        string? rateLimitInfoJson,
+        string sagaId
+    ) {
+        if (string.IsNullOrEmpty( rateLimitInfoJson )) {
+            return null;
+        }
+
+        try {
+            return JsonSerializer.Deserialize<List<ProviderRateLimitInfo>>( rateLimitInfoJson );
+        } catch (Exception ex) when (ex is JsonException or NotSupportedException) {
+            // Rate-limit metadata is advisory. A damaged auxiliary field must not make the saga's
+            // provider progress, result URI, and fencing token permanently unreadable.
+            LogMalformedRateLimitInfo( _logger, ex, sagaId );
+            return null;
+        }
+    }
+
     #region LoggerMessage Methods
 
     /// <summary>Logs that an existing saga was resumed rather than created.</summary>
@@ -863,6 +887,19 @@ public sealed partial class RedisSagaStateManager(
         Level = LogLevel.Warning,
         Message = "Saga {SagaId} has invalid lookup type: {Type}" )]
     internal static partial void LogInvalidLookupType( ILogger logger, string sagaId, string type );
+
+    /// <summary>Logs that malformed advisory rate-limit metadata was ignored while reading a saga.</summary>
+    /// <param name="logger">The logger to write to.</param>
+    /// <param name="exception">The JSON parsing failure.</param>
+    /// <param name="sagaId">The affected saga id.</param>
+    [LoggerMessage(
+        EventId = LogEventIds.Infrastructure.Queue.RedisSagaStateManagerMalformedRateLimitInfo,
+        Level = LogLevel.Warning,
+        Message = "Saga {SagaId} has malformed rate-limit metadata; ignoring the auxiliary field" )]
+    internal static partial void LogMalformedRateLimitInfo(
+        ILogger logger,
+        Exception exception,
+        string sagaId );
 
     /// <summary>Logs that a provider's state was updated.</summary>
     /// <param name="logger">The logger to write to.</param>

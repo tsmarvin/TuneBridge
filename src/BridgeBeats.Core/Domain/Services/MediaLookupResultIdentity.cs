@@ -10,16 +10,24 @@ internal static class MediaLookupResultIdentity {
         || !string.IsNullOrWhiteSpace( result.Artist );
 
     internal static bool HasUsableExternalId( MusicLookupResult result ) =>
-        !string.IsNullOrWhiteSpace( result.ExternalId )
-        && result.ExternalId.Any( character => char.IsLetterOrDigit( character ) || character == '-' );
+        result.ExternalId?.Any(
+            character => char.IsLetterOrDigit( character ) || character == '-' ) == true;
+
+    /// <summary>Normalizes an external identifier to the durable record-key character set.</summary>
+    internal static string NormalizeExternalId( string? externalId ) =>
+        string.IsNullOrWhiteSpace( externalId )
+            ? string.Empty
+            : new string( [.. externalId.Where(
+                character => char.IsLetterOrDigit( character ) || character == '-' )] );
 
     internal static string? GetExternalKey( MusicLookupResult result ) {
         ArgumentNullException.ThrowIfNull( result );
 
-        if (!HasUsableExternalId( result )) {
+        string normalizedExternalId = NormalizeExternalId( result.ExternalId );
+        if (normalizedExternalId.Length == 0) {
             return null;
         }
 
-        return $"{(result.IsAlbum == true ? "album" : "track")}:{result.ExternalId!.Trim( )}";
+        return $"{(result.IsAlbum == true ? "album" : "track")}:{normalizedExternalId}";
     }
 }

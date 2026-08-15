@@ -14,8 +14,12 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
     /// On <see cref="System.Net.HttpStatusCode.TooManyRequests"/>, the handler reads the
     /// <c>Retry-After</c> header in both delta-seconds and HTTP-date forms. When the wait exceeds
     /// <paramref name="maxRetryAfterSeconds"/> it throws <see cref="RetryAfterExceededException"/>;
-    /// otherwise it throws <see cref="ProviderRateLimitException"/>. Register this handler inside
-    /// the resilience handler so provider backpressure bypasses in-process retries and circuits.
+    /// otherwise it throws <see cref="ProviderRateLimitException"/>. When a shared tracker is
+    /// supplied, it also rejects requests covered by an existing distributed cooldown before
+    /// provider I/O and is the sole writer of newly observed provider cooldowns. Tracker failures
+    /// are logged and deliberately fail open so Redis availability cannot suppress provider calls.
+    /// Register this handler inside the resilience handler so provider backpressure bypasses
+    /// in-process retries and circuits.
     /// </remarks>
     /// <param name="maxRetryAfterSeconds">The maximum tolerable <c>Retry-After</c> wait, in seconds, before failing fast.</param>
     /// <param name="queueSettings">Configured fallback and minimum durable deferral windows.</param>
@@ -28,8 +32,8 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
         IRateLimitTracker? rateLimitTracker = null
     ) : DelegatingHandler {
         private readonly TimeSpan _maxRetryAfter = TimeSpan.FromSeconds( maxRetryAfterSeconds );
-        private readonly TimeSpan _defaultRetryAfter = queueSettings.RateLimitDefaultRetryAfter;
-        private readonly TimeSpan _minimumRetryAfter = queueSettings.RateLimitMinimumRetryAfter;
+        private readonly QueueSettings _queueSettings = queueSettings
+            ?? throw new ArgumentNullException( nameof( queueSettings ) );
 
         /// <summary>
         /// Sends the request and converts provider backpressure into a durable-queue deferral.
@@ -78,18 +82,17 @@ namespace BridgeBeats.Core.Domain.Providers.Common {
             HttpResponseMessage response = await base.SendAsync( request, cancellationToken );
 
             if (response.StatusCode == HttpStatusCode.TooManyRequests) {
-                TimeSpan retryAfter = GetRetryAfterValue( response ) ?? _defaultRetryAfter;
-                if (retryAfter < _minimumRetryAfter) {
-                    retryAfter = _minimumRetryAfter;
-                }
+                TimeSpan observedRetryAfter = GetRetryAfterValue( response )
+                    ?? _queueSettings.RateLimitDefaultRetryAfter;
+                TimeSpan retryAfter = _queueSettings.ClampRateLimitRetryAfter( observedRetryAfter );
                 response.Dispose( );
 
                 ProviderRateLimitException rateLimitException;
-                if (retryAfter > _maxRetryAfter) {
+                if (observedRetryAfter > _maxRetryAfter) {
                     LogRateLimitExceeded(
                         logger,
                         provider?.ToString( ) ?? "Unknown",
-                        retryAfter.TotalSeconds,
+                        observedRetryAfter.TotalSeconds,
                         _maxRetryAfter.TotalSeconds,
                         requestUri
                     );

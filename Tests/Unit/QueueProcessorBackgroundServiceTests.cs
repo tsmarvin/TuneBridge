@@ -1567,7 +1567,8 @@ public class QueueProcessorBackgroundServiceTests {
             OriginPriority = QueuePriority.Interactive
         };
         QueuedMessage<QueuedLookupRequest> message = CreateMessage( request ) with { Priority = QueuePriority.Interactive };
-        TimeSpan retryAfter = TimeSpan.FromSeconds( 60 );
+        DateTimeOffset beforeRateLimit = DateTimeOffset.UtcNow;
+        TimeSpan retryAfter = TimeSpan.MaxValue;
 
         SetupNotRateLimited( );
         SetupSagaNotComplete( request.SagaId );
@@ -1611,7 +1612,11 @@ public class QueueProcessorBackgroundServiceTests {
             q => q.EnqueueAsync(
                 It.Is<QueuedLookupRequest>( r =>
                     r.LookupType == request.LookupType &&
-                    r.AttemptCount == request.AttemptCount
+                    r.AttemptCount == request.AttemptCount &&
+                    r.NotBefore > beforeRateLimit &&
+                    r.NotBefore <= beforeRateLimit
+                        .Add( QueueSettings.DefaultMaximumRateLimitRetryAfter )
+                        .AddSeconds( 2 )
                 ),
                 QueuePriority.Interactive,
                 It.IsAny<CancellationToken>( )
@@ -1839,6 +1844,43 @@ public class QueueProcessorBackgroundServiceTests {
             message.MessageId, It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
         _queueMock.Verify( queue => queue.RequeueAsync(
             message.MessageId, null, It.IsAny<CancellationToken>( ) ), Times.Once );
+    }
+
+    /// <summary>Transport configuration failures are terminal and bypass the durable retry loop.</summary>
+    [TestMethod]
+    [DataRow( HttpRequestError.UserAuthenticationError )]
+    [DataRow( HttpRequestError.ConfigurationLimitExceeded )]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessMessage_PermanentTransportFailure_MovesToDlq(
+        HttpRequestError error
+    ) {
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.IsrcLookup, $"PERMANENT-{error}" );
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+        SetupNotRateLimited( );
+        SetupSagaNotComplete( request.SagaId );
+        _ = _lookupServiceMock.Setup( lookup => lookup.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
+            .ThrowsAsync( new HttpRequestException( error, "Provider transport configuration failed." ) );
+        int calls = 0;
+        _ = _queueMock.Setup( queue => queue.DequeueAsync(
+                It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => calls++ == 0 ? message : null );
+
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        _sagaManagerMock.Verify( saga => saga.TryUpdateProviderStateAsync(
+            request.SagaId,
+            It.Is<ProviderLookupState>( state => state.IsComplete && !state.IsSuccess ),
+            It.IsAny<string>( ),
+            It.IsAny<CancellationToken>( ) ), Times.Once );
+        _queueMock.Verify( queue => queue.MoveToDlqAsync(
+            message.MessageId, It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
+        _queueMock.Verify( queue => queue.RequeueAsync(
+            It.IsAny<string>( ), It.IsAny<TimeSpan?>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
     }
 
     /// <summary>Ordinary transient retries preserve the delivered interactive or bulk lane.</summary>

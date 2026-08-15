@@ -1,3 +1,4 @@
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
@@ -214,7 +215,7 @@ namespace BridgeBeats.Core.Domain.Extensions {
             Func<IServiceProvider, RetryAfterLimitHandler> handlerFactory = CreateRetryAfterLimitHandlerFactory( maxRetryAfterSeconds );
 
             _ = services.AddHttpClient( "spotify-auth", c => {
-                c.BaseAddress = new Uri( "https://accounts.spotify.com/" );
+                c.BaseAddress = new Uri( $"https://{ProviderEndpointConstants.SpotifyAuthHost}/" );
             } )
             .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
                 connectTimeout: TimeSpan.FromSeconds( 10 ) ) )
@@ -268,7 +269,7 @@ namespace BridgeBeats.Core.Domain.Extensions {
             Func<IServiceProvider, RetryAfterLimitHandler> handlerFactory = CreateRetryAfterLimitHandlerFactory( maxRetryAfterSeconds );
 
             _ = services.AddHttpClient( "tidal-auth", c => {
-                c.BaseAddress = new Uri( "https://auth.tidal.com/" );
+                c.BaseAddress = new Uri( $"https://{ProviderEndpointConstants.TidalAuthHost}/" );
             } )
             .ConfigurePrimaryHttpMessageHandler( ( ) => SsrfSocketsHttpHandlerFactory.Create(
                 connectTimeout: TimeSpan.FromSeconds( 10 ) ) )

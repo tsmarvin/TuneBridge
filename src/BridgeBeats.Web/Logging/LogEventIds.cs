@@ -85,6 +85,9 @@ public static class LogEventIds {
         /// <summary>Streaming lookup results failed.</summary>
         public const int HomeControllerStreamError = 4054;
 
+        /// <summary>A client disconnected while lookup results were being streamed.</summary>
+        public const int HomeControllerStreamClientDisconnected = 4055;
+
         // DashboardController (4075-4099)
 
         /// <summary>

@@ -691,6 +691,17 @@ public sealed partial class SpotifyBatchQueueHelper : IQueueWorkSignal {
         CancellationToken cancellationToken = default
     ) {
         cancellationToken.ThrowIfCancellationRequested( );
+        if (preserveAttemptCount && notBefore is null) {
+            throw new ArgumentException(
+                "A preserved-attempt deferral requires an eligibility time.",
+                nameof( notBefore ) );
+        }
+        if (!preserveAttemptCount) {
+            // Ordinary retries always consume an attempt and clear any prior deferral metadata,
+            // regardless of optional arguments accidentally supplied by a caller.
+            rateLimitedEndpoint = null;
+            notBefore = null;
+        }
         (string stream, string id) = ParseMessageId( messageId );
 
         IDatabase db = _redis.GetDatabase( );

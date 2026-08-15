@@ -697,11 +697,10 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         LogRateLimitEncountered( _logger, _provider, endpoint, ex.RetryAfterValue );
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        TimeSpan requestedRetry = ex.RetryAfterValue >= _settings.RateLimitMinimumRetryAfter
-            ? ex.RetryAfterValue
-            : _settings.RateLimitMinimumRetryAfter;
-        TimeSpan boundedRetry = TimeSpan.FromTicks( Math.Min( requestedRetry.Ticks, (DateTimeOffset.MaxValue - now).Ticks ) );
-        DateTimeOffset retryAfter = now.Add( boundedRetry );
+        DateTimeOffset retryAfter = _settings.GetBoundedRateLimitRetryAfter(
+            now,
+            ex.RetryAfterValue,
+            request.CreatedAt );
 
         // Mark saga as partial and record rate limit info for user notification
         if (!await _sagaManager.TrySetIsPartialAsync( request.SagaId, true, instanceToken, ct )) {

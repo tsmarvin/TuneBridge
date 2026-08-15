@@ -5,6 +5,10 @@ namespace BridgeBeats.Contracts.Constants;
 /// and Redis state. Provider-specific derivation may append bounded path-shape components.
 /// </summary>
 public static class ProviderEndpointConstants {
+    /// <summary>Spotify OAuth authority host.</summary>
+    public const string SpotifyAuthHost = "accounts.spotify.com";
+    /// <summary>Tidal OAuth authority host.</summary>
+    public const string TidalAuthHost = "auth.tidal.com";
     /// <summary>Fallback used when an endpoint cannot be derived from a provider request.</summary>
     public const string Unknown = "unknown";
     /// <summary>Provider token-acquisition endpoint.</summary>

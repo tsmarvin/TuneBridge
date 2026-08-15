@@ -204,6 +204,30 @@ public class RedisSagaStateManagerTests {
                 SagaId, [], saga.InstanceToken!, TestContext.CancellationToken ) );
     }
 
+    /// <summary>Malformed advisory rate-limit JSON does not make the rest of a saga unreadable.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task GetAsync_MalformedRateLimitInfo_IgnoresAuxiliaryField( ) {
+        const string SagaId = "malformed-rate-limit-info";
+        LookupSagaState created = await _sagaManager.GetOrCreateAsync(
+            SagaId,
+            "isrc:MALFORMED-RATE-LIMIT",
+            LookupRequestType.IsrcLookup,
+            "MALFORMED-RATE-LIMIT",
+            cancellationToken: TestContext.CancellationToken );
+        await s_redis!.GetDatabase( ).HashSetAsync(
+            $"saga:{SagaId}",
+            "rateLimitInfo",
+            "{not-json" );
+
+        LookupSagaState? loaded = await _sagaManager.GetAsync(
+            SagaId, TestContext.CancellationToken );
+
+        Assert.IsNotNull( loaded );
+        Assert.AreEqual( created.InstanceToken, loaded.InstanceToken );
+        Assert.IsNull( loaded.RateLimitInfo );
+    }
+
     /// <summary>An explicitly stale finalize lease is replaced with a fresh instance and clean provider state.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]

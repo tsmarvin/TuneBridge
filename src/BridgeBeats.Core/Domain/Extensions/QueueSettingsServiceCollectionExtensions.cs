@@ -19,6 +19,10 @@ public static class QueueSettingsServiceCollectionExtensions {
                 "BridgeBeats:Queue:RateLimitMinimumRetryAfter must be greater than zero." )
             .Validate( settings => settings.RateLimitDefaultRetryAfter >= settings.RateLimitMinimumRetryAfter,
                 "BridgeBeats:Queue:RateLimitDefaultRetryAfter must be at least RateLimitMinimumRetryAfter." )
+            .Validate( settings => settings.RateLimitMaximumRetryAfter >= settings.RateLimitDefaultRetryAfter,
+                "BridgeBeats:Queue:RateLimitMaximumRetryAfter must be at least RateLimitDefaultRetryAfter." )
+            .Validate( settings => settings.RateLimitMaximumRetryAfter <= TimeSpan.FromMinutes( settings.JobExpirationMinutes ),
+                "BridgeBeats:Queue:RateLimitMaximumRetryAfter must not exceed JobExpirationMinutes." )
             .ValidateOnStart( );
 
         return services;

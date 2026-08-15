@@ -16,6 +16,9 @@ public sealed record QueueSettings {
     /// <summary>Default minimum durable rate-limit deferral.</summary>
     public static readonly TimeSpan DefaultMinimumRateLimitRetryAfter = TimeSpan.FromSeconds( 5 );
 
+    /// <summary>Default upper bound for provider-controlled durable deferrals.</summary>
+    public static readonly TimeSpan DefaultMaximumRateLimitRetryAfter = TimeSpan.FromHours( 1 );
+
     /// <summary>Default absolute job expiration in minutes.</summary>
     public const int DefaultJobExpirationMinutes = 2880;
 
@@ -26,6 +29,13 @@ public sealed record QueueSettings {
     /// <summary>Minimum durable deferral applied to an expired or implausibly short retry window.</summary>
     [JsonPropertyName( "rateLimitMinimumRetryAfter" )]
     public TimeSpan RateLimitMinimumRetryAfter { get; init; } = DefaultMinimumRateLimitRetryAfter;
+
+    /// <summary>
+    /// Maximum provider-controlled delay that may be written to shared cooldown state or a queued
+    /// message. Longer provider values are retained only in diagnostics and clamped operationally.
+    /// </summary>
+    [JsonPropertyName( "rateLimitMaximumRetryAfter" )]
+    public TimeSpan RateLimitMaximumRetryAfter { get; init; } = DefaultMaximumRateLimitRetryAfter;
 
     /// <summary>
     /// The number of minutes before an incomplete job or saga expires. Defaults to <c>2880</c>
@@ -122,4 +132,41 @@ public sealed record QueueSettings {
     public bool IsPastAbsoluteDeadline( DateTimeOffset createdAt, DateTimeOffset now ) =>
         createdAt <= now
         && now - createdAt >= TimeSpan.FromMinutes( JobExpirationMinutes );
+
+    /// <summary>Clamps a provider-controlled retry duration to the configured durable bounds.</summary>
+    public TimeSpan ClampRateLimitRetryAfter( TimeSpan requested ) {
+        TimeSpan minimumApplied = requested >= RateLimitMinimumRetryAfter
+            ? requested
+            : RateLimitMinimumRetryAfter;
+        return minimumApplied <= RateLimitMaximumRetryAfter
+            ? minimumApplied
+            : RateLimitMaximumRetryAfter;
+    }
+
+    /// <summary>
+    /// Converts a provider-controlled retry duration to an absolute instant while also respecting
+    /// the originating job's absolute deadline when supplied.
+    /// </summary>
+    public DateTimeOffset GetBoundedRateLimitRetryAfter(
+        DateTimeOffset now,
+        TimeSpan requested,
+        DateTimeOffset? createdAt = null
+    ) {
+        TimeSpan bounded = ClampRateLimitRetryAfter( requested );
+        DateTimeOffset maximumByConfiguration = now.Add( bounded );
+        if (createdAt is null || createdAt > now) {
+            return maximumByConfiguration;
+        }
+
+        TimeSpan jobLifetime = TimeSpan.FromMinutes( JobExpirationMinutes );
+        TimeSpan jobAge = now - createdAt.Value;
+        if (jobAge >= jobLifetime) {
+            return now;
+        }
+
+        TimeSpan remainingJobLifetime = jobLifetime - jobAge;
+        return remainingJobLifetime < bounded
+            ? now.Add( remainingJobLifetime )
+            : maximumByConfiguration;
+    }
 }

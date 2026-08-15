@@ -52,6 +52,15 @@ public interface IRequestDeduplicator {
         CancellationToken cancellationToken = default );
 
     /// <summary>
+    /// Releases a caller-owned lease without declaring terminal lookup completion. Waiting callers
+    /// are notified to re-read durable state and continue against their own deadlines.
+    /// </summary>
+    Task<bool> ReleaseOwnedForStateRecheckAsync(
+        string requestKey,
+        string leaseToken,
+        CancellationToken cancellationToken = default );
+
+    /// <summary>
     /// Publishes that lookup succeeded but its result could not be persisted to an accepted durable
     /// target. It does not delete a caller-owned lease.
     /// </summary>

@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Exceptions;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Contracts.Records.WorkerApi;
 using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Logging;
@@ -665,6 +667,30 @@ public class RetryAfterLimitHandlerTests {
 
         // Assert
         Assert.AreEqual( TimeSpan.FromMinutes( 30 ), exception.RetryAfterValue );
+    }
+
+    /// <summary>An extreme worker envelope saturates to a typed duration instead of overflowing.</summary>
+    [TestMethod]
+    public async Task WorkerHandler_WithExtremeEnvelopeDuration_ShouldThrowTypedRateLimit( ) {
+        HttpResponseMessage response = new( HttpStatusCode.TooManyRequests ) {
+            Content = JsonContent.Create( ProviderLookupResponse.Error(
+                "rate limited",
+                retryAfterSeconds: double.MaxValue,
+                retryThresholdSeconds: 5,
+                rateLimitedEndpoint: ProviderEndpointConstants.ProviderWide ) )
+        };
+        WorkerRateLimitHandler handler = new( SupportedProviders.Spotify, new QueueSettings( ) ) {
+            InnerHandler = new TestDelegatingHandler( response )
+        };
+        using HttpMessageInvoker invoker = new( handler );
+
+        RetryAfterExceededException exception = await Assert.ThrowsExactlyAsync<RetryAfterExceededException>(
+            ( ) => invoker.SendAsync(
+                new HttpRequestMessage( HttpMethod.Get, "https://worker.example/lookup/isrc/test" ),
+                CancellationToken.None ) );
+
+        Assert.AreEqual( QueueSettings.DefaultMaximumRateLimitRetryAfter, exception.RetryAfterValue );
+        Assert.AreEqual( TimeSpan.FromSeconds( 5 ), exception.Threshold );
     }
 
     #endregion

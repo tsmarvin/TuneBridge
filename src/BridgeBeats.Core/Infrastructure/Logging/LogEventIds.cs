@@ -520,6 +520,20 @@ public static class LogEventIds {
             /// </summary>
             public const int RedisSagaStateManagerWriteGenerationReset = 1320;
 
+            /// <summary>
+            /// EventId for <see cref="RedisSagaStateManager.LogMalformedRateLimitInfo"/>.
+            /// </summary>
+            public const int RedisSagaStateManagerMalformedRateLimitInfo = 1321;
+
+            /// <summary>EventId for staging a lookup dispatch outbox item.</summary>
+            public const int LookupDispatchOutboxStaged = 1322;
+
+            /// <summary>EventId for publishing a lookup dispatch outbox item.</summary>
+            public const int LookupDispatchOutboxPublished = 1323;
+
+            /// <summary>EventId for a recoverable lookup dispatch outbox relay failure.</summary>
+            public const int LookupDispatchOutboxRelayFailure = 1324;
+
             // RedisRequestDeduplicator (1350-1374)
 
             /// <summary>
@@ -1462,6 +1476,21 @@ public static class LogEventIds {
             /// EventId for <see cref="LookupOrchestrator.LogInFlightSagaHasStoredResult"/>.
             /// </summary>
             public const int OrchestratorInFlightSagaHasStoredResult = 3358;
+
+            /// <summary>
+            /// EventId for <see cref="LookupOrchestrator.LogDedupReleaseError"/>.
+            /// </summary>
+            public const int OrchestratorDedupReleaseError = 3359;
+
+            /// <summary>
+            /// EventId for <see cref="LookupOrchestrator.LogDedupReleaseStateReadError"/>.
+            /// </summary>
+            public const int OrchestratorDedupReleaseStateReadError = 3360;
+
+            /// <summary>
+            /// EventId for <see cref="LookupOrchestrator.LogOutboxImmediateDispatchError"/>.
+            /// </summary>
+            public const int OrchestratorOutboxImmediateDispatchError = 3361;
         }
 
         /// <summary>

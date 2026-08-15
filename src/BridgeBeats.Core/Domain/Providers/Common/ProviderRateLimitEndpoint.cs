@@ -15,8 +15,8 @@ internal static class ProviderRateLimitEndpoint {
             return Unknown;
         }
 
-        if (requestUri.Host.Equals( "accounts.spotify.com", StringComparison.OrdinalIgnoreCase )
-            || requestUri.Host.Equals( "auth.tidal.com", StringComparison.OrdinalIgnoreCase )) {
+        if (requestUri.Host.Equals( ProviderEndpointConstants.SpotifyAuthHost, StringComparison.OrdinalIgnoreCase )
+            || requestUri.Host.Equals( ProviderEndpointConstants.TidalAuthHost, StringComparison.OrdinalIgnoreCase )) {
             return ProviderEndpointConstants.AuthToken;
         }
 

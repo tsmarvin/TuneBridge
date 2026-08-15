@@ -492,6 +492,8 @@ namespace BridgeBeats.Web.Controllers {
 
                         processedCount++;
 
+                    } catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) {
+                        throw;
                     } catch (Exception ex) {
                         LogStreamResultError( ex, uri.SanitizeForLogging( ) );
                         errorCount++;
@@ -511,6 +513,26 @@ namespace BridgeBeats.Web.Controllers {
                     await Response.WriteAsync( $"<div class=\"d-none\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"0\" data-rate-limited=\"{rateLimitCount}\"></div>{StreamFraming.ItemDelimiter}" );
                 }
 
+            } catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) {
+                // The client disconnected; there is no response stream left to complete.
+                if (logger.IsEnabled( LogLevel.Debug )) {
+                    string sanitizedUri = uri.SanitizeForLogging( );
+                    LogStreamClientDisconnected( sanitizedUri );
+                }
+            } catch (IOException) when (HttpContext.RequestAborted.IsCancellationRequested) {
+                // Some servers surface a disconnected response body as IOException instead of
+                // request cancellation. Keep it out of the error channel.
+                if (logger.IsEnabled( LogLevel.Debug )) {
+                    string sanitizedUri = uri.SanitizeForLogging( );
+                    LogStreamClientDisconnected( sanitizedUri );
+                }
+            } catch (Exception) when (HttpContext.RequestAborted.IsCancellationRequested) {
+                // Once the request is aborted, response-body implementations may surface other
+                // transport-specific exceptions. Treat them consistently as client disconnects.
+                if (logger.IsEnabled( LogLevel.Debug )) {
+                    string sanitizedUri = uri.SanitizeForLogging( );
+                    LogStreamClientDisconnected( sanitizedUri );
+                }
             } catch (Exception ex) {
                 LogStreamError( ex, uri.SanitizeForLogging( ) );
                 await Response.WriteAsync( $"<div class=\"alert alert-danger\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount + 1}\">An error occurred during lookup. Please try again.</div>{StreamFraming.ItemDelimiter}" );

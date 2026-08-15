@@ -25,6 +25,13 @@ public static class LookupConstants {
     /// </summary>
     public const string ResultNotPersistedSentinel = "RESULT_NOT_PERSISTED";
 
+    /// <summary>
+    /// Non-terminal notification published when an owned single-flight lease is released without
+    /// declaring the lookup complete. Waiters must re-read durable state and continue using their
+    /// own time budget.
+    /// </summary>
+    public const string StateChangedSentinel = "STATE_CHANGED";
+
     /// <summary>Redis channel prefix used for lookup completion notifications.</summary>
     public const string CompletionChannelPrefix = "complete:";
 

@@ -42,8 +42,16 @@ public static class QueueServiceExtensions {
 
         _ = services.AddSingleton<IRateLimitTracker>( sp => new RedisRateLimitTracker(
             sp.GetRequiredService<IConnectionMultiplexer>( ),
+            sp.GetRequiredService<IOptions<QueueSettings>>( ),
             sp.GetRequiredService<ILogger<RedisRateLimitTracker>>( )
         ) );
+
+        _ = services.AddSingleton<ILookupDispatchOutbox>( sp => new RedisLookupDispatchOutbox(
+            sp.GetRequiredService<IConnectionMultiplexer>( ),
+            sp.GetRequiredService<IOptions<QueueSettings>>( ),
+            sp.GetRequiredService<ILogger<RedisLookupDispatchOutbox>>( )
+        ) );
+        _ = services.AddHostedService<LookupDispatchOutboxBackgroundService>( );
 
         _ = services.AddSingleton<ISagaStateManager>( sp => new RedisSagaStateManager(
             sp.GetRequiredService<IConnectionMultiplexer>( ),

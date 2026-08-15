@@ -88,7 +88,7 @@ public static class RecordKeyGenerator {
         }
 
         string prefix = isAlbum ? "album" : "track";
-        string sanitizedId = SanitizeForRkey( externalId );
+        string sanitizedId = MediaLookupResultIdentity.NormalizeExternalId( externalId );
 
         return string.IsNullOrEmpty( sanitizedId )
             ? throw new ArgumentException( "ExternalId must contain valid characters after sanitization", nameof( externalId ) )
@@ -123,25 +123,6 @@ public static class RecordKeyGenerator {
 
         // Truncate to maxLength and return lowercase for consistency
         return base32Hash[..Math.Min( maxLength, base32Hash.Length )].ToLowerInvariant( );
-    }
-
-    /// <summary>
-    /// Strips an external id down to the characters allowed in an rkey: letters, digits, and hyphen.
-    /// </summary>
-    /// <param name="externalId">The raw external id.</param>
-    /// <returns>The id with all characters other than letters, digits, and hyphen removed, or an empty string when the input is null or whitespace.</returns>
-    private static string SanitizeForRkey( string externalId ) {
-        if (string.IsNullOrWhiteSpace( externalId )) {
-            return string.Empty;
-        }
-
-        // Keep only alphanumeric characters and hyphens
-        StringBuilder sb = new( );
-        foreach (char c in externalId.Where( c => char.IsLetterOrDigit( c ) || c == '-' )) {
-            _ = sb.Append( c );
-        }
-
-        return sb.ToString( );
     }
 
     /// <summary>

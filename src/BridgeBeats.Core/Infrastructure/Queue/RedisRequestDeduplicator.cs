@@ -36,14 +36,10 @@ public sealed partial class RedisRequestDeduplicator(
     private readonly ILogger<RedisRequestDeduplicator> _logger = logger
                                                                ?? throw new ArgumentNullException( nameof( logger ) );
 
-    /// <summary>
-    /// Identity used only for diagnostics from publisher-only releases.
-    /// </summary>
-    private readonly string _instanceId = $"{Environment.MachineName}:{Guid.NewGuid( ):N}"[..32];
-
     private const string ReleaseOwnedScript = """
         if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end
         redis.call('del', KEYS[1])
+        redis.call('publish', ARGV[3], ARGV[2])
         return 1
         """;
 
@@ -115,16 +111,15 @@ public sealed partial class RedisRequestDeduplicator(
     }
 
     /// <summary>
-    /// Releases the in-flight lock for a request key and notifies any waiters of the result.
+    /// Publishes completion for a request key without mutating its caller-owned lease.
     /// </summary>
     /// <param name="requestKey">The request key to release.</param>
     /// <param name="resultUri">The result URI to publish, or null to notify waiters that no result is available.</param>
     /// <param name="cancellationToken">A cancellation token (not currently observed).</param>
-    /// <returns>A task that completes once the lock is released and completion is published.</returns>
+    /// <returns>A task that completes once completion is published.</returns>
     /// <remarks>
-    /// The lock is deleted only if it is unheld or still held by this instance (ownership-checked
-    /// release); a denied release is logged but still publishes completion. The completion message
-    /// is published on <c>complete:{requestKey}</c> regardless, so waiters always get woken.
+    /// Coordinators do not possess the acquisition token, so this publisher-only operation never
+    /// reads or deletes the lease. The acquiring caller must later use <see cref="ReleaseOwnedAsync"/>.
     /// </remarks>
     /// <exception cref="ArgumentException">Thrown when <paramref name="requestKey"/> is null or whitespace.</exception>
     public Task ReleaseAsync(
@@ -138,20 +133,46 @@ public sealed partial class RedisRequestDeduplicator(
         cancellationToken );
 
     /// <inheritdoc/>
-    public async Task<bool> ReleaseOwnedAsync(
+    public Task<bool> ReleaseOwnedAsync(
         string requestKey,
         string leaseToken,
         string? resultUri,
         CancellationToken cancellationToken = default
+    ) => ReleaseOwnedCoreAsync(
+        requestKey,
+        leaseToken,
+        resultUri ?? LookupConstants.NoResultSentinel,
+        hasResult: resultUri is not null,
+        cancellationToken );
+
+    /// <inheritdoc/>
+    public Task<bool> ReleaseOwnedForStateRecheckAsync(
+        string requestKey,
+        string leaseToken,
+        CancellationToken cancellationToken = default
+    ) => ReleaseOwnedCoreAsync(
+        requestKey,
+        leaseToken,
+        LookupConstants.StateChangedSentinel,
+        hasResult: false,
+        cancellationToken );
+
+    private async Task<bool> ReleaseOwnedCoreAsync(
+        string requestKey,
+        string leaseToken,
+        string message,
+        bool hasResult,
+        CancellationToken cancellationToken
     ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( requestKey );
         ArgumentException.ThrowIfNullOrWhiteSpace( leaseToken );
 
         string lockKey = $"{InFlightPrefix}{requestKey}";
+        string channelKey = $"{LookupConstants.CompletionChannelPrefix}{requestKey}";
         RedisResult result = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             ReleaseOwnedScript,
             [lockKey],
-            [leaseToken] );
+            [leaseToken, message, channelKey] );
         if ((int)result != 1) {
             LogReleaseDenied(
                 _logger,
@@ -161,14 +182,9 @@ public sealed partial class RedisRequestDeduplicator(
             return false;
         }
 
-        string message = resultUri ?? LookupConstants.NoResultSentinel;
-        string channelKey = $"{LookupConstants.CompletionChannelPrefix}{requestKey}";
-        _ = await _redis.GetSubscriber( ).PublishAsync(
-            RedisChannel.Literal( channelKey ),
-            message );
         if (_logger.IsEnabled( LogLevel.Debug )) {
             string sanitizedRequestKey = requestKey.SanitizeForLogging( );
-            LogLockReleased( _logger, sanitizedRequestKey, resultUri is not null );
+            LogLockReleased( _logger, sanitizedRequestKey, hasResult );
         }
         return true;
     }
@@ -191,25 +207,13 @@ public sealed partial class RedisRequestDeduplicator(
     ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( requestKey );
 
-        string lockKey = $"{InFlightPrefix}{requestKey}";
         string channelKey = $"{LookupConstants.CompletionChannelPrefix}{requestKey}";
 
-        IDatabase db = _redis.GetDatabase( );
         ISubscriber subscriber = _redis.GetSubscriber( );
 
-        // Publisher-only releases (for example, the saga coordinator) cannot prove ownership of
-        // the Web process's lease. Never delete a lock here; acquired callers use ReleaseOwnedAsync.
-        RedisValue currentHolder = await db.StringGetAsync( lockKey );
-        if (currentHolder.HasValue) {
-            LogReleaseDenied(
-                _logger,
-                requestKey.SanitizeForLogging( ),
-                currentHolder.ToString( ).SanitizeForLogging( ),
-                _instanceId
-            );
-        }
-
-        // Always publish: the coordinator owns saga completion, not the Web acquisition lease.
+        // The coordinator owns saga completion but cannot prove ownership of the Web process's
+        // acquisition lease. Publish without reading or mutating that lease; its owner performs the
+        // token-checked release after observing this completion.
         _ = await subscriber.PublishAsync( RedisChannel.Literal( channelKey ), message );
 
         if (_logger.IsEnabled( LogLevel.Debug )) {
@@ -272,6 +276,9 @@ public sealed partial class RedisRequestDeduplicator(
             try {
                 await foreach (ChannelMessage message in messageQueue.WithCancellation( cts.Token )) {
                     string result = message.Message.ToString( );
+                    if (result == LookupConstants.StateChangedSentinel) {
+                        continue;
+                    }
                     if (IsTerminalWithoutResult( result )) {
                         return null;
                     }
@@ -310,8 +317,8 @@ public sealed partial class RedisRequestDeduplicator(
     /// that the pre-subscription check is delegated to <paramref name="missedResultCheck"/> rather
     /// than a lock-existence probe, which lets callers query the durable final result (for example
     /// from the PDS) instead of relying on the transient in-flight lock. Here the absence of the
-    /// in-flight lock means nothing, because it is deleted when the partial result is released
-    /// while the saga keeps running.
+    /// in-flight lock is not used as a final-completion signal; pending sagas retain it until
+    /// terminal state or bounded lease expiry.
     /// </remarks>
     /// <exception cref="ArgumentException">Thrown when <paramref name="requestKey"/> is null or whitespace.</exception>
     public async Task<string?> WaitForFinalCompletionAsync(
@@ -349,11 +356,13 @@ public sealed partial class RedisRequestDeduplicator(
             }
 
             // Wait for a non-empty message or timeout. Unlike WaitForCompletionAsync, the
-            // absence of the in-flight lock means nothing here: it is deleted when the
-            // partial result is released while the saga keeps running.
+            // in-flight lock is not a final-completion signal here; durable saga state is.
             try {
                 await foreach (ChannelMessage message in messageQueue.WithCancellation( cts.Token )) {
                     string result = message.Message.ToString( );
+                    if (result == LookupConstants.StateChangedSentinel) {
+                        continue;
+                    }
                     if (IsTerminalWithoutResult( result )) {
                         return null;
                     }
@@ -427,14 +436,14 @@ public sealed partial class RedisRequestDeduplicator(
         Message = "Attempted to release lock for {RequestKey} but held by {Holder}, not {InstanceId}" )]
     internal static partial void LogReleaseDenied( ILogger logger, string requestKey, string holder, string instanceId );
 
-    /// <summary>Logs that the lock was released and a completion message published.</summary>
+    /// <summary>Logs that completion was published, with owned callers also releasing their lock.</summary>
     /// <param name="logger">The logger to write to.</param>
     /// <param name="requestKey">The sanitized request key.</param>
     /// <param name="hasResult">Whether a non-empty result URI was published.</param>
     [LoggerMessage(
         EventId = LogEventIds.Infrastructure.Queue.RedisRequestDeduplicatorLockReleased,
         Level = LogLevel.Debug,
-        Message = "Released lock for {RequestKey} and published completion (hasResult: {HasResult})" )]
+        Message = "Published completion for {RequestKey} (owned lease released when applicable; hasResult: {HasResult})" )]
     internal static partial void LogLockReleased( ILogger logger, string requestKey, bool hasResult );
 
     /// <summary>Logs that a request completed before the waiter's subscription became active.</summary>

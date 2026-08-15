@@ -262,6 +262,83 @@ public class RedisRequestDeduplicatorTests {
 
         Assert.IsNull( result );
         Assert.IsLessThan( TimeSpan.FromSeconds( 2 ), stopwatch.Elapsed );
+
+        // A caller arriving after the terminal publication must not inherit the old five-minute
+        // lease. It can immediately become the next owner and re-drive a zero-result lookup.
+        Contracts.Records.DeduplicationResult next = await waiter.TryAcquireAsync(
+            RequestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
+        Assert.IsTrue( next.Acquired );
+        Assert.IsTrue( await waiter.ReleaseOwnedAsync(
+            RequestKey, next.LeaseToken!, null, TestContext.CancellationToken ) );
+    }
+
+    /// <summary>A state-change release wakes a waiter to recheck without consuming its remaining wait budget.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WaitForCompletionAsync_StateChangedThenResult_KeepsWaitingForResult( ) {
+        const string RequestKey = "isrc:STATE-CHANGED";
+        const string ExpectedUri = "at://did:plc:test/link.bridgebeats.lookup/track:STATE-CHANGED";
+        Contracts.Records.DeduplicationResult owner = await _deduplicator.TryAcquireAsync(
+            RequestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
+        RedisRequestDeduplicator waiter = new(
+            s_redis!, new Mock<ILogger<RedisRequestDeduplicator>>( ).Object );
+        Task<string?> waitTask = waiter.WaitForCompletionAsync(
+            RequestKey, TimeSpan.FromSeconds( 5 ), TestContext.CancellationToken );
+        await Task.Delay( 100, TestContext.CancellationToken );
+
+        Assert.IsTrue( await _deduplicator.ReleaseOwnedForStateRecheckAsync(
+            RequestKey, owner.LeaseToken!, TestContext.CancellationToken ) );
+        await Task.Delay( 100, TestContext.CancellationToken );
+        Assert.IsFalse( waitTask.IsCompleted,
+            "A non-terminal state-change signal must not complete the waiter." );
+
+        await _deduplicator.ReleaseAsync( RequestKey, ExpectedUri, TestContext.CancellationToken );
+        Assert.AreEqual( ExpectedUri, await waitTask );
+    }
+
+    /// <summary>The final-completion waiter also ignores a state-change signal and honors its own deadline.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task WaitForFinalCompletionAsync_StateChangedThenResult_KeepsWaitingForResult( ) {
+        const string RequestKey = "isrc:FINAL-STATE-CHANGED";
+        const string ExpectedUri = "at://did:plc:test/link.bridgebeats.lookup/track:FINAL-STATE-CHANGED";
+        Contracts.Records.DeduplicationResult owner = await _deduplicator.TryAcquireAsync(
+            RequestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
+        RedisRequestDeduplicator waiter = new(
+            s_redis!, new Mock<ILogger<RedisRequestDeduplicator>>( ).Object );
+        Task<string?> waitTask = waiter.WaitForFinalCompletionAsync(
+            RequestKey, TimeSpan.FromSeconds( 5 ), cancellationToken: TestContext.CancellationToken );
+        await Task.Delay( 100, TestContext.CancellationToken );
+
+        Assert.IsTrue( await _deduplicator.ReleaseOwnedForStateRecheckAsync(
+            RequestKey, owner.LeaseToken!, TestContext.CancellationToken ) );
+        await Task.Delay( 100, TestContext.CancellationToken );
+        Assert.IsFalse( waitTask.IsCompleted,
+            "A non-terminal state-change signal must not complete the final waiter." );
+
+        await _deduplicator.ReleaseAsync( RequestKey, ExpectedUri, TestContext.CancellationToken );
+        Assert.AreEqual( ExpectedUri, await waitTask );
+    }
+
+    /// <summary>A coordinator publication wakes waiters but cannot delete a caller-owned lease.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ReleaseAsync_PublisherOnly_DoesNotDeleteCallerLease( ) {
+        const string RequestKey = "isrc:PUBLISHER-ONLY";
+        Contracts.Records.DeduplicationResult owner = await _deduplicator.TryAcquireAsync(
+            RequestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
+
+        await _deduplicator.ReleaseAsync(
+            RequestKey,
+            "at://did:plc:test/link.bridgebeats.lookup/track:PUBLISHER-ONLY",
+            TestContext.CancellationToken );
+
+        Contracts.Records.DeduplicationResult contender = await _deduplicator.TryAcquireAsync(
+            RequestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
+        Assert.IsFalse( contender.Acquired );
+
+        Assert.IsTrue( await _deduplicator.ReleaseOwnedAsync(
+            RequestKey, owner.LeaseToken!, null, TestContext.CancellationToken ) );
     }
 
     /// <summary>A stale lease cannot delete or publish completion for a replacement acquisition.</summary>

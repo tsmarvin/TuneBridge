@@ -59,4 +59,21 @@ public sealed class ProviderRateLimitPolicyTests {
             [ProviderEndpointConstants.ProviderWide],
             ProviderEndpointConstants.AuthToken ) );
     }
+
+    /// <summary>Matching provider policy keys block deferred data work.</summary>
+    [TestMethod]
+    public void IsBlocked_MatchingPolicyKeys_BlocksDeferredRequest( ) {
+        Assert.IsTrue( ProviderRateLimitPolicy.IsBlocked(
+            SupportedProviders.Spotify,
+            [ProviderEndpointConstants.ProviderWide],
+            ProviderEndpointConstants.Tracks ) );
+        Assert.IsTrue( ProviderRateLimitPolicy.IsBlocked(
+            SupportedProviders.AppleMusic,
+            ["songs/:id"],
+            "songs/:id" ) );
+        Assert.IsFalse( ProviderRateLimitPolicy.IsBlocked(
+            SupportedProviders.AppleMusic,
+            ["songs/:id"],
+            deferredEndpoint: null ) );
+    }
 }

@@ -4,11 +4,13 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.DTOs;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Infrastructure.Cache;
 using BridgeBeats.Core.Infrastructure.Queue;
 using BridgeBeats.Core.Infrastructure.Storage;
 using BridgeBeats.Worker.Maintenance;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using StackExchange.Redis;
 
@@ -134,7 +136,7 @@ public sealed class LivePdsCacheBootstrapScaleTests {
             redis, Samples, maxConcurrency: 1, TestContext.CancellationToken );
 
         RedisRateLimitTracker seedTracker = new(
-            redis, NullLogger<RedisRateLimitTracker>.Instance );
+            redis, Options.Create( new QueueSettings( ) ), NullLogger<RedisRateLimitTracker>.Instance );
         await seedTracker.SetRateLimitedAsync(
             SupportedProviders.Spotify,
             ProviderEndpointConstants.ProviderWide,
@@ -174,7 +176,7 @@ public sealed class LivePdsCacheBootstrapScaleTests {
             },
             async ( index, ct ) => {
                 RedisRateLimitTracker tracker = new(
-                    redis, NullLogger<RedisRateLimitTracker>.Instance );
+                    redis, Options.Create( new QueueSettings( ) ), NullLogger<RedisRateLimitTracker>.Instance );
                 long started = Stopwatch.GetTimestamp( );
                 _ = await tracker.GetAllRateLimitedAsync( SupportedProviders.Spotify, ct );
                 microseconds[index] = Stopwatch.GetElapsedTime( started ).TotalMicroseconds;
@@ -188,7 +190,7 @@ public sealed class LivePdsCacheBootstrapScaleTests {
         CancellationToken cancellationToken
     ) {
         RedisRateLimitTracker tracker = new(
-            redis, NullLogger<RedisRateLimitTracker>.Instance );
+            redis, Options.Create( new QueueSettings( ) ), NullLogger<RedisRateLimitTracker>.Instance );
         _ = await tracker.GetAllRateLimitedAsync(
             SupportedProviders.Spotify, cancellationToken );
         double[] microseconds = new double[samples];

@@ -106,6 +106,9 @@ IResourceBuilder<ParameterResource> queueRateLimitDefaultRetryAfter = builder.Ad
 IResourceBuilder<ParameterResource> queueRateLimitMinimumRetryAfter = builder.AddParameter(
     "QueueRateLimitMinimumRetryAfter", ( ) => config["Parameters:QueueRateLimitMinimumRetryAfter"]
         ?? QueueSettings.DefaultMinimumRateLimitRetryAfter.ToString( "c", CultureInfo.InvariantCulture ) );
+IResourceBuilder<ParameterResource> queueRateLimitMaximumRetryAfter = builder.AddParameter(
+    "QueueRateLimitMaximumRetryAfter", ( ) => config["Parameters:QueueRateLimitMaximumRetryAfter"]
+        ?? QueueSettings.DefaultMaximumRateLimitRetryAfter.ToString( "c", CultureInfo.InvariantCulture ) );
 IResourceBuilder<ParameterResource> queueJobExpirationMinutes = builder.AddParameter(
     "QueueJobExpirationMinutes", ( ) => config["Parameters:QueueJobExpirationMinutes"]
         ?? QueueSettings.DefaultJobExpirationMinutes.ToString( CultureInfo.InvariantCulture ) );
@@ -201,6 +204,7 @@ if (spotifyWorkerEnabled) {
             .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitDefaultRetryAfter", queueRateLimitDefaultRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitMinimumRetryAfter", queueRateLimitMinimumRetryAfter )
+            .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
     } else {
         spotifyWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Spotify>( "spotify-worker" )
@@ -217,6 +221,7 @@ if (spotifyWorkerEnabled) {
             .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitDefaultRetryAfter", queueRateLimitDefaultRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitMinimumRetryAfter", queueRateLimitMinimumRetryAfter )
+            .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
     }
 }
@@ -236,6 +241,7 @@ if (appleMusicWorkerEnabled) {
             .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitDefaultRetryAfter", queueRateLimitDefaultRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitMinimumRetryAfter", queueRateLimitMinimumRetryAfter )
+            .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
     } else {
         appleMusicWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_AppleMusic>( "applemusic-worker" )
@@ -253,6 +259,7 @@ if (appleMusicWorkerEnabled) {
             .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitDefaultRetryAfter", queueRateLimitDefaultRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitMinimumRetryAfter", queueRateLimitMinimumRetryAfter )
+            .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
     }
 }
@@ -271,6 +278,7 @@ if (tidalWorkerEnabled) {
             .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitDefaultRetryAfter", queueRateLimitDefaultRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitMinimumRetryAfter", queueRateLimitMinimumRetryAfter )
+            .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
     } else {
         tidalWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Tidal>( "tidal-worker" )
@@ -287,6 +295,7 @@ if (tidalWorkerEnabled) {
             .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitDefaultRetryAfter", queueRateLimitDefaultRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__RateLimitMinimumRetryAfter", queueRateLimitMinimumRetryAfter )
+            .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
             .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
     }
 }
@@ -436,6 +445,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds )
         .WithEnvironment( "BridgeBeats__Queue__RateLimitDefaultRetryAfter", queueRateLimitDefaultRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__RateLimitMinimumRetryAfter", queueRateLimitMinimumRetryAfter )
+        .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
 } else {
     bridgebeatsWebProject = builder.AddProject<Projects.BridgeBeats_Web>( "bridgebeats" )
@@ -468,6 +478,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds )
         .WithEnvironment( "BridgeBeats__Queue__RateLimitDefaultRetryAfter", queueRateLimitDefaultRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__RateLimitMinimumRetryAfter", queueRateLimitMinimumRetryAfter )
+        .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
 }
 

@@ -430,8 +430,12 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         }
 
         try {
-            messages = [.. await RejectExpiredMessagesAsync(
-                messages, ct, dequeueWallTimer, dequeueWallStart )];
+            await RejectIneligibleMessagesAsync(
+                messages,
+                SpotifyConstants.TracksEndpoint,
+                ct,
+                dequeueWallTimer,
+                dequeueWallStart );
             if (messages.Count == 0) {
                 return;
             }
@@ -536,8 +540,12 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         }
 
         try {
-            messages = [.. await RejectExpiredMessagesAsync(
-                messages, ct, dequeueWallTimer, dequeueWallStart )];
+            await RejectIneligibleMessagesAsync(
+                messages,
+                SpotifyConstants.AlbumsEndpoint,
+                ct,
+                dequeueWallTimer,
+                dequeueWallStart );
             if (messages.Count == 0) {
                 return;
             }
@@ -836,8 +844,9 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         LogRateLimitEncountered( _logger, effectiveEndpoint, ex.RetryAfterValue.ToString( ) );
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        TimeSpan boundedRetry = TimeSpan.FromTicks( Math.Min( ex.RetryAfterValue.Ticks, (DateTimeOffset.MaxValue - now).Ticks ) );
-        DateTimeOffset retryAfter = now.Add( boundedRetry );
+        DateTimeOffset retryAfter = _queueSettings.GetBoundedRateLimitRetryAfter(
+            now,
+            ex.RetryAfterValue );
         // Keep the in-process bulk-operation lanes independent. The handler-derived
         // effective endpoint is used for diagnostics and shared policy, where Spotify
         // data requests intentionally collapse to a provider-wide window.
@@ -936,23 +945,46 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         }
     }
 
-    private async Task<IReadOnlyList<QueuedMessage<QueuedLookupRequest>>> RejectExpiredMessagesAsync(
-        IReadOnlyList<QueuedMessage<QueuedLookupRequest>> messages,
+    private async Task RejectIneligibleMessagesAsync(
+        List<QueuedMessage<QueuedLookupRequest>> messages,
+        string operationEndpoint,
         CancellationToken ct,
         Stopwatch dequeueWallTimer,
         DateTimeOffset dequeueWallStart
     ) {
-        List<QueuedMessage<QueuedLookupRequest>> admitted = [];
-        foreach (QueuedMessage<QueuedLookupRequest> message in messages) {
-            if (!_queueSettings.IsPastAbsoluteDeadline( message.Payload.CreatedAt, DateTimeOffset.UtcNow )) {
-                admitted.Add( message );
+        foreach (QueuedMessage<QueuedLookupRequest> message in messages.ToArray( )) {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            if (_queueSettings.IsPastAbsoluteDeadline( message.Payload.CreatedAt, now )) {
+                await TerminalizeExpiredMessageAsync( message, ct );
+                RecordMessageWall( message, dequeueWallTimer, dequeueWallStart );
+                // Mutate the caller-owned working set as each terminalization commits. If a later
+                // item fails, the outer fallback cannot requeue deliveries already made terminal.
+                _ = messages.Remove( message );
                 continue;
             }
 
-            await TerminalizeExpiredMessageAsync( message, ct );
-            RecordMessageWall( message, dequeueWallTimer, dequeueWallStart );
+            if (message.Payload.NotBefore is { } notBefore && notBefore > now) {
+                // NotBefore is the durable source of truth for a rate-limit deferral. The shared
+                // tracker and in-process cooldown avoid most early dequeues, but this guard remains
+                // authoritative after tracker write failures or process restarts.
+                DateTimeOffset boundedNotBefore = _queueSettings.GetBoundedRateLimitRetryAfter(
+                    now,
+                    notBefore - now,
+                    message.Payload.CreatedAt );
+                ArmRateLimitCooldown(
+                    message.Payload.RateLimitedEndpoint ?? operationEndpoint,
+                    boundedNotBefore );
+                await RequeueSingleAsync(
+                    message,
+                    ct,
+                    dequeueWallTimer,
+                    dequeueWallStart,
+                    preserveAttemptCount: true,
+                    rateLimitedEndpoint: message.Payload.RateLimitedEndpoint,
+                    notBefore: boundedNotBefore );
+                _ = messages.Remove( message );
+            }
         }
-        return admitted;
     }
 
     private async Task TerminalizeExpiredMessageAsync(
