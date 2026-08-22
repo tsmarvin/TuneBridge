@@ -350,6 +350,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
+        .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes )
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath );
 } else {
@@ -361,6 +362,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
+        .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes )
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath );
 }
@@ -370,11 +372,13 @@ if (isProduction) {
 if (isProduction) {
     _ = AddProductionExecutable( "jetstream-watcher", "BridgeBeats.Worker.JetStreamWatcher" )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
 } else {
     _ = builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" )
         .WithReference( redis )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes );
 }
 
@@ -390,6 +394,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
+        .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes )
         .WithEnvironment( "BridgeBeats__RefreshIntervalHours", refreshIntervalHours )
         .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun )
@@ -405,6 +410,7 @@ if (isProduction) {
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
+        .WithEnvironment( "BridgeBeats__Queue__RateLimitMaximumRetryAfter", queueRateLimitMaximumRetryAfter )
         .WithEnvironment( "BridgeBeats__Queue__JobExpirationMinutes", queueJobExpirationMinutes )
         .WithEnvironment( "BridgeBeats__RefreshIntervalHours", refreshIntervalHours )
         .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun )

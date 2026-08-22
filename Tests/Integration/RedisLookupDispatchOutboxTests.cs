@@ -49,7 +49,13 @@ public class RedisLookupDispatchOutboxTests {
     public async Task Initialize( ) {
         IDatabase db = s_redis!.GetDatabase( );
         IServer server = s_redis.GetServer( s_redis.GetEndPoints( )[0] );
-        foreach (string pattern in new[] { "saga:*", "outbox:lookup-dispatch:*", "queue:spotify:interactive" }) {
+        foreach (string pattern in new[] {
+            "saga:*",
+            "outbox:lookup-dispatch:*",
+            "queue:spotify:interactive",
+            "queue:applemusic:interactive",
+            "queue:tidal:interactive"
+        }) {
             await foreach (RedisKey key in server.KeysAsync( pattern: pattern )) {
                 _ = await db.KeyDeleteAsync( key );
             }
@@ -80,7 +86,21 @@ public class RedisLookupDispatchOutboxTests {
 
         Assert.AreEqual( ProviderDispatchStageOutcome.Staged, staged );
         Assert.IsTrue( afterStage.ProviderStates.ContainsKey( SupportedProviders.Spotify ) );
+        TaskCompletionSource<string> workSignal = new(
+            TaskCreationOptions.RunContinuationsAsynchronously );
+        ISubscriber subscriber = s_redis!.GetSubscriber( );
+        RedisChannel workChannel = RedisChannel.Literal(
+            QueueStreamKeys.WorkSignalFor( SupportedProviders.Spotify ) );
+        await subscriber.SubscribeAsync(
+            workChannel,
+            (channel, value) => {
+                _ = channel;
+                _ = workSignal.TrySetResult( value.ToString( ) );
+            } );
         Assert.AreEqual( 1, await _outbox.DispatchPendingAsync( 10, TestContext.CancellationToken ) );
+        Assert.IsFalse( string.IsNullOrWhiteSpace( await workSignal.Task.WaitAsync(
+            TimeSpan.FromSeconds( 2 ), TestContext.CancellationToken ) ) );
+        await subscriber.UnsubscribeAsync( workChannel );
         Assert.AreEqual( 0, await _outbox.DispatchPendingAsync( 10, TestContext.CancellationToken ) );
 
         IDatabase db = s_redis!.GetDatabase( );
@@ -92,6 +112,18 @@ public class RedisLookupDispatchOutboxTests {
             s_jsonOptions );
         Assert.IsNotNull( published );
         Assert.AreEqual( request.RequestId, published.RequestId );
+
+        RedisRequestQueue<QueuedLookupRequest> parsingQueue = new(
+            s_redis,
+            new Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>>( ).Object,
+            _settings,
+            SupportedProviders.Spotify );
+        await parsingQueue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+        QueuedMessage<QueuedLookupRequest>? parsedDelivery = await parsingQueue.DequeueAsync(
+            TestContext.CancellationToken );
+        Assert.IsNotNull( parsedDelivery );
+        Assert.AreEqual( request.RequestId, parsedDelivery.Payload.RequestId );
+        Assert.IsGreaterThan( DateTimeOffset.UtcNow.AddMinutes( -1 ), parsedDelivery.EnqueuedAt );
 
         ProviderDispatchStageOutcome repeated = await _outbox.StageAsync(
             request with { RequestId = Guid.NewGuid( ).ToString( "N" ) },
@@ -119,6 +151,139 @@ public class RedisLookupDispatchOutboxTests {
             saga.SagaId, TestContext.CancellationToken ))!;
         Assert.IsEmpty( current.ProviderStates );
         Assert.AreEqual( 0, await _outbox.DispatchPendingAsync( 10, TestContext.CancellationToken ) );
+    }
+
+    /// <summary>A legacy incomplete provider leg is staged rather than assumed to have a delivery.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task Stage_LegacyProviderLegWithoutDispatchState_StagesRecoveryDelivery( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-LEGACY" );
+        Assert.IsTrue( await _sagas.TryInitializeProviderStatesAsync(
+            saga.SagaId,
+            [SupportedProviders.Spotify],
+            saga.InstanceToken!,
+            TestContext.CancellationToken ) );
+
+        ProviderDispatchStageOutcome outcome = await _outbox.StageAsync(
+            CreateRequest( saga ), QueuePriority.Interactive, TestContext.CancellationToken );
+
+        Assert.AreEqual( ProviderDispatchStageOutcome.Staged, outcome );
+        Assert.IsTrue( await _outbox.DispatchAsync(
+            saga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ) );
+    }
+
+    /// <summary>Batch staging exposes the complete provider set before any relay can process it.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task StageBatch_InitializesCompleteProviderSetAtomically( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-BATCH" );
+        SupportedProviders[] providers = [
+            SupportedProviders.Spotify,
+            SupportedProviders.AppleMusic,
+            SupportedProviders.Tidal
+        ];
+        QueuedLookupRequest[] requests = [.. providers.Select( provider =>
+            CreateRequest( saga ) with { Provider = provider } )];
+
+        IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome> outcomes =
+            await _outbox.StageBatchAsync(
+                requests, QueuePriority.Interactive, TestContext.CancellationToken );
+        LookupSagaState stagedSaga = (await _sagas.GetAsync(
+            saga.SagaId, TestContext.CancellationToken ))!;
+
+        Assert.HasCount( providers.Length, outcomes );
+        Assert.IsTrue( outcomes.Values.All(
+            outcome => outcome == ProviderDispatchStageOutcome.Staged ) );
+        Assert.HasCount( providers.Length, stagedSaga.ProviderStates );
+        Assert.IsTrue( stagedSaga.ProviderStates.Values.All( state => !state.IsComplete ) );
+        Assert.AreEqual( providers.Length, await _outbox.DispatchPendingAsync(
+            10, TestContext.CancellationToken ) );
+    }
+
+    /// <summary>Concurrent relays transfer one staged record to the provider stream exactly once.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task DispatchAsync_ConcurrentRelays_PublishesExactlyOnce( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-CONCURRENT" );
+        _ = await _outbox.StageAsync(
+            CreateRequest( saga ), QueuePriority.Interactive, TestContext.CancellationToken );
+
+        bool[] results = await Task.WhenAll(
+            _outbox.DispatchAsync(
+                saga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ),
+            _outbox.DispatchAsync(
+                saga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ) );
+
+        Assert.ContainsSingle( results.Where( result => result ) );
+        Assert.HasCount( 1, await s_redis!.GetDatabase( ).StreamRangeAsync(
+            QueueStreamKeys.For( SupportedProviders.Spotify, QueuePriority.Interactive ) ) );
+    }
+
+    /// <summary>A replaced saga generation cannot receive a delivery staged by the prior token.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task DispatchAsync_WhenSagaTokenChanges_DropsStaleOutboxItem( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-TOKEN-REPLACED" );
+        _ = await _outbox.StageAsync(
+            CreateRequest( saga ), QueuePriority.Interactive, TestContext.CancellationToken );
+        await s_redis!.GetDatabase( ).HashSetAsync(
+            $"saga:{saga.SagaId}", "instanceToken", "replacement-token" );
+
+        Assert.IsFalse( await _outbox.DispatchAsync(
+            saga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ) );
+        Assert.IsEmpty( await s_redis.GetDatabase( ).StreamRangeAsync(
+            QueueStreamKeys.For( SupportedProviders.Spotify, QueuePriority.Interactive ) ) );
+    }
+
+    /// <summary>A published leg that remains incomplete is autonomously re-driven after staleness.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task DispatchPendingAsync_WhenPublishedLegIsStale_RedrivesLostDelivery( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-STALE-PUBLISHED" );
+        _ = await _outbox.StageAsync(
+            CreateRequest( saga ), QueuePriority.Interactive, TestContext.CancellationToken );
+        Assert.IsTrue( await _outbox.DispatchAsync(
+            saga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ) );
+
+        IDatabase db = s_redis!.GetDatabase( );
+        RedisKey stream = QueueStreamKeys.For(
+            SupportedProviders.Spotify, QueuePriority.Interactive );
+        _ = await db.KeyDeleteAsync( stream );
+        await db.HashSetAsync(
+            $"saga:{saga.SagaId}:provider:{SupportedProviders.Spotify}",
+            "dispatchPublishedAt",
+            DateTimeOffset.UtcNow.AddMinutes( -6 ).ToUnixTimeMilliseconds( ) );
+
+        Assert.AreEqual( 1, await _outbox.DispatchPendingAsync(
+            10, TestContext.CancellationToken ) );
+        Assert.HasCount( 1, await db.StreamRangeAsync( stream ) );
+    }
+
+    /// <summary>A leg completed after staging is cleaned up without publishing stale work.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task DispatchAsync_WhenLegCompletesAfterStage_CleansOutboxWithoutDelivery( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-COMPLETE-RACE" );
+        _ = await _outbox.StageAsync(
+            CreateRequest( saga ), QueuePriority.Interactive, TestContext.CancellationToken );
+        Assert.IsTrue( await _sagas.TryUpdateProviderStateAsync(
+            saga.SagaId,
+            new ProviderLookupState(
+                SupportedProviders.Spotify,
+                IsComplete: true,
+                IsSuccess: false,
+                ResultJson: null,
+                CompletedAt: DateTimeOffset.UtcNow,
+                ErrorMessage: "completed before relay" ),
+            saga.InstanceToken!,
+            TestContext.CancellationToken ) );
+
+        Assert.IsFalse( await _outbox.DispatchAsync(
+            saga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ) );
+        Assert.AreEqual( 0, await _outbox.DispatchPendingAsync(
+            10, TestContext.CancellationToken ) );
+        Assert.IsEmpty( await s_redis!.GetDatabase( ).StreamRangeAsync(
+            QueueStreamKeys.For( SupportedProviders.Spotify, QueuePriority.Interactive ) ) );
     }
 
     private async Task<LookupSagaState> CreateSagaAsync( string value ) {

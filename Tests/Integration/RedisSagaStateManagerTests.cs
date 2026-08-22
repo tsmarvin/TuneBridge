@@ -215,7 +215,7 @@ public class RedisSagaStateManagerTests {
             LookupRequestType.IsrcLookup,
             "MALFORMED-RATE-LIMIT",
             cancellationToken: TestContext.CancellationToken );
-        await s_redis!.GetDatabase( ).HashSetAsync(
+        _ = await s_redis!.GetDatabase( ).HashSetAsync(
             $"saga:{SagaId}",
             "rateLimitInfo",
             "{not-json" );

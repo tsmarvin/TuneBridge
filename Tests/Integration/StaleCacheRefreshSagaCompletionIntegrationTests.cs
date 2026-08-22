@@ -523,6 +523,53 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             queueResolver = resolverMock.Object;
         }
 
+        Dictionary<SupportedProviders, QueuedLookupRequest> stagedRequests = [];
+        Mock<ILookupDispatchOutbox> dispatchOutbox = new( );
+        _ = dispatchOutbox.Setup( outbox => outbox.StageBatchAsync(
+                It.IsAny<IReadOnlyList<QueuedLookupRequest>>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Returns( async (
+                IReadOnlyList<QueuedLookupRequest> requests,
+                QueuePriority _,
+                CancellationToken cancellationToken ) => {
+                    bool initialized = await sagaManager.TryInitializeProviderStatesAsync(
+                        requests[0].SagaId,
+                        requests.Select( request => request.Provider ),
+                        requests[0].SagaInstanceToken!,
+                        cancellationToken );
+                    if (!initialized) {
+                        return (IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome>)
+                            requests.ToDictionary(
+                                request => request.Provider,
+                                _ => ProviderDispatchStageOutcome.SagaInstanceMismatch );
+                    }
+                    foreach (QueuedLookupRequest request in requests) {
+                        stagedRequests[request.Provider] = request;
+                    }
+
+                    return (IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome>)
+                        requests.ToDictionary(
+                            request => request.Provider,
+                            _ => ProviderDispatchStageOutcome.Staged );
+                } );
+        _ = dispatchOutbox.Setup( outbox => outbox.DispatchAsync(
+                It.IsAny<string>( ),
+                It.IsAny<SupportedProviders>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Returns( async (
+                string _,
+                SupportedProviders provider,
+                CancellationToken cancellationToken ) => {
+                    if (!stagedRequests.TryGetValue( provider, out QueuedLookupRequest? request )) {
+                        return false;
+                    }
+
+                    await queueResolver.GetQueue( provider ).EnqueueAsync(
+                        request, QueuePriority.Bulk, cancellationToken );
+                    return true;
+                } );
+
         CacheBootstrapSettings settings = new(
             new Uri( "https://pds.test.example" ),
             "did:plc:testuser",
@@ -546,7 +593,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
         return new StaleCacheRefreshBackgroundService(
             _atProtoStorageMock.Object,
             sagaManager,
-            queueResolver,
+            dispatchOutbox.Object,
             redisMock.Object,
             enabledProviders,
             settings,
@@ -614,7 +661,6 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             .Setup( d => d.ReleaseAsync( It.IsAny<string>( ), It.IsAny<string?>( ), It.IsAny<CancellationToken>( ) ) )
             .Returns( Task.CompletedTask );
 
-        Mock<IProviderQueueResolver<QueuedLookupRequest>> queueResolverMock = new( );
         SagaResultCombiner resultCombiner = new( new Mock<ILogger<SagaResultCombiner>>( ).Object );
 
         return new SagaCoordinatorBackgroundService(
@@ -624,7 +670,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             cacheMock.Object,
             deduplicatorMock.Object,
             resultCombiner,
-            queueResolverMock.Object,
+            new Mock<ILookupDispatchOutbox>( ).Object,
             enabledProviders,
             new Mock<ILogger<SagaCoordinatorBackgroundService>>( ).Object,
             CreateRefreshReviewStore( )

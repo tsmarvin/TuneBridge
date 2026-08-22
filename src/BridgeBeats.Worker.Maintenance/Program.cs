@@ -118,14 +118,11 @@ public static class Program {
         HashSet<SupportedProviders> enabledProviders = DetectEnabledProviders( builder );
         _ = builder.Services.AddSingleton( enabledProviders );
 
-        // Queue settings (required by the saga manager and provider queues)
+        // Queue settings required by saga state and the dispatch outbox.
         _ = builder.Services.AddValidatedQueueSettings( builder.Configuration );
 
         // Queue infrastructure: deduplicator, rate-limit tracker, saga state manager
         _ = builder.Services.AddQueueInfrastructure( );
-
-        // Per-provider queues and resolver (so the refresh sweep can enqueue to any provider)
-        _ = builder.Services.AddAllProviderQueues<QueuedLookupRequest>( );
 
         // Stale-cache refresh sweep (runs independently of the bootstrap service)
         _ = builder.Services.AddHostedService<StaleCacheRefreshBackgroundService>( );

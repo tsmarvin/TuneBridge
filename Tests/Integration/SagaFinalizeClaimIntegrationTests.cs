@@ -200,7 +200,7 @@ public class SagaFinalizeClaimIntegrationTests {
                 cacheMock.Object,
                 deduplicatorMock.Object,
                 resultCombiner,
-                queueResolverMock.Object,
+                new Mock<ILookupDispatchOutbox>( ).Object,
                 enabledProviders,
                 loggerMock.Object,
                 CreateRefreshReviewStore( )

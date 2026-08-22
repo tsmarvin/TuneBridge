@@ -712,6 +712,26 @@ public class QueueContractsTests {
                 now, TimeSpan.MaxValue, now.AddMinutes( -120 ) ) );
     }
 
+    /// <summary>Rechecking an existing deferral applies upper bounds without extending it.</summary>
+    [TestMethod]
+    public void QueueSettings_BoundExistingRateLimitNotBefore_DoesNotReapplyMinimum( ) {
+        QueueSettings settings = new( ) {
+            RateLimitMinimumRetryAfter = TimeSpan.FromSeconds( 5 ),
+            RateLimitMaximumRetryAfter = TimeSpan.FromHours( 1 ),
+            JobExpirationMinutes = 120
+        };
+        DateTimeOffset now = DateTimeOffset.Parse( "2026-08-09T12:00:00Z" );
+
+        Assert.AreEqual(
+            now.AddSeconds( 2 ),
+            settings.BoundExistingRateLimitNotBefore(
+                now, now.AddSeconds( 2 ), now.AddMinutes( -10 ) ) );
+        Assert.AreEqual(
+            now.AddMinutes( 1 ),
+            settings.BoundExistingRateLimitNotBefore(
+                now, now.AddHours( 1 ), now.AddMinutes( -119 ) ) );
+    }
+
     private static IConfiguration BuildQueueConfiguration(
         string expirationMinutes,
         string defaultRetryAfter,

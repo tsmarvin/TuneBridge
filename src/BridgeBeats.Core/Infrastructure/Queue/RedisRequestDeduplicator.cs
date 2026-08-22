@@ -277,7 +277,7 @@ public sealed partial class RedisRequestDeduplicator(
                 await foreach (ChannelMessage message in messageQueue.WithCancellation( cts.Token )) {
                     string result = message.Message.ToString( );
                     if (result == LookupConstants.StateChangedSentinel) {
-                        continue;
+                        return result;
                     }
                     if (IsTerminalWithoutResult( result )) {
                         return null;
@@ -361,7 +361,13 @@ public sealed partial class RedisRequestDeduplicator(
                 await foreach (ChannelMessage message in messageQueue.WithCancellation( cts.Token )) {
                     string result = message.Message.ToString( );
                     if (result == LookupConstants.StateChangedSentinel) {
-                        continue;
+                        if (missedResultCheck is not null) {
+                            string? changedResult = await missedResultCheck( );
+                            if (!string.IsNullOrEmpty( changedResult )) {
+                                return changedResult;
+                            }
+                        }
+                        return result;
                     }
                     if (IsTerminalWithoutResult( result )) {
                         return null;

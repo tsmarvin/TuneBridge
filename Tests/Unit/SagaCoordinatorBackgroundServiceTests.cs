@@ -40,8 +40,16 @@ public class SagaCoordinatorBackgroundServiceTests {
     private Mock<ILogger<SagaResultCombiner>> _combinerLoggerMock = null!;
     /// <summary>Real result combiner the service uses to merge provider results.</summary>
     private SagaResultCombiner _resultCombiner = null!;
-    /// <summary>Mock provider-queue resolver used to assert secondary-lookup enqueues.</summary>
+    /// <summary>Mock provider-queue resolver used by the outbox adapter in enqueue assertions.</summary>
     private Mock<IProviderQueueResolver<QueuedLookupRequest>> _queueResolverMock = null!;
+    /// <summary>Mock durable dispatch outbox used to stage and relay secondary lookups.</summary>
+    private Mock<ILookupDispatchOutbox> _dispatchOutboxMock = null!;
+    /// <summary>Requests retained by the test outbox until its immediate relay runs.</summary>
+    private System.Collections.Concurrent.ConcurrentDictionary<SupportedProviders, QueuedLookupRequest>
+        _stagedRequests = null!;
+    /// <summary>Effective routing priority retained with each staged request.</summary>
+    private System.Collections.Concurrent.ConcurrentDictionary<SupportedProviders, QueuePriority>
+        _stagedPriorities = null!;
     /// <summary>The set of enabled providers (Spotify, Apple Music, Tidal) the service considers.</summary>
     private HashSet<SupportedProviders> _enabledProviders = null!;
     /// <summary>Mock logger for the background service.</summary>
@@ -74,9 +82,48 @@ public class SagaCoordinatorBackgroundServiceTests {
         _combinerLoggerMock = new Mock<ILogger<SagaResultCombiner>>( );
         _resultCombiner = new SagaResultCombiner( _combinerLoggerMock.Object );
         _queueResolverMock = new Mock<IProviderQueueResolver<QueuedLookupRequest>>( );
+        _dispatchOutboxMock = new Mock<ILookupDispatchOutbox>( );
+        _stagedRequests = new( );
+        _stagedPriorities = new( );
         _enabledProviders = [SupportedProviders.Spotify, SupportedProviders.AppleMusic, SupportedProviders.Tidal];
         _loggerMock = new Mock<ILogger<SagaCoordinatorBackgroundService>>( );
         _refreshReviewStoreMock = new Mock<IRefreshReviewStore>( );
+        _ = _dispatchOutboxMock
+            .Setup( outbox => outbox.StageBatchAsync(
+                It.IsAny<IReadOnlyList<QueuedLookupRequest>>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( (
+                IReadOnlyList<QueuedLookupRequest> requests,
+                QueuePriority priority,
+                CancellationToken _ ) => {
+                    foreach (QueuedLookupRequest request in requests) {
+                        _stagedRequests[request.Provider] = request;
+                        _stagedPriorities[request.Provider] = priority;
+                    }
+
+                    return (IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome>)
+                        requests.ToDictionary(
+                            request => request.Provider,
+                            _ => ProviderDispatchStageOutcome.Staged );
+                } );
+        _ = _dispatchOutboxMock
+            .Setup( outbox => outbox.DispatchAsync(
+                It.IsAny<string>( ),
+                It.IsAny<SupportedProviders>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Returns( async (
+                string _,
+                SupportedProviders provider,
+                CancellationToken cancellationToken ) => {
+                    if (!_stagedRequests.TryGetValue( provider, out QueuedLookupRequest? request )) {
+                        return false;
+                    }
+
+                    await _queueResolverMock.Object.GetQueue( provider ).EnqueueAsync(
+                        request, _stagedPriorities[provider], cancellationToken );
+                    return true;
+                } );
         _ = _refreshReviewStoreMock.Setup( store => store.GetPendingForSagaAsync(
                 It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
             .ReturnsAsync( [] );
@@ -177,7 +224,7 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
-                _queueResolverMock.Object,
+                _dispatchOutboxMock.Object,
                 _enabledProviders,
                 _loggerMock.Object,
                 _refreshReviewStoreMock.Object
@@ -199,7 +246,7 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
-                _queueResolverMock.Object,
+                _dispatchOutboxMock.Object,
                 _enabledProviders,
                 _loggerMock.Object,
                 _refreshReviewStoreMock.Object
@@ -221,7 +268,7 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
-                _queueResolverMock.Object,
+                _dispatchOutboxMock.Object,
                 _enabledProviders,
                 _loggerMock.Object,
                 _refreshReviewStoreMock.Object
@@ -243,7 +290,7 @@ public class SagaCoordinatorBackgroundServiceTests {
                 null!,
                 _deduplicatorMock.Object,
                 _resultCombiner,
-                _queueResolverMock.Object,
+                _dispatchOutboxMock.Object,
                 _enabledProviders,
                 _loggerMock.Object,
                 _refreshReviewStoreMock.Object
@@ -265,7 +312,7 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 null!,
                 _resultCombiner,
-                _queueResolverMock.Object,
+                _dispatchOutboxMock.Object,
                 _enabledProviders,
                 _loggerMock.Object,
                 _refreshReviewStoreMock.Object
@@ -287,7 +334,7 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 null!,
-                _queueResolverMock.Object,
+                _dispatchOutboxMock.Object,
                 _enabledProviders,
                 _loggerMock.Object,
                 _refreshReviewStoreMock.Object
@@ -309,7 +356,7 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
-                _queueResolverMock.Object,
+                _dispatchOutboxMock.Object,
                 _enabledProviders,
                 null!,
                 _refreshReviewStoreMock.Object
@@ -328,7 +375,7 @@ public class SagaCoordinatorBackgroundServiceTests {
                 _cacheRepositoryMock.Object,
                 _deduplicatorMock.Object,
                 _resultCombiner,
-                _queueResolverMock.Object,
+                _dispatchOutboxMock.Object,
                 _enabledProviders,
                 _loggerMock.Object,
                 null!
@@ -1745,10 +1792,8 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies the marker-contention path: when the secondaries-queued marker is already taken by a
-    /// concurrent worker (the claim returns false), this worker does not enqueue any lookups but
-    /// still initializes provider states, marks the saga partial, writes a partial result, and
-    /// defers finalization, so the marker holder remains responsible for completion.
+    /// Verifies that the legacy secondaries marker is advisory after atomic staging: a stale marker
+    /// cannot suppress the outbox recovery path or strand secondary legs.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1810,17 +1855,16 @@ public class SagaCoordinatorBackgroundServiceTests {
             // Expected
         }
 
-        // Assert - The losing handler must not queue duplicate secondary lookups
+        // Atomic staging, not the marker, decides whether a delivery is new or already published.
         queueMock.Verify(
             q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ),
-            Times.Never
+            Times.Exactly( 2 )
         );
 
-        // Assert - The idempotent state/partial writes still run (they happen before the
-        // marker claim so a published partial can never be mistaken for a final result)
+        // Provider initialization is part of the outbox Lua transaction.
         _sagaManagerMock.Verify(
             s => s.TryInitializeProviderStatesAsync( TestSagaId, It.IsAny<IEnumerable<SupportedProviders>>( ), "instance-current", It.IsAny<CancellationToken>( ) ),
-            Times.Once
+            Times.Never
         );
         _sagaManagerMock.Verify(
             s => s.TrySetIsPartialAsync( TestSagaId, true, "instance-current", It.IsAny<CancellationToken>( ) ),
@@ -1845,9 +1889,8 @@ public class SagaCoordinatorBackgroundServiceTests {
     }
 
     /// <summary>
-    /// Verifies the ordering invariant on the secondaries path: provider states are initialized and
-    /// the saga is marked partial before the secondaries-queued marker is claimed, so a concurrent
-    /// worker that loses the marker race still observes initialized state.
+    /// Verifies the ordering invariant on the secondaries path: the saga is marked partial, then all
+    /// provider legs are atomically staged, and only then is the legacy marker updated.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1880,10 +1923,6 @@ public class SagaCoordinatorBackgroundServiceTests {
         // Record the order of the saga-manager calls that close the partial-vs-final race
         List<string> callOrder = [];
         _ = _sagaManagerMock
-            .Setup( s => s.TryInitializeProviderStatesAsync( TestSagaId, It.IsAny<IEnumerable<SupportedProviders>>( ), "instance-current", It.IsAny<CancellationToken>( ) ) )
-            .Callback( ( ) => callOrder.Add( "InitializeProviderStates" ) )
-            .ReturnsAsync( true );
-        _ = _sagaManagerMock
             .Setup( s => s.TrySetIsPartialAsync( TestSagaId, true, "instance-current", It.IsAny<CancellationToken>( ) ) )
             .Callback( ( ) => callOrder.Add( "SetIsPartial" ) )
             .ReturnsAsync( true );
@@ -1891,6 +1930,16 @@ public class SagaCoordinatorBackgroundServiceTests {
             .Setup( s => s.TryMarkSecondariesQueuedAsync( TestSagaId, "instance-current", It.IsAny<CancellationToken>( ) ) )
             .Callback( ( ) => callOrder.Add( "TryMarkSecondariesQueued" ) )
             .ReturnsAsync( true );
+        _ = _dispatchOutboxMock
+            .Setup( outbox => outbox.StageBatchAsync(
+                It.IsAny<IReadOnlyList<QueuedLookupRequest>>( ),
+                QueuePriority.Interactive,
+                It.IsAny<CancellationToken>( ) ) )
+            .Callback( ( ) => callOrder.Add( "StageBatch" ) )
+            .ReturnsAsync( new Dictionary<SupportedProviders, ProviderDispatchStageOutcome> {
+                [SupportedProviders.AppleMusic] = ProviderDispatchStageOutcome.Staged,
+                [SupportedProviders.Tidal] = ProviderDispatchStageOutcome.Staged
+            } );
 
         Mock<IRequestQueue<QueuedLookupRequest>> queueMock = new( );
         _ = _queueResolverMock
@@ -1921,18 +1970,17 @@ public class SagaCoordinatorBackgroundServiceTests {
 
         // Assert - The idempotent writes both precede the marker claim
         CollectionAssert.AreEqual(
-            new List<string> { "InitializeProviderStates", "SetIsPartial", "TryMarkSecondariesQueued" },
+            new List<string> { "SetIsPartial", "StageBatch", "TryMarkSecondariesQueued" },
             callOrder
         );
     }
 
     /// <summary>
-    /// Verifies that every failed secondary enqueue is converted into a terminal provider leg and
-    /// publishes progress, so the one-time fan-out marker cannot strand the saga.
+    /// Verifies that immediate relay failures leave durable provider legs pending for relay retry.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task SagaCompletion_WhenEveryEnqueueFails_ReachesTerminalStateAndWritesPartial( ) {
+    public async Task SagaCompletion_WhenEveryImmediateRelayFails_RemainsPartialForRelayRetry( ) {
         // Arrange
         Dictionary<string, Action<RedisChannel, RedisValue>> handlers = [];
         _ = _subscriberMock
@@ -1995,11 +2043,10 @@ public class SagaCoordinatorBackgroundServiceTests {
             Times.Exactly( 2 )
         );
 
-        // No providers remain unresolved: both failed enqueues were durably converted into
-        // terminal failed legs, so this invocation finalizes immediately.
+        // The staged provider legs remain unresolved until the relay succeeds and workers finish.
         _sagaManagerMock.Verify(
             s => s.TrySetFinalResultUriAsync( It.IsAny<string>( ), It.IsAny<string>( ), "instance-current", It.IsAny<CancellationToken>( ) ),
-            Times.Once
+            Times.Never
         );
 
         _atProtoStorageMock.Verify(
@@ -2008,7 +2055,7 @@ public class SagaCoordinatorBackgroundServiceTests {
         );
         _sagaManagerMock.Verify(
             s => s.TrySetPartialResultUriAsync( TestSagaId, TestRecordUri, "instance-current", It.IsAny<CancellationToken>( ) ),
-            Times.Never
+            Times.Once
         );
         _sagaManagerMock.Verify(
             s => s.TrySetIsPartialAsync( TestSagaId, true, "instance-current", It.IsAny<CancellationToken>( ) ),
@@ -2022,20 +2069,20 @@ public class SagaCoordinatorBackgroundServiceTests {
                     state.IsComplete && !state.IsSuccess && state.ErrorMessage != null ),
                 "instance-current",
                 It.IsAny<CancellationToken>( ) ),
-            Times.Exactly( 2 )
+            Times.Never
         );
         _subscriberMock.Verify(
             s => s.PublishAsync(
                 RedisChannel.Literal( "saga:completed" ),
                 TestSagaId,
                 It.IsAny<CommandFlags>( ) ),
-            Times.AtLeastOnce( )
+            Times.Never
         );
 
         // Successful terminal release clears the reconciliation entry.
         _sagaManagerMock.Verify(
             s => s.RemoveFromPendingIndexAsync( TestSagaId, It.IsAny<CancellationToken>( ) ),
-            Times.Once
+            Times.Never
         );
     }
 
@@ -2132,21 +2179,17 @@ public class SagaCoordinatorBackgroundServiceTests {
         _sagaManagerMock.Verify(
             s => s.TryUpdateProviderStateAsync(
                 TestSagaId,
-                It.Is<ProviderLookupState>( state =>
-                    state.Provider == SupportedProviders.Tidal
-                    && state.IsComplete
-                    && !state.IsSuccess
-                    && state.ErrorMessage != null ),
+                It.Is<ProviderLookupState>( state => state.Provider == SupportedProviders.Tidal ),
                 "instance-current",
                 It.IsAny<CancellationToken>( ) ),
-            Times.Once
+            Times.Never
         );
         _subscriberMock.Verify(
             s => s.PublishAsync(
                 RedisChannel.Literal( "saga:completed" ),
                 TestSagaId,
                 It.IsAny<CommandFlags>( ) ),
-            Times.AtLeastOnce( )
+            Times.Never
         );
 
         // Assert - The pending index is NOT cleared: at least one provider is in flight
@@ -3681,7 +3724,7 @@ public class SagaCoordinatorBackgroundServiceTests {
             _cacheRepositoryMock.Object,
             _deduplicatorMock.Object,
             _resultCombiner,
-            _queueResolverMock.Object,
+            _dispatchOutboxMock.Object,
             _enabledProviders,
             _loggerMock.Object,
             reviewStore ?? _refreshReviewStoreMock.Object

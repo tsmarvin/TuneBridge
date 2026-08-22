@@ -967,9 +967,9 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
                 // NotBefore is the durable source of truth for a rate-limit deferral. The shared
                 // tracker and in-process cooldown avoid most early dequeues, but this guard remains
                 // authoritative after tracker write failures or process restarts.
-                DateTimeOffset boundedNotBefore = _queueSettings.GetBoundedRateLimitRetryAfter(
+                DateTimeOffset boundedNotBefore = _queueSettings.BoundExistingRateLimitNotBefore(
                     now,
-                    notBefore - now,
+                    notBefore,
                     message.Payload.CreatedAt );
                 ArmRateLimitCooldown(
                     message.Payload.RateLimitedEndpoint ?? operationEndpoint,
@@ -1143,11 +1143,17 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         foreach (QueuedMessage<QueuedLookupRequest> message in messages) {
             if (ct.IsCancellationRequested) { break; }
             try {
+                DateTimeOffset? effectiveNotBefore = preserveAttemptCount && notBefore is not null
+                    ? _queueSettings.BoundExistingRateLimitNotBefore(
+                        DateTimeOffset.UtcNow,
+                        notBefore.Value,
+                        message.Payload.CreatedAt )
+                    : notBefore;
                 await RequeueSingleAsync( message, ct, dequeueWallTimer, dequeueWallStart,
                     wallRecordedMessageIds: wallRecordedMessageIds,
                     preserveAttemptCount: preserveAttemptCount,
                     rateLimitedEndpoint: rateLimitedEndpoint,
-                    notBefore: notBefore );
+                    notBefore: effectiveNotBefore );
             } catch (PostCommitAcknowledgementException) {
                 throw;
             } catch (QueueDeliveryIdentityQuarantineException) {

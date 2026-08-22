@@ -372,6 +372,23 @@ public sealed partial class LookupOrchestrator(
             // Wait for the other instance to complete
             string? resultUri = await _deduplicator.WaitForCompletionAsync( lookupKey, waitTimeout );
 
+            if (resultUri == LookupConstants.StateChangedSentinel) {
+                TimeSpan remaining = deadline - DateTimeOffset.UtcNow;
+                if (remaining <= TimeSpan.Zero) {
+                    return new LookupResult { Result = null };
+                }
+                return await PerformLookupAsync(
+                    lookupKey,
+                    lookupType,
+                    lookupValue,
+                    cacheCheck,
+                    isAlbum,
+                    title,
+                    artist,
+                    initialProvider,
+                    remaining );
+            }
+
             // Check for rate-limited sentinel - return any stored partial data
             // alongside the rate-limit info instead of dropping it
             if (resultUri == LookupConstants.RateLimitedSentinel) {
@@ -585,13 +602,12 @@ public sealed partial class LookupOrchestrator(
 
         // Direct external-id lookups own one independent leg per enabled provider. URL lookups
         // intentionally start with only the URL's provider and let the coordinator derive
-        // secondary identifiers. When a maintenance saga is promoted, enqueue an interactive copy
-        // for every still-pending direct leg; the generation fence makes the old bulk copy stale
-        // after the first successful commit.
+        // secondary identifiers. Stage the complete expected provider set in one Redis transaction
+        // so the saga can never appear complete while a sibling leg is still unstaged.
         IReadOnlyList<SupportedProviders> providersToEnqueue = initialProvider.HasValue
             ? [firstProvider]
             : providersToInitialize;
-        List<SupportedProviders> stagedProviders = [];
+        List<QueuedLookupRequest> requestsToStage = [];
         foreach (SupportedProviders provider in providersToEnqueue) {
             bool providerMissing = !saga.ProviderStates.TryGetValue(
                 provider, out ProviderLookupState? queuedProviderState );
@@ -599,7 +615,7 @@ public sealed partial class LookupOrchestrator(
                 continue;
             }
 
-            QueuedLookupRequest request = new( ) {
+            requestsToStage.Add( new QueuedLookupRequest {
                 RequestId = Guid.NewGuid( ).ToString( "N" ),
                 Provider = provider,
                 LookupType = lookupType,
@@ -612,24 +628,34 @@ public sealed partial class LookupOrchestrator(
                 // Interactive origin is persisted into the saga so secondary lookups
                 // spawned by the coordinator inherit the caller's urgency
                 OriginPriority = QueuePriority.Interactive
-            };
+            } );
+        }
 
-            ProviderDispatchStageOutcome stageOutcome = await _dispatchOutbox.StageAsync(
-                request,
-                QueuePriority.Interactive );
-            if (stageOutcome == ProviderDispatchStageOutcome.SagaInstanceMismatch) {
-                throw new InvalidOperationException(
-                    $"Saga instance was replaced before provider dispatch staging for {sagaId}." );
-            }
-            if (stageOutcome == ProviderDispatchStageOutcome.Staged) {
-                stagedProviders.Add( provider );
-            }
+        IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome> stageOutcomes =
+            requestsToStage.Count == 0
+                ? new Dictionary<SupportedProviders, ProviderDispatchStageOutcome>( )
+                : requestsToStage.Count == 1
+                    ? new Dictionary<SupportedProviders, ProviderDispatchStageOutcome> {
+                        [requestsToStage[0].Provider] = await _dispatchOutbox.StageAsync(
+                            requestsToStage[0], QueuePriority.Interactive )
+                    }
+                    : await _dispatchOutbox.StageBatchAsync(
+                        requestsToStage, QueuePriority.Interactive );
+        if (stageOutcomes.Values.Any(
+            outcome => outcome == ProviderDispatchStageOutcome.SagaInstanceMismatch )) {
+            throw new InvalidOperationException(
+                $"Saga instance was replaced before provider dispatch staging for {sagaId}." );
+        }
 
+        List<SupportedProviders> stagedProviders = [.. stageOutcomes
+            .Where( pair => pair.Value == ProviderDispatchStageOutcome.Staged )
+            .Select( pair => pair.Key )];
+        foreach (SupportedProviders provider in providersToEnqueue) {
             LogSagaCreated( _logger, sagaId, provider, lookupType, lookupValue );
         }
 
-        // All legs are durable before any best-effort immediate relay. A caller crash or Redis
-        // response failure cannot strand an unstaged sibling; the hosted relay retries entries.
+        // All expected legs and their outbox records are durable before any best-effort immediate
+        // relay. The hosted relay retries entries left behind by caller interruption.
         foreach (SupportedProviders provider in stagedProviders) {
             try {
                 _ = await _dispatchOutbox.DispatchAsync( sagaId, provider );
@@ -756,6 +782,10 @@ public sealed partial class LookupOrchestrator(
 
             if (nextUri == LookupConstants.RateLimitedSentinel) {
                 return await BuildRateLimitedPartialAsync( sagaId, result );
+            }
+
+            if (nextUri == LookupConstants.StateChangedSentinel) {
+                continue;
             }
 
             if (string.IsNullOrEmpty( nextUri )) {

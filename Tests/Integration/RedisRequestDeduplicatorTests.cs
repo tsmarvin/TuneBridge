@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Core.Infrastructure.Queue;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -272,12 +273,11 @@ public class RedisRequestDeduplicatorTests {
             RequestKey, next.LeaseToken!, null, TestContext.CancellationToken ) );
     }
 
-    /// <summary>A state-change release wakes a waiter to recheck without consuming its remaining wait budget.</summary>
+    /// <summary>A state-change release immediately returns the recheck signal to the waiter.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task WaitForCompletionAsync_StateChangedThenResult_KeepsWaitingForResult( ) {
+    public async Task WaitForCompletionAsync_StateChanged_ReturnsRecheckSignal( ) {
         const string RequestKey = "isrc:STATE-CHANGED";
-        const string ExpectedUri = "at://did:plc:test/link.bridgebeats.lookup/track:STATE-CHANGED";
         Contracts.Records.DeduplicationResult owner = await _deduplicator.TryAcquireAsync(
             RequestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
         RedisRequestDeduplicator waiter = new(
@@ -288,20 +288,14 @@ public class RedisRequestDeduplicatorTests {
 
         Assert.IsTrue( await _deduplicator.ReleaseOwnedForStateRecheckAsync(
             RequestKey, owner.LeaseToken!, TestContext.CancellationToken ) );
-        await Task.Delay( 100, TestContext.CancellationToken );
-        Assert.IsFalse( waitTask.IsCompleted,
-            "A non-terminal state-change signal must not complete the waiter." );
-
-        await _deduplicator.ReleaseAsync( RequestKey, ExpectedUri, TestContext.CancellationToken );
-        Assert.AreEqual( ExpectedUri, await waitTask );
+        Assert.AreEqual( LookupConstants.StateChangedSentinel, await waitTask );
     }
 
-    /// <summary>The final-completion waiter also ignores a state-change signal and honors its own deadline.</summary>
+    /// <summary>The final-completion waiter rechecks state and returns the signal when no result exists.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task WaitForFinalCompletionAsync_StateChangedThenResult_KeepsWaitingForResult( ) {
+    public async Task WaitForFinalCompletionAsync_StateChanged_ReturnsRecheckSignal( ) {
         const string RequestKey = "isrc:FINAL-STATE-CHANGED";
-        const string ExpectedUri = "at://did:plc:test/link.bridgebeats.lookup/track:FINAL-STATE-CHANGED";
         Contracts.Records.DeduplicationResult owner = await _deduplicator.TryAcquireAsync(
             RequestKey, TimeSpan.FromMinutes( 5 ), TestContext.CancellationToken );
         RedisRequestDeduplicator waiter = new(
@@ -312,12 +306,7 @@ public class RedisRequestDeduplicatorTests {
 
         Assert.IsTrue( await _deduplicator.ReleaseOwnedForStateRecheckAsync(
             RequestKey, owner.LeaseToken!, TestContext.CancellationToken ) );
-        await Task.Delay( 100, TestContext.CancellationToken );
-        Assert.IsFalse( waitTask.IsCompleted,
-            "A non-terminal state-change signal must not complete the final waiter." );
-
-        await _deduplicator.ReleaseAsync( RequestKey, ExpectedUri, TestContext.CancellationToken );
-        Assert.AreEqual( ExpectedUri, await waitTask );
+        Assert.AreEqual( LookupConstants.StateChangedSentinel, await waitTask );
     }
 
     /// <summary>A coordinator publication wakes waiters but cannot delete a caller-owned lease.</summary>

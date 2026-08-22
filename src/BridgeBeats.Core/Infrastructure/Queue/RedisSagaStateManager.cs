@@ -45,10 +45,10 @@ public sealed partial class RedisSagaStateManager(
     private readonly QueueSettings _settings = settings?.Value ?? throw new ArgumentNullException( nameof( settings ) );
 
     /// <summary>Key prefix for saga hashes. Literal value: <c>"saga:"</c>.</summary>
-    private const string SagaPrefix = "saga:";
+    internal const string SagaPrefix = "saga:";
 
     /// <summary>Infix between saga id and provider in a provider key. Literal value: <c>":provider:"</c>.</summary>
-    private const string ProviderSuffix = ":provider:";
+    internal const string ProviderSuffix = ":provider:";
 
     /// <summary>Key of the set indexing sagas awaiting finalization. Literal value: <c>"saga:pending"</c>.</summary>
     private const string PendingSagaSetKey = "saga:pending";
@@ -94,7 +94,7 @@ public sealed partial class RedisSagaStateManager(
 
     /// <summary>Core hash field: the highest provider-count already durably written to the PDS. Literal: <c>"writeGeneration"</c>.</summary>
     private const string FieldWriteGeneration = "writeGeneration";
-    private const string FieldInstanceToken = "instanceToken";
+    internal const string FieldInstanceToken = "instanceToken";
 
     /// <summary>JSON shape consumed by the atomic Redis rate-limit merge script.</summary>
     private sealed record RateLimitInfoStorage(
@@ -190,19 +190,19 @@ public sealed partial class RedisSagaStateManager(
     // Hash field names for provider state
 
     /// <summary>Provider hash field: whether the provider has finished. Literal: <c>"isComplete"</c>.</summary>
-    private const string FieldIsComplete = "isComplete";
+    internal const string FieldIsComplete = "isComplete";
 
     /// <summary>Provider hash field: whether the provider succeeded. Literal: <c>"isSuccess"</c>.</summary>
-    private const string FieldIsSuccess = "isSuccess";
+    internal const string FieldIsSuccess = "isSuccess";
 
     /// <summary>Provider hash field: serialized provider result. Literal: <c>"resultJson"</c>.</summary>
-    private const string FieldResultJson = "resultJson";
+    internal const string FieldResultJson = "resultJson";
 
     /// <summary>Provider hash field: when the provider completed (ISO-8601). Literal: <c>"completedAt"</c>.</summary>
-    private const string FieldCompletedAt = "completedAt";
+    internal const string FieldCompletedAt = "completedAt";
 
     /// <summary>Provider hash field: an error message if the provider failed. Literal: <c>"errorMessage"</c>.</summary>
-    private const string FieldErrorMessage = "errorMessage";
+    internal const string FieldErrorMessage = "errorMessage";
 
     /// <summary>
     /// Returns the existing saga for an id, refreshing its TTL, or creates a new one.
@@ -820,13 +820,13 @@ public sealed partial class RedisSagaStateManager(
     /// <summary>Builds the core saga hash key: <c>saga:{sagaId}</c>.</summary>
     /// <param name="sagaId">The saga id.</param>
     /// <returns>The core saga key.</returns>
-    private static string GetSagaKey( string sagaId ) => $"{SagaPrefix}{sagaId}";
+    internal static string GetSagaKey( string sagaId ) => $"{SagaPrefix}{sagaId}";
 
     /// <summary>Builds a provider hash key: <c>saga:{sagaId}:provider:{provider}</c>.</summary>
     /// <param name="sagaId">The saga id.</param>
     /// <param name="provider">The provider.</param>
     /// <returns>The provider key.</returns>
-    private static string GetProviderKey( string sagaId, SupportedProviders provider ) =>
+    internal static string GetProviderKey( string sagaId, SupportedProviders provider ) =>
         $"{SagaPrefix}{sagaId}{ProviderSuffix}{provider}";
 
     private List<ProviderRateLimitInfo>? DeserializeRateLimitInfo(

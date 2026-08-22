@@ -6,6 +6,9 @@ public enum ProviderDispatchStageOutcome {
     SagaInstanceMismatch = 0,
     /// <summary>A durable outbox item is pending delivery.</summary>
     Staged = 1,
-    /// <summary>The provider leg was already dispatched and must not be enqueued again.</summary>
+    /// <summary>
+    /// The provider leg is complete or has a fresh published delivery. Incomplete published legs
+    /// become eligible for a guarded re-drive after the outbox visibility window.
+    /// </summary>
     AlreadyDispatched = 2
 }

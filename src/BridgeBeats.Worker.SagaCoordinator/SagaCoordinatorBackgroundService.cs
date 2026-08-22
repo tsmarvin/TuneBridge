@@ -57,7 +57,7 @@ namespace BridgeBeats.Worker.SagaCoordinator;
 /// <param name="cacheRepository">Caches final/partial results and resolves cached ISRC/UPC results.</param>
 /// <param name="deduplicator">Releases the in-flight lock and notifies synchronous waiters on completion.</param>
 /// <param name="resultCombiner">Combines per-provider saga state into a single media-link result.</param>
-/// <param name="queueResolver">Resolves the per-provider queue used to enqueue secondary lookups.</param>
+/// <param name="dispatchOutbox">Atomically stages and relays secondary provider lookups.</param>
 /// <param name="enabledProviders">The providers eligible for secondary fan-out.</param>
 /// <param name="logger">The logger for this service.</param>
 /// <param name="refreshReviewStore">Stale-refresh context and unresolved-review store.</param>
@@ -68,7 +68,7 @@ public sealed partial class SagaCoordinatorBackgroundService(
     IMediaLinkCacheRepository cacheRepository,
     IRequestDeduplicator deduplicator,
     SagaResultCombiner resultCombiner,
-    IProviderQueueResolver<QueuedLookupRequest> queueResolver,
+    ILookupDispatchOutbox dispatchOutbox,
     HashSet<SupportedProviders> enabledProviders,
     ILogger<SagaCoordinatorBackgroundService> logger,
     IRefreshReviewStore refreshReviewStore
@@ -85,8 +85,8 @@ public sealed partial class SagaCoordinatorBackgroundService(
                                                         ?? throw new ArgumentNullException( nameof( deduplicator ) );
     private readonly SagaResultCombiner _resultCombiner = resultCombiner
                                                         ?? throw new ArgumentNullException( nameof( resultCombiner ) );
-    private readonly IProviderQueueResolver<QueuedLookupRequest> _queueResolver = queueResolver
-                                                                                ?? throw new ArgumentNullException( nameof( queueResolver ) );
+    private readonly ILookupDispatchOutbox _dispatchOutbox = dispatchOutbox
+                                                            ?? throw new ArgumentNullException( nameof( dispatchOutbox ) );
     private readonly HashSet<SupportedProviders> _enabledProviders = enabledProviders
                                                                    ?? throw new ArgumentNullException( nameof( enabledProviders ) );
     private readonly ILogger<SagaCoordinatorBackgroundService> _logger = logger
@@ -1030,19 +1030,9 @@ public sealed partial class SagaCoordinatorBackgroundService(
             return false;
         }
 
-        // Add the new providers to the ORIGINAL saga (don't create separate sagas) and mark
-        // the saga partial so waiting callers can distinguish the upcoming partial result
-        // from a final one and keep waiting for the secondary lookups. Both writes are
-        // idempotent and deliberately run BEFORE the marker claim below: once either racing
-        // handler reports "secondaries pending" (causing its caller to publish the partial
-        // and release waiters), the saga is already guaranteed to read as incomplete and
-        // partial. Otherwise the marker loser could publish while IsPartial is still false
-        // and no pending states exist, letting a waiting orchestrator mistake the
-        // one-provider result for a final one (isFinal = IsComplete && !IsPartial).
-        bool fenced = await _sagaManager.TryInitializeProviderStatesAsync( originalSaga.SagaId, providersToQueue, instanceToken, ct );
-        if (!fenced) {
-            return false;
-        }
+        // Mark partial before making any secondary dispatch visible. The batch outbox transaction
+        // below then initializes the complete secondary provider set and stages every delivery at
+        // once, so a relay can never expose a partially initialized fan-out.
         if (!await _sagaManager.TrySetIsPartialAsync( originalSaga.SagaId, true, instanceToken, ct )) {
             return false;
         }
@@ -1050,16 +1040,6 @@ public sealed partial class SagaCoordinatorBackgroundService(
         if (_logger.IsEnabled( LogLevel.Information )) {
             string providerNames = string.Join( ", ", providersToQueue );
             LogAddedProvidersToSaga( _logger, originalSaga.SagaId, providerNames );
-        }
-
-        // Atomically claim the right to enqueue secondaries - the only non-idempotent step.
-        // The worker publishes both saga:completed and complete:{key}, so both handlers can
-        // race through here and would otherwise enqueue every secondary twice. The loser
-        // still reports "secondaries pending" so its caller defers finalization.
-        bool markerAcquired = await _sagaManager.TryMarkSecondariesQueuedAsync( originalSaga.SagaId, instanceToken, ct );
-        if (!markerAcquired) {
-            LogSecondariesAlreadyQueued( _logger, originalSaga.SagaId );
-            return true;
         }
 
         // Interactive priority only when the saga originated from an interactive caller
@@ -1070,84 +1050,53 @@ public sealed partial class SagaCoordinatorBackgroundService(
             ? QueuePriority.Interactive
             : QueuePriority.Background;
 
-        // Queue lookups for each provider using the ORIGINAL saga ID
-        int queuedCount = 0;
-        int failedCount = 0;
+        List<QueuedLookupRequest> secondaryRequests = [];
         foreach (SupportedProviders provider in providersToQueue) {
+            secondaryRequests.Add( new QueuedLookupRequest {
+                RequestId = Guid.NewGuid().ToString("N"),
+                Provider = provider,
+                LookupType = lookupType,
+                LookupValue = externalId,
+                SagaId = originalSaga.SagaId,
+                SagaInstanceToken = instanceToken,
+                IsAlbum = isAlbum,
+                Title = firstResult.Title,
+                Artist = firstResult.Artist,
+                OriginPriority = originalSaga.OriginPriority
+            } );
+        }
+
+        IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome> outcomes =
+            await _dispatchOutbox.StageBatchAsync( secondaryRequests, secondaryPriority, ct );
+        if (outcomes.Values.Any(
+            outcome => outcome == ProviderDispatchStageOutcome.SagaInstanceMismatch )) {
+            return false;
+        }
+        _ = await _sagaManager.TryMarkSecondariesQueuedAsync(
+            originalSaga.SagaId, instanceToken, ct );
+
+        foreach ((SupportedProviders provider, ProviderDispatchStageOutcome outcome) in outcomes) {
+            if (outcome != ProviderDispatchStageOutcome.Staged) {
+                LogSecondariesAlreadyQueued( _logger, originalSaga.SagaId );
+                continue;
+            }
             try {
-                // Create and queue the lookup request using the ORIGINAL saga ID
-                QueuedLookupRequest secondaryRequest = new()
-                {
-                    RequestId = Guid.NewGuid().ToString("N"),
-                    Provider = provider,
-                    LookupType = lookupType,
-                    LookupValue = externalId,
-                    SagaId = originalSaga.SagaId,  // Use original saga ID!
-                    SagaInstanceToken = instanceToken,
-                    IsAlbum = isAlbum,
-                    Title = firstResult.Title,
-                    Artist = firstResult.Artist,
-                    OriginPriority = originalSaga.OriginPriority
-                };
-
-                IRequestQueue<QueuedLookupRequest> queue = _queueResolver.GetQueue(provider);
-
-                await queue.EnqueueAsync( secondaryRequest, secondaryPriority, ct );
+                _ = await _dispatchOutbox.DispatchAsync(
+                    originalSaga.SagaId, provider, ct );
 
                 string lookupTypeStr = lookupType.ToString( );
                 string providerStr = provider.ToString( );
                 LogQueuedSecondaryLookup( _logger, lookupTypeStr, providerStr, externalId, originalSaga.SagaId );
-                queuedCount++;
             } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
                 throw;
             } catch (Exception ex) {
                 string providerStr = provider.ToString( );
                 LogFailedToQueueSecondary( _logger, ex, providerStr, externalId );
-
-                // The one-time fan-out marker has already been claimed. Leaving this initialized
-                // provider incomplete would make the saga permanently non-terminal because no
-                // delivery exists to finish it and the marker prevents another fan-out. Record a
-                // terminal enqueue failure for this leg before continuing with the other providers.
-                ProviderLookupState enqueueFailure = new(
-                    Provider: provider,
-                    IsComplete: true,
-                    IsSuccess: false,
-                    ResultJson: null,
-                    CompletedAt: DateTimeOffset.UtcNow,
-                    ErrorMessage: $"Failed to enqueue {provider} secondary lookup."
-                );
-                if (!await _sagaManager.TryUpdateProviderStateAsync(
-                    originalSaga.SagaId,
-                    enqueueFailure,
-                    instanceToken,
-                    ct )) {
-                    return true;
-                }
-                originalSaga.ProviderStates[provider] = enqueueFailure;
-                failedCount++;
             }
         }
 
-        if (failedCount > 0) {
-            // Wake the coordinator after the failed legs have been made terminal. This is
-            // essential when every enqueue failed because no worker delivery exists to emit a
-            // later progress event; partial failures will also be rechecked safely.
-            ISubscriber subscriber = _redis.GetSubscriber( );
-            _ = await subscriber.PublishAsync(
-                RedisChannel.Literal( SagaCompletedChannel ),
-                originalSaga.SagaId );
-        }
-
-        if (queuedCount == 0) {
-            LogNoSecondariesEnqueued( _logger, originalSaga.SagaId, externalId );
-            // Every secondary leg now has a durable terminal enqueue failure, so no delivery can
-            // produce another event. Let this invocation proceed directly to finalization instead
-            // of writing an unnecessary partial generation first.
-            return false;
-        }
-
-        // Pending provider states exist and the saga is marked partial, so the caller must
-        // defer finalization while the successfully queued providers are still in flight.
+        // Pending provider states and durable outbox records exist even when an immediate relay
+        // fails, so the caller must defer finalization while the relay retries them.
         return true;
     }
 

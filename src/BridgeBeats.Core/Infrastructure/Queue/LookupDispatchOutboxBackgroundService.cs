@@ -10,20 +10,21 @@ internal sealed partial class LookupDispatchOutboxBackgroundService(
     ILookupDispatchOutbox outbox,
     ILogger<LookupDispatchOutboxBackgroundService> logger
 ) : BackgroundService {
-    private static readonly TimeSpan s_idleDelay = TimeSpan.FromSeconds( 1 );
+    private static TimeSpan GetIdleDelay( ) => TimeSpan.FromMilliseconds(
+        Random.Shared.Next( 750, 1251 ) );
 
     protected override async Task ExecuteAsync( CancellationToken stoppingToken ) {
         while (!stoppingToken.IsCancellationRequested) {
             try {
                 int dispatched = await outbox.DispatchPendingAsync( 100, stoppingToken );
                 if (dispatched == 0) {
-                    await Task.Delay( s_idleDelay, stoppingToken );
+                    await Task.Delay( GetIdleDelay( ), stoppingToken );
                 }
             } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
                 break;
             } catch (Exception ex) {
                 LogRelayFailure( logger, ex );
-                await Task.Delay( s_idleDelay, stoppingToken );
+                await Task.Delay( GetIdleDelay( ), stoppingToken );
             }
         }
     }

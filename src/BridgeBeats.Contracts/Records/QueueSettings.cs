@@ -169,4 +169,21 @@ public sealed record QueueSettings {
             ? now.Add( remainingJobLifetime )
             : maximumByConfiguration;
     }
+
+    /// <summary>
+    /// Applies only upper bounds to an already-established absolute eligibility instant. Unlike
+    /// <see cref="GetBoundedRateLimitRetryAfter"/>, this never reapplies the minimum delay and
+    /// therefore cannot extend a deferral as it approaches eligibility.
+    /// </summary>
+    public DateTimeOffset BoundExistingRateLimitNotBefore(
+        DateTimeOffset now,
+        DateTimeOffset notBefore,
+        DateTimeOffset? createdAt = null
+    ) {
+        DateTimeOffset upperBound = GetBoundedRateLimitRetryAfter(
+            now,
+            RateLimitMaximumRetryAfter,
+            createdAt );
+        return notBefore <= upperBound ? notBefore : upperBound;
+    }
 }
