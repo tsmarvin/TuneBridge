@@ -31,9 +31,11 @@ namespace BridgeBeats.Worker.JetStreamWatcher;
 /// </summary>
 /// <param name="logger">The logger for connection lifecycle and processing diagnostics.</param>
 /// <param name="queueResolver">Resolves the per-provider queue a discovered link is enqueued to.</param>
+/// <param name="sagaManager">Creates the fenced saga before its queue delivery is published.</param>
 public sealed partial class JetStreamWatcherService(
     ILogger<JetStreamWatcherService> logger,
-    IProviderQueueResolver<QueuedLookupRequest> queueResolver
+    IProviderQueueResolver<QueuedLookupRequest> queueResolver,
+    ISagaStateManager sagaManager
 ) : BackgroundService {
 
     /// <summary>
@@ -354,6 +356,8 @@ public sealed partial class JetStreamWatcherService(
             ? LookupKeyBuilder.TypedKey( lookupType, provider.Value, lookupValue )
             : LookupKeyBuilder.UrlKey( lookupValue );
         string sagaId = ISagaStateManager.GenerateSagaId( lookupKey );
+        LookupSagaState saga = await sagaManager.GetOrCreateAsync(
+            sagaId, lookupKey, lookupType, lookupValue, QueuePriority.Bulk, cancellationToken );
 
         // Create the lookup request with a saga ID for coordinating cross-provider lookups.
         // Bulk origin priority is persisted into the saga so secondary lookups spawned by
@@ -364,6 +368,7 @@ public sealed partial class JetStreamWatcherService(
             LookupType = lookupType,
             LookupValue = lookupValue,
             SagaId = sagaId,
+            SagaInstanceToken = saga.InstanceToken,
             IsAlbum = isAlbum,
             OriginPriority = QueuePriority.Bulk
         };
