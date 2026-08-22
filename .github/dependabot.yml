@@ -9,6 +9,11 @@ updates:
     directory: "/" # Location of .NET project files
     schedule:
       interval: "weekly"
+    groups:
+      entity-framework-core:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+          - "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
   - package-ecosystem: "docker"
     directory: "/containers" # Location of Dockerfiles
     schedule:
