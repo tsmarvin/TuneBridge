@@ -4,12 +4,12 @@
     "net10.0": {
       "Aspire.StackExchange.Redis": {
         "type": "Direct",
-        "requested": "[13.4.6, )",
-        "resolved": "13.4.6",
-        "contentHash": "eIdqyDrChSFrGInWzY6fp175grYvYVpaiWcymYMDSvrDj8gpGddOqEFKftylOMlxUEBkaxLt1itm0KHBY8DhZg==",
+        "requested": "[13.5.2, )",
+        "resolved": "13.5.2",
+        "contentHash": "gqw0F70XkWk37qt2C+894e3WpDSOQAyJ27ECueef8oA/pR1qLNMlWqqF2aDicFNIZzrae5KhPiKojEk6BTJi4w==",
         "dependencies": {
           "AspNetCore.HealthChecks.Redis": "9.0.0",
-          "Microsoft.Extensions.DependencyInjection.AutoActivation": "10.6.0",
+          "Microsoft.Extensions.DependencyInjection.AutoActivation": "10.8.0",
           "OpenTelemetry.Extensions.Hosting": "1.15.3",
           "StackExchange.Redis": "2.13.1",
           "System.IO.Hashing": "10.0.8"
