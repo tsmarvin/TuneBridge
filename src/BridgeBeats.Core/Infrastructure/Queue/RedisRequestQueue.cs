@@ -7,6 +7,7 @@ using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
 using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Domain.Providers.Common;
 using BridgeBeats.Core.Infrastructure.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
@@ -127,6 +128,26 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
     private const string EnqueueDeliveryScript = """
         local messageId = redis.call(
             'XADD', KEYS[1], '*', ARGV[1], ARGV[2], ARGV[3], ARGV[4])
+        if ARGV[6] == '1'
+            and redis.call('EXISTS', KEYS[3]) == 1
+            and redis.call('HGET', KEYS[3], 'instanceToken') == ARGV[7]
+            and redis.call('HGET', KEYS[2], ARGV[8]) == ARGV[9] then
+            redis.call('HSET', KEYS[3],
+                'payload', ARGV[2],
+                'targetStream', KEYS[1],
+                'workChannel', ARGV[13],
+                'priority', ARGV[12],
+                'enqueueOrigin', ARGV[14],
+                'currentMessageId', messageId)
+            if ARGV[10] == '' then
+                redis.call('HDEL', KEYS[3], 'notBefore')
+            else
+                redis.call('HSET', KEYS[3], 'notBefore', ARGV[10])
+            end
+            redis.call('HSET', KEYS[2], ARGV[11], ARGV[15])
+            redis.call('ZREM', KEYS[4], KEYS[3])
+            redis.call('ZADD', KEYS[5], ARGV[16], KEYS[3])
+        end
         redis.call('PUBLISH', ARGV[5], messageId)
         return messageId
         """;
@@ -135,6 +156,26 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
         if #source == 0 then return false end
         local replacement = redis.call(
             'XADD', KEYS[1], '*', ARGV[3], ARGV[4], ARGV[5], ARGV[6])
+        if ARGV[8] == '1'
+            and redis.call('EXISTS', KEYS[3]) == 1
+            and redis.call('HGET', KEYS[3], 'instanceToken') == ARGV[9]
+            and redis.call('HGET', KEYS[2], ARGV[10]) == ARGV[11] then
+            redis.call('HSET', KEYS[3],
+                'payload', ARGV[4],
+                'targetStream', KEYS[1],
+                'workChannel', ARGV[15],
+                'priority', ARGV[14],
+                'enqueueOrigin', ARGV[16],
+                'currentMessageId', replacement)
+            if ARGV[12] == '' then
+                redis.call('HDEL', KEYS[3], 'notBefore')
+            else
+                redis.call('HSET', KEYS[3], 'notBefore', ARGV[12])
+            end
+            redis.call('HSET', KEYS[2], ARGV[13], ARGV[17])
+            redis.call('ZREM', KEYS[4], KEYS[3])
+            redis.call('ZADD', KEYS[5], ARGV[18], KEYS[3])
+        end
         redis.call('XACK', KEYS[1], ARGV[2], ARGV[1])
         redis.call('XDEL', KEYS[1], ARGV[1])
         redis.call('PUBLISH', ARGV[7], replacement)
@@ -357,22 +398,48 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
 
         string stream = GetStreamForPriority( priority );
         string payload = JsonSerializer.Serialize( request, _jsonOptions );
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        QueuedLookupRequest? lookupRequest = request as QueuedLookupRequest;
+        bool trackOutbox = lookupRequest is not null
+            && !string.IsNullOrWhiteSpace( lookupRequest.SagaInstanceToken );
+        long recoveryAt = GetRecoveryAtUnixMilliseconds( lookupRequest?.NotBefore, now );
 
         IDatabase db = _redis.GetDatabase( );
         NameValueEntry[] fields = [
             new NameValueEntry( QueueStreamFieldNames.Payload, payload ),
-            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, DateTimeOffset.UtcNow.ToString( "O" ) )
+            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, now.ToString( "O" ) )
         ];
 
         RedisResult enqueueResult = await db.ScriptEvaluateAsync(
             EnqueueDeliveryScript,
-            [stream],
+            [
+                stream,
+                trackOutbox
+                    ? RedisSagaStateManager.GetProviderKey( lookupRequest!.SagaId, lookupRequest.Provider )
+                    : stream,
+                trackOutbox
+                    ? RedisLookupDispatchOutbox.GetOutboxKey( lookupRequest!.SagaId, lookupRequest.Provider )
+                    : stream,
+                RedisLookupDispatchOutbox.PendingIndexKey,
+                RedisLookupDispatchOutbox.PublishedRecoveryIndexKey
+            ],
             [
                 QueueStreamFieldNames.Payload,
                 fields[0].Value,
                 QueueStreamFieldNames.EnqueuedAt,
                 fields[1].Value,
-                _workSignalChannel.ToString( )
+                _workSignalChannel.ToString( ),
+                trackOutbox ? "1" : "0",
+                lookupRequest?.SagaInstanceToken ?? string.Empty,
+                RedisLookupDispatchOutbox.DispatchStateField,
+                RedisLookupDispatchOutbox.DispatchPublished,
+                lookupRequest?.NotBefore?.ToUnixTimeMilliseconds( ).ToString( CultureInfo.InvariantCulture ) ?? string.Empty,
+                RedisLookupDispatchOutbox.DispatchPublishedAtField,
+                ((int)priority).ToString( CultureInfo.InvariantCulture ),
+                _workSignalChannel.ToString( ),
+                ((int)(lookupRequest?.EnqueueOrigin ?? QueueEnqueueOrigin.New)).ToString( CultureInfo.InvariantCulture ),
+                now.ToUnixTimeMilliseconds( ),
+                recoveryAt
             ] );
         RedisValue messageId = (RedisValue)enqueueResult;
         if (!messageId.HasValue) {
@@ -497,7 +564,9 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
 
             // Get all currently rate-limited endpoints for this provider
             IReadOnlyList<RateLimitedEndpoint> rateLimitedEndpoints = await rateLimitTracker.GetAllRateLimitedAsync( _provider, cancellationToken );
-            HashSet<string> blockedEndpoints = rateLimitedEndpoints.Select( e => e.Endpoint ).ToHashSet( StringComparer.OrdinalIgnoreCase );
+            HashSet<string> blockedEndpoints = rateLimitedEndpoints
+                .Select( endpoint => ProviderRateLimitPolicy.ToTrackingKey( _provider, endpoint.Endpoint ) )
+                .ToHashSet( StringComparer.OrdinalIgnoreCase );
 
             // Determine stream order: interactive-first with aging and bulk gating.
             unchecked { _dequeueCounter++; }
@@ -804,13 +873,13 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
     }
 
     /// <summary>
-    /// Determines whether a request targets a currently rate-limited (blocked) endpoint, based on
-    /// its lookup type.
+    /// Determines whether a deferred request targets a currently rate-limited endpoint using the
+    /// exact endpoint key recorded by the outbound handler.
     /// </summary>
     /// <param name="request">The request to test.</param>
     /// <param name="blockedEndpoints">The set of blocked endpoint keys.</param>
     /// <returns>
-    /// True if the request is a lookup request whose lookup type matches a blocked endpoint;
+    /// True if the request is a lookup request whose recorded endpoint matches a blocked endpoint;
     /// otherwise false. Non-lookup request types are never treated as blocked.
     /// </returns>
     private bool IsMessageBlocked( T request, HashSet<string> blockedEndpoints ) {
@@ -820,9 +889,10 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
                 RecordScheduledWake( notBefore );
                 return true;
             }
-            // Use the LookupType as the endpoint key for rate limiting
-            string endpointKey = lookupRequest.LookupType.ToString( );
-            return blockedEndpoints.Contains( endpointKey );
+            return ProviderRateLimitPolicy.IsBlocked(
+                _provider,
+                blockedEndpoints,
+                lookupRequest.RateLimitedEndpoint );
         }
 
         // For other request types, don't block
@@ -915,25 +985,42 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
 
         // Re-add with updated enqueued time
         RedisValue payload = original[QueueStreamFieldNames.Payload];
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        QueuedLookupRequest? queuedLookup = null;
         if (typeof( T ) == typeof( QueuedLookupRequest )) {
             QueuedLookupRequest? queued = JsonSerializer.Deserialize<QueuedLookupRequest>( payload.ToString( ), _jsonOptions );
             if (queued is not null) {
                 TimeSpan retryDelay = delay ?? TimeSpan.FromSeconds( 1 << Math.Min( queued.AttemptCount, 3 ) );
-                payload = JsonSerializer.Serialize( queued with {
+                queuedLookup = queued with {
                     EnqueueOrigin = QueueEnqueueOrigin.Requeue,
                     AttemptCount = delay is null ? queued.AttemptCount + 1 : queued.AttemptCount,
-                    NotBefore = DateTimeOffset.UtcNow + retryDelay
-                }, _jsonOptions );
+                    RateLimitedEndpoint = delay is null ? null : queued.RateLimitedEndpoint,
+                    NotBefore = now + retryDelay
+                };
+                payload = JsonSerializer.Serialize( queuedLookup, _jsonOptions );
             }
         }
+        bool trackOutbox = queuedLookup is not null
+            && !string.IsNullOrWhiteSpace( queuedLookup.SagaInstanceToken );
+        long recoveryAt = GetRecoveryAtUnixMilliseconds( queuedLookup?.NotBefore, now );
         NameValueEntry[] fields = [
             new NameValueEntry( QueueStreamFieldNames.Payload, payload ),
-            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, DateTimeOffset.UtcNow.ToString( "O" ) )
+            new NameValueEntry( QueueStreamFieldNames.EnqueuedAt, now.ToString( "O" ) )
         ];
 
         RedisResult moveResult = await db.ScriptEvaluateAsync(
             RequeueDeliveryScript,
-            [stream],
+            [
+                stream,
+                trackOutbox
+                    ? RedisSagaStateManager.GetProviderKey( queuedLookup!.SagaId, queuedLookup.Provider )
+                    : stream,
+                trackOutbox
+                    ? RedisLookupDispatchOutbox.GetOutboxKey( queuedLookup!.SagaId, queuedLookup.Provider )
+                    : stream,
+                RedisLookupDispatchOutbox.PendingIndexKey,
+                RedisLookupDispatchOutbox.PublishedRecoveryIndexKey
+            ],
             [
                 id,
                 _consumerGroup,
@@ -941,7 +1028,18 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
                 payload,
                 QueueStreamFieldNames.EnqueuedAt,
                 fields[1].Value,
-                _workSignalChannel.ToString( )
+                _workSignalChannel.ToString( ),
+                trackOutbox ? "1" : "0",
+                queuedLookup?.SagaInstanceToken ?? string.Empty,
+                RedisLookupDispatchOutbox.DispatchStateField,
+                RedisLookupDispatchOutbox.DispatchPublished,
+                queuedLookup?.NotBefore?.ToUnixTimeMilliseconds( ).ToString( CultureInfo.InvariantCulture ) ?? string.Empty,
+                RedisLookupDispatchOutbox.DispatchPublishedAtField,
+                ((int)GetPriorityFromStream( stream )).ToString( CultureInfo.InvariantCulture ),
+                _workSignalChannel.ToString( ),
+                ((int)QueueEnqueueOrigin.Requeue).ToString( CultureInfo.InvariantCulture ),
+                now.ToUnixTimeMilliseconds( ),
+                recoveryAt
             ] );
         RedisValue replacementId = (RedisValue)moveResult;
         if (!replacementId.HasValue) {
@@ -1152,6 +1250,15 @@ public sealed partial class RedisRequestQueue<T> : IRequestQueue<T>, IConsumerGr
         QueuePriority.Bulk => _bulkStream,
         _ => throw new ArgumentOutOfRangeException( nameof( priority ) )
     };
+
+    private static long GetRecoveryAtUnixMilliseconds(
+        DateTimeOffset? notBefore,
+        DateTimeOffset now
+    ) {
+        DateTimeOffset ordinaryRecovery = now.Add( RedisLookupDispatchOutbox.RedriveAfter );
+        return (notBefore > ordinaryRecovery ? notBefore.Value : ordinaryRecovery)
+            .ToUnixTimeMilliseconds( );
+    }
 
     /// <summary>Maps a stream key back to its priority, defaulting to background for unknown streams.</summary>
     /// <param name="stream">The stream key to map.</param>

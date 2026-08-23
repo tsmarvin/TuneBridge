@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using BridgeBeats.Contracts.Constants;
 using BridgeBeats.Contracts.Enums;
@@ -29,6 +30,26 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
     private const string EnqueueBulkDeliveryScript = """
         local messageId = redis.call(
             'XADD', KEYS[1], '*', ARGV[1], ARGV[2], ARGV[3], ARGV[4])
+        if ARGV[6] == '1'
+            and redis.call('EXISTS', KEYS[3]) == 1
+            and redis.call('HGET', KEYS[3], 'instanceToken') == ARGV[7]
+            and redis.call('HGET', KEYS[2], ARGV[8]) == ARGV[9] then
+            redis.call('HSET', KEYS[3],
+                'payload', ARGV[2],
+                'targetStream', KEYS[1],
+                'workChannel', ARGV[13],
+                'priority', ARGV[12],
+                'enqueueOrigin', ARGV[14],
+                'currentMessageId', messageId)
+            if ARGV[10] == '' then
+                redis.call('HDEL', KEYS[3], 'notBefore')
+            else
+                redis.call('HSET', KEYS[3], 'notBefore', ARGV[10])
+            end
+            redis.call('HSET', KEYS[2], ARGV[11], ARGV[15])
+            redis.call('ZREM', KEYS[4], KEYS[3])
+            redis.call('ZADD', KEYS[5], ARGV[16], KEYS[3])
+        end
         redis.call('PUBLISH', ARGV[5], messageId)
         return messageId
         """;
@@ -109,22 +130,50 @@ public sealed partial class SpotifyBulkQueueDecorator : IRequestQueue<QueuedLook
                 : _bulkAlbumStream;
 
             string payload = JsonSerializer.Serialize( request, _jsonOptions );
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            bool trackOutbox = !string.IsNullOrWhiteSpace( request.SagaInstanceToken );
+            DateTimeOffset ordinaryRecovery = now.Add( RedisLookupDispatchOutbox.RedriveAfter );
+            long recoveryAt = (request.NotBefore > ordinaryRecovery
+                    ? request.NotBefore.Value
+                    : ordinaryRecovery)
+                .ToUnixTimeMilliseconds( );
 
             IDatabase db = _redis.GetDatabase( );
             NameValueEntry[] fields = [
                 new NameValueEntry( QueueFieldNames.Payload, payload ),
-                new NameValueEntry( QueueFieldNames.EnqueuedAt, DateTimeOffset.UtcNow.ToString( "O" ) )
+                new NameValueEntry( QueueFieldNames.EnqueuedAt, now.ToString( "O" ) )
             ];
 
             RedisResult enqueueResult = await db.ScriptEvaluateAsync(
                 EnqueueBulkDeliveryScript,
-                [stream],
+                [
+                    stream,
+                    trackOutbox
+                        ? RedisSagaStateManager.GetProviderKey( request.SagaId, request.Provider )
+                        : stream,
+                    trackOutbox
+                        ? RedisLookupDispatchOutbox.GetOutboxKey( request.SagaId, request.Provider )
+                        : stream,
+                    RedisLookupDispatchOutbox.PendingIndexKey,
+                    RedisLookupDispatchOutbox.PublishedRecoveryIndexKey
+                ],
                 [
                     QueueFieldNames.Payload,
                     fields[0].Value,
                     QueueFieldNames.EnqueuedAt,
                     fields[1].Value,
-                    _bulkWorkSignalChannel
+                    _bulkWorkSignalChannel,
+                    trackOutbox ? "1" : "0",
+                    request.SagaInstanceToken ?? string.Empty,
+                    RedisLookupDispatchOutbox.DispatchStateField,
+                    RedisLookupDispatchOutbox.DispatchPublished,
+                    request.NotBefore?.ToUnixTimeMilliseconds( ).ToString( CultureInfo.InvariantCulture ) ?? string.Empty,
+                    RedisLookupDispatchOutbox.DispatchPublishedAtField,
+                    ((int)QueuePriority.Bulk).ToString( CultureInfo.InvariantCulture ),
+                    _bulkWorkSignalChannel,
+                    ((int)request.EnqueueOrigin).ToString( CultureInfo.InvariantCulture ),
+                    now.ToUnixTimeMilliseconds( ),
+                    recoveryAt
                 ] );
             RedisValue messageId = (RedisValue)enqueueResult;
             if (!messageId.HasValue) {

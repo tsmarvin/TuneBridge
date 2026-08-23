@@ -291,6 +291,7 @@ public static class ServiceExtensions {
                     s.GetRequiredService<IMediaLinkCacheRepository>( ),
                     s.GetRequiredService<IRequestDeduplicator>( ),
                     s.GetRequiredService<ISagaStateManager>( ),
+                    s.GetRequiredService<ILookupDispatchOutbox>( ),
                     s.GetRequiredService<IProviderQueueResolver<QueuedLookupRequest>>( ),
                     s.GetRequiredService<IATProtoStorageService>( ),
                     enabledProviders,

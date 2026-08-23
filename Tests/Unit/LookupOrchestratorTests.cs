@@ -26,6 +26,8 @@ public class LookupOrchestratorTests {
     private Mock<IRequestDeduplicator> _deduplicatorMock = null!;
     /// <summary>Mock saga state manager used to drive saga creation and partial/final state reads.</summary>
     private Mock<ISagaStateManager> _sagaManagerMock = null!;
+    /// <summary>Mock transactional outbox used to stage and publish initial provider deliveries.</summary>
+    private Mock<ILookupDispatchOutbox> _dispatchOutboxMock = null!;
     /// <summary>Mock provider-queue resolver returning <see cref="_queueMock"/> for any provider.</summary>
     private Mock<IProviderQueueResolver<QueuedLookupRequest>> _queueResolverMock = null!;
     /// <summary>Mock ATProto storage used to return the stored <see cref="MediaLinkResult"/> for a result URI.</summary>
@@ -64,6 +66,7 @@ public class LookupOrchestratorTests {
         _cacheMock = new Mock<IMediaLinkCacheRepository>( );
         _deduplicatorMock = new Mock<IRequestDeduplicator>( );
         _sagaManagerMock = new Mock<ISagaStateManager>( );
+        _dispatchOutboxMock = new Mock<ILookupDispatchOutbox>( );
         _queueResolverMock = new Mock<IProviderQueueResolver<QueuedLookupRequest>>( );
         _atProtoStorageMock = new Mock<IATProtoStorageService>( );
         _queueMock = new Mock<IRequestQueue<QueuedLookupRequest>>( );
@@ -75,6 +78,24 @@ public class LookupOrchestratorTests {
         _ = _queueResolverMock
             .Setup( r => r.GetQueue( It.IsAny<SupportedProviders>( ) ) )
             .Returns( _queueMock.Object );
+
+        _ = _dispatchOutboxMock
+            .Setup( o => o.StageAsync(
+                It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ProviderDispatchStageOutcome.Staged );
+        _ = _dispatchOutboxMock
+            .Setup( o => o.StageBatchAsync(
+                It.IsAny<IReadOnlyList<QueuedLookupRequest>>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( (IReadOnlyList<QueuedLookupRequest> requests, QueuePriority _, CancellationToken _) =>
+                requests.ToDictionary(
+                    request => request.Provider,
+                    _ => ProviderDispatchStageOutcome.Staged ) );
+        _ = _dispatchOutboxMock
+            .Setup( o => o.DispatchAsync(
+                It.IsAny<string>( ), It.IsAny<SupportedProviders>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( true );
 
         _orchestrator = CreateOrchestrator( );
     }
@@ -104,6 +125,7 @@ public class LookupOrchestratorTests {
                 null!,
                 _deduplicatorMock.Object,
                 _sagaManagerMock.Object,
+                _dispatchOutboxMock.Object,
                 _queueResolverMock.Object,
                 _atProtoStorageMock.Object,
                 _enabledProviders,
@@ -123,6 +145,7 @@ public class LookupOrchestratorTests {
                 _cacheMock.Object,
                 null!,
                 _sagaManagerMock.Object,
+                _dispatchOutboxMock.Object,
                 _queueResolverMock.Object,
                 _atProtoStorageMock.Object,
                 _enabledProviders,
@@ -142,12 +165,28 @@ public class LookupOrchestratorTests {
                 _cacheMock.Object,
                 _deduplicatorMock.Object,
                 null!,
+                _dispatchOutboxMock.Object,
                 _queueResolverMock.Object,
                 _atProtoStorageMock.Object,
                 _enabledProviders,
                 _loggerMock.Object
             )
         );
+    }
+
+    /// <summary>Verifies a null transactional dispatch outbox is rejected.</summary>
+    [TestMethod]
+    public void Constructor_WithNullDispatchOutbox_ShouldThrowArgumentNullException( ) {
+        _ = Assert.ThrowsExactly<ArgumentNullException>( ( ) =>
+            new LookupOrchestrator(
+                _cacheMock.Object,
+                _deduplicatorMock.Object,
+                _sagaManagerMock.Object,
+                null!,
+                _queueResolverMock.Object,
+                _atProtoStorageMock.Object,
+                _enabledProviders,
+                _loggerMock.Object ) );
     }
 
     /// <summary>
@@ -161,6 +200,7 @@ public class LookupOrchestratorTests {
                 _cacheMock.Object,
                 _deduplicatorMock.Object,
                 _sagaManagerMock.Object,
+                _dispatchOutboxMock.Object,
                 null!,
                 _atProtoStorageMock.Object,
                 _enabledProviders,
@@ -180,6 +220,7 @@ public class LookupOrchestratorTests {
                 _cacheMock.Object,
                 _deduplicatorMock.Object,
                 _sagaManagerMock.Object,
+                _dispatchOutboxMock.Object,
                 _queueResolverMock.Object,
                 null!,
                 _enabledProviders,
@@ -199,6 +240,7 @@ public class LookupOrchestratorTests {
                 _cacheMock.Object,
                 _deduplicatorMock.Object,
                 _sagaManagerMock.Object,
+                _dispatchOutboxMock.Object,
                 _queueResolverMock.Object,
                 _atProtoStorageMock.Object,
                 null!,
@@ -218,6 +260,7 @@ public class LookupOrchestratorTests {
                 _cacheMock.Object,
                 _deduplicatorMock.Object,
                 _sagaManagerMock.Object,
+                _dispatchOutboxMock.Object,
                 _queueResolverMock.Object,
                 _atProtoStorageMock.Object,
                 _enabledProviders,
@@ -372,29 +415,101 @@ public class LookupOrchestratorTests {
             It.Is<string>( v => v.Equals( TestIsrc, StringComparison.InvariantCultureIgnoreCase ) ),
             QueuePriority.Interactive
         ), Times.Once );
-        _queueMock.Verify(
-            q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), QueuePriority.Interactive ),
+        _dispatchOutboxMock.Verify(
+            o => o.StageBatchAsync(
+                It.Is<IReadOnlyList<QueuedLookupRequest>>( requests =>
+                    requests.Count == _enabledProviders.Count ),
+                QueuePriority.Interactive,
+                It.IsAny<CancellationToken>( ) ),
+            Times.Once
+        );
+        _dispatchOutboxMock.Verify(
+            o => o.DispatchAsync(
+                It.IsAny<string>( ), It.IsAny<SupportedProviders>( ), It.IsAny<CancellationToken>( ) ),
             Times.Exactly( _enabledProviders.Count )
         );
+        _deduplicatorMock.Verify(
+            d => d.ReleaseOwnedAsync( It.IsAny<string>( ), "test-lease", TestRecordUri ),
+            Times.Once );
     }
 
-    /// <summary>A fenced provider-state initialization loss aborts before enqueue or completion publication.</summary>
+    /// <summary>A cleanup-only terminal-state read failure cannot replace a successful lookup result.</summary>
     [TestMethod]
-    public async Task LookupByIsrcAsync_WhenProviderInitializationFenceIsLost_ShouldAbortBeforeEnqueue( ) {
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenReleaseStateReadFails_ShouldReturnResolvedResult( ) {
         SetupCacheMiss( );
         SetupDeduplicationAcquired( );
         SetupSagaCreation( );
-        _ = _sagaManagerMock
-            .Setup( s => s.TryInitializeProviderStatesAsync(
-                It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ) )
-            .ReturnsAsync( false );
+        SetupDeduplicationWaitWithResult( );
+        LookupSagaState finalSaga = CreateSagaState(
+            isPartial: false,
+            finalResultUri: TestRecordUri,
+            providers: [(SupportedProviders.Spotify, true)] );
+        _ = _sagaManagerMock.SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( finalSaga )
+            .ThrowsAsync( new InvalidOperationException( "release read failed" ) );
+        _ = _atProtoStorageMock.Setup( a => a.GetMediaLinkResultAsync( TestRecordUri ) )
+            .ReturnsAsync( CreateMediaLinkResult( ) );
+
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        Assert.IsNotNull( result.Result );
+        Assert.IsFalse( result.IsPartial );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedAsync(
+            It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<string?>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+    }
+
+    /// <summary>An immediate relay failure is recoverable because every provider leg is staged first.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenImmediateOutboxRelayFails_ShouldKeepWaitingForDurableWork( ) {
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+        SetupDeduplicationWaitWithResult( );
+        _ = _dispatchOutboxMock.Setup( o => o.DispatchAsync(
+                It.IsAny<string>( ), It.IsAny<SupportedProviders>( ), It.IsAny<CancellationToken>( ) ) )
+            .ThrowsAsync( new InvalidOperationException( "relay unavailable" ) );
+        _ = _atProtoStorageMock.Setup( a => a.GetMediaLinkResultAsync( TestRecordUri ) )
+            .ReturnsAsync( CreateMediaLinkResult( ) );
+
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        Assert.IsNotNull( result.Result );
+        _dispatchOutboxMock.Verify( o => o.StageBatchAsync(
+            It.Is<IReadOnlyList<QueuedLookupRequest>>( requests =>
+                requests.Count == _enabledProviders.Count ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ), Times.Once );
+        _dispatchOutboxMock.Verify( o => o.DispatchAsync(
+            It.IsAny<string>( ), It.IsAny<SupportedProviders>( ), It.IsAny<CancellationToken>( ) ),
+            Times.Exactly( _enabledProviders.Count ) );
+    }
+
+    /// <summary>A fenced outbox-stage loss aborts before dispatch or terminal completion publication.</summary>
+    [TestMethod]
+    public async Task LookupByIsrcAsync_WhenDispatchStageFenceIsLost_ShouldAbortBeforeDispatch( ) {
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        SetupSagaCreation( );
+        _ = _dispatchOutboxMock
+            .Setup( o => o.StageBatchAsync(
+                It.IsAny<IReadOnlyList<QueuedLookupRequest>>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( (IReadOnlyList<QueuedLookupRequest> requests, QueuePriority _, CancellationToken _) =>
+                requests.ToDictionary(
+                    request => request.Provider,
+                    _ => ProviderDispatchStageOutcome.SagaInstanceMismatch ) );
 
         _ = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             ( ) => _orchestrator.LookupByIsrcAsync( TestIsrc ) );
 
-        _queueMock.Verify( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ) ), Times.Never );
+        _dispatchOutboxMock.Verify( o => o.DispatchAsync(
+            It.IsAny<string>( ), It.IsAny<SupportedProviders>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
         _deduplicatorMock.Verify( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ), Times.Never );
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedForStateRecheckAsync(
+            It.IsAny<string>( ), "test-lease", It.IsAny<CancellationToken>( ) ), Times.Never );
     }
 
     /// <summary>
@@ -419,12 +534,14 @@ public class LookupOrchestratorTests {
         _ = await _orchestrator.LookupByIsrcAsync( TestIsrc );
 
         // Assert
-        _queueMock.Verify(
-            q => q.EnqueueAsync(
-                It.Is<QueuedLookupRequest>( r => r.OriginPriority == QueuePriority.Interactive ),
-                QueuePriority.Interactive
+        _dispatchOutboxMock.Verify(
+            o => o.StageBatchAsync(
+                It.Is<IReadOnlyList<QueuedLookupRequest>>( requests => requests.All(
+                    request => request.OriginPriority == QueuePriority.Interactive ) ),
+                QueuePriority.Interactive,
+                It.IsAny<CancellationToken>( )
             ),
-            Times.Exactly( _enabledProviders.Count )
+            Times.Once
         );
     }
 
@@ -528,6 +645,43 @@ public class LookupOrchestratorTests {
         _cacheMock.Verify( c => c.TryGetCachedResultByISRCAsync( It.IsAny<string>( ) ), Times.Exactly( 2 ) );
     }
 
+    /// <summary>A released failed owner lets an existing waiter acquire and re-drive immediately.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenOwnerSignalsStateChanged_ShouldReacquireWithinBudget( ) {
+        SetupCacheMiss( );
+        SetupSagaCreation( );
+        _ = _deduplicatorMock.SetupSequence( d => d.TryAcquireAsync(
+                It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( new DeduplicationResult(
+                Acquired: false, AlreadyInFlight: true, RequestKey: "test-key" ) )
+            .ReturnsAsync( new DeduplicationResult(
+                Acquired: true, AlreadyInFlight: false, RequestKey: "test-key", LeaseToken: "test-lease" ) );
+        _ = _deduplicatorMock.SetupSequence( d => d.WaitForCompletionAsync(
+                It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( LookupConstants.StateChangedSentinel )
+            .ReturnsAsync( TestRecordUri );
+        LookupSagaState finalSaga = CreateSagaState(
+            isPartial: false,
+            finalResultUri: TestRecordUri,
+            providers: [(SupportedProviders.Spotify, true)] );
+        _ = _sagaManagerMock.SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( (LookupSagaState?)null )
+            .ReturnsAsync( finalSaga )
+            .ReturnsAsync( finalSaga );
+        _ = _atProtoStorageMock.Setup( storage => storage.GetMediaLinkResultAsync( TestRecordUri ) )
+            .ReturnsAsync( CreateMediaLinkResult( ) );
+
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        Assert.IsNotNull( result.Result );
+        _deduplicatorMock.Verify( d => d.TryAcquireAsync(
+            It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ), Times.Exactly( 2 ) );
+        _sagaManagerMock.Verify( s => s.GetOrCreateAsync(
+            It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ),
+            It.IsAny<string>( ), It.IsAny<QueuePriority>( ) ), Times.Once );
+    }
+
     #endregion
 
     #region LookupByUpcAsync Tests
@@ -588,10 +742,13 @@ public class LookupOrchestratorTests {
         _ = await _orchestrator.LookupByUpcAsync( TestUpc );
 
         // Assert
-        _queueMock.Verify( q => q.EnqueueAsync(
-            It.Is<QueuedLookupRequest>( r => r.IsAlbum == true && r.LookupType == LookupRequestType.UpcLookup ),
-            QueuePriority.Interactive
-        ), Times.Exactly( _enabledProviders.Count ) );
+        _dispatchOutboxMock.Verify( o => o.StageBatchAsync(
+            It.Is<IReadOnlyList<QueuedLookupRequest>>( requests => requests.All(
+                request => request.IsAlbum == true
+                    && request.LookupType == LookupRequestType.UpcLookup ) ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( )
+        ), Times.Once );
     }
 
     #endregion
@@ -665,14 +822,14 @@ public class LookupOrchestratorTests {
         _ = await _orchestrator.LookupByMetadataAsync( TestTitle, TestArtist );
 
         // Assert
-        _queueMock.Verify( q => q.EnqueueAsync(
-            It.Is<QueuedLookupRequest>( r =>
-                r.Title == TestTitle &&
-                r.Artist == TestArtist &&
-                r.LookupType == LookupRequestType.SongLookup
-            ),
-            QueuePriority.Interactive
-        ), Times.Exactly( _enabledProviders.Count ) );
+        _dispatchOutboxMock.Verify( o => o.StageBatchAsync(
+            It.Is<IReadOnlyList<QueuedLookupRequest>>( requests => requests.All( r =>
+                r.Title == TestTitle
+                && r.Artist == TestArtist
+                && r.LookupType == LookupRequestType.SongLookup ) ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( )
+        ), Times.Once );
     }
 
     #endregion
@@ -714,9 +871,10 @@ public class LookupOrchestratorTests {
         _ = await _orchestrator.LookupByProviderIdAsync( "spotify-id", SupportedProviders.Spotify, false );
 
         // Assert
-        _queueMock.Verify( q => q.EnqueueAsync(
+        _dispatchOutboxMock.Verify( o => o.StageAsync(
             It.Is<QueuedLookupRequest>( r => r.LookupType == LookupRequestType.SongIdLookup && r.IsAlbum == false ),
-            QueuePriority.Interactive
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( )
         ), Times.Once );
     }
 
@@ -736,9 +894,10 @@ public class LookupOrchestratorTests {
 
         _queueMock.Verify( q => q.EnqueueAsync( It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ) ), Times.Never );
         _deduplicatorMock.Verify( d => d.WaitForCompletionAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ), Times.Never );
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Once );
-        _sagaManagerMock.Verify( s => s.TryInitializeProviderStatesAsync(
-            It.IsAny<string>( ), It.IsAny<IEnumerable<SupportedProviders>>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedForStateRecheckAsync(
+            It.IsAny<string>( ), "test-lease", It.IsAny<CancellationToken>( ) ), Times.Never );
+        _dispatchOutboxMock.Verify( o => o.StageAsync(
+            It.IsAny<QueuedLookupRequest>( ), It.IsAny<QueuePriority>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
     }
 
     /// <summary>
@@ -763,9 +922,10 @@ public class LookupOrchestratorTests {
         _ = await _orchestrator.LookupByProviderIdAsync( "spotify-id", SupportedProviders.Spotify, true );
 
         // Assert
-        _queueMock.Verify( q => q.EnqueueAsync(
+        _dispatchOutboxMock.Verify( o => o.StageAsync(
             It.Is<QueuedLookupRequest>( r => r.LookupType == LookupRequestType.AlbumIdLookup && r.IsAlbum == true ),
-            QueuePriority.Interactive
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( )
         ), Times.Once );
     }
 
@@ -1150,6 +1310,7 @@ public class LookupOrchestratorTests {
         _ = _sagaManagerMock
             .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
             .ReturnsAsync( partialSaga )
+            .ReturnsAsync( finalSaga )
             .ReturnsAsync( finalSaga );
 
         _ = _deduplicatorMock
@@ -1254,6 +1415,7 @@ public class LookupOrchestratorTests {
         _ = _sagaManagerMock
             .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
             .ReturnsAsync( pendingSaga )
+            .ReturnsAsync( rateLimitedSaga )
             .ReturnsAsync( rateLimitedSaga );
 
         _ = _deduplicatorMock
@@ -1358,6 +1520,7 @@ public class LookupOrchestratorTests {
         _ = _sagaManagerMock
             .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
             .ReturnsAsync( partialSaga )
+            .ReturnsAsync( finalSaga )
             .ReturnsAsync( finalSaga );
 
         _ = _deduplicatorMock
@@ -1433,13 +1596,55 @@ public class LookupOrchestratorTests {
         );
     }
 
+    /// <summary>A second owner cannot republish pending provider legs that the outbox already dispatched.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task LookupByIsrcAsync_WhenPendingLegsAlreadyDispatched_ShouldNotPublishDuplicates( ) {
+        SetupCacheMiss( );
+        SetupDeduplicationAcquired( );
+        LookupSagaState pendingSaga = CreateSagaState(
+            providers: [
+                (SupportedProviders.Spotify, false),
+                (SupportedProviders.AppleMusic, false),
+                (SupportedProviders.Tidal, false)
+            ] );
+        _ = _sagaManagerMock.Setup( s => s.GetOrCreateAsync(
+                It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<LookupRequestType>( ),
+                It.IsAny<string>( ), It.IsAny<QueuePriority>( ) ) )
+            .ReturnsAsync( pendingSaga );
+        _ = _sagaManagerMock.Setup( s => s.GetAsync( It.IsAny<string>( ) ) )
+            .ReturnsAsync( pendingSaga );
+        _ = _dispatchOutboxMock.Setup( o => o.StageBatchAsync(
+                It.IsAny<IReadOnlyList<QueuedLookupRequest>>( ), QueuePriority.Interactive,
+                It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( (IReadOnlyList<QueuedLookupRequest> requests, QueuePriority _, CancellationToken _) =>
+                requests.ToDictionary(
+                    request => request.Provider,
+                    _ => ProviderDispatchStageOutcome.AlreadyDispatched ) );
+        _ = _deduplicatorMock.Setup( d => d.WaitForCompletionAsync(
+                It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
+            .ReturnsAsync( (string?)null );
+
+        LookupResult result = await _orchestrator.LookupByIsrcAsync( TestIsrc );
+
+        Assert.IsTrue( result.IsPartial );
+        _dispatchOutboxMock.Verify( o => o.StageBatchAsync(
+            It.Is<IReadOnlyList<QueuedLookupRequest>>( requests =>
+                requests.Count == _enabledProviders.Count ),
+            QueuePriority.Interactive,
+            It.IsAny<CancellationToken>( ) ), Times.Once );
+        _dispatchOutboxMock.Verify( o => o.DispatchAsync(
+            It.IsAny<string>( ), It.IsAny<SupportedProviders>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedAsync(
+            It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<string?>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+    }
+
     /// <summary>
-    /// Verifies that when a resumed saga has a stored partial result URI, the dedup lock is released with that known
-    /// URI (so waiters wake with the result) rather than with null.
+    /// Verifies that a resumed partial saga retains the caller-owned lease until terminal state or TTL expiry.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task LookupByIsrcAsync_WhenResumedSagaHasStoredResult_ShouldReleaseLockWithKnownUri( ) {
+    public async Task LookupByIsrcAsync_WhenResumedSagaHasStoredPartial_ShouldRetainOwnedLease( ) {
         // Arrange
         SetupCacheMiss( );
         SetupDeduplicationAcquired( );
@@ -1472,9 +1677,11 @@ public class LookupOrchestratorTests {
         // Act
         _ = await _orchestrator.LookupByIsrcAsync( TestIsrc );
 
-        // Assert - released with the known URI (not null: an empty publish would leave waiters stuck)
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), PartialUri ), Times.Once );
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Never );
+        // Assert - returning a partial must not collapse the single-flight window.
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedAsync(
+            It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<string?>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedForStateRecheckAsync(
+            It.IsAny<string>( ), It.IsAny<string>( ), It.IsAny<CancellationToken>( ) ), Times.Never );
     }
 
     /// <summary>
@@ -1611,6 +1818,7 @@ public class LookupOrchestratorTests {
         _ = _sagaManagerMock
             .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
             .ReturnsAsync( partialSaga )
+            .ReturnsAsync( finalSaga )
             .ReturnsAsync( finalSaga );
 
         _ = _deduplicatorMock
@@ -1810,6 +2018,7 @@ public class LookupOrchestratorTests {
             .SetupSequence( s => s.GetAsync( It.IsAny<string>( ) ) )
             .ReturnsAsync( pendingSaga )
             .ReturnsAsync( rateLimitedSaga )
+            .ReturnsAsync( rateLimitedSaga )
             .ReturnsAsync( rateLimitedSaga );
 
         // Simulate the deduplicator running the missed-result check after subscribing
@@ -1833,8 +2042,8 @@ public class LookupOrchestratorTests {
     }
 
     /// <summary>
-    /// Verifies that when saga creation throws, the exception propagates and the dedup lock is released (with a null
-    /// result URI), preventing a stuck in-flight lock.
+    /// Verifies that when saga creation throws before dispatch, the exception propagates and waiters receive a
+    /// non-terminal state-recheck signal.
     /// </summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
@@ -1852,7 +2061,8 @@ public class LookupOrchestratorTests {
             _orchestrator.LookupByIsrcAsync( TestIsrc )
         );
 
-        _deduplicatorMock.Verify( d => d.ReleaseAsync( It.IsAny<string>( ), null ), Times.Once );
+        _deduplicatorMock.Verify( d => d.ReleaseOwnedForStateRecheckAsync(
+            It.IsAny<string>( ), "test-lease", It.IsAny<CancellationToken>( ) ), Times.Once );
     }
 
     #endregion
@@ -1868,6 +2078,7 @@ public class LookupOrchestratorTests {
             _cacheMock.Object,
             _deduplicatorMock.Object,
             _sagaManagerMock.Object,
+            _dispatchOutboxMock.Object,
             _queueResolverMock.Object,
             _atProtoStorageMock.Object,
             _enabledProviders,
@@ -1990,7 +2201,11 @@ public class LookupOrchestratorTests {
     private void SetupDeduplicationAcquired( ) {
         _ = _deduplicatorMock
             .Setup( d => d.TryAcquireAsync( It.IsAny<string>( ), It.IsAny<TimeSpan>( ) ) )
-            .ReturnsAsync( new DeduplicationResult( Acquired: true, AlreadyInFlight: false, RequestKey: "test-key" ) );
+            .ReturnsAsync( new DeduplicationResult(
+                Acquired: true,
+                AlreadyInFlight: false,
+                RequestKey: "test-key",
+                LeaseToken: "test-lease" ) );
     }
 
     /// <summary>
@@ -2039,7 +2254,11 @@ public class LookupOrchestratorTests {
                 CreatedAt = DateTimeOffset.UtcNow,
                 InstanceToken = "test-instance",
                 IsPartial = false,
-                ProviderStates = []
+                FinalResultUri = TestRecordUri,
+                ProviderStates = new Dictionary<SupportedProviders, ProviderLookupState> {
+                    [SupportedProviders.Spotify] = new ProviderLookupState(
+                        SupportedProviders.Spotify, true, true, null, DateTimeOffset.UtcNow, null )
+                }
             } );
     }
 
