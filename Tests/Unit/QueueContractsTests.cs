@@ -732,6 +732,22 @@ public class QueueContractsTests {
                 now, now.AddHours( 1 ), now.AddMinutes( -119 ) ) );
     }
 
+    /// <summary>An already-admitted remaining duration is not raised back to the configured minimum.</summary>
+    [TestMethod]
+    public void QueueSettings_GetUpperBoundedRateLimitRetryAfter_DoesNotReapplyMinimum( ) {
+        QueueSettings settings = new( ) {
+            RateLimitMinimumRetryAfter = TimeSpan.FromSeconds( 5 ),
+            RateLimitMaximumRetryAfter = TimeSpan.FromHours( 1 ),
+            JobExpirationMinutes = 120
+        };
+        DateTimeOffset now = DateTimeOffset.Parse( "2026-08-09T12:00:00Z" );
+
+        Assert.AreEqual(
+            now.AddSeconds( 1 ),
+            settings.GetUpperBoundedRateLimitRetryAfter(
+                now, TimeSpan.FromSeconds( 1 ), now.AddMinutes( -10 ) ) );
+    }
+
     private static IConfiguration BuildQueueConfiguration(
         string expirationMinutes,
         string defaultRetryAfter,

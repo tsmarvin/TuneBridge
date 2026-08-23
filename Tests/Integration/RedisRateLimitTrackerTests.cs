@@ -284,10 +284,10 @@ public class RedisRateLimitTrackerTests {
         Assert.Contains<RateLimitedEndpoint>( e => e.Endpoint == "/v1/catalog", appleEndpoints );
     }
 
-    /// <summary>A lowercase legacy bulk member still arms the Spotify provider-wide gate.</summary>
+    /// <summary>Only canonical endpoint members participate in active rate-limit state.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]
-    public async Task GetStateAsync_LowercaseLegacyBulkKey_IsMigratedAtReadBoundary( ) {
+    public async Task GetStateAsync_NoncanonicalMember_IsIgnoredAndRemovedFromIndex( ) {
         DateTimeOffset retryAfter = DateTimeOffset.UtcNow.AddMinutes( 2 );
         IDatabase db = s_redis!.GetDatabase( );
         _ = await db.StringSetAsync(
@@ -304,8 +304,12 @@ public class RedisRateLimitTrackerTests {
             "tracks/:id",
             TestContext.CancellationToken );
 
-        Assert.IsTrue( state.IsRateLimited );
-        Assert.IsGreaterThan( TimeSpan.Zero, state.TimeRemaining.GetValueOrDefault( ) );
+        Assert.IsFalse( state.IsRateLimited );
+        double? legacyScore = await db.SortedSetScoreAsync(
+            "ratelimit:active:spotify", "bulktracks" );
+        Assert.IsNull( legacyScore );
+        Assert.IsTrue( await db.KeyExistsAsync( "ratelimit:Spotify:bulktracks" ),
+            "A noncanonical backing key should be left to its existing TTL." );
     }
 
     /// <summary>

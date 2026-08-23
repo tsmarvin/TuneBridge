@@ -90,7 +90,7 @@ public static class RecordKeyGenerator {
         string prefix = isAlbum ? "album" : "track";
         string sanitizedId = MediaLookupResultIdentity.NormalizeExternalId( externalId );
 
-        return string.IsNullOrEmpty( sanitizedId )
+        return !sanitizedId.Any( char.IsLetterOrDigit )
             ? throw new ArgumentException( "ExternalId must contain valid characters after sanitization", nameof( externalId ) )
             : $"{prefix}:{sanitizedId}";
     }

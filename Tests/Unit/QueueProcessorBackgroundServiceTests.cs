@@ -1272,6 +1272,50 @@ public class QueueProcessorBackgroundServiceTests {
         );
     }
 
+    /// <summary>A near-expired shared cooldown is not extended back to the configured minimum.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task ProcessMessage_WhenRemainingCooldownIsBelowMinimum_PreservesRemainingDuration( ) {
+        QueueProcessorBackgroundService service = CreateService( );
+        QueuedLookupRequest request = CreateRequest( LookupRequestType.IsrcLookup, "US1234567890" );
+        QueuedMessage<QueuedLookupRequest> message = CreateMessage( request );
+        QueuedLookupRequest? requeued = null;
+
+        SetupNotRateLimited( );
+        SetupSagaNotComplete( request.SagaId );
+        _ = _lookupServiceMock.Setup( lookup => lookup.GetInfoByISRCAsync( It.IsAny<string>( ) ) )
+            .ThrowsAsync( new ProviderRateLimitException(
+                TimeSpan.FromSeconds( 1 ),
+                new Uri( "https://api.spotify.com/v1/tracks" ),
+                SupportedProviders.Spotify,
+                ProviderEndpointConstants.Tracks ) );
+        _ = _queueMock.Setup( queue => queue.EnqueueAsync(
+                It.IsAny<QueuedLookupRequest>( ),
+                It.IsAny<QueuePriority>( ),
+                It.IsAny<CancellationToken>( ) ) )
+            .Callback( (QueuedLookupRequest queued, QueuePriority _, CancellationToken _) =>
+                requeued = queued )
+            .Returns( Task.CompletedTask );
+        int callCount = 0;
+        _ = _queueMock.Setup( queue => queue.DequeueAsync(
+                It.IsAny<IRateLimitTracker>( ), It.IsAny<CancellationToken>( ) ) )
+            .ReturnsAsync( ( ) => callCount++ == 0 ? message : null );
+        DateTimeOffset beforeDeferral = DateTimeOffset.UtcNow;
+
+        using CancellationTokenSource cts = new( );
+        _ = service.StartAsync( cts.Token );
+        await Task.Delay( 200, TestContext.CancellationToken );
+        await cts.CancelAsync( );
+        await service.StopAsync( CancellationToken.None );
+
+        Assert.IsNotNull( requeued );
+        Assert.IsNotNull( requeued.NotBefore );
+        DateTimeOffset actualNotBefore = requeued.NotBefore.Value;
+        Assert.IsGreaterThanOrEqualTo( beforeDeferral, actualNotBefore );
+        Assert.IsLessThan( beforeDeferral.AddSeconds( 4 ), actualNotBefore,
+            "The queue processor must not raise a remaining one-second cooldown to the five-second minimum." );
+    }
+
     /// <summary>A circuit-open delivery exhausts the bounded queue budget after Polly gives up.</summary>
     [TestMethod]
     [Timeout( 30000, CooperativeCancellation = true )]

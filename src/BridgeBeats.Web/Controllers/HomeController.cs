@@ -535,7 +535,7 @@ namespace BridgeBeats.Web.Controllers {
                 }
             } catch (Exception ex) {
                 LogStreamError( ex, uri.SanitizeForLogging( ) );
-                await Response.WriteAsync( $"<div class=\"alert alert-danger\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount + 1}\">An error occurred during lookup. Please try again.</div>{StreamFraming.ItemDelimiter}" );
+                await Response.WriteAsync( $"<div class=\"alert alert-danger\" data-stream-complete=\"true\" data-processed=\"{processedCount}\" data-errors=\"{errorCount + 1}\" data-rate-limited=\"{rateLimitCount}\">An error occurred during lookup. Please try again.</div>{StreamFraming.ItemDelimiter}" );
             }
         }
 

@@ -44,18 +44,16 @@ internal static class ProviderRateLimitPolicy {
 
     internal static bool IsBlocked(
         SupportedProviders provider,
-        IEnumerable<string> blockedEndpoints,
+        IReadOnlySet<string> blockedEndpoints,
         string? deferredEndpoint
     ) {
-        string[] storedKeys = [.. blockedEndpoints.Select(
-            endpoint => ToTrackingKey( provider, endpoint ) )];
         string? requestedKey = GetAdmissionKey( provider, deferredEndpoint );
-        if (storedKeys.Contains( ProviderEndpointConstants.ProviderWide, StringComparer.Ordinal )) {
+        if (blockedEndpoints.Contains( ProviderEndpointConstants.ProviderWide )) {
             return requestedKey is null
                 || !requestedKey.Equals( ProviderEndpointConstants.AuthToken, StringComparison.Ordinal );
         }
 
         return requestedKey is not null
-            && storedKeys.Any( stored => Covers( provider, stored, requestedKey ) );
+            && blockedEndpoints.Contains( requestedKey );
     }
 }

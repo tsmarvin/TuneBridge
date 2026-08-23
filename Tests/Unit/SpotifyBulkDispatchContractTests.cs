@@ -1205,6 +1205,45 @@ public class SpotifyBulkDispatchContractTests {
         Assert.IsTrue( requeued.NotBefore > DateTimeOffset.UtcNow.AddSeconds( 20 ) );
     }
 
+    /// <summary>A near-expired shared bulk cooldown is not raised back to the configured minimum.</summary>
+    [TestMethod]
+    public async Task HandleBulkRateLimit_WhenRemainingCooldownIsBelowMinimum_PreservesRemainingDuration( ) {
+        QueuedLookupRequest request = CreateRequest( TestTrackId );
+        List<QueuedMessage<QueuedLookupRequest>> messages = [
+            new QueuedMessage<QueuedLookupRequest>(
+                $"{TrackStream}:1234567890-0",
+                request,
+                DateTimeOffset.UtcNow )
+        ];
+        ProviderRateLimitException exception = new(
+            TimeSpan.FromSeconds( 1 ),
+            requestUri: null,
+            SupportedProviders.Spotify,
+            ProviderEndpointConstants.Tracks );
+        RedisValue[]? requeueArguments = null;
+        _ = _dbMock.Setup( database => database.ScriptEvaluateAsync(
+                It.IsAny<string>( ), It.IsAny<RedisKey[]?>( ), It.IsAny<RedisValue[]?>( ),
+                It.IsAny<CommandFlags>( ) ) )
+            .Callback( (string _, RedisKey[]? _, RedisValue[]? arguments, CommandFlags _) =>
+                requeueArguments = arguments )
+            .ReturnsAsync( (RedisResult)RedisResult.Create( (RedisValue)"9999999999-1" ) );
+        DateTimeOffset beforeDeferral = DateTimeOffset.UtcNow;
+
+        await CreateService( ).HandleBulkRateLimitAsync(
+            messages,
+            SpotifyConstants.TracksEndpoint,
+            exception,
+            TestContext.CancellationToken );
+
+        string payload = (string)requeueArguments![3]!;
+        QueuedLookupRequest requeued = JsonSerializer.Deserialize<QueuedLookupRequest>(
+            payload, s_jsonOptions )!;
+        Assert.IsNotNull( requeued.NotBefore );
+        Assert.IsGreaterThanOrEqualTo( beforeDeferral, requeued.NotBefore.Value );
+        Assert.IsLessThan( beforeDeferral.AddSeconds( 4 ), requeued.NotBefore.Value,
+            "The bulk processor must not raise a remaining one-second cooldown to the five-second minimum." );
+    }
+
     /// <summary>
     /// Verifies that <c>TypedKey</c> produces the canonical <c>{LookupType}:{Provider}:{id}</c>
     /// format.

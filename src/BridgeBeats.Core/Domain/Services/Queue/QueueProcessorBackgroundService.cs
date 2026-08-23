@@ -697,7 +697,7 @@ public sealed partial class QueueProcessorBackgroundService : BackgroundService 
         LogRateLimitEncountered( _logger, _provider, endpoint, ex.RetryAfterValue );
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        DateTimeOffset retryAfter = _settings.GetBoundedRateLimitRetryAfter(
+        DateTimeOffset retryAfter = _settings.GetUpperBoundedRateLimitRetryAfter(
             now,
             ex.RetryAfterValue,
             request.CreatedAt );

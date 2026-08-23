@@ -844,7 +844,7 @@ public sealed partial class SpotifyBulkProcessorService : BackgroundService {
         LogRateLimitEncountered( _logger, effectiveEndpoint, ex.RetryAfterValue.ToString( ) );
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        DateTimeOffset retryAfter = _queueSettings.GetBoundedRateLimitRetryAfter(
+        DateTimeOffset retryAfter = _queueSettings.GetUpperBoundedRateLimitRetryAfter(
             now,
             ex.RetryAfterValue );
         // Keep the in-process bulk-operation lanes independent. The handler-derived

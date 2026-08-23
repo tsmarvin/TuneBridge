@@ -600,6 +600,34 @@ public class HomeControllerRenderingTests {
         Assert.Contains( "&lt;script&gt;", content, StringComparison.OrdinalIgnoreCase );
     }
 
+    /// <summary>A terminal stream error preserves the count from rate-limit frames already emitted.</summary>
+    [TestMethod]
+    [Timeout( 15000, CooperativeCancellation = true )]
+    public async Task LookupResultsStream_AfterRateLimitThenFailure_CompletionPreservesRateLimitCount( ) {
+        Mock<IMediaLinkService> mediaService = new( );
+        _ = mediaService
+            .Setup( service => service.GetInfoAsync( It.IsAny<string>( ) ) )
+            .Returns( YieldRateLimitThenThrow( ) );
+        using ProbeOverrideFactory factory = new( BuildBaseConfig( ), services => {
+            _ = services.RemoveAll<IMediaLinkService>( );
+            _ = services.AddTransient<IMediaLinkService>( _ => mediaService.Object );
+        } );
+        await factory.InitializeDatabasesAsync( );
+        using HttpClient client = factory.CreateClient( );
+
+        string token = await AntiforgeryTestHelper.GetAntiforgeryTokenAsync(
+            client, TestContext.CancellationToken );
+        FormUrlEncodedContent formData = new(
+            new Dictionary<string, string> { ["uri"] = TestUrl } );
+        HttpResponseMessage response = await AntiforgeryTestHelper.PostWithAntiforgeryAsync(
+            client, "/Home/LookupResultsStream", formData, token, TestContext.CancellationToken );
+        string content = await response.Content.ReadAsStringAsync( TestContext.CancellationToken );
+
+        Assert.AreEqual( HttpStatusCode.OK, response.StatusCode );
+        Assert.Contains( "data-errors=\"1\"", content, StringComparison.Ordinal );
+        Assert.Contains( "data-rate-limited=\"1\"", content, StringComparison.Ordinal );
+    }
+
     /// <summary>
     /// Builds the minimal configuration overrides for the probe-wiring test host. Workers and
     /// ATProto are disabled so the host can start without external infrastructure beyond the shared
@@ -646,6 +674,12 @@ public class HomeControllerRenderingTests {
     private static async IAsyncEnumerable<MediaLinkResult> YieldResult( MediaLinkResult result ) {
         await Task.CompletedTask;
         yield return result;
+    }
+
+    private static async IAsyncEnumerable<MediaLinkResult> YieldRateLimitThenThrow( ) {
+        yield return new MediaLinkResult { Messages = ["Provider retry pending"] };
+        await Task.Yield( );
+        throw new InvalidOperationException( "Stream failed after its rate-limit frame." );
     }
 
     /// <summary>

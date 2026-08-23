@@ -171,6 +171,26 @@ public sealed record QueueSettings {
     }
 
     /// <summary>
+    /// Applies only the configured upper bounds to a retry duration that was already admitted by a
+    /// provider boundary. This preserves a shared cooldown's remaining duration as it approaches
+    /// eligibility instead of reapplying <see cref="RateLimitMinimumRetryAfter"/>.
+    /// </summary>
+    /// <param name="now">The current time used as the duration's origin.</param>
+    /// <param name="requested">The already-established remaining cooldown duration.</param>
+    /// <param name="createdAt">Optional job creation time used to enforce its absolute deadline.</param>
+    /// <returns>The requested eligibility instant limited only by configured upper bounds.</returns>
+    public DateTimeOffset GetUpperBoundedRateLimitRetryAfter(
+        DateTimeOffset now,
+        TimeSpan requested,
+        DateTimeOffset? createdAt = null
+    ) {
+        TimeSpan upperBounded = requested <= RateLimitMaximumRetryAfter
+            ? requested
+            : RateLimitMaximumRetryAfter;
+        return BoundExistingRateLimitNotBefore( now, now.Add( upperBounded ), createdAt );
+    }
+
+    /// <summary>
     /// Applies only upper bounds to an already-established absolute eligibility instant. Unlike
     /// <see cref="GetBoundedRateLimitRetryAfter"/>, this never reapplies the minimum delay and
     /// therefore cannot extend a deferral as it approaches eligibility.

@@ -52,11 +52,11 @@ public sealed class ProviderRateLimitPolicyTests {
     public void IsBlocked_NonCoveringEndpointSet_DoesNotBlockRequest( ) {
         Assert.IsFalse( ProviderRateLimitPolicy.IsBlocked(
             SupportedProviders.AppleMusic,
-            ["songs/:id"],
+            new HashSet<string>( ["songs/:id"], StringComparer.Ordinal ),
             deferredEndpoint: "albums/:id" ) );
         Assert.IsFalse( ProviderRateLimitPolicy.IsBlocked(
             SupportedProviders.Spotify,
-            [ProviderEndpointConstants.ProviderWide],
+            new HashSet<string>( [ProviderEndpointConstants.ProviderWide], StringComparer.Ordinal ),
             ProviderEndpointConstants.AuthToken ) );
     }
 
@@ -65,15 +65,15 @@ public sealed class ProviderRateLimitPolicyTests {
     public void IsBlocked_MatchingPolicyKeys_BlocksDeferredRequest( ) {
         Assert.IsTrue( ProviderRateLimitPolicy.IsBlocked(
             SupportedProviders.Spotify,
-            [ProviderEndpointConstants.ProviderWide],
+            new HashSet<string>( [ProviderEndpointConstants.ProviderWide], StringComparer.Ordinal ),
             ProviderEndpointConstants.Tracks ) );
         Assert.IsTrue( ProviderRateLimitPolicy.IsBlocked(
             SupportedProviders.AppleMusic,
-            ["songs/:id"],
+            new HashSet<string>( ["songs/:id"], StringComparer.Ordinal ),
             "songs/:id" ) );
         Assert.IsFalse( ProviderRateLimitPolicy.IsBlocked(
             SupportedProviders.AppleMusic,
-            ["songs/:id"],
+            new HashSet<string>( ["songs/:id"], StringComparer.Ordinal ),
             deferredEndpoint: null ) );
     }
 }

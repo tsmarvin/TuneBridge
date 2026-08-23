@@ -284,22 +284,31 @@ public sealed partial class RedisRateLimitTracker(
             SortedSetEntry[] overlong = await db.SortedSetRangeByScoreWithScoresAsync(
                 indexKey, maximum, double.PositiveInfinity, Exclude.Start );
             foreach (SortedSetEntry invalid in overlong) {
-                string endpoint = NormalizeEndpoint( provider, invalid.Element.ToString( ) );
-                _ = await db.ScriptEvaluateAsync(
-                    ClearRateLimitScript,
-                    [GetKey( provider, endpoint ), indexKey],
-                    [endpoint] );
-                LogInvalidValueRemoved( _logger, provider, endpoint );
+                string storedEndpoint = invalid.Element.ToString( );
+                if (IsCanonicalEndpoint( provider, storedEndpoint )) {
+                    _ = await db.ScriptEvaluateAsync(
+                        ClearRateLimitScript,
+                        [GetKey( provider, storedEndpoint ), indexKey],
+                        [storedEndpoint] );
+                } else {
+                    _ = await db.SortedSetRemoveAsync( indexKey, invalid.Element );
+                }
+                LogInvalidValueRemoved( _logger, provider, storedEndpoint );
             }
             SortedSetEntry[] active = await db.SortedSetRangeByScoreWithScoresAsync(
                 indexKey, now, maximum );
 
-            IReadOnlyList<RateLimitedEndpoint> endpoints = [.. active
-                .Select( entry => new RateLimitedEndpoint(
-                    NormalizeEndpoint( provider, entry.Element.ToString( ) ),
-                    DateTimeOffset.FromUnixTimeMilliseconds( checked((long)entry.Score) ) ) )
-                .GroupBy( endpoint => endpoint.Endpoint, StringComparer.Ordinal )
-                .Select( group => group.OrderByDescending( endpoint => endpoint.RetryAfter ).First( ) )];
+            List<RateLimitedEndpoint> endpoints = [];
+            foreach (SortedSetEntry entry in active) {
+                string storedEndpoint = entry.Element.ToString( );
+                if (!IsCanonicalEndpoint( provider, storedEndpoint )) {
+                    _ = await db.SortedSetRemoveAsync( indexKey, entry.Element );
+                    continue;
+                }
+                endpoints.Add( new RateLimitedEndpoint(
+                    storedEndpoint,
+                    DateTimeOffset.FromUnixTimeMilliseconds( checked((long)entry.Score) ) ) );
+            }
             _activeEndpointCache[provider] = new ActiveEndpointCache(
                 nowUtc + s_activeEndpointCacheDuration, endpoints );
             return endpoints;
@@ -322,6 +331,9 @@ public sealed partial class RedisRateLimitTracker(
     private static string NormalizeEndpoint( SupportedProviders provider, string endpoint ) {
         return ProviderRateLimitPolicy.ToTrackingKey( provider, endpoint );
     }
+
+    private static bool IsCanonicalEndpoint( SupportedProviders provider, string endpoint ) =>
+        endpoint.Equals( NormalizeEndpoint( provider, endpoint ), StringComparison.Ordinal );
 
     #region LoggerMessage Methods
 
