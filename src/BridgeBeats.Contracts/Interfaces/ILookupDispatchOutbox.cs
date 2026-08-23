@@ -6,8 +6,9 @@ namespace BridgeBeats.Contracts.Interfaces;
 /// <summary>
 /// Transactional outbox for initial provider-leg dispatch. Staging atomically initializes saga
 /// provider state and records the queue payload; dispatch atomically transfers that payload to the
-/// provider stream. Published envelopes remain durable until completion so lost deliveries can be
-/// re-driven after the visibility window.
+/// provider stream. Published envelopes retain the current delivery id, payload, and eligibility
+/// time until completion so missing deliveries can be recovered without duplicating live or
+/// deliberately deferred work.
 /// </summary>
 public interface ILookupDispatchOutbox {
     /// <summary>
@@ -17,6 +18,17 @@ public interface ILookupDispatchOutbox {
     Task<IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome>> StageBatchAsync(
         IReadOnlyList<QueuedLookupRequest> requests,
         QueuePriority priority,
+        CancellationToken cancellationToken = default );
+
+    /// <summary>
+    /// Atomically registers stale-record review context and stages every initial provider
+    /// dispatch for that refresh. No staged leg becomes relay-visible unless its review context
+    /// is committed in the same Redis transaction.
+    /// </summary>
+    Task<IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome>> StageRefreshBatchAsync(
+        IReadOnlyList<QueuedLookupRequest> requests,
+        QueuePriority priority,
+        RefreshReviewEntry reviewEntry,
         CancellationToken cancellationToken = default );
 
     /// <summary>Stages one provider dispatch while the supplied saga instance token still owns it.</summary>
@@ -31,6 +43,6 @@ public interface ILookupDispatchOutbox {
         SupportedProviders provider,
         CancellationToken cancellationToken = default );
 
-    /// <summary>Relays a bounded batch of pending items and stale published deliveries.</summary>
+    /// <summary>Fairly relays a bounded batch of due pending items and published-delivery recovery checks.</summary>
     Task<int> DispatchPendingAsync( int limit, CancellationToken cancellationToken = default );
 }

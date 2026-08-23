@@ -52,7 +52,11 @@ public class RedisLookupDispatchOutboxTests {
         foreach (string pattern in new[] {
             "saga:*",
             "outbox:lookup-dispatch:*",
+            "cache:refresh:pending:*",
             "queue:spotify:interactive",
+            "queue:spotify:bulk",
+            "queue:spotify:bulk:track-id",
+            "queue:spotify:bulk:album-id",
             "queue:applemusic:interactive",
             "queue:tidal:interactive"
         }) {
@@ -253,10 +257,190 @@ public class RedisLookupDispatchOutboxTests {
             $"saga:{saga.SagaId}:provider:{SupportedProviders.Spotify}",
             "dispatchPublishedAt",
             DateTimeOffset.UtcNow.AddMinutes( -6 ).ToUnixTimeMilliseconds( ) );
+        _ = await db.SortedSetAddAsync(
+            "outbox:lookup-dispatch:published-recovery-due",
+            $"outbox:lookup-dispatch:{saga.SagaId}:{SupportedProviders.Spotify}",
+            DateTimeOffset.UtcNow.AddMinutes( -1 ).ToUnixTimeMilliseconds( ) );
 
         Assert.AreEqual( 1, await _outbox.DispatchPendingAsync(
             10, TestContext.CancellationToken ) );
         Assert.HasCount( 1, await db.StreamRangeAsync( stream ) );
+    }
+
+    /// <summary>A live stream entry is not duplicated merely because its recovery check is due.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task DispatchPendingAsync_WhenPublishedDeliveryStillExists_DoesNotDuplicateIt( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-LIVE-PUBLISHED" );
+        _ = await _outbox.StageAsync(
+            CreateRequest( saga ), QueuePriority.Interactive, TestContext.CancellationToken );
+        Assert.IsTrue( await _outbox.DispatchAsync(
+            saga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ) );
+
+        IDatabase db = s_redis!.GetDatabase( );
+        RedisKey stream = QueueStreamKeys.For(
+            SupportedProviders.Spotify, QueuePriority.Interactive );
+        string outboxKey = $"outbox:lookup-dispatch:{saga.SagaId}:{SupportedProviders.Spotify}";
+        _ = await db.SortedSetAddAsync(
+            "outbox:lookup-dispatch:published-recovery-due",
+            outboxKey,
+            DateTimeOffset.UtcNow.AddMinutes( -1 ).ToUnixTimeMilliseconds( ) );
+
+        Assert.AreEqual( 0, await _outbox.DispatchPendingAsync(
+            10, TestContext.CancellationToken ) );
+        Assert.HasCount( 1, await db.StreamRangeAsync( stream ) );
+        double? nextCheck = await db.SortedSetScoreAsync(
+            "outbox:lookup-dispatch:published-recovery-due", outboxKey );
+        Assert.IsNotNull( nextCheck );
+        Assert.IsGreaterThan( DateTimeOffset.UtcNow.ToUnixTimeMilliseconds( ), nextCheck.Value );
+    }
+
+    /// <summary>A deferred replacement becomes the tracked delivery and suppresses redrive.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task RequeueAsync_WithDeferral_UpdatesOutboxDeliveryLineage( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-DEFERRED" );
+        _ = await _outbox.StageAsync(
+            CreateRequest( saga ), QueuePriority.Interactive, TestContext.CancellationToken );
+        Assert.IsTrue( await _outbox.DispatchAsync(
+            saga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ) );
+
+        RedisRequestQueue<QueuedLookupRequest> queue = new(
+            s_redis!,
+            new Mock<ILogger<RedisRequestQueue<QueuedLookupRequest>>>( ).Object,
+            _settings,
+            SupportedProviders.Spotify );
+        await queue.EnsureConsumerGroupsAsync( TestContext.CancellationToken );
+        QueuedMessage<QueuedLookupRequest>? delivery = await queue.DequeueAsync(
+            TestContext.CancellationToken );
+        Assert.IsNotNull( delivery );
+        await queue.RequeueAsync(
+            delivery.MessageId, TimeSpan.FromMinutes( 30 ), TestContext.CancellationToken );
+
+        IDatabase db = s_redis!.GetDatabase( );
+        RedisKey stream = QueueStreamKeys.For(
+            SupportedProviders.Spotify, QueuePriority.Interactive );
+        string outboxKey = $"outbox:lookup-dispatch:{saga.SagaId}:{SupportedProviders.Spotify}";
+        _ = await db.SortedSetAddAsync(
+            "outbox:lookup-dispatch:published-recovery-due",
+            outboxKey,
+            DateTimeOffset.UtcNow.AddMinutes( -1 ).ToUnixTimeMilliseconds( ) );
+
+        Assert.AreEqual( 0, await _outbox.DispatchPendingAsync(
+            10, TestContext.CancellationToken ) );
+        StreamEntry[] entries = await db.StreamRangeAsync( stream );
+        Assert.HasCount( 1, entries );
+        QueuedLookupRequest? replacement = JsonSerializer.Deserialize<QueuedLookupRequest>(
+            entries[0][QueueStreamFieldNames.Payload].ToString( ), s_jsonOptions );
+        Assert.IsNotNull( replacement );
+        Assert.IsNotNull( replacement.NotBefore );
+        Assert.IsGreaterThan( DateTimeOffset.UtcNow.AddMinutes( 29 ), replacement.NotBefore.Value );
+    }
+
+    /// <summary>Refresh review context and provider legs are committed in one staging operation.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task StageRefreshBatch_AtomicallyRegistersReviewContextAndDispatches( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-REFRESH-CONTEXT" );
+        const string SourceUri = "at://did:plc:test/link.bridgebeats.lookup/refresh-context";
+        RefreshReviewEntry reviewEntry = new( ) {
+            SourceRecordUri = SourceUri,
+            SourceRecordCid = "bafyreifresh",
+            SagaId = saga.SagaId,
+            InstanceToken = saga.InstanceToken,
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = saga.LookupValue
+        };
+        RedisRefreshReviewStore reviewStore = new(
+            s_redis!,
+            _settings,
+            new Mock<ILogger<RedisRefreshReviewStore>>( ).Object );
+
+        IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome> outcomes =
+            await _outbox.StageRefreshBatchAsync(
+                [CreateRequest( saga )],
+                QueuePriority.Bulk,
+                reviewEntry,
+                TestContext.CancellationToken );
+
+        Assert.AreEqual(
+            ProviderDispatchStageOutcome.Staged,
+            outcomes[SupportedProviders.Spotify] );
+        RefreshReviewEntry? stored = await reviewStore.GetPendingAsync(
+            SourceUri, TestContext.CancellationToken );
+        Assert.IsNotNull( stored );
+        Assert.AreEqual( saga.InstanceToken, stored.InstanceToken );
+        Assert.AreEqual( 1, await _outbox.DispatchPendingAsync(
+            10, TestContext.CancellationToken ) );
+    }
+
+    /// <summary>A stale refresh generation writes neither review context nor provider work.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task StageRefreshBatch_WithStaleToken_WritesNothing( ) {
+        LookupSagaState saga = await CreateSagaAsync( "OUTBOX-REFRESH-STALE" );
+        const string SourceUri = "at://did:plc:test/link.bridgebeats.lookup/refresh-stale";
+        QueuedLookupRequest request = CreateRequest( saga ) with {
+            SagaInstanceToken = "stale-token"
+        };
+        RefreshReviewEntry reviewEntry = new( ) {
+            SourceRecordUri = SourceUri,
+            SagaId = saga.SagaId,
+            InstanceToken = "stale-token",
+            LookupType = LookupRequestType.IsrcLookup,
+            LookupValue = saga.LookupValue
+        };
+        RedisRefreshReviewStore reviewStore = new(
+            s_redis!,
+            _settings,
+            new Mock<ILogger<RedisRefreshReviewStore>>( ).Object );
+
+        IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome> outcomes =
+            await _outbox.StageRefreshBatchAsync(
+                [request], QueuePriority.Bulk, reviewEntry, TestContext.CancellationToken );
+
+        Assert.AreEqual(
+            ProviderDispatchStageOutcome.SagaInstanceMismatch,
+            outcomes[SupportedProviders.Spotify] );
+        Assert.IsNull( await reviewStore.GetPendingAsync(
+            SourceUri, TestContext.CancellationToken ) );
+        Assert.AreEqual( 0, await _outbox.DispatchPendingAsync(
+            10, TestContext.CancellationToken ) );
+    }
+
+    /// <summary>Each relay batch reserves capacity for due recovery amid pending traffic.</summary>
+    [TestMethod]
+    [Timeout( 30000, CooperativeCancellation = true )]
+    public async Task DispatchPendingAsync_WithSustainedPendingWork_StillProcessesRecovery( ) {
+        LookupSagaState lostSaga = await CreateSagaAsync( "OUTBOX-FAIR-LOST" );
+        _ = await _outbox.StageAsync(
+            CreateRequest( lostSaga ), QueuePriority.Interactive, TestContext.CancellationToken );
+        Assert.IsTrue( await _outbox.DispatchAsync(
+            lostSaga.SagaId, SupportedProviders.Spotify, TestContext.CancellationToken ) );
+
+        IDatabase db = s_redis!.GetDatabase( );
+        RedisKey stream = QueueStreamKeys.For(
+            SupportedProviders.Spotify, QueuePriority.Interactive );
+        _ = await db.KeyDeleteAsync( stream );
+        string lostOutboxKey =
+            $"outbox:lookup-dispatch:{lostSaga.SagaId}:{SupportedProviders.Spotify}";
+        _ = await db.SortedSetAddAsync(
+            "outbox:lookup-dispatch:published-recovery-due",
+            lostOutboxKey,
+            DateTimeOffset.UtcNow.AddMinutes( -1 ).ToUnixTimeMilliseconds( ) );
+
+        for (int index = 0; index < 4; index++) {
+            LookupSagaState pendingSaga = await CreateSagaAsync( $"OUTBOX-FAIR-PENDING-{index}" );
+            _ = await _outbox.StageAsync(
+                CreateRequest( pendingSaga ), QueuePriority.Interactive, TestContext.CancellationToken );
+        }
+
+        Assert.AreEqual( 2, await _outbox.DispatchPendingAsync(
+            2, TestContext.CancellationToken ) );
+        Assert.HasCount( 2, await db.StreamRangeAsync( stream ) );
+        Assert.AreEqual(
+            3,
+            await db.SortedSetLengthAsync( "outbox:lookup-dispatch:pending-due" ) );
     }
 
     /// <summary>A leg completed after staging is cleaned up without publishing stale work.</summary>

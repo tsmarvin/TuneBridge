@@ -16,7 +16,7 @@ public sealed partial class RedisRefreshReviewStore(
     ILogger<RedisRefreshReviewStore> logger
 ) : IRefreshReviewStore {
     private const string PendingPrefix = "cache:refresh:pending:";
-    private const string PendingSagaIndexKey = "cache:refresh:pending:sagas";
+    internal const string PendingSagaIndexKey = "cache:refresh:pending:sagas";
     private const string PendingSagaSetPrefix = "cache:refresh:pending:saga:";
     private const string UnresolvedKey = "cache:refresh:unresolved";
     private const string UnresolvedSagaIndexKey = "cache:refresh:unresolved:sagas";
@@ -133,7 +133,7 @@ public sealed partial class RedisRefreshReviewStore(
         return 1
         """;
 
-    private static readonly JsonSerializerOptions s_jsonOptions = new( JsonSerializerDefaults.Web );
+    internal static readonly JsonSerializerOptions JsonOptions = new( JsonSerializerDefaults.Web );
     private readonly IConnectionMultiplexer _redis = redis ?? throw new ArgumentNullException( nameof( redis ) );
     private readonly ILogger<RedisRefreshReviewStore> _logger = logger
         ?? throw new ArgumentNullException( nameof( logger ) );
@@ -147,10 +147,10 @@ public sealed partial class RedisRefreshReviewStore(
         ArgumentException.ThrowIfNullOrWhiteSpace( entry.InstanceToken );
         cancellationToken.ThrowIfCancellationRequested( );
 
-        string json = JsonSerializer.Serialize( entry, s_jsonOptions );
+        string json = JsonSerializer.Serialize( entry, JsonOptions );
         _ = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             RegisterPendingScript,
-            [PendingPrefix + entry.SourceRecordUri, PendingSagaIndexKey, PendingSagaSetPrefix + entry.SagaId],
+            [GetPendingKey( entry.SourceRecordUri ), PendingSagaIndexKey, GetPendingSagaSetKey( entry.SagaId )],
             [json, entry.SagaId, entry.SourceRecordUri, Math.Max( 1L, (long)_pendingTtl.TotalMilliseconds ),
                 entry.CreatedAtUnixMilliseconds] );
     }
@@ -159,7 +159,7 @@ public sealed partial class RedisRefreshReviewStore(
     public async Task<RefreshReviewEntry?> GetPendingAsync( string sourceRecordUri, CancellationToken cancellationToken = default ) {
         ArgumentException.ThrowIfNullOrWhiteSpace( sourceRecordUri );
         cancellationToken.ThrowIfCancellationRequested( );
-        return TryDeserialize( await _redis.GetDatabase( ).StringGetAsync( PendingPrefix + sourceRecordUri ) );
+        return TryDeserialize( await _redis.GetDatabase( ).StringGetAsync( GetPendingKey( sourceRecordUri ) ) );
     }
 
     /// <inheritdoc/>
@@ -167,16 +167,16 @@ public sealed partial class RedisRefreshReviewStore(
         ArgumentException.ThrowIfNullOrWhiteSpace( sagaId );
         cancellationToken.ThrowIfCancellationRequested( );
         IDatabase db = _redis.GetDatabase( );
-        RedisValue[] uris = await db.SetMembersAsync( PendingSagaSetPrefix + sagaId ) ?? [];
+        RedisValue[] uris = await db.SetMembersAsync( GetPendingSagaSetKey( sagaId ) ) ?? [];
         List<RefreshReviewEntry> entries = [];
         foreach (RedisValue uri in uris) {
-            RefreshReviewEntry? entry = TryDeserialize( await db.StringGetAsync( PendingPrefix + uri ) );
+            RefreshReviewEntry? entry = TryDeserialize( await db.StringGetAsync( GetPendingKey( uri.ToString( ) ) ) );
             if (entry is not null && string.Equals( entry.SagaId, sagaId, StringComparison.Ordinal )) {
                 entries.Add( entry );
             } else {
                 // Payload TTLs can expire before the saga-set/hash metadata. Prune those
                 // tombstones lazily so retry scans do not retain unbounded stale membership.
-                _ = await db.SetRemoveAsync( PendingSagaSetPrefix + sagaId, uri );
+                _ = await db.SetRemoveAsync( GetPendingSagaSetKey( sagaId ), uri );
                 RedisValue indexed = await db.HashGetAsync( PendingSagaIndexKey, sagaId );
                 if (indexed == uri) {
                     _ = await db.HashDeleteAsync( PendingSagaIndexKey, sagaId );
@@ -185,7 +185,7 @@ public sealed partial class RedisRefreshReviewStore(
         }
         if (entries.Count == 0) {
             _ = await db.HashDeleteAsync( PendingSagaIndexKey, sagaId );
-            _ = await db.KeyDeleteAsync( PendingSagaSetPrefix + sagaId );
+            _ = await db.KeyDeleteAsync( GetPendingSagaSetKey( sagaId ) );
         }
         return entries;
     }
@@ -207,7 +207,7 @@ public sealed partial class RedisRefreshReviewStore(
             FailedAt = DateTimeOffset.UtcNow,
             FailureReason = reason
         };
-        string json = JsonSerializer.Serialize( unresolved, s_jsonOptions );
+        string json = JsonSerializer.Serialize( unresolved, JsonOptions );
         _ = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             PromoteDirectScript,
             keys: [UnresolvedKey, UnresolvedSagaIndexKey, SweepAttemptsPrefix + entry.SourceRecordUri,
@@ -223,10 +223,10 @@ public sealed partial class RedisRefreshReviewStore(
         RefreshReviewEntry unresolved = entry with { FailedAt = DateTimeOffset.UtcNow, FailureReason = reason };
         RedisResult result = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             MarkUnresolvedRecordScript,
-            [PendingPrefix + entry.SourceRecordUri, UnresolvedKey, UnresolvedSagaIndexKey, PendingSagaIndexKey,
-                PendingSagaSetPrefix + entry.SagaId, SweepAttemptsPrefix + entry.SourceRecordUri,
+            [GetPendingKey( entry.SourceRecordUri ), UnresolvedKey, UnresolvedSagaIndexKey, PendingSagaIndexKey,
+                GetPendingSagaSetKey( entry.SagaId ), SweepAttemptsPrefix + entry.SourceRecordUri,
                 TargetWriteAttemptsPrefix + entry.SourceRecordUri],
-            [entry.SagaId, entry.InstanceToken, entry.SourceRecordUri, JsonSerializer.Serialize( unresolved, s_jsonOptions ),
+            [entry.SagaId, entry.InstanceToken, entry.SourceRecordUri, JsonSerializer.Serialize( unresolved, JsonOptions ),
                 entry.CreatedAtUnixMilliseconds] );
         if ((int)result == 1) {
             QueueMetrics.RecordMaintenanceOutcome( "promoted_to_review" );
@@ -240,8 +240,8 @@ public sealed partial class RedisRefreshReviewStore(
         cancellationToken.ThrowIfCancellationRequested( );
         RedisResult result = await _redis.GetDatabase( ).ScriptEvaluateAsync(
             CompleteRecordScript,
-            [PendingPrefix + entry.SourceRecordUri, UnresolvedKey, UnresolvedSagaIndexKey, PendingSagaIndexKey,
-                PendingSagaSetPrefix + entry.SagaId, SweepAttemptsPrefix + entry.SourceRecordUri,
+            [GetPendingKey( entry.SourceRecordUri ), UnresolvedKey, UnresolvedSagaIndexKey, PendingSagaIndexKey,
+                GetPendingSagaSetKey( entry.SagaId ), SweepAttemptsPrefix + entry.SourceRecordUri,
                 TargetWriteAttemptsPrefix + entry.SourceRecordUri],
             [entry.SagaId, entry.InstanceToken, entry.SourceRecordUri, entry.CreatedAtUnixMilliseconds] );
         if ((int)result == 1) {
@@ -308,7 +308,7 @@ public sealed partial class RedisRefreshReviewStore(
         List<RefreshReviewEntry> results = [];
         foreach (HashEntry entry in entries) {
             try {
-                RefreshReviewEntry? result = JsonSerializer.Deserialize<RefreshReviewEntry>( entry.Value.ToString( ), s_jsonOptions );
+                RefreshReviewEntry? result = JsonSerializer.Deserialize<RefreshReviewEntry>( entry.Value.ToString( ), JsonOptions );
                 if (result is not null) {
                     results.Add( result );
                 }
@@ -356,11 +356,17 @@ public sealed partial class RedisRefreshReviewStore(
         }
 
         try {
-            return JsonSerializer.Deserialize<RefreshReviewEntry>( json.ToString( ), s_jsonOptions );
+            return JsonSerializer.Deserialize<RefreshReviewEntry>( json.ToString( ), JsonOptions );
         } catch (JsonException) {
             return null;
         }
     }
+
+    internal static RedisKey GetPendingKey( string sourceRecordUri ) =>
+        PendingPrefix + sourceRecordUri;
+
+    internal static RedisKey GetPendingSagaSetKey( string sagaId ) =>
+        PendingSagaSetPrefix + sagaId;
 
     [LoggerMessage(
         Level = LogLevel.Error,

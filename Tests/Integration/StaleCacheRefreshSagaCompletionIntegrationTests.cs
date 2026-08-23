@@ -523,15 +523,18 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             queueResolver = resolverMock.Object;
         }
 
+        IRefreshReviewStore refreshReviewStore = CreateRefreshReviewStore( );
         Dictionary<SupportedProviders, QueuedLookupRequest> stagedRequests = [];
         Mock<ILookupDispatchOutbox> dispatchOutbox = new( );
-        _ = dispatchOutbox.Setup( outbox => outbox.StageBatchAsync(
+        _ = dispatchOutbox.Setup( outbox => outbox.StageRefreshBatchAsync(
                 It.IsAny<IReadOnlyList<QueuedLookupRequest>>( ),
                 It.IsAny<QueuePriority>( ),
+                It.IsAny<RefreshReviewEntry>( ),
                 It.IsAny<CancellationToken>( ) ) )
             .Returns( async (
                 IReadOnlyList<QueuedLookupRequest> requests,
                 QueuePriority _,
+                RefreshReviewEntry reviewEntry,
                 CancellationToken cancellationToken ) => {
                     bool initialized = await sagaManager.TryInitializeProviderStatesAsync(
                         requests[0].SagaId,
@@ -544,6 +547,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
                                 request => request.Provider,
                                 _ => ProviderDispatchStageOutcome.SagaInstanceMismatch );
                     }
+                    await refreshReviewStore.RegisterPendingAsync( reviewEntry, cancellationToken );
                     foreach (QueuedLookupRequest request in requests) {
                         stagedRequests[request.Provider] = request;
                     }
@@ -598,7 +602,7 @@ public class StaleCacheRefreshSagaCompletionIntegrationTests {
             enabledProviders,
             settings,
             new Mock<ILogger<StaleCacheRefreshBackgroundService>>( ).Object,
-            CreateRefreshReviewStore( )
+            refreshReviewStore
         );
     }
 

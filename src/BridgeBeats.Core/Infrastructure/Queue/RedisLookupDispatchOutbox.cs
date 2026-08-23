@@ -14,21 +14,25 @@ namespace BridgeBeats.Core.Infrastructure.Queue;
 /// Redis transactional outbox for initial lookup-provider dispatches. The stage script creates the
 /// provider leg and outbox entry atomically. The relay script atomically appends the payload to the
 /// provider stream and marks the leg dispatched. Published envelopes remain durable until the saga
-/// leg completes so the relay can re-drive a delivery that was acknowledged without completion.
+/// leg completes and track their current stream entry and eligibility time. Recovery only re-drives
+/// a missing eligible entry, and time-ordered indexes reserve relay capacity for both new dispatches
+/// and recovery checks.
 /// </summary>
 public sealed partial class RedisLookupDispatchOutbox(
     IConnectionMultiplexer redis,
     IOptions<QueueSettings> settings,
     ILogger<RedisLookupDispatchOutbox> logger
 ) : ILookupDispatchOutbox {
-    private const string PendingSetKey = "outbox:lookup-dispatch:pending";
-    private const string PublishedSetKey = "outbox:lookup-dispatch:published";
-    private const string DispatchStateField = "dispatchState";
+    internal const string PendingIndexKey = "outbox:lookup-dispatch:pending-due";
+    internal const string PublishedRecoveryIndexKey = "outbox:lookup-dispatch:published-recovery-due";
+    internal const string DispatchStateField = "dispatchState";
     private const string DispatchPending = "pending";
-    private const string DispatchPublished = "published";
-    private const string DispatchPublishedAtField = "dispatchPublishedAt";
+    internal const string DispatchPublished = "published";
+    internal const string DispatchPublishedAtField = "dispatchPublishedAt";
     private const string OutboxPrefix = "outbox:lookup-dispatch:";
-    private static readonly TimeSpan s_redriveAfter = TimeSpan.FromMinutes( 5 );
+    internal const string CurrentMessageIdField = "currentMessageId";
+    internal const string NotBeforeField = "notBefore";
+    internal static readonly TimeSpan RedriveAfter = TimeSpan.FromMinutes( 5 );
 
     private static readonly string s_stageBatchScript = $$"""
         local count = tonumber(ARGV[1])
@@ -41,22 +45,44 @@ public sealed partial class RedisLookupDispatchOutbox(
 
         local outcomes = {}
         local ttl = tonumber(ARGV[7])
-        local staleBefore = tonumber(ARGV[8]) - tonumber(ARGV[9])
+        if ARGV[10] ~= '' then
+            local previous = redis.call('GET', KEYS[4])
+            if previous then
+                local previousOk, previousEntry = pcall(cjson.decode, previous)
+                if previousOk then
+                    local previousCreatedAt = tonumber(previousEntry['createdAtUnixMilliseconds'])
+                    local incomingCreatedAt = tonumber(ARGV[14])
+                    if previousCreatedAt and incomingCreatedAt and previousCreatedAt > incomingCreatedAt then
+                        local mismatches = {}
+                        for i = 1, count do mismatches[i] = 0 end
+                        return mismatches
+                    end
+                    if previousEntry['sagaId'] and previousEntry['sagaId'] ~= ARGV[11] then
+                        if redis.call('HGET', KEYS[5], previousEntry['sagaId']) == ARGV[12] then
+                            redis.call('HDEL', KEYS[5], previousEntry['sagaId'])
+                        end
+                    end
+                end
+            end
+            redis.call('SET', KEYS[4], ARGV[10], 'PX', ARGV[13])
+            redis.call('HSETNX', KEYS[5], ARGV[11], ARGV[12])
+            redis.call('SADD', KEYS[6], ARGV[12])
+            redis.call('PEXPIRE', KEYS[6], ARGV[13])
+        end
+
         for i = 1, count do
-            local providerKey = KEYS[2 + (i * 2)]
-            local outboxKey = KEYS[3 + (i * 2)]
-            local offset = 11 + ((i - 1) * 7)
+            local providerKey = KEYS[5 + (i * 2)]
+            local outboxKey = KEYS[6 + (i * 2)]
+            local offset = 15 + ((i - 1) * 7)
             local complete = redis.call('hget', providerKey, '{{RedisSagaStateManager.FieldIsComplete}}')
             local dispatchState = redis.call('hget', providerKey, ARGV[4])
-            local publishedAt = tonumber(redis.call('hget', providerKey, ARGV[6]) or '')
             local needsDispatch = dispatchState ~= ARGV[5]
-                or not publishedAt
-                or publishedAt <= staleBefore
+                or redis.call('exists', outboxKey) == 0
 
             if complete == 'True' or complete == 'true' then
                 redis.call('del', outboxKey)
-                redis.call('srem', KEYS[2], outboxKey)
-                redis.call('srem', KEYS[3], outboxKey)
+                redis.call('zrem', KEYS[2], outboxKey)
+                redis.call('zrem', KEYS[3], outboxKey)
                 outcomes[i] = 2
             elseif needsDispatch then
                 if redis.call('exists', providerKey) == 0 then
@@ -67,8 +93,9 @@ public sealed partial class RedisLookupDispatchOutbox(
                         '{{RedisSagaStateManager.FieldCompletedAt}}', '',
                         '{{RedisSagaStateManager.FieldErrorMessage}}', '')
                 end
-                redis.call('hset', providerKey, ARGV[4], ARGV[10])
+                redis.call('hset', providerKey, ARGV[4], ARGV[9])
                 redis.call('hdel', providerKey, ARGV[6])
+                redis.call('hdel', outboxKey, '{{CurrentMessageIdField}}', '{{NotBeforeField}}')
                 redis.call('hset', outboxKey,
                     'sagaId', ARGV[offset + 4],
                     'provider', ARGV[offset],
@@ -78,8 +105,8 @@ public sealed partial class RedisLookupDispatchOutbox(
                     'workChannel', ARGV[offset + 3],
                     'priority', ARGV[offset + 5],
                     'enqueueOrigin', ARGV[offset + 6])
-                redis.call('sadd', KEYS[2], outboxKey)
-                redis.call('srem', KEYS[3], outboxKey)
+                redis.call('zadd', KEYS[2], tonumber(ARGV[8]), outboxKey)
+                redis.call('zrem', KEYS[3], outboxKey)
                 redis.call('expire', outboxKey, ttl)
                 outcomes[i] = 1
             else
@@ -92,22 +119,22 @@ public sealed partial class RedisLookupDispatchOutbox(
 
     private static readonly string s_dispatchScript = $$"""
         if redis.call('exists', KEYS[3]) == 0 then
-            redis.call('srem', KEYS[4], KEYS[3])
-            redis.call('srem', KEYS[5], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[5], KEYS[3])
             return false
         end
         if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[1]) ~= ARGV[2] then
             redis.call('del', KEYS[3])
-            redis.call('srem', KEYS[4], KEYS[3])
-            redis.call('srem', KEYS[5], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[5], KEYS[3])
             return false
         end
         local complete = redis.call('hget', KEYS[2], '{{RedisSagaStateManager.FieldIsComplete}}')
         if complete == 'True' or complete == 'true' then
             redis.call('hset', KEYS[2], ARGV[3], ARGV[4])
             redis.call('del', KEYS[3])
-            redis.call('srem', KEYS[4], KEYS[3])
-            redis.call('srem', KEYS[5], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[5], KEYS[3])
             return false
         end
         if redis.call('hget', KEYS[2], ARGV[3]) ~= ARGV[12] then
@@ -116,55 +143,72 @@ public sealed partial class RedisLookupDispatchOutbox(
         local payload = redis.call('hget', KEYS[3], 'payload')
         if not payload or payload == '' then
             redis.call('del', KEYS[3])
-            redis.call('srem', KEYS[4], KEYS[3])
-            redis.call('srem', KEYS[5], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[5], KEYS[3])
             return false
         end
         local messageId = redis.call('xadd', KEYS[6], '*', ARGV[5], payload, ARGV[6], ARGV[7])
         redis.call('hset', KEYS[2], ARGV[3], ARGV[4], ARGV[10], ARGV[11])
+        redis.call('hset', KEYS[3], '{{CurrentMessageIdField}}', messageId)
+        redis.call('hdel', KEYS[3], '{{NotBeforeField}}')
         redis.call('expire', KEYS[2], tonumber(ARGV[8]))
         redis.call('expire', KEYS[3], tonumber(ARGV[8]))
-        redis.call('srem', KEYS[4], KEYS[3])
-        redis.call('sadd', KEYS[5], KEYS[3])
+        redis.call('zrem', KEYS[4], KEYS[3])
+        redis.call('zadd', KEYS[5], tonumber(ARGV[13]), KEYS[3])
         redis.call('publish', ARGV[9], messageId)
         return messageId
         """;
 
     private static readonly string s_redriveScript = $$"""
         if redis.call('exists', KEYS[3]) == 0 then
-            redis.call('srem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
             return false
         end
         if redis.call('exists', KEYS[1]) == 0 or redis.call('hget', KEYS[1], ARGV[1]) ~= ARGV[2] then
             redis.call('del', KEYS[3])
-            redis.call('srem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
             return false
         end
         local complete = redis.call('hget', KEYS[2], '{{RedisSagaStateManager.FieldIsComplete}}')
         if complete == 'True' or complete == 'true' then
             redis.call('del', KEYS[3])
-            redis.call('srem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
             return false
         end
         if redis.call('hget', KEYS[2], ARGV[3]) ~= ARGV[4] then
-            redis.call('srem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
             return false
         end
-        local publishedAt = tonumber(redis.call('hget', KEYS[2], ARGV[5]) or '')
-        if publishedAt and publishedAt > tonumber(ARGV[6]) then
+        if redis.call('hget', KEYS[3], 'targetStream') ~= KEYS[5] then
+            return false
+        end
+        local currentMessageId = redis.call('hget', KEYS[3], '{{CurrentMessageIdField}}')
+        if currentMessageId then
+            local current = redis.call('xrange', KEYS[5], currentMessageId, currentMessageId, 'COUNT', 1)
+            if #current > 0 then
+                redis.call('zadd', KEYS[4], tonumber(ARGV[12]), KEYS[3])
+                return false
+            end
+        end
+        local notBefore = tonumber(redis.call('hget', KEYS[3], '{{NotBeforeField}}') or '')
+        if notBefore and notBefore > tonumber(ARGV[9]) then
+            redis.call('zadd', KEYS[4], notBefore, KEYS[3])
             return false
         end
         local payload = redis.call('hget', KEYS[3], 'payload')
         if not payload or payload == '' then
             redis.call('del', KEYS[3])
-            redis.call('srem', KEYS[4], KEYS[3])
+            redis.call('zrem', KEYS[4], KEYS[3])
             return false
         end
-        local messageId = redis.call('xadd', KEYS[5], '*', ARGV[7], payload, ARGV[8], ARGV[9])
-        redis.call('hset', KEYS[2], ARGV[5], ARGV[10])
-        redis.call('expire', KEYS[2], tonumber(ARGV[11]))
-        redis.call('expire', KEYS[3], tonumber(ARGV[11]))
-        redis.call('publish', ARGV[12], messageId)
+        local messageId = redis.call('xadd', KEYS[5], '*', ARGV[6], payload, ARGV[7], ARGV[8])
+        redis.call('hset', KEYS[2], ARGV[5], ARGV[9])
+        redis.call('hset', KEYS[3], '{{CurrentMessageIdField}}', messageId)
+        redis.call('hdel', KEYS[3], '{{NotBeforeField}}')
+        redis.call('expire', KEYS[2], tonumber(ARGV[10]))
+        redis.call('expire', KEYS[3], tonumber(ARGV[10]))
+        redis.call('zadd', KEYS[4], tonumber(ARGV[12]), KEYS[3])
+        redis.call('publish', ARGV[11], messageId)
         return messageId
         """;
 
@@ -178,6 +222,7 @@ public sealed partial class RedisLookupDispatchOutbox(
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
+    private int _singleItemDispatchCounter;
 
     /// <inheritdoc/>
     public async Task<ProviderDispatchStageOutcome> StageAsync(
@@ -195,6 +240,24 @@ public sealed partial class RedisLookupDispatchOutbox(
         IReadOnlyList<QueuedLookupRequest> requests,
         QueuePriority priority,
         CancellationToken cancellationToken = default
+    ) => await StageBatchCoreAsync( requests, priority, null, cancellationToken );
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome>> StageRefreshBatchAsync(
+        IReadOnlyList<QueuedLookupRequest> requests,
+        QueuePriority priority,
+        RefreshReviewEntry reviewEntry,
+        CancellationToken cancellationToken = default
+    ) {
+        ArgumentNullException.ThrowIfNull( reviewEntry );
+        return await StageBatchCoreAsync( requests, priority, reviewEntry, cancellationToken );
+    }
+
+    private async Task<IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome>> StageBatchCoreAsync(
+        IReadOnlyList<QueuedLookupRequest> requests,
+        QueuePriority priority,
+        RefreshReviewEntry? reviewEntry,
+        CancellationToken cancellationToken
     ) {
         ArgumentNullException.ThrowIfNull( requests );
         if (requests.Count == 0) {
@@ -214,14 +277,29 @@ public sealed partial class RedisLookupDispatchOutbox(
         if (requests.Select( request => request.Provider ).Distinct( ).Count( ) != requests.Count) {
             throw new ArgumentException( "Provider dispatches must contain unique providers.", nameof( requests ) );
         }
+        if (reviewEntry is not null
+            && (!string.Equals( reviewEntry.SagaId, first.SagaId, StringComparison.Ordinal )
+                || !string.Equals( reviewEntry.InstanceToken, first.SagaInstanceToken, StringComparison.Ordinal ))) {
+            throw new ArgumentException(
+                "Refresh review context must belong to the same saga generation as its dispatches.",
+                nameof( reviewEntry ) );
+        }
 
         long ttlSeconds = (long)TimeSpan.FromMinutes( _settings.JobExpirationMinutes ).TotalSeconds;
         DateTimeOffset now = DateTimeOffset.UtcNow;
         List<RedisKey> keys = [
             RedisSagaStateManager.GetSagaKey( first.SagaId ),
-            PendingSetKey,
-            PublishedSetKey
+            PendingIndexKey,
+            PublishedRecoveryIndexKey,
+            RedisRefreshReviewStore.GetPendingKey( reviewEntry?.SourceRecordUri ?? "unused" ),
+            RedisRefreshReviewStore.PendingSagaIndexKey,
+            RedisRefreshReviewStore.GetPendingSagaSetKey( reviewEntry?.SagaId ?? "unused" )
         ];
+        string reviewJson = reviewEntry is null
+            ? string.Empty
+            : JsonSerializer.Serialize( reviewEntry, RedisRefreshReviewStore.JsonOptions );
+        long ttlMilliseconds = Math.Max( 1L, (long)TimeSpan.FromMinutes(
+            _settings.JobExpirationMinutes ).TotalMilliseconds );
         List<RedisValue> values = [
             requests.Count,
             RedisSagaStateManager.FieldInstanceToken,
@@ -231,8 +309,12 @@ public sealed partial class RedisLookupDispatchOutbox(
             DispatchPublishedAtField,
             ttlSeconds,
             now.ToUnixTimeMilliseconds( ),
-            (long)s_redriveAfter.TotalMilliseconds,
-            DispatchPending
+            DispatchPending,
+            reviewJson,
+            reviewEntry?.SagaId ?? string.Empty,
+            reviewEntry?.SourceRecordUri ?? string.Empty,
+            ttlMilliseconds,
+            reviewEntry?.CreatedAtUnixMilliseconds ?? 0
         ];
 
         foreach (QueuedLookupRequest request in requests) {
@@ -286,37 +368,70 @@ public sealed partial class RedisLookupDispatchOutbox(
         }
         cancellationToken.ThrowIfCancellationRequested( );
 
-        IDatabase db = _redis.GetDatabase( );
-        int dispatched = 0;
-        int visited = 0;
-        await foreach (RedisValue member in db.SetScanAsync(
-            PendingSetKey,
-            pageSize: Math.Min( limit, 100 ) )) {
-            cancellationToken.ThrowIfCancellationRequested( );
-            if (await DispatchOutboxKeyAsync( member.ToString( ), cancellationToken )) {
-                dispatched++;
+        if (limit == 1) {
+            bool recoverFirst = Interlocked.Increment( ref _singleItemDispatchCounter ) % 2 == 0;
+            (int singleDispatched, int visited) = await DispatchDueAsync(
+                recoverFirst ? PublishedRecoveryIndexKey : PendingIndexKey,
+                1,
+                recoverFirst ? RedriveOutboxKeyAsync : DispatchOutboxKeyAsync,
+                cancellationToken );
+            if (visited == 0) {
+                (singleDispatched, _) = await DispatchDueAsync(
+                    recoverFirst ? PendingIndexKey : PublishedRecoveryIndexKey,
+                    1,
+                    recoverFirst ? DispatchOutboxKeyAsync : RedriveOutboxKeyAsync,
+                    cancellationToken );
             }
-            visited++;
-            if (visited >= limit) {
-                break;
-            }
+            return singleDispatched;
         }
 
-        if (visited < limit) {
-            await foreach (RedisValue member in db.SetScanAsync(
-                PublishedSetKey,
-                pageSize: Math.Min( limit - visited, 100 ) )) {
-                cancellationToken.ThrowIfCancellationRequested( );
-                if (await RedriveOutboxKeyAsync( member.ToString( ), cancellationToken )) {
-                    dispatched++;
-                }
-                visited++;
-                if (visited >= limit) {
-                    break;
-                }
-            }
+        int pendingBudget = (limit + 1) / 2;
+        int recoveryBudget = limit - pendingBudget;
+        (int pendingDispatched, int pendingVisited) = await DispatchDueAsync(
+            PendingIndexKey, pendingBudget, DispatchOutboxKeyAsync, cancellationToken );
+        (int recoveryDispatched, int recoveryVisited) = await DispatchDueAsync(
+            PublishedRecoveryIndexKey, recoveryBudget, RedriveOutboxKeyAsync, cancellationToken );
+        int dispatched = pendingDispatched + recoveryDispatched;
+
+        if (pendingVisited < pendingBudget) {
+            (int extra, _) = await DispatchDueAsync(
+                PublishedRecoveryIndexKey,
+                pendingBudget - pendingVisited,
+                RedriveOutboxKeyAsync,
+                cancellationToken );
+            dispatched += extra;
+        } else if (recoveryVisited < recoveryBudget) {
+            (int extra, _) = await DispatchDueAsync(
+                PendingIndexKey,
+                recoveryBudget - recoveryVisited,
+                DispatchOutboxKeyAsync,
+                cancellationToken );
+            dispatched += extra;
         }
         return dispatched;
+    }
+
+    private async Task<(int Dispatched, int Visited)> DispatchDueAsync(
+        RedisKey indexKey,
+        int limit,
+        Func<string, CancellationToken, Task<bool>> dispatch,
+        CancellationToken cancellationToken
+    ) {
+        if (limit == 0) {
+            return (0, 0);
+        }
+        RedisValue[] members = await _redis.GetDatabase( ).SortedSetRangeByScoreAsync(
+            indexKey,
+            stop: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds( ),
+            take: limit );
+        int dispatched = 0;
+        foreach (RedisValue member in members) {
+            cancellationToken.ThrowIfCancellationRequested( );
+            if (await dispatch( member.ToString( ), cancellationToken )) {
+                dispatched++;
+            }
+        }
+        return (dispatched, members.Length);
     }
 
     private async Task<bool> DispatchOutboxKeyAsync(
@@ -339,8 +454,8 @@ public sealed partial class RedisLookupDispatchOutbox(
                 RedisSagaStateManager.GetSagaKey( metadata.SagaId ),
                 RedisSagaStateManager.GetProviderKey( metadata.SagaId, metadata.Provider ),
                 outboxKey,
-                PendingSetKey,
-                PublishedSetKey,
+                PendingIndexKey,
+                PublishedRecoveryIndexKey,
                 metadata.TargetStream
             ],
             [
@@ -355,7 +470,8 @@ public sealed partial class RedisLookupDispatchOutbox(
                 metadata.WorkChannel,
                 DispatchPublishedAtField,
                 now.ToUnixTimeMilliseconds( ),
-                DispatchPending
+                DispatchPending,
+                now.Add( RedriveAfter ).ToUnixTimeMilliseconds( )
             ] );
         RedisValue messageId = (RedisValue)result;
         if (!messageId.HasValue) {
@@ -390,7 +506,7 @@ public sealed partial class RedisLookupDispatchOutbox(
                 RedisSagaStateManager.GetSagaKey( metadata.SagaId ),
                 RedisSagaStateManager.GetProviderKey( metadata.SagaId, metadata.Provider ),
                 outboxKey,
-                PublishedSetKey,
+                PublishedRecoveryIndexKey,
                 metadata.TargetStream
             ],
             [
@@ -399,13 +515,13 @@ public sealed partial class RedisLookupDispatchOutbox(
                 DispatchStateField,
                 DispatchPublished,
                 DispatchPublishedAtField,
-                now.Subtract( s_redriveAfter ).ToUnixTimeMilliseconds( ),
                 QueueStreamFieldNames.Payload,
                 QueueStreamFieldNames.EnqueuedAt,
                 now.ToString( "O", CultureInfo.InvariantCulture ),
                 now.ToUnixTimeMilliseconds( ),
                 ttlSeconds,
-                metadata.WorkChannel
+                metadata.WorkChannel,
+                now.Add( RedriveAfter ).ToUnixTimeMilliseconds( )
             ] );
         RedisValue messageId = (RedisValue)result;
         if (!messageId.HasValue) {
@@ -450,8 +566,8 @@ public sealed partial class RedisLookupDispatchOutbox(
         }
 
         _ = await db.KeyDeleteAsync( outboxKey );
-        _ = await db.SetRemoveAsync( PendingSetKey, outboxKey );
-        _ = await db.SetRemoveAsync( PublishedSetKey, outboxKey );
+        _ = await db.SortedSetRemoveAsync( PendingIndexKey, outboxKey );
+        _ = await db.SortedSetRemoveAsync( PublishedRecoveryIndexKey, outboxKey );
         return null;
     }
 
@@ -464,7 +580,7 @@ public sealed partial class RedisLookupDispatchOutbox(
         QueuePriority Priority,
         QueueEnqueueOrigin EnqueueOrigin );
 
-    private static string GetOutboxKey( string sagaId, SupportedProviders provider ) =>
+    internal static string GetOutboxKey( string sagaId, SupportedProviders provider ) =>
         $"{OutboxPrefix}{sagaId}:{provider}";
 
     private static (string Stream, string WorkChannel, QueuePriority EffectivePriority)

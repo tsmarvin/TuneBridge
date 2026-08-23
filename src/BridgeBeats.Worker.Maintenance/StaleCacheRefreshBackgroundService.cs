@@ -405,19 +405,16 @@ public sealed partial class StaleCacheRefreshBackgroundService(
             } )];
 
         IReadOnlyDictionary<SupportedProviders, ProviderDispatchStageOutcome> outcomes =
-            await dispatchOutbox.StageBatchAsync(
-                requests, QueuePriority.Bulk, cancellationToken );
+            await dispatchOutbox.StageRefreshBatchAsync(
+                requests,
+                QueuePriority.Bulk,
+                recordContext with { InstanceToken = instanceToken },
+                cancellationToken );
         if (outcomes.Values.Any(
             outcome => outcome == ProviderDispatchStageOutcome.SagaInstanceMismatch )) {
             LogRefreshRecordSkipped( logger, atUri );
             return false;
         }
-
-        // Staging is durable but not yet visible to workers. Persist review context after the
-        // generation fence succeeds and before making any staged delivery visible.
-        await refreshReviewStore.RegisterPendingAsync( recordContext with { InstanceToken = instanceToken },
-            cancellationToken
-        );
 
         foreach ((SupportedProviders provider, ProviderDispatchStageOutcome outcome) in outcomes) {
             if (outcome != ProviderDispatchStageOutcome.Staged) {
