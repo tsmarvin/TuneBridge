@@ -52,39 +52,23 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Setup test configuration
-        run: |
-          # Write Apple Private Key to file if available
-          if [ -n "${{ secrets.APPLEPRIVATEKEY }}" ]; then
-            mkdir -p /tmp/test-keys
-            echo "${{ secrets.APPLEPRIVATEKEY }}" > /tmp/test-keys/apple_key.p8
-          fi
-
-          # Create appsettings.json for tests (with empty DiscordToken to disable Discord bot in tests)
-          # Tests look for src/BridgeBeats.Web/appsettings.json relative to test output dir, so create src/BridgeBeats.Web/ subdir there
-          mkdir -p Tests/bin/Release/net10.0/src/BridgeBeats.Web
-          sed -e 's/{NodeNumber}/${{ vars.NODENUMBER || '0' }}/g' \
-              -e 's/"{AppleTeamId}"/"${{ secrets.APPLETEAMID }}"/g' \
-              -e 's/"{AppleKeyId}"/"${{ secrets.APPLEKEYID }}"/g' \
-              -e 's|"{AppleKeyPath}"|"/tmp/test-keys/apple_key.p8"|g' \
-              -e 's/"{SpotifyClientId}"/"${{ secrets.SPOTIFYCLIENTID }}"/g' \
-              -e 's/"{SpotifyClientSecret}"/"${{ secrets.SPOTIFYCLIENTSECRET }}"/g' \
-              -e 's/"{TidalClientId}"/"${{ secrets.TIDALCLIENTID }}"/g' \
-              -e 's/"{TidalClientSecret}"/"${{ secrets.TIDALCLIENTSECRET }}"/g' \
-              -e 's/"{DiscordToken}"/""/g' \
-              -e 's/"{ApiKeySalt}"/"test_api_key_salt_for_ci"/g' \
-              -e 's/{CardCacheExpirationHours}/1/g' \
-              -e 's/{CardCacheCleanupInterval}/500/g' \
-              -e 's/"{Default_LogLevel}"/"Information"/g' \
-              -e 's/"{Hosting_LogLevel}"/"Information"/g' \
-              -e 's/"{Allowed_Hosts}"/"*"/g' \
-              src/BridgeBeats.Web/appsettings.transform.json > Tests/bin/Release/net10.0/src/BridgeBeats.Web/appsettings.json
-          cp -f Tests/bin/Release/net10.0/src/BridgeBeats.Web/appsettings.json src/BridgeBeats.Web/appsettings.json
-
       - name: Run Unit Tests
+        env: &test-configuration
+          BridgeBeats__Bootstrap__SeedSettings: "true"
+          BridgeBeats__ApplePrivateKey: ${{ secrets.APPLEPRIVATEKEY }}
+          BridgeBeats__AppleTeamId: ${{ secrets.APPLETEAMID }}
+          BridgeBeats__AppleKeyId: ${{ secrets.APPLEKEYID }}
+          BridgeBeats__SpotifyClientId: ${{ secrets.SPOTIFYCLIENTID }}
+          BridgeBeats__SpotifyClientSecret: ${{ secrets.SPOTIFYCLIENTSECRET }}
+          BridgeBeats__TidalClientId: ${{ secrets.TIDALCLIENTID }}
+          BridgeBeats__TidalClientSecret: ${{ secrets.TIDALCLIENTSECRET }}
+          BridgeBeats__NodeNumber: ${{ vars.NODENUMBER || '0' }}
+          BridgeBeats__DiscordToken: ""
+          BridgeBeats__ApiKeySalt: "ci-test-api-key-salt-0000000000000000"
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Unit" --logger "trx;LogFileName=unit-test-results.trx" --logger "console;verbosity=detailed"
 
       - name: Run Integration Tests
+        env: *test-configuration
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Integration" --logger "trx;LogFileName=integration-test-results.trx" --logger "console;verbosity=detailed"
 
       - name: Guard — at least one integration test must have executed
@@ -108,6 +92,7 @@ jobs:
           [ "$EXECUTED" -gt 0 ] || { echo "ERROR: zero integration tests executed — all tests skipped (Inconclusive). Fix the test suite or integration environment."; exit 1; }
 
       - name: Run End-to-End Tests
+        env: *test-configuration
         run: dotnet test Tests/BridgeBeats.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~EndToEnd" --logger "trx;LogFileName=e2e-test-results.trx" --logger "console;verbosity=detailed"
 
       - name: Upload Test Results
@@ -117,8 +102,3 @@ jobs:
           name: test-results
           path: '**/TestResults/*.trx'
           retention-days: 30
-
-      - name: Cleanup
-        if: always()
-        run: |
-          rm -rf /tmp/test-keys

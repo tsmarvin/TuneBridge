@@ -1,11 +1,15 @@
 using System.Text.Json;
 using BridgeBeats.Contracts.Enums;
 using BridgeBeats.Contracts.Interfaces;
+using BridgeBeats.Contracts.Records;
 using BridgeBeats.Core.Domain.Providers.AppleMusic;
 using BridgeBeats.Core.Domain.Providers.Spotify;
 using BridgeBeats.Core.Domain.Providers.Tidal;
 using BridgeBeats.Core.Domain.Services.LinkResolver;
+using BridgeBeats.Core.Infrastructure.Extensions;
 using BridgeBeats.Core.Infrastructure.Identity;
+using BridgeBeats.Core.Infrastructure.Settings;
+using BridgeBeats.Web.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -22,16 +26,16 @@ namespace BridgeBeats.Tests;
 /// A <see cref="WebApplicationFactory{TEntryPoint}"/> over the BridgeBeats web app's entry point that
 /// hosts the real application in-memory for integration and end-to-end tests. It points the app at the
 /// shared Redis container, replaces the identity store with a per-instance SQLite database, applies a
-/// fast retry/timeout resilience profile, and can swap the media-link service into a direct
-/// (non-worker) mode for tests that bypass the distributed queue.
+/// fast retry/timeout resilience profile, and seeds the isolated settings store through the same
+/// production bootstrap path used by AppHost.
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     /// <summary>The in-memory configuration overlaid on the host's normal configuration sources.</summary>
     private readonly Dictionary<string, string?> _configData;
+    /// <summary>Filesystem root containing this factory's disposable database and key ring.</summary>
+    private readonly string _artifactRoot;
     /// <summary>Filesystem path of this instance's isolated SQLite identity database.</summary>
     private readonly string _identityDbPath;
-    /// <summary>ATProto environment variables overridden for this factory, with their prior process values, restored on dispose to prevent cross-test contamination.</summary>
-    private readonly List<(string Name, string? PriorValue)> _atProtoEnvRestore;
 
     /// <summary>
     /// Creates a factory with the default test configuration and no overrides.
@@ -52,8 +56,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
         SharedTestInfrastructure.RequireRedis( );
 
         // Generate unique database file paths for this test instance
-        string uniqueId = Guid.NewGuid().ToString( "N" )[..8];
-        _identityDbPath = Path.Combine( Path.GetTempPath( ), $"BridgeBeats_Identity_{uniqueId}.db" );
+        _artifactRoot = TestArtifacts.CreateDirectory( "web-factory" );
+        _identityDbPath = Path.Combine( _artifactRoot, "bridgebeats.db" );
+        string dataProtectionKeyPath = Path.Combine( _artifactRoot, "keys" );
 
         // Get the Redis connection string AFTER RequireRedis() has initialized the container
         string redisConnectionString = SharedTestInfrastructure.RedisConnectionString;
@@ -64,30 +69,19 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
             ["BridgeBeats:SpotifyClientSecret"] = "test",
             ["BridgeBeats:DiscordToken"] = "", // Empty string to prevent Discord service registration
             ["BridgeBeats:IdentityConnectionString"] = $"Data Source={_identityDbPath}",
-            ["BridgeBeats:ApiKeySalt"] = "api_key_salt",
+            ["BridgeBeats:DataProtectionKeyPath"] = dataProtectionKeyPath,
+            ["BridgeBeats:ApiKeySalt"] = "test-api-key-salt-32-characters!",
+            ["BridgeBeats:Bootstrap:SeedSettings"] = "true",
+            ["BridgeBeats:Domain"] = "localhost",
             // Redis connection from shared test infrastructure (captured AFTER initialization)
             // Set both keys to ensure Aspire can find the connection string
             ["ConnectionStrings:redis"] = redisConnectionString,
             ["Aspire:StackExchange:Redis:ConnectionString"] = redisConnectionString,
         };
 
-        // Force the three ATProto settings empty so the host does not pick up a developer's
-        // local user-secret credentials (which would trip DID validation during service
-        // registration). These must be environment variables: the host binds AppSettings and
-        // runs ATProto validation during eager service registration, before this factory's
-        // in-memory configuration is applied, so the in-memory overlay would land too late.
-        // Prior values are captured and restored in Dispose to keep the override scoped to
-        // this factory's lifetime.
-        string[] atProtoKeys = [
-            "BridgeBeats__ATProtoIdentifier",
-            "BridgeBeats__ATProtoPassword",
-            "BridgeBeats__ATProtoUserDID",
-        ];
-        _atProtoEnvRestore = [];
-        foreach (string key in atProtoKeys) {
-            _atProtoEnvRestore.Add( (key, Environment.GetEnvironmentVariable( key )) );
-            Environment.SetEnvironmentVariable( key, "" );
-        }
+        defaults["BridgeBeats:ATProtoIdentifier"] = string.Empty;
+        defaults["BridgeBeats:ATProtoPassword"] = string.Empty;
+        defaults["BridgeBeats:ATProtoUserDID"] = string.Empty;
 
         // Merge overrides onto defaults (overrides win), EXCEPT for critical test infrastructure keys
         // that must always use the test container connection
@@ -106,35 +100,47 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
                 _configData[kvp.Key] = kvp.Value;
             }
 
-            if (configOverrides.TryGetValue( "BridgeBeats:IdentityConnectionString", out string? identityCs ) && identityCs != null) {
-                _identityDbPath = ExtractDataSource( identityCs );
-            }
         }
-    }
 
-    /// <summary>
-    /// Extracts the <c>Data Source=</c> file path from a SQLite connection string, returning the whole
-    /// string when no such segment is found.
-    /// </summary>
-    /// <param name="connectionString">The SQLite connection string to parse.</param>
-    /// <returns>The data-source path, or the original string if no data source is present.</returns>
-    private static string ExtractDataSource( string connectionString ) {
-        // Extract Data Source path from connection string
-        string[] parts = connectionString.Split( ';' );
-        foreach (string part in parts) {
-            if (part.Trim( ).StartsWith( "Data Source=", StringComparison.OrdinalIgnoreCase )) {
-                return part.Trim( )["Data Source=".Length..];
-            }
+        // A developer may still have the retired AppleKeyPath user-secret alongside the two
+        // identifiers. Startup seeding accepts only key contents, so treat that incomplete legacy
+        // group as unconfigured instead of persisting an invalid aggregate.
+        if (!_configData.TryGetValue( "BridgeBeats:ApplePrivateKey", out string? applePrivateKey ) ||
+            string.IsNullOrWhiteSpace( applePrivateKey )) {
+            _configData["BridgeBeats:AppleTeamId"] = string.Empty;
+            _configData["BridgeBeats:AppleKeyId"] = string.Empty;
+            _configData["BridgeBeats:ApplePrivateKey"] = string.Empty;
         }
-        return connectionString; // Return original if parsing fails
+
+        string identityConnectionString = _configData["BridgeBeats:IdentityConnectionString"]!;
+        dataProtectionKeyPath = _configData["BridgeBeats:DataProtectionKeyPath"]!;
+        IConfiguration seedConfiguration = new ConfigurationBuilder( )
+            .AddInMemoryCollection( _configData )
+            .Build( );
+        ApplicationSettingsSnapshot snapshot = ApplicationSettingsBootstrapper.MigrateSeedAndLoadAsync(
+            identityConnectionString,
+            dataProtectionKeyPath,
+            seedConfiguration
+        ).GetAwaiter( ).GetResult( ) ?? throw new InvalidOperationException(
+            "The test settings database was not seeded."
+        );
+
+        foreach (KeyValuePair<string, string?> pair in ApplicationSettingsRuntimeProjector.ProjectWeb(
+            snapshot,
+            identityConnectionString,
+            dataProtectionKeyPath,
+            _configData["BridgeBeats:Domain"] ?? "localhost"
+        )) {
+            // Empty strings deliberately suppress lower-priority developer user-secrets for
+            // unconfigured values without mutating process-wide environment variables.
+            _configData[pair.Key] = pair.Value ?? string.Empty;
+        }
     }
 
     /// <summary>
     /// Configures the test host: switches to the <c>Testing</c> environment, replaces any in-memory
     /// configuration with the test configuration, repoints the Redis connection and identity
-    /// <c>DbContext</c> at the test infrastructure, registers a fast resilience profile, and (when
-    /// <c>BridgeBeats:Workers:UseWorkerServices</c> is <c>false</c>) wires a direct, in-process
-    /// media-link service over the enabled providers.
+    /// <c>DbContext</c> at the test infrastructure, and registers a fast resilience profile.
     /// </summary>
     /// <param name="builder">The web host builder supplied by the test host.</param>
     protected override void ConfigureWebHost( IWebHostBuilder builder ) {
@@ -176,16 +182,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
             _ = services.RemoveAll<IDbContextFactory<ApplicationDbContext>>( );
             _ = services.RemoveAll<ApplicationDbContext>( );
 
-            // Re-register DbContext factories with test connection strings
-            _ = services.AddDbContextFactory<ApplicationDbContext>( options =>
-                options.UseSqlite( identityConnStr )
-            );
-
-            // Re-register scoped ApplicationDbContext for Identity
-            _ = services.AddScoped( sp => {
-                IDbContextFactory<ApplicationDbContext> factory = sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( );
-                return factory.CreateDbContext( );
-            } );
+            // Re-register the same protected factory used by production against the isolated test database.
+            _ = services.AddBridgeBeatsApplicationDatabase( identityConnStr );
 
             // Add configuration for test-specific resilience
             _ = services.Configure<HttpStandardResilienceOptions>( "test-resilience", options => {
@@ -199,26 +197,27 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds( 5 ); // Shorter per-attempt timeout
             } );
 
-            // CRITICAL: Check if we're in direct provider mode (bypassing queue/caching)
-            // This fixes the timing issue where the application's service registration happens before
-            // our configuration overrides are applied. The application may have registered
-            // CachingMediaLinkService (which uses LookupOrchestrator and requires workers) based on
-            // the original configuration. We need to explicitly replace it with DefaultMediaLinkService
-            // for tests that want direct provider access.
-            bool useDirectMode = _configData.TryGetValue( "BridgeBeats:Workers:UseWorkerServices", out string? workerMode )
-                && workerMode?.Equals( "false", StringComparison.OrdinalIgnoreCase ) == true;
+            _ = services.PostConfigure<InternalServiceAuthOptions>(
+                InternalServiceDefaults.AuthenticationScheme,
+                options => {
+                    options.ServiceKey = _configData.TryGetValue(
+                        "BridgeBeats:InternalServiceKey",
+                        out string? serviceKey
+                    ) ? serviceKey ?? string.Empty : string.Empty;
+                }
+            );
+
+            bool useDirectMode = _configData.TryGetValue(
+                "BridgeBeats:Workers:UseWorkerServices",
+                out string? workerMode
+            ) && workerMode?.Equals( "false", StringComparison.OrdinalIgnoreCase ) == true;
 
             if (useDirectMode) {
-                // Remove the potentially-registered caching service and orchestrator
                 _ = services.RemoveAll<IMediaLinkService>( );
                 _ = services.RemoveAll<ILookupOrchestrator>( );
-
-                // Re-register DefaultMediaLinkService for direct provider access
                 _ = services.AddTransient<IMediaLinkService>( sp => {
-                    // Get enabled providers from the service provider (registered by the application)
-                    HashSet<SupportedProviders> enabledProviders = sp.GetRequiredService<HashSet<SupportedProviders>>( );
-
-                    // Build provider dictionary from registered lookup services
+                    HashSet<SupportedProviders> enabledProviders =
+                        sp.GetRequiredService<HashSet<SupportedProviders>>( );
                     Dictionary<SupportedProviders, IMusicLookupService> providerServices = [];
                     foreach (SupportedProviders provider in enabledProviders) {
                         IMusicLookupService? lookupService = provider switch {
@@ -239,6 +238,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
                     );
                 } );
             }
+
         } );
     }
 
@@ -271,22 +271,14 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     }
 
     /// <summary>
-    /// Disposes the test host, restores ATProto environment variables to their pre-construction
-    /// values, and deletes this instance's SQLite identity database file.
+    /// Disposes the test host and deletes this instance's SQLite database and key ring.
     /// </summary>
     /// <param name="disposing"><c>true</c> when called from <c>Dispose</c> rather than a finalizer.</param>
     protected override void Dispose( bool disposing ) {
         base.Dispose( disposing );
 
         if (disposing) {
-            // Restore the ATProto env vars captured in the constructor so this factory does
-            // not leak empty ATProto settings into other tests in the same process.
-            foreach ((string name, string? priorValue) in _atProtoEnvRestore) {
-                Environment.SetEnvironmentVariable( name, priorValue );
-            }
-
-            // Clean up temp database files
-            TryDeleteFile( _identityDbPath );
+            TryDeleteDirectory( _artifactRoot );
         }
     }
 
@@ -294,13 +286,13 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Web.Program> {
     /// Deletes the file at the given path if it exists, swallowing any I/O errors during cleanup.
     /// </summary>
     /// <param name="path">The file path to delete.</param>
-    private static void TryDeleteFile( string path ) {
+    private static void TryDeleteDirectory( string path ) {
         try {
-            if (File.Exists( path )) {
-                File.Delete( path );
+            if (Directory.Exists( path )) {
+                Directory.Delete( path, recursive: true );
             }
         } catch {
-            // Ignore cleanup failures - temp files will be cleaned up eventually
+            // A locked artifact remains under TestResults for diagnosis and later cleanup.
         }
     }
 }

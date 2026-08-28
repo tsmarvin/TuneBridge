@@ -51,9 +51,9 @@ bulk priority. The provider workers process these lookups and write refreshed re
 PDS, after which the cache pointer TTLs are renewed. This sweep causes the cache to converge toward
 fresh data without requiring a lookup request to trigger revalidation.
 
-Set `REFRESH_INTERVAL_HOURS` and `MAX_RECORDS_PER_RUN` in `.env` (or the corresponding
-`BridgeBeats:RefreshIntervalHours` / `BridgeBeats:MaxRecordsPerRun` configuration keys) to tune
-throughput and frequency for your deployment volume.
+Set `Maintenance.RefreshIntervalHours` and `Maintenance.MaxRecordsPerRun` in the database-backed
+application settings to tune throughput and frequency for your deployment volume. Restart the
+AppHost to activate the new revision.
 
 ### Redis key patterns
 

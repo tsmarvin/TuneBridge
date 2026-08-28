@@ -24,7 +24,7 @@ public sealed partial class SerilogOpenTelemetryForwardingTests {
     /// </summary>
     [TestMethod]
     public void ConfigureFileLogging_ForwardsStructuredEventsToProviders( ) {
-        string logDirectory = Path.Combine( Path.GetTempPath( ), $"bridgebeats-otel-{Guid.NewGuid( )}" );
+        string logDirectory = TestArtifacts.CreateDirectory( "bridgebeats-otel" );
         try {
             WebApplicationBuilder builder = WebApplication.CreateBuilder( new WebApplicationOptions {
                 EnvironmentName = "Development",
@@ -61,7 +61,7 @@ public sealed partial class SerilogOpenTelemetryForwardingTests {
     /// </summary>
     [TestMethod]
     public void ConfigureFileLogging_GenericHost_ForwardsStructuredEventsToProviders( ) {
-        string logDirectory = Path.Combine( Path.GetTempPath( ), $"bridgebeats-otel-host-{Guid.NewGuid( )}" );
+        string logDirectory = TestArtifacts.CreateDirectory( "bridgebeats-otel-host" );
         try {
             HostApplicationBuilder builder = Host.CreateApplicationBuilder( new HostApplicationBuilderSettings {
                 EnvironmentName = "Development",

@@ -1,3 +1,8 @@
+using System.Reflection;
+using System.Text.Json;
+using BridgeBeats.Contracts.Records;
+using BridgeBeats.Core.Infrastructure.Settings;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
@@ -31,11 +36,19 @@ using Microsoft.Extensions.Hosting;
 //     AddProductionExecutable helper) running a published DLL, and service-discovery variables are
 //     hand-wired to localhost ports. Production therefore assumes all processes share one host.
 //
-// Configuration and secrets are threaded in as Aspire Parameters and environment variables using
-// the BridgeBeats__Section__Key (double-underscore) convention. The set of enabled provider workers
-// is joined into BridgeBeats__EnabledProviders (CSV) and passed to the saga coordinator and Web.
+// AppHost reads one protected database settings revision and projects it to child processes through
+// secret-aware Aspire parameters and environment variables. The set of enabled provider workers is
+// joined into BridgeBeats__EnabledProviders (CSV) and passed to the saga coordinator and Web.
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder( args );
+
+// Make the standard dotnet user-secrets store an explicit optional first-run source in every
+// environment. Environment variables and command-line arguments are re-added afterward so CI and
+// deployment-time injection retain their normal precedence.
+_ = builder.Configuration
+    .AddUserSecrets( Assembly.GetExecutingAssembly( ), optional: true )
+    .AddEnvironmentVariables( )
+    .AddCommandLine( args );
 
 // Aspire Store Path Override.
 // Aspire 13.4+ persists local state (IAspireStore) under the AppHost project's build-time
@@ -52,60 +65,156 @@ if (!string.IsNullOrWhiteSpace( aspireStorePath )) {
 // in development we use AddProject<T>() for hot reload and debugging.
 bool isProduction = builder.Environment.IsProduction();
 
-// Configuration source. Aspire parameters can be provided via:
-//   - Environment variables prefixed with "Parameters__" (e.g., Parameters__SpotifyClientId)
-//   - Configuration section "Parameters:" in appsettings.json or user secrets
-//   - Command line arguments (e.g., --Parameters:SpotifyClientId=value)
-// The builder.Configuration object merges all sources, enabling flexible testing.
+// Application and provider settings are loaded exclusively from the encrypted database aggregate.
 IConfiguration config = builder.Configuration;
 
-// Music Provider Parameters - at least one music provider is required for the application to function.
-IResourceBuilder<ParameterResource> spotifyClientId     = builder.AddParameter( "SpotifyClientId", secret: true );
-IResourceBuilder<ParameterResource> spotifyClientSecret = builder.AddParameter( "SpotifyClientSecret", secret: true );
-IResourceBuilder<ParameterResource> appleTeamId         = builder.AddParameter( "AppleTeamId", secret: true );
-IResourceBuilder<ParameterResource> appleKeyId          = builder.AddParameter( "AppleKeyId", secret: true );
-IResourceBuilder<ParameterResource> appleKeyPath        = builder.AddParameter( "AppleKeyPath" );
-IResourceBuilder<ParameterResource> tidalClientId       = builder.AddParameter( "TidalClientId", secret: true );
-IResourceBuilder<ParameterResource> tidalClientSecret   = builder.AddParameter( "TidalClientSecret", secret: true );
+// These bootstrap-only values are required before the authoritative settings database can be read.
+string identityConnectionStringValue = config["BridgeBeats:IdentityConnectionString"]
+    ?? (isProduction
+        ? throw new InvalidOperationException( "BridgeBeats:IdentityConnectionString is required in Production." )
+        : new SqliteConnectionStringBuilder {
+            DataSource = Path.GetFullPath( Path.Combine( Environment.CurrentDirectory, "bridgebeats.db" ) )
+        }.ToString( ));
 
-// Discord Bot Parameter.
-IResourceBuilder<ParameterResource> discordToken = builder.AddParameter( "DiscordToken", secret: true );
+string dataProtectionKeyPathValue = config["BridgeBeats:DataProtectionKeyPath"]
+    ?? (isProduction
+        ? throw new InvalidOperationException( "BridgeBeats:DataProtectionKeyPath is required in Production." )
+        : Path.GetFullPath( Path.Combine( Environment.CurrentDirectory, "keys" ) ));
+if (isProduction && !Directory.Exists( dataProtectionKeyPathValue )) {
+    throw new InvalidOperationException(
+        $"The configured persistent Data Protection key-ring directory does not exist: {dataProtectionKeyPathValue}"
+    );
+}
 
-// ATProto (Bluesky) Parameters.
-IResourceBuilder<ParameterResource> atProtoIdentifier = builder.AddParameter( "ATProtoIdentifier", secret: true );
-IResourceBuilder<ParameterResource> atProtoPassword   = builder.AddParameter( "ATProtoPassword", secret: true );
-IResourceBuilder<ParameterResource> atProtoUserDID    = builder.AddParameter( "ATProtoUserDID", secret: true );
-IResourceBuilder<ParameterResource> atProtoPdsUri     = builder.AddParameter( "ATProtoPdsUri" );
+string logDirPathValue = config["BridgeBeats:LogDirPath"]
+    ?? (isProduction ? "/app/data/logs" : "./logs");
+string nodeNumberValue = config["BridgeBeats:NodeNumber"] ?? "0";
+string defaultLogLevelValue = config["Logging:LogLevel:Default"] ?? "Information";
+string hostingLogLevelValue = config["Logging:LogLevel:Microsoft.Hosting.Lifetime"] ?? "Information";
+string allowedHostsValue = config["AllowedHosts"] ?? "localhost;127.0.0.1";
+string openTelemetryEndpointValue = config["OpenTelemetry:OtlpEndpoint"] ?? string.Empty;
+string openTelemetryTracingValue = config.GetValue( "OpenTelemetry:EnableTracing", true ) ? "true" : "false";
+string openTelemetryMetricsValue = config.GetValue( "OpenTelemetry:EnableMetrics", true ) ? "true" : "false";
 
-// Security Parameters.
-IResourceBuilder<ParameterResource> apiKeySalt         = builder.AddParameter( "ApiKeySalt", secret: true );
-IResourceBuilder<ParameterResource> internalServiceKey = builder.AddParameter( "InternalServiceKey", secret: true );
+ApplicationSettingsSnapshot? runtimeSettings = await ApplicationSettingsBootstrapper.MigrateSeedAndLoadAsync(
+    identityConnectionStringValue,
+    dataProtectionKeyPathValue,
+    config
+);
+ApplicationSettingsValues values = runtimeSettings?.Values ?? new ApplicationSettingsValues( );
+ApplicationSettingsSecrets secrets = runtimeSettings?.Secrets ?? new ApplicationSettingsSecrets( );
 
-// Additional configuration parameters.
-IResourceBuilder<ParameterResource> nodeNumber               = builder.AddParameter( "NodeNumber" );
-IResourceBuilder<ParameterResource> domain                   = builder.AddParameter( "Domain" );
-IResourceBuilder<ParameterResource> rateLimitRequestsPerHour = builder.AddParameter( "RateLimitRequestsPerHour" );
-IResourceBuilder<ParameterResource> cacheDays                = builder.AddParameter( "CacheDays" );
-IResourceBuilder<ParameterResource> identityConnectionString = builder.AddParameter( "IdentityConnectionString" );
-IResourceBuilder<ParameterResource> logDirPath               = builder.AddParameter( "LogDirPath" );
-IResourceBuilder<ParameterResource> cardCacheExpirationHours = builder.AddParameter( "CardCacheExpirationHours" );
-IResourceBuilder<ParameterResource> cardCacheCleanupInterval = builder.AddParameter( "CardCacheCleanupInterval" );
-IResourceBuilder<ParameterResource> cardCacheMaxEntries      = builder.AddParameter( "CardCacheMaxEntries" );
-IResourceBuilder<ParameterResource> dataProtectionKeyPath    = builder.AddParameter( "DataProtectionKeyPath" );
+bool spotifyConfigured = ApplicationSettingsActivation.IsSpotifyConfigured( values, secrets );
+bool appleMusicConfigured = ApplicationSettingsActivation.IsAppleMusicConfigured( values, secrets );
+bool tidalConfigured = ApplicationSettingsActivation.IsTidalConfigured( values, secrets );
+bool setupRequired = runtimeSettings is null ||
+    !ApplicationSettingsActivation.CanStartWeb( values, secrets );
 
-// Resilience configuration parameters.
-IResourceBuilder<ParameterResource> resilienceMaxRetryAfterSeconds  = builder.AddParameter( "ResilienceMaxRetryAfterSeconds" );
-IResourceBuilder<ParameterResource> resilienceMaxRetryAttempts      = builder.AddParameter( "ResilienceMaxRetryAttempts" );
-IResourceBuilder<ParameterResource> resilienceTotalTimeoutMinutes   = builder.AddParameter( "ResilienceTotalTimeoutMinutes" );
-IResourceBuilder<ParameterResource> resilienceAttemptTimeoutSeconds = builder.AddParameter( "ResilienceAttemptTimeoutSeconds" );
+IResourceBuilder<ParameterResource> spotifyClientId = builder.AddParameter(
+    "RuntimeSpotifyClientId",
+    ( ) => values.SpotifyClientId,
+    secret: true
+);
+IResourceBuilder<ParameterResource> spotifyClientSecret = builder.AddParameter(
+    "RuntimeSpotifyClientSecret",
+    ( ) => secrets.SpotifyClientSecret.Reveal( ) ?? string.Empty,
+    secret: true
+);
+IResourceBuilder<ParameterResource> appleTeamId = builder.AddParameter(
+    "RuntimeAppleTeamId",
+    ( ) => values.AppleTeamId,
+    secret: true
+);
+IResourceBuilder<ParameterResource> appleKeyId = builder.AddParameter(
+    "RuntimeAppleKeyId",
+    ( ) => values.AppleKeyId,
+    secret: true
+);
+IResourceBuilder<ParameterResource> applePrivateKey = builder.AddParameter(
+    "RuntimeApplePrivateKey",
+    ( ) => secrets.ApplePrivateKey.Reveal( ) ?? string.Empty,
+    secret: true
+);
+IResourceBuilder<ParameterResource> tidalClientId = builder.AddParameter(
+    "RuntimeTidalClientId",
+    ( ) => values.TidalClientId,
+    secret: true
+);
+IResourceBuilder<ParameterResource> tidalClientSecret = builder.AddParameter(
+    "RuntimeTidalClientSecret",
+    ( ) => secrets.TidalClientSecret.Reveal( ) ?? string.Empty,
+    secret: true
+);
+IResourceBuilder<ParameterResource> discordToken = builder.AddParameter(
+    "RuntimeDiscordToken",
+    ( ) => secrets.DiscordToken.Reveal( ) ?? string.Empty,
+    secret: true
+);
+IResourceBuilder<ParameterResource> atProtoIdentifier = builder.AddParameter(
+    "RuntimeATProtoIdentifier",
+    ( ) => values.ATProtoIdentifier,
+    secret: true
+);
+IResourceBuilder<ParameterResource> atProtoPassword = builder.AddParameter(
+    "RuntimeATProtoPassword",
+    ( ) => secrets.ATProtoPassword.Reveal( ) ?? string.Empty,
+    secret: true
+);
+IResourceBuilder<ParameterResource> atProtoUserDID = builder.AddParameter(
+    "RuntimeATProtoUserDID",
+    ( ) => values.ATProtoUserDid,
+    secret: true
+);
+IResourceBuilder<ParameterResource> atProtoPdsUri = builder.AddParameter(
+    "RuntimeATProtoPdsUri",
+    ( ) => values.ATProtoPdsUri
+);
+IResourceBuilder<ParameterResource> atProtoOAuthSigningKey = builder.AddParameter(
+    "RuntimeATProtoOAuthSigningKey",
+    ( ) => secrets.ATProtoOAuthSigningKey.Reveal( ) ?? string.Empty,
+    secret: true
+);
+IResourceBuilder<ParameterResource> apiKeySalt = builder.AddParameter(
+    "RuntimeApiKeySalt",
+    ( ) => secrets.ApiKeySalt.Reveal( ) ?? string.Empty,
+    secret: true
+);
+IResourceBuilder<ParameterResource> internalServiceKey = builder.AddParameter(
+    "RuntimeInternalServiceKey",
+    ( ) => secrets.InternalServiceKey.Reveal( ) ?? string.Empty,
+    secret: true
+);
+IResourceBuilder<ParameterResource> openTelemetryHeaders = builder.AddParameter(
+    "RuntimeOpenTelemetryHeaders",
+    ( ) => config["OpenTelemetry:OtlpHeaders"] ?? string.Empty,
+    secret: true
+);
 
-// Stale-cache refresh parameters — optional; fall back to the worker's code defaults when unset.
-IResourceBuilder<ParameterResource> refreshIntervalHours = builder.AddParameter( "RefreshIntervalHours",
-    () => config["Parameters:RefreshIntervalHours"] ?? "6" );
-IResourceBuilder<ParameterResource> maxRecordsPerRun = builder.AddParameter( "MaxRecordsPerRun",
-    () => config["Parameters:MaxRecordsPerRun"] ?? "500" );
-IResourceBuilder<ParameterResource> refreshRetryMinutes = builder.AddParameter( "RefreshRetryMinutes",
-    () => config["Parameters:RefreshRetryMinutes"] ?? "5" );
+// The public host is deployment topology shared with Caddy. It is deliberately supplied through
+// AppHost bootstrap configuration rather than changed dynamically with the database aggregate.
+string domain = config["BridgeBeats:Domain"] ?? (isProduction
+    ? throw new InvalidOperationException( "BridgeBeats:Domain is required in Production." )
+    : "localhost");
+string rateLimitRequestsPerHour = values.RateLimitRequestsPerHour.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string cacheDays = values.CacheDays.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string atProtoSessionTtlDays = values.ATProtoSessionTtlDays.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string cardCacheExpirationHours = values.CardCacheExpirationHours.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string cardCacheCleanupInterval = values.CardCacheCleanupInterval.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string cardCacheMaxEntries = values.CardCacheMaxEntries.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string resilienceMaxRetryAfterSeconds = values.Resilience.MaxRetryAfterSeconds.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string resilienceMaxRetryAttempts = values.Resilience.MaxRetryAttempts.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string resilienceTotalTimeoutMinutes = values.Resilience.TotalTimeoutMinutes.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string resilienceAttemptTimeoutSeconds = values.Resilience.AttemptTimeoutSeconds.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string bootstrapIntervalHours = values.Maintenance.BootstrapIntervalHours.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string refreshIntervalHours = values.Maintenance.RefreshIntervalHours.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string maxRecordsPerRun = values.Maintenance.MaxRecordsPerRun.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string refreshRetryMinutes = values.Maintenance.RefreshRetryMinutes.ToString( System.Globalization.CultureInfo.InvariantCulture );
+string queueSettingsSnapshot = JsonSerializer.Serialize( values.Queue );
+string spotifyBatchSettingsSnapshot = JsonSerializer.Serialize( values.Spotify.Batch );
+string identityConnectionString = identityConnectionStringValue;
+string dataProtectionKeyPath = dataProtectionKeyPathValue;
+string logDirPath = logDirPathValue;
+string nodeNumber = nodeNumberValue;
 
 // Redis is added as a connection-string resource only: Aspire does NOT provision it here. An external
 // Redis must already exist and ConnectionStrings:redis must be set. Every component references this
@@ -116,24 +225,21 @@ IResourceBuilder<IResourceWithConnectionString> redis = builder.AddConnectionStr
 // Validate Redis connection string is configured.
 if (string.IsNullOrWhiteSpace( config["ConnectionStrings:redis"] )) {
     Console.Error.WriteLine( "ERROR: Redis connection string is required but not configured." );
-    Console.Error.WriteLine( "       Set ConnectionStrings:redis in appsettings.json or ConnectionStrings__redis environment variable." );
+    Console.Error.WriteLine( "       Set the ConnectionStrings__redis bootstrap environment variable." );
 }
 
-// Credential-presence checks. A provider/Discord worker is only added to the topology when its
-// credentials are configured; SagaCoordinator, JetStreamWatcher, Maintenance, and Web are always
-// added. These gates drive both the conditional resource registration and the EnabledProviders CSV.
-// Configuration merges environment variables, appsettings, user secrets, and command line args.
+// Credential-presence checks use only the database snapshot. External configuration cannot enable a
+// worker or override a stored credential.
 bool HasSpotifyCredentials( ) =>
-    !string.IsNullOrWhiteSpace( config["Parameters:SpotifyClientId"] ) &&
-    !string.IsNullOrWhiteSpace( config["Parameters:SpotifyClientSecret"] );
+    values.Workers.SpotifyWorkerEnabled &&
+    spotifyConfigured;
 bool HasAppleMusicCredentials( ) =>
-    !string.IsNullOrWhiteSpace( config["Parameters:AppleTeamId"] ) &&
-    !string.IsNullOrWhiteSpace( config["Parameters:AppleKeyId"] ) &&
-    !string.IsNullOrWhiteSpace( config["Parameters:AppleKeyPath"] );
+    values.Workers.AppleMusicWorkerEnabled &&
+    appleMusicConfigured;
 bool HasTidalCredentials( ) =>
-    !string.IsNullOrWhiteSpace( config["Parameters:TidalClientId"] ) &&
-    !string.IsNullOrWhiteSpace( config["Parameters:TidalClientSecret"] );
-bool HasDiscordCredentials( ) => !string.IsNullOrWhiteSpace( config["Parameters:DiscordToken"] );
+    values.Workers.TidalWorkerEnabled &&
+    tidalConfigured;
+bool HasDiscordCredentials( ) => ApplicationSettingsActivation.CanStartDiscordWorker( secrets );
 
 // Adds a production component as an Aspire executable resource that runs a published DLL, referencing
 // the shared Redis resource and optionally exposing an HTTP endpoint. Used in the production run mode
@@ -161,137 +267,10 @@ IResourceBuilder<ExecutableResource> AddProductionExecutable(
     return resource;
 }
 
-// Worker tracking for service discovery. Track references for WithReference() calls in both
-// development and production.
-IResourceBuilder<ProjectResource>? spotifyWorkerProject = null;
-IResourceBuilder<ProjectResource>? appleMusicWorkerProject = null;
-IResourceBuilder<ProjectResource>? tidalWorkerProject = null;
-IResourceBuilder<ProjectResource>? discordWorkerProject = null;
-
-IResourceBuilder<ExecutableResource>? discordWorkerExe = null;
-IResourceBuilder<ExecutableResource>? bridgebeatsWebExe = null;
-
-// Track which workers are enabled for web app configuration.
 bool spotifyWorkerEnabled = HasSpotifyCredentials();
 bool appleMusicWorkerEnabled = HasAppleMusicCredentials();
 bool tidalWorkerEnabled = HasTidalCredentials();
 
-// Spotify Worker.
-if (spotifyWorkerEnabled) {
-    if (isProduction) {
-        _ = AddProductionExecutable( "spotify-worker", "BridgeBeats.Worker.Spotify", httpPort: 5100 )
-            .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5100" )
-            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-            .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
-            .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
-    } else {
-        spotifyWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Spotify>( "spotify-worker" )
-            .WithHttpEndpoint( targetPort: 5100, name: "http" );
-        _ = spotifyWorkerProject
-            .WithReference( redis )
-            .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5100" )
-            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-            .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
-            .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
-    }
-}
-
-// Apple Music Worker.
-if (appleMusicWorkerEnabled) {
-    if (isProduction) {
-        _ = AddProductionExecutable( "applemusic-worker", "BridgeBeats.Worker.AppleMusic", httpPort: 5101 )
-            .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5101" )
-            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-            .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
-            .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
-            .WithEnvironment( "BridgeBeats__AppleKeyPath", appleKeyPath )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
-    } else {
-        appleMusicWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_AppleMusic>( "applemusic-worker" )
-            .WithHttpEndpoint( targetPort: 5101, name: "http" );
-        _ = appleMusicWorkerProject
-            .WithReference( redis )
-            .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5101" )
-            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-            .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
-            .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
-            .WithEnvironment( "BridgeBeats__AppleKeyPath", appleKeyPath )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
-    }
-}
-
-// Tidal Worker.
-if (tidalWorkerEnabled) {
-    if (isProduction) {
-        _ = AddProductionExecutable( "tidal-worker", "BridgeBeats.Worker.Tidal", httpPort: 5102 )
-            .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5102" )
-            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-            .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
-            .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
-    } else {
-        tidalWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Tidal>( "tidal-worker" )
-            .WithHttpEndpoint( targetPort: 5102, name: "http" );
-        _ = tidalWorkerProject
-            .WithReference( redis )
-            .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5102" )
-            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-            .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
-            .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-            .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-            .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-            .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
-    }
-}
-
-// Discord Worker. Handles Discord gateway events, detecting music links and calling the
-// BridgeBeats Web API for lookups and card generation.
-if (HasDiscordCredentials( )) {
-    if (isProduction) {
-        discordWorkerExe = AddProductionExecutable( "discord-worker", "BridgeBeats.Worker.Discord" );
-        _ = discordWorkerExe
-            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-            .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
-            .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
-            .WithEnvironment( "BridgeBeats__Domain", domain )
-            .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey );
-    } else {
-        discordWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" );
-        _ = discordWorkerProject
-            .WithReference( redis )
-            .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-            .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
-            .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
-            .WithEnvironment( "BridgeBeats__Domain", domain )
-            .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey );
-    }
-}
-
-// Saga Coordinator Worker. The saga coordinator monitors for completed multi-provider lookups and
-// writes final results to ATProto. It uses Redis Pub/Sub for event-driven coordination and polling
-// as a fallback.
-//
-// Provider fan-out list. The set of actually-enabled provider workers is joined into a CSV and passed
-// as BridgeBeats__EnabledProviders to the saga coordinator (which uses it to drive secondary-lookup
-// fan-out) and is surfaced to Web as per-provider Workers__*WorkerEnabled flags below.
 List<string> enabledProvidersList = [];
 if (spotifyWorkerEnabled) {
     enabledProvidersList.Add( "Spotify" );
@@ -303,68 +282,222 @@ if (tidalWorkerEnabled) {
     enabledProvidersList.Add( "Tidal" );
 }
 string enabledProvidersValue = string.Join( ",", enabledProvidersList );
+bool queueTopologyEnabled = ApplicationSettingsActivation.CanStartQueueTopology( values, secrets );
+bool atProtoWorkerTopologyEnabled = ApplicationSettingsActivation.CanStartAtProtoWorkerTopology(
+    values,
+    secrets
+);
 
-if (isProduction) {
-    _ = AddProductionExecutable( "saga-coordinator", "BridgeBeats.Worker.SagaCoordinator" )
+// Applies the settings every child process shares. Keeping this contract in one place prevents
+// development and production topology branches from drifting and guarantees that every queue
+// participant and HTTP client observes the same database revision.
+IResourceBuilder<T> WithSharedRuntime<T>( IResourceBuilder<T> resource, bool includeQueueSnapshot )
+    where T : IResourceWithEnvironment {
+    IResourceBuilder<T> configured = resource
+        .WithEnvironment( "BridgeBeats__SettingsRevision", runtimeSettings?.Revision ?? string.Empty )
         .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+        .WithEnvironment( "Logging__LogLevel__Default", defaultLogLevelValue )
+        .WithEnvironment( "Logging__LogLevel__Microsoft.Hosting.Lifetime", hostingLogLevelValue )
+        .WithEnvironment( "Logging__LogLevel__Microsoft.AspNetCore.Hosting.Diagnostics", "Warning" )
+        .WithEnvironment( "Logging__LogLevel__Microsoft.AspNetCore.Routing.EndpointMiddleware", "Warning" )
+        .WithEnvironment( "Serilog__MinimumLevel__Default", defaultLogLevelValue )
+        .WithEnvironment( "Serilog__MinimumLevel__Override__Microsoft.AspNetCore.Hosting.Diagnostics", "Warning" )
+        .WithEnvironment( "Serilog__MinimumLevel__Override__Microsoft.AspNetCore.Routing.EndpointMiddleware", "Warning" )
+        .WithEnvironment( "OpenTelemetry__OtlpEndpoint", openTelemetryEndpointValue )
+        .WithEnvironment( "OpenTelemetry__OtlpHeaders", openTelemetryHeaders )
+        .WithEnvironment( "OpenTelemetry__EnableTracing", openTelemetryTracingValue )
+        .WithEnvironment( "OpenTelemetry__EnableMetrics", openTelemetryMetricsValue )
+        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
+        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
+        .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
+        .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+
+    return includeQueueSnapshot
+        ? configured.WithEnvironment( "BridgeBeats__QueueSnapshot", queueSettingsSnapshot )
+        : configured;
+}
+
+IResourceBuilder<T> WithSpotifyRuntime<T>( IResourceBuilder<T> resource )
+    where T : IResourceWithEnvironment => WithSharedRuntime( resource, includeQueueSnapshot: true )
+        .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5100" )
+        .WithEnvironment( "BridgeBeats__SpotifyBatchSnapshot", spotifyBatchSettingsSnapshot )
+        .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
+        .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret );
+
+IResourceBuilder<T> WithAppleMusicRuntime<T>( IResourceBuilder<T> resource )
+    where T : IResourceWithEnvironment => WithSharedRuntime( resource, includeQueueSnapshot: true )
+        .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5101" )
+        .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
+        .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
+        .WithEnvironment( "BridgeBeats__ApplePrivateKey", applePrivateKey );
+
+IResourceBuilder<T> WithTidalRuntime<T>( IResourceBuilder<T> resource )
+    where T : IResourceWithEnvironment => WithSharedRuntime( resource, includeQueueSnapshot: true )
+        .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "5102" )
+        .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
+        .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret );
+
+IResourceBuilder<T> WithDiscordRuntime<T>( IResourceBuilder<T> resource )
+    where T : IResourceWithEnvironment => WithSharedRuntime( resource, includeQueueSnapshot: false )
+        .WithEnvironment( "BridgeBeats__DiscordToken", discordToken )
+        .WithEnvironment( "BridgeBeats__NodeNumber", nodeNumber )
+        .WithEnvironment( "BridgeBeats__Domain", domain )
+        .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey );
+
+IResourceBuilder<T> WithSagaRuntime<T>( IResourceBuilder<T> resource )
+    where T : IResourceWithEnvironment => WithSharedRuntime( resource, includeQueueSnapshot: true )
         .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__ATProtoSessionTtlDays", atProtoSessionTtlDays )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
         .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath );
-} else {
-    _ = builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" )
-        .WithReference( redis )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
+
+IResourceBuilder<T> WithMaintenanceRuntime<T>( IResourceBuilder<T> resource )
+    where T : IResourceWithEnvironment => WithSharedRuntime( resource, includeQueueSnapshot: true )
         .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
         .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
         .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
+        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
         .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__ATProtoSessionTtlDays", atProtoSessionTtlDays )
+        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
         .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
-        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath );
+        .WithEnvironment( "BridgeBeats__BootstrapIntervalHours", bootstrapIntervalHours )
+        .WithEnvironment( "BridgeBeats__RefreshIntervalHours", refreshIntervalHours )
+        .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun )
+        .WithEnvironment( "BridgeBeats__RefreshRetryMinutes", refreshRetryMinutes );
+
+IResourceBuilder<T> WithWebRuntime<T>( IResourceBuilder<T> resource )
+    where T : IResourceWithEnvironment => WithSharedRuntime( resource, includeQueueSnapshot: true )
+        .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "10000" )
+        .WithEnvironment( "BridgeBeats__SetupRequired", setupRequired ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__SettingsRevision", runtimeSettings?.Revision ?? string.Empty )
+        .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", values.Workers.UseWorkerServices ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__Workers__AppleMusicWorkerEnabled", appleMusicWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__Workers__TidalWorkerEnabled", tidalWorkerEnabled ? "true" : "false" )
+        .WithEnvironment( "BridgeBeats__SpotifyClientId", spotifyClientId )
+        .WithEnvironment( "BridgeBeats__SpotifyClientSecret", spotifyClientSecret )
+        .WithEnvironment( "BridgeBeats__AppleTeamId", appleTeamId )
+        .WithEnvironment( "BridgeBeats__AppleKeyId", appleKeyId )
+        .WithEnvironment( "BridgeBeats__ApplePrivateKey", applePrivateKey )
+        .WithEnvironment( "BridgeBeats__TidalClientId", tidalClientId )
+        .WithEnvironment( "BridgeBeats__TidalClientSecret", tidalClientSecret )
+        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
+        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
+        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
+        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
+        .WithEnvironment( "BridgeBeats__ATProtoOAuthSigningKey", atProtoOAuthSigningKey )
+        .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
+        .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey )
+        .WithEnvironment( "BridgeBeats__Domain", domain )
+        .WithEnvironment( "AllowedHosts", allowedHostsValue )
+        .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
+        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
+        .WithEnvironment( "BridgeBeats__ATProtoSessionTtlDays", atProtoSessionTtlDays )
+        .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
+        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
+        .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
+        .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
+        .WithEnvironment( "BridgeBeats__CardCacheMaxEntries", cardCacheMaxEntries );
+
+// Worker tracking for service discovery. Track references for WithReference() calls in both
+// development and production.
+IResourceBuilder<ProjectResource>? spotifyWorkerProject = null;
+IResourceBuilder<ProjectResource>? appleMusicWorkerProject = null;
+IResourceBuilder<ProjectResource>? tidalWorkerProject = null;
+IResourceBuilder<ProjectResource>? discordWorkerProject = null;
+
+IResourceBuilder<ExecutableResource>? discordWorkerExe = null;
+IResourceBuilder<ExecutableResource>? bridgebeatsWebExe = null;
+
+// Spotify Worker.
+if (!setupRequired && spotifyWorkerEnabled) {
+    if (isProduction) {
+        _ = WithSpotifyRuntime(
+            AddProductionExecutable( "spotify-worker", "BridgeBeats.Worker.Spotify", httpPort: 5100 )
+        );
+    } else {
+        spotifyWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Spotify>( "spotify-worker" )
+            .WithHttpEndpoint( targetPort: 5100, name: "http" );
+        _ = WithSpotifyRuntime( spotifyWorkerProject.WithReference( redis ) );
+    }
+}
+
+// Apple Music Worker.
+if (!setupRequired && appleMusicWorkerEnabled) {
+    if (isProduction) {
+        _ = WithAppleMusicRuntime(
+            AddProductionExecutable( "applemusic-worker", "BridgeBeats.Worker.AppleMusic", httpPort: 5101 )
+        );
+    } else {
+        appleMusicWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_AppleMusic>( "applemusic-worker" )
+            .WithHttpEndpoint( targetPort: 5101, name: "http" );
+        _ = WithAppleMusicRuntime( appleMusicWorkerProject.WithReference( redis ) );
+    }
+}
+
+// Tidal Worker.
+if (!setupRequired && tidalWorkerEnabled) {
+    if (isProduction) {
+        _ = WithTidalRuntime(
+            AddProductionExecutable( "tidal-worker", "BridgeBeats.Worker.Tidal", httpPort: 5102 )
+        );
+    } else {
+        tidalWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Tidal>( "tidal-worker" )
+            .WithHttpEndpoint( targetPort: 5102, name: "http" );
+        _ = WithTidalRuntime( tidalWorkerProject.WithReference( redis ) );
+    }
+}
+
+// Discord Worker. Handles Discord gateway events, detecting music links and calling the
+// BridgeBeats Web API for lookups and card generation.
+if (!setupRequired && HasDiscordCredentials( )) {
+    if (isProduction) {
+        discordWorkerExe = AddProductionExecutable( "discord-worker", "BridgeBeats.Worker.Discord" );
+        _ = WithDiscordRuntime( discordWorkerExe );
+    } else {
+        discordWorkerProject = builder.AddProject<Projects.BridgeBeats_Worker_Discord>( "discord-worker" );
+        _ = WithDiscordRuntime( discordWorkerProject.WithReference( redis ) );
+    }
+}
+
+// Saga Coordinator Worker. The saga coordinator monitors for completed multi-provider lookups and
+// writes final results to ATProto. It uses Redis Pub/Sub for event-driven coordination and polling
+// as a fallback.
+//
+if (!setupRequired && atProtoWorkerTopologyEnabled && isProduction) {
+    _ = WithSagaRuntime( AddProductionExecutable( "saga-coordinator", "BridgeBeats.Worker.SagaCoordinator" ) );
+} else if (!setupRequired && atProtoWorkerTopologyEnabled) {
+    _ = WithSagaRuntime(
+        builder.AddProject<Projects.BridgeBeats_Worker_SagaCoordinator>( "saga-coordinator" ).WithReference( redis )
+    );
 }
 
 // JetStream Watcher Worker. Monitors Bluesky Jetstream for music links and submits them to provider
 // queues at bulk priority. Fire-and-forget: no credentials needed.
-if (isProduction) {
-    _ = AddProductionExecutable( "jetstream-watcher", "BridgeBeats.Worker.JetStreamWatcher" )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
-} else {
-    _ = builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" )
-        .WithReference( redis )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath );
+if (!setupRequired && queueTopologyEnabled && isProduction) {
+    _ = WithSharedRuntime(
+        AddProductionExecutable( "jetstream-watcher", "BridgeBeats.Worker.JetStreamWatcher" ),
+        includeQueueSnapshot: true
+    );
+} else if (!setupRequired && queueTopologyEnabled) {
+    _ = WithSharedRuntime(
+        builder.AddProject<Projects.BridgeBeats_Worker_JetStreamWatcher>( "jetstream-watcher" ).WithReference( redis ),
+        includeQueueSnapshot: true
+    );
 }
 
 // Cache Bootstrap Worker. Bootstraps Redis cache from ATProto public records on startup and
 // periodically (default: every 6 hours). Uses unauthenticated access for public records.
-if (isProduction) {
-    _ = AddProductionExecutable( "maintenance", "BridgeBeats.Worker.Maintenance" )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
-        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
-        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
-        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
-        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
-        .WithEnvironment( "BridgeBeats__RefreshIntervalHours", refreshIntervalHours )
-        .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun )
-        .WithEnvironment( "BridgeBeats__RefreshRetryMinutes", refreshRetryMinutes );
-} else {
-    _ = builder.AddProject<Projects.BridgeBeats_Worker_Maintenance>( "maintenance" )
-        .WithReference( redis )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
-        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
-        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
-        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
-        .WithEnvironment( "BridgeBeats__EnabledProviders", enabledProvidersValue )
-        .WithEnvironment( "BridgeBeats__RefreshIntervalHours", refreshIntervalHours )
-        .WithEnvironment( "BridgeBeats__MaxRecordsPerRun", maxRecordsPerRun )
-        .WithEnvironment( "BridgeBeats__RefreshRetryMinutes", refreshRetryMinutes );
+if (!setupRequired && atProtoWorkerTopologyEnabled && isProduction) {
+    _ = WithMaintenanceRuntime( AddProductionExecutable( "maintenance", "BridgeBeats.Worker.Maintenance" ) );
+} else if (!setupRequired && atProtoWorkerTopologyEnabled) {
+    _ = WithMaintenanceRuntime(
+        builder.AddProject<Projects.BridgeBeats_Worker_Maintenance>( "maintenance" ).WithReference( redis )
+    );
 }
 
 // Main Web Application. In production, service discovery uses resource names for endpoint resolution.
@@ -373,61 +506,13 @@ IResourceBuilder<ProjectResource>? bridgebeatsWebProject = null;
 
 if (isProduction) {
     bridgebeatsWebExe = AddProductionExecutable( "bridgebeats", "BridgeBeats.Web", workingDirectory: "/src/BridgeBeats.Web" );
-    _ = bridgebeatsWebExe
-        .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http", isProxied: false )
-        .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "10000" )
-        .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
-        .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
-        .WithEnvironment( "BridgeBeats__Workers__AppleMusicWorkerEnabled", appleMusicWorkerEnabled ? "true" : "false" )
-        .WithEnvironment( "BridgeBeats__Workers__TidalWorkerEnabled", tidalWorkerEnabled ? "true" : "false" )
-        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
-        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
-        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
-        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-        .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
-        .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey )
-        .WithEnvironment( "BridgeBeats__Domain", domain )
-        .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
-        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-        .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
-        .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
-        .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
-        .WithEnvironment( "BridgeBeats__CardCacheMaxEntries", cardCacheMaxEntries )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-        .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-        .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    _ = WithWebRuntime(
+        bridgebeatsWebExe.WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http", isProxied: false )
+    );
 } else {
     bridgebeatsWebProject = builder.AddProject<Projects.BridgeBeats_Web>( "bridgebeats" )
         .WithHttpEndpoint( port: 10000, targetPort: 10000, name: "bridgebeats-http", isProxied: false );
-    _ = bridgebeatsWebProject
-        .WithReference( redis )
-        .WithEnvironment( "ASPNETCORE_HTTP_PORTS", "10000" )
-        .WithEnvironment( "BridgeBeats__Workers__UseWorkerServices", "true" )
-        .WithEnvironment( "BridgeBeats__Workers__SpotifyWorkerEnabled", spotifyWorkerEnabled ? "true" : "false" )
-        .WithEnvironment( "BridgeBeats__Workers__AppleMusicWorkerEnabled", appleMusicWorkerEnabled ? "true" : "false" )
-        .WithEnvironment( "BridgeBeats__Workers__TidalWorkerEnabled", tidalWorkerEnabled ? "true" : "false" )
-        .WithEnvironment( "BridgeBeats__ATProtoIdentifier", atProtoIdentifier )
-        .WithEnvironment( "BridgeBeats__ATProtoPassword", atProtoPassword )
-        .WithEnvironment( "BridgeBeats__ATProtoUserDID", atProtoUserDID )
-        .WithEnvironment( "BridgeBeats__ATProtoPdsUri", atProtoPdsUri )
-        .WithEnvironment( "BridgeBeats__ApiKeySalt", apiKeySalt )
-        .WithEnvironment( "BridgeBeats__InternalServiceKey", internalServiceKey )
-        .WithEnvironment( "BridgeBeats__Domain", domain )
-        .WithEnvironment( "BridgeBeats__RateLimitRequestsPerHour", rateLimitRequestsPerHour )
-        .WithEnvironment( "BridgeBeats__CacheDays", cacheDays )
-        .WithEnvironment( "BridgeBeats__IdentityConnectionString", identityConnectionString )
-        .WithEnvironment( "BridgeBeats__LogDirPath", logDirPath )
-        .WithEnvironment( "BridgeBeats__DataProtectionKeyPath", dataProtectionKeyPath )
-        .WithEnvironment( "BridgeBeats__CardCacheExpirationHours", cardCacheExpirationHours )
-        .WithEnvironment( "BridgeBeats__CardCacheCleanupInterval", cardCacheCleanupInterval )
-        .WithEnvironment( "BridgeBeats__CardCacheMaxEntries", cardCacheMaxEntries )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAfterSeconds", resilienceMaxRetryAfterSeconds )
-        .WithEnvironment( "BridgeBeats__Resilience__MaxRetryAttempts", resilienceMaxRetryAttempts )
-        .WithEnvironment( "BridgeBeats__Resilience__TotalTimeoutMinutes", resilienceTotalTimeoutMinutes )
-        .WithEnvironment( "BridgeBeats__Resilience__AttemptTimeoutSeconds", resilienceAttemptTimeoutSeconds );
+    _ = WithWebRuntime( bridgebeatsWebProject.WithReference( redis ) );
 }
 
 // Service discovery references. Wire up service discovery between web app and workers.

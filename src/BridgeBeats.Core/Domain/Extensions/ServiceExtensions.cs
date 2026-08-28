@@ -179,19 +179,11 @@ public static class ServiceExtensions {
     /// <typeparam name="TLookupService">The direct lookup service the processor uses to perform lookups.</typeparam>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="provider">The provider this processor serves.</param>
-    /// <param name="configureSettings">Optional configuration of <c>QueueSettings</c>; applied when non-null.</param>
     /// <returns>The same <paramref name="services"/>, to allow call chaining.</returns>
     public static IServiceCollection AddQueueProcessor<TLookupService>(
         this IServiceCollection services,
-        SupportedProviders provider,
-        Action<QueueSettings>? configureSettings = null
+        SupportedProviders provider
     ) where TLookupService : class, IMusicLookupService {
-        // Configure queue settings with defaults from the record definition
-        // The QueueSettings record already has sensible defaults via init properties
-        if (configureSettings is not null) {
-            _ = services.Configure( configureSettings );
-        }
-
         // Register shared queue infrastructure
         _ = services.AddQueueInfrastructure( );
 
@@ -224,20 +216,12 @@ public static class ServiceExtensions {
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="provider">The provider this processor serves.</param>
     /// <param name="lookupServiceFactory">Factory that produces the lookup service the processor uses.</param>
-    /// <param name="configureSettings">Optional configuration of <c>QueueSettings</c>; applied when non-null.</param>
     /// <returns>The same <paramref name="services"/>, to allow call chaining.</returns>
     public static IServiceCollection AddQueueProcessor(
         this IServiceCollection services,
         SupportedProviders provider,
-        Func<IServiceProvider, IMusicLookupService> lookupServiceFactory,
-        Action<QueueSettings>? configureSettings = null
+        Func<IServiceProvider, IMusicLookupService> lookupServiceFactory
     ) {
-        // Configure queue settings with defaults from the record definition
-        // The QueueSettings record already has sensible defaults via init properties
-        if (configureSettings is not null) {
-            _ = services.Configure( configureSettings );
-        }
-
         // Register shared queue infrastructure
         _ = services.AddQueueInfrastructure( );
 

@@ -40,8 +40,8 @@ namespace BridgeBeats.Web.Configuration {
             this WebApplicationBuilder builder,
             string[] args
         ) {
-            // Always load configuration (appsettings.json, user secrets, env vars)
-            // Tests can override via environment variables or WebApplicationFactory hooks
+            // Runtime application settings are projected from the database by AppHost. Command-line
+            // and environment sources carry that immutable process snapshot to this child process.
             _ = builder.Configuration.ConfigureAppSettings( args );
 
             // Configure logging only in non-Testing environments
@@ -50,6 +50,17 @@ namespace BridgeBeats.Web.Configuration {
             }
 
             _ = builder.AddServiceDefaults( );
+
+            if (builder.Configuration.GetValue<bool>( "BridgeBeats:SetupRequired" )) {
+                AppSettings bootstrapSettings = new( );
+                builder.Configuration.GetRequiredSection( "BridgeBeats" ).Bind( bootstrapSettings );
+                _ = builder.Services.AddSingleton( TimeProvider.System );
+                _ = builder.Services.AddBridgeBeatsDataProtection( bootstrapSettings.DataProtectionKeyPath );
+                _ = builder.Services.AddBridgeBeatsApplicationDatabase( bootstrapSettings.IdentityConnectionString );
+                _ = builder.Services.AddDatabaseApplicationSettings( );
+                _ = builder.Services.AddRouting( );
+                return builder;
+            }
 
             // Register Redis client via Aspire (provides IConnectionMultiplexer)
             // In tests, CustomWebApplicationFactory provides the connection string via Testcontainers
@@ -117,10 +128,7 @@ namespace BridgeBeats.Web.Configuration {
             _ = services.AddSingleton( TimeProvider.System );
             _ = services.AddMemoryCache( );
 
-            // Configure QueueSettings from configuration (with defaults)
-            _ = services.Configure<QueueSettings>(
-                config.GetSection( "BridgeBeats:Queue" )
-            );
+            _ = services.AddQueueSettingsSnapshot( config );
 
             // Configure antiforgery to accept tokens in headers for JSON requests
             _ = services.AddAntiforgery( options => {
@@ -176,8 +184,36 @@ namespace BridgeBeats.Web.Configuration {
 
             IConfiguration config = app.Configuration;
 
+            if (config.GetValue<bool>( "BridgeBeats:SetupRequired" )) {
+                _ = app.UseMiddleware<HealthEndpointAuthorizationMiddleware>( );
+                _ = app.MapGet( "/health", ( ) => Results.Json(
+                    new {
+                        status = "configuration-required",
+                        timestamp = DateTimeOffset.UtcNow
+                    },
+                    statusCode: StatusCodes.Status503ServiceUnavailable
+                ) );
+                _ = app.MapFallback( async context => {
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                    context.Response.ContentType = "application/problem+json";
+                    await context.Response.WriteAsJsonAsync( new {
+                        type = "https://bridgebeats.app/problems/configuration-required",
+                        title = "Configuration Required",
+                        status = StatusCodes.Status503ServiceUnavailable,
+                        detail = "BridgeBeats has not been configured. Seed the initial database settings and restart AppHost."
+                    } );
+                } );
+                return app;
+            }
+
             AppSettings settings = new( );
             config.GetRequiredSection( "BridgeBeats" ).Bind( settings );
+            StartupExtensionsLog.LogSettingsRevision(
+                app.Logger,
+                string.IsNullOrWhiteSpace( settings.SettingsRevision )
+                    ? "standalone"
+                    : settings.SettingsRevision
+            );
 
             // Skip database initialization in Testing environment - tests will configure their own databases
             // via WebApplicationFactory.ConfigureServices which replaces the DbContext factories
@@ -304,8 +340,7 @@ namespace BridgeBeats.Web.Configuration {
         }
 
         /// <summary>
-        /// Layers the configuration sources in precedence order: the required <c>appsettings.json</c> file,
-        /// optional user secrets, command-line arguments, and environment variables.
+        /// Adds the process-level configuration sources used to receive the database settings snapshot.
         /// </summary>
         /// <param name="config">The configuration builder to populate.</param>
         /// <param name="args">The command-line arguments to add as a configuration source.</param>
@@ -314,18 +349,8 @@ namespace BridgeBeats.Web.Configuration {
             this IConfigurationBuilder config,
             string[] args
         ) {
-            _ = config.AddJsonFile(
-                path: "appsettings.json",
-                optional: false,
-                reloadOnChange: false
-            );
-
-            // Always load user secrets in non-production environments
-            // Tests use WebApplicationFactory.ConfigureAppConfiguration to inject test config
-            // which overrides user secrets values for test-specific settings
-            _ = config.AddUserSecrets<Program>( optional: true );
-
             return config
+                .AddUserSecrets( typeof( AppSettings ).Assembly, optional: true )
                 .AddCommandLine( args )
                 .AddEnvironmentVariables( );
         }
@@ -364,84 +389,7 @@ namespace BridgeBeats.Web.Configuration {
         /// <param name="services">The service collection to populate.</param>
         /// <param name="settings">The settings supplying the Identity connection string.</param>
         internal static void ConfigureDatabases( IServiceCollection services, AppSettings settings ) {
-            // Register DbContext factory for Identity only (SQLite).
-            // Lane B: the sp-overload of AddDbContextFactory receives IServiceProvider so we can resolve
-            // the DP provider and pass the token protector directly to ApplicationDbContext.
-            // ConfigureDatabases runs before ConfigureIdentity (see AddBridgeBeatsServices call order),
-            // so IDataProtectionProvider is not yet registered when this line executes — but the
-            // singleton factory lambda below captures the service provider and resolves the protector
-            // lazily at first use, after all registrations are complete. Call order no longer affects
-            // which descriptor survives — both null-protector descriptors are removed immediately after
-            // AddDbContextFactory (see below); a pathological reverse order would fail-fast at first
-            // resolve (the factory lambda throws if IDataProtectionProvider is unregistered), never
-            // silently fall back to plaintext.
-            _ = services.AddDbContextFactory<ApplicationDbContext>( ( sp, options ) => {
-                _ = options.UseSqlite(
-                    settings.IdentityConnectionString,
-                    b => b.MigrationsAssembly( "BridgeBeats.Core" )
-                );
-            } );
-
-            // AddDbContextFactory<T> auto-registers TWO descriptors: an IDbContextFactory<T> and a
-            // scoped ApplicationDbContext — both wired to the options-only constructor (null protector).
-            // Remove BOTH before registering the singleton factory below so that no null-protector
-            // ApplicationDbContext descriptor survives regardless of the order ConfigureDatabases and
-            // ConfigureIdentity are called. The only remaining scoped ApplicationDbContext descriptor
-            // will be the one AddBridgeBeatsIdentity registers via the factory (with the protector).
-            Microsoft.Extensions.DependencyInjection.ServiceDescriptor? existingFactory =
-                services.FirstOrDefault( d =>
-                    d.ServiceType == typeof( Microsoft.EntityFrameworkCore.IDbContextFactory<ApplicationDbContext> ) );
-            if (existingFactory is not null) {
-                _ = services.Remove( existingFactory );
-            }
-
-            Microsoft.Extensions.DependencyInjection.ServiceDescriptor? nullScopedContext =
-                services.FirstOrDefault( d =>
-                    d.ServiceType == typeof( ApplicationDbContext ) );
-            if (nullScopedContext is not null) {
-                _ = services.Remove( nullScopedContext );
-            }
-
-            _ = services.AddSingleton<Microsoft.EntityFrameworkCore.IDbContextFactory<ApplicationDbContext>>( sp => {
-                // Lane B: create the token protector once at factory-build time. The protector is
-                // singleton-safe: IDataProtector created from a singleton IDataProtectionProvider is
-                // thread-safe and stateless.
-                Microsoft.AspNetCore.DataProtection.IDataProtector tokenProtector =
-                    sp.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>( )
-                      .CreateProtector( ApplicationDbContext.TokenProtectorPurpose );
-
-                DbContextOptions<ApplicationDbContext> contextOptions =
-                    new DbContextOptionsBuilder<ApplicationDbContext>( )
-                        .UseSqlite(
-                            settings.IdentityConnectionString,
-                            b => b.MigrationsAssembly( "BridgeBeats.Core" )
-                        )
-                        .Options;
-
-                return new TokenEncryptingDbContextFactory( contextOptions, tokenProtector );
-            } );
-        }
-
-        /// <summary>
-        /// Singleton factory that injects the token protector into every <see cref="ApplicationDbContext"/>
-        /// it creates, enabling the EF value converter for the four credential columns at rest.
-        /// Thread-safe: <c>CreateDbContext</c> allocates a new context per call; the shared options and
-        /// protector are immutable.
-        /// </summary>
-        private sealed class TokenEncryptingDbContextFactory
-            : Microsoft.EntityFrameworkCore.IDbContextFactory<ApplicationDbContext> {
-            private readonly DbContextOptions<ApplicationDbContext> _options;
-            private readonly Microsoft.AspNetCore.DataProtection.IDataProtector _protector;
-
-            internal TokenEncryptingDbContextFactory(
-                DbContextOptions<ApplicationDbContext> options,
-                Microsoft.AspNetCore.DataProtection.IDataProtector protector
-            ) {
-                _options = options;
-                _protector = protector;
-            }
-
-            public ApplicationDbContext CreateDbContext( ) => new( _options, _protector );
+            _ = services.AddBridgeBeatsApplicationDatabase( settings.IdentityConnectionString );
         }
 
         /// <summary>
@@ -578,13 +526,13 @@ namespace BridgeBeats.Web.Configuration {
 
         /// <summary>
         /// Wires the ATProto integration when configured. When a domain is set, registers the OAuth signing
-        /// key (if its JWK file exists and is non-empty), the SSRF-guarded OAuth HTTP client, the OAuth
+        /// key (when its protected JWK value is configured), the SSRF-guarded OAuth HTTP client, the OAuth
         /// service, and the OAuth state cleanup hosted service. When service-account credentials are also
         /// present, validates the user DID and registers the session manager, storage, media-link cache,
         /// statistics services, and queue infrastructure.
         /// </summary>
         /// <param name="services">The service collection to populate.</param>
-        /// <param name="settings">The settings supplying the domain, signing key path, and ATProto credentials.</param>
+        /// <param name="settings">The settings supplying the domain, signing key, and ATProto credentials.</param>
         private static void ConfigureATProtoIfEnabled( IServiceCollection services, AppSettings settings ) {
             // Register ATProto OAuth service (available even without server ATProto credentials)
             // This allows users to log in with Bluesky for playlist management
@@ -594,12 +542,9 @@ namespace BridgeBeats.Web.Configuration {
 
                 // Load the OAuth signing key for confidential client authentication if configured
                 ATProtoSigningKeyProvider? signingKeyProvider = null;
-                if (!string.IsNullOrWhiteSpace( settings.ATProtoOAuthSigningKeyPath ) &&
-                    File.Exists( settings.ATProtoOAuthSigningKeyPath )) {
-                    string jwkJson = File.ReadAllText( settings.ATProtoOAuthSigningKeyPath );
-                    if (!string.IsNullOrWhiteSpace( jwkJson ) && jwkJson.Trim( ) != "{}") {
-                        signingKeyProvider = new ATProtoSigningKeyProvider( jwkJson );
-                    }
+                string jwkJson = settings.ATProtoOAuthSigningKey;
+                if (!string.IsNullOrWhiteSpace( jwkJson ) && jwkJson.Trim( ) != "{}") {
+                    signingKeyProvider = new ATProtoSigningKeyProvider( jwkJson );
                 }
 
                 // Register the signing key provider as a singleton (used by WellKnownController for JWKS endpoint)
@@ -690,10 +635,10 @@ namespace BridgeBeats.Web.Configuration {
             if (settings.Workers.UseWorkerServices) {
                 // Still need AppleJwtHandler for MusicKit JS (AppleMusicController generates developer tokens)
                 // and musickit-api HTTP client for user library access, even when using workers for lookups
-                _ = services.AddAppleMusicJwtHandler(
+                _ = services.AddAppleMusicJwtHandlerFromPrivateKey(
                     settings.AppleTeamId,
                     settings.AppleKeyId,
-                    settings.AppleKeyPath,
+                    settings.ApplePrivateKey,
                     settings.Resilience.MaxRetryAfterSeconds
                 );
 
@@ -704,17 +649,28 @@ namespace BridgeBeats.Web.Configuration {
                 );
             }
 
-            // Otherwise, register direct provider implementations (legacy mode for testing/standalone)
-            return services.AddMusicProviders(
+            // Otherwise, register direct provider implementations for testing and standalone hosts.
+            HashSet<SupportedProviders> enabledProviders = [ ];
+            _ = services.AddAppleMusicServicesFromPrivateKey(
                 settings.AppleTeamId,
                 settings.AppleKeyId,
-                settings.AppleKeyPath,
-                settings.SpotifyClientId,
-                settings.SpotifyClientSecret,
-                settings.TidalClientId,
-                settings.TidalClientSecret,
+                settings.ApplePrivateKey,
+                enabledProviders,
                 settings.Resilience.MaxRetryAfterSeconds
             );
+            _ = services.AddSpotifyServices(
+                settings.SpotifyClientId,
+                settings.SpotifyClientSecret,
+                enabledProviders,
+                settings.Resilience.MaxRetryAfterSeconds
+            );
+            _ = services.AddTidalServices(
+                settings.TidalClientId,
+                settings.TidalClientSecret,
+                enabledProviders,
+                settings.Resilience.MaxRetryAfterSeconds
+            );
+            return enabledProviders;
         }
 
     }

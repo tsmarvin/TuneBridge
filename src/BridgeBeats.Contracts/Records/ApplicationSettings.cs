@@ -38,10 +38,6 @@ public sealed record ApplicationSettingsValues {
     [JsonPropertyName( "atProtoPdsUri" )]
     public string ATProtoPdsUri { get; init; } = "https://pds.bridgebeats.link";
 
-    /// <summary>Gets the public BridgeBeats domain or host name.</summary>
-    [JsonPropertyName( "domain" )]
-    public string Domain { get; init; } = string.Empty;
-
     /// <summary>Gets the per-user hourly lookup request limit.</summary>
     [JsonPropertyName( "rateLimitRequestsPerHour" )]
     public int RateLimitRequestsPerHour { get; init; } = 20;
@@ -81,6 +77,28 @@ public sealed record ApplicationSettingsValues {
     /// <summary>Gets maintenance-worker scheduling settings.</summary>
     [JsonPropertyName( "maintenance" )]
     public ApplicationMaintenanceSettings Maintenance { get; init; } = new( );
+
+    /// <summary>Gets Spotify-specific runtime settings.</summary>
+    [JsonPropertyName( "spotify" )]
+    public ApplicationSpotifySettings Spotify { get; init; } = new( );
+}
+
+/// <summary>Spotify-specific runtime settings persisted with the application settings aggregate.</summary>
+public sealed record ApplicationSpotifySettings {
+    /// <summary>Gets Spotify bulk-processing settings.</summary>
+    [JsonPropertyName( "batch" )]
+    public ApplicationSpotifyBatchSettings Batch { get; init; } = new( );
+}
+
+/// <summary>Spotify bulk-processing settings persisted with the application settings aggregate.</summary>
+public sealed record ApplicationSpotifyBatchSettings {
+    /// <summary>Gets the low-volume batch linger backstop in milliseconds.</summary>
+    [JsonPropertyName( "lingerMs" )]
+    public int LingerMs { get; init; } = 86_400_000;
+
+    /// <summary>Gets the initial cooldown after a failed bulk request, in seconds.</summary>
+    [JsonPropertyName( "requestFailureCooldownSeconds" )]
+    public int RequestFailureCooldownSeconds { get; init; } = 5;
 }
 
 /// <summary>Provider-worker enablement settings persisted with the application settings aggregate.</summary>
@@ -118,7 +136,7 @@ public sealed record ApplicationResilienceSettings {
 
     /// <summary>Gets the timeout for each individual attempt, in seconds.</summary>
     [JsonPropertyName( "attemptTimeoutSeconds" )]
-    public int AttemptTimeoutSeconds { get; init; } = 10;
+    public int AttemptTimeoutSeconds { get; init; } = 120;
 }
 
 /// <summary>Maintenance-worker scheduling settings persisted with the application settings aggregate.</summary>

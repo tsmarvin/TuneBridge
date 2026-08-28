@@ -2069,11 +2069,8 @@ public class StaleCacheRefreshBackgroundServiceTests {
     #region AppHost Branches Tests
 
     /// <summary>
-    /// Both the production (AddProductionExecutable) and development (AddProject) branches of the
-    /// AppHost cache-bootstrap wiring inject the new refresh tunables and the retuned defaults.
-    /// Each tunable is asserted to appear in EACH branch sub-string individually, so a tunable
-    /// injected twice in the prod branch but zero times in the dev branch is caught — the silent-revert
-    /// trap where the whole-file count of 2 would previously pass.
+    /// The shared maintenance projection owns every refresh tunable and both topology branches pass
+    /// their resource through that projection.
     /// </summary>
     [TestMethod]
     public void AppHost_BothCacheBootstrapBranches_InjectNewTunables( ) {
@@ -2098,30 +2095,11 @@ public class StaleCacheRefreshBackgroundServiceTests {
 
         string source = System.IO.File.ReadAllText( appHostPath );
 
-        // Locate the cache-bootstrap production and development branch sub-strings by their unique
-        // markers. The production branch is identified by its AddProductionExecutable call for
-        // "cache-bootstrap"; the development branch is identified by the AddProject call for the
-        // same worker. Splitting at these two markers yields two non-overlapping sub-strings, one
-        // per branch. Asserting each tunable appears in each sub-string catches the silent-revert
-        // trap: a tunable removed from one branch but still present in the other still has a
-        // whole-file count >= 1, but fails the per-branch assertion.
-        const string ProdBranchMarker = "AddProductionExecutable( \"maintenance\"";
-        const string DevBranchMarker  = "AddProject<Projects.BridgeBeats_Worker_Maintenance>( \"maintenance\" )";
-
-        int prodIdx = source.IndexOf( ProdBranchMarker, StringComparison.Ordinal );
-        int devIdx  = source.IndexOf( DevBranchMarker,  StringComparison.Ordinal );
-
-        if (prodIdx < 0 || devIdx < 0 || prodIdx >= devIdx) {
-            Assert.Inconclusive(
-                "Could not locate the distinct cache-bootstrap prod/dev branch markers in AppHost Program.cs. " +
-                "The source structure may have changed; update the marker constants in this test." );
-            return;
-        }
-
-        // prod sub-string: from the prod marker to the start of the dev marker.
-        string prodBranch = source.Substring( prodIdx, devIdx - prodIdx );
-        // dev sub-string: from the dev marker to end-of-file (nothing after dev branch for cache-bootstrap).
-        string devBranch  = source.Substring( devIdx );
+        int helperStart = source.IndexOf( "IResourceBuilder<T> WithMaintenanceRuntime", StringComparison.Ordinal );
+        int webHelperStart = source.IndexOf( "IResourceBuilder<T> WithWebRuntime", StringComparison.Ordinal );
+        Assert.IsGreaterThanOrEqualTo( 0, helperStart );
+        Assert.IsGreaterThan( helperStart, webHelperStart );
+        string sharedProjection = source.Substring( helperStart, webHelperStart - helperStart );
 
         string[] requiredEnvVars = [
             "BridgeBeats__RefreshIntervalHours",
@@ -2130,14 +2108,17 @@ public class StaleCacheRefreshBackgroundServiceTests {
         ];
 
         foreach (string envVar in requiredEnvVars) {
-            Assert.IsTrue( prodBranch.Contains( envVar, StringComparison.Ordinal ),
-                $"'{envVar}' must appear in the production cache-bootstrap branch (AddProductionExecutable). " +
-                $"A missing occurrence means the prod branch silently omits the tunable." );
-
-            Assert.IsTrue( devBranch.Contains( envVar, StringComparison.Ordinal ),
-                $"'{envVar}' must appear in the development cache-bootstrap branch (AddProject). " +
-                $"A missing occurrence means the dev branch silently omits the tunable." );
+            Assert.Contains( envVar, sharedProjection );
         }
+
+        Assert.Contains(
+            "WithMaintenanceRuntime( AddProductionExecutable( \"maintenance\"",
+            source
+        );
+        Assert.Contains(
+            "WithMaintenanceRuntime(\n        builder.AddProject<Projects.BridgeBeats_Worker_Maintenance>",
+            source
+        );
     }
 
     /// <summary>

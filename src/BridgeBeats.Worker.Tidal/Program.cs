@@ -73,6 +73,8 @@ public static class Program {
         // Add Redis client from Aspire (for queue processing)
         builder.AddRedisClient( "redis" );
 
+        _ = builder.Services.AddQueueSettingsSnapshot( builder.Configuration );
+
         // Read and validate credentials
         (string clientId, string clientSecret, int maxRetryAfterSeconds) = ValidateConfiguration( builder );
 

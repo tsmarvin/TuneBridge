@@ -101,7 +101,7 @@ public class AtProtoIdentityTests {
     public void AddBridgeBeatsIdentity_ConfiguresRequireUniqueEmailFalse( ) {
         ServiceCollection services = new( );
         _ = services.AddLogging( );
-        _ = services.AddBridgeBeatsIdentity( Path.GetTempPath( ) );
+        _ = services.AddBridgeBeatsIdentity( TestArtifacts.CreateDirectory( "atproto-identity-keys" ) );
         using ServiceProvider sp = services.BuildServiceProvider( );
         Assert.IsFalse(
             sp.GetRequiredService<IOptions<IdentityOptions>>( ).Value.User.RequireUniqueEmail,

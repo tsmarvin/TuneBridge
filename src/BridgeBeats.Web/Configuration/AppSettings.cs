@@ -25,6 +25,14 @@ namespace BridgeBeats.Web.Configuration {
     /// </summary>
     internal class AppSettings {
         /// <summary>
+        /// Gets or sets whether no usable authoritative settings snapshot is available.
+        /// </summary>
+        public bool SetupRequired { get; set; }
+
+        /// <summary>Gets or sets the revision of the projected database settings snapshot.</summary>
+        public string SettingsRevision { get; set; } = string.Empty;
+
+        /// <summary>
         /// The Apple Developer team identifier used to sign Apple Music API requests.
         /// </summary>
         public string AppleTeamId { get; set; } = string.Empty;
@@ -34,10 +42,8 @@ namespace BridgeBeats.Web.Configuration {
         /// </summary>
         public string AppleKeyId { get; set; } = string.Empty;
 
-        /// <summary>
-        /// Filesystem path to the Apple Music private signing key (<c>.p8</c>) file.
-        /// </summary>
-        public string AppleKeyPath { get; set; } = string.Empty;
+        /// <summary>Gets or sets the Apple Music private-key contents loaded from protected settings.</summary>
+        public string ApplePrivateKey { get; set; } = string.Empty;
 
         /// <summary>
         /// The Spotify application client identifier.
@@ -110,7 +116,7 @@ namespace BridgeBeats.Web.Configuration {
         /// The public domain the application is served from, used for cookie scoping, ATProto client
         /// metadata, and generating Open Graph card URLs.
         /// </summary>
-        public string Domain { get; set; } = string.Empty;
+        public string Domain { get; set; } = "localhost";
 
         /// <summary>
         /// Normalizes a domain value into a scheme-qualified URL by trimming a trailing slash and
@@ -133,12 +139,8 @@ namespace BridgeBeats.Web.Configuration {
                 : $"https://{trimmed}";
         }
 
-        /// <summary>
-        /// Filesystem path to the JWK file holding the ATProto OAuth client-assertion signing key. When the
-        /// file is absent, empty, or <c>{}</c>, client-assertion signing is not configured and the ATProto
-        /// OAuth service operates as a public client.
-        /// </summary>
-        public string ATProtoOAuthSigningKeyPath { get; set; } = string.Empty;
+        /// <summary>Gets or sets the ATProto OAuth signing JWK loaded from protected settings.</summary>
+        public string ATProtoOAuthSigningKey { get; set; } = string.Empty;
 
         /// <summary>
         /// Directory where application log files are written. Defaults to <c>./logs</c>.
@@ -236,8 +238,8 @@ namespace BridgeBeats.Web.Configuration {
         public int TotalTimeoutMinutes { get; set; } = 10;
 
         /// <summary>
-        /// The timeout, in seconds, applied to each individual attempt. Defaults to 10.
+        /// The timeout, in seconds, applied to each individual attempt. Defaults to 120.
         /// </summary>
-        public int AttemptTimeoutSeconds { get; set; } = 10;
+        public int AttemptTimeoutSeconds { get; set; } = 120;
     }
 }

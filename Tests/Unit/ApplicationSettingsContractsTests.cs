@@ -17,6 +17,7 @@ namespace BridgeBeats.Tests.Unit;
 [TestClass]
 public class ApplicationSettingsContractsTests {
     private const string Secret = "super-sensitive-setting-value";
+    private const string ValidSalt = "unit-test-api-key-salt-0000000000000000";
     private static readonly JsonSerializerOptions s_webJsonOptions = new( JsonSerializerDefaults.Web );
 
     /// <summary>Verifies runtime secret wrappers redact string and JSON display paths.</summary>
@@ -59,7 +60,7 @@ public class ApplicationSettingsContractsTests {
 
         IReadOnlyList<string> errors = ApplicationSettingsValidator.Validate(
             values,
-            new StoredApplicationSettingsSecrets( )
+            new StoredApplicationSettingsSecrets { ApiKeySalt = ValidSalt }
         );
 
         Assert.HasCount( 1, errors );
@@ -71,7 +72,10 @@ public class ApplicationSettingsContractsTests {
     [TestMethod]
     public void Validator_CompleteProviderCredentials_ReturnsNoErrors( ) {
         ApplicationSettingsValues values = new( ) { SpotifyClientId = "client-id" };
-        StoredApplicationSettingsSecrets secrets = new( ) { SpotifyClientSecret = Secret };
+        StoredApplicationSettingsSecrets secrets = new( ) {
+            SpotifyClientSecret = Secret,
+            ApiKeySalt = ValidSalt
+        };
 
         IReadOnlyList<string> errors = ApplicationSettingsValidator.Validate( values, secrets );
 
@@ -85,7 +89,7 @@ public class ApplicationSettingsContractsTests {
         ApplicationSettingsValues values = new( ) { SpotifyClientId = Secret };
         IReadOnlyList<string> errors = ApplicationSettingsValidator.Validate(
             values,
-            new StoredApplicationSettingsSecrets( )
+            new StoredApplicationSettingsSecrets { ApiKeySalt = ValidSalt }
         );
         ApplicationSettingsValidationException exception = new( errors );
 
@@ -101,24 +105,53 @@ public class ApplicationSettingsContractsTests {
         ApplicationSettingsValues partial = new( ) { ATProtoIdentifier = "service.example.com" };
         IReadOnlyList<string> partialErrors = ApplicationSettingsValidator.Validate(
             partial,
-            new StoredApplicationSettingsSecrets( )
+            new StoredApplicationSettingsSecrets { ApiKeySalt = ValidSalt }
         );
 
         ApplicationSettingsValues malformedDid = partial with { ATProtoUserDid = "not-a-did" };
         IReadOnlyList<string> malformedErrors = ApplicationSettingsValidator.Validate(
             malformedDid,
-            new StoredApplicationSettingsSecrets { ATProtoPassword = Secret }
+            new StoredApplicationSettingsSecrets { ATProtoPassword = Secret, ApiKeySalt = ValidSalt }
         );
 
         ApplicationSettingsValues complete = partial with { ATProtoUserDid = "did:plc:bridgebeats" };
         IReadOnlyList<string> completeErrors = ApplicationSettingsValidator.Validate(
             complete,
-            new StoredApplicationSettingsSecrets { ATProtoPassword = Secret }
+            new StoredApplicationSettingsSecrets { ATProtoPassword = Secret, ApiKeySalt = ValidSalt }
         );
 
         Assert.Contains( error => error.Contains( "service-account", StringComparison.Ordinal ), partialErrors );
         Assert.Contains( error => error.Contains( "ATProtoUserDid", StringComparison.Ordinal ), malformedErrors );
         Assert.IsEmpty( completeErrors );
+    }
+
+    /// <summary>Verifies the API-key salt is a write-time invariant, not a later startup failure.</summary>
+    [TestMethod]
+    public void Validator_MissingApiKeySalt_ReturnsRequiredError( ) {
+        IReadOnlyList<string> errors = ApplicationSettingsValidator.Validate(
+            new ApplicationSettingsValues { SpotifyClientId = "client-id" },
+            new StoredApplicationSettingsSecrets { SpotifyClientSecret = Secret }
+        );
+
+        Assert.Contains( "ApiKeySalt is required.", errors );
+    }
+
+    /// <summary>Verifies malformed Apple PEM is rejected with a setting-specific diagnostic.</summary>
+    [TestMethod]
+    public void Validator_MalformedApplePrivateKey_ReturnsSettingSpecificError( ) {
+        IReadOnlyList<string> errors = ApplicationSettingsValidator.Validate(
+            new ApplicationSettingsValues { AppleTeamId = "team", AppleKeyId = "key" },
+            new StoredApplicationSettingsSecrets {
+                ApplePrivateKey = "not-a-pem",
+                ApiKeySalt = ValidSalt
+            }
+        );
+
+        Assert.Contains(
+            error => error.Contains( "ApplePrivateKey", StringComparison.Ordinal ),
+            errors
+        );
+        Assert.DoesNotContain( "not-a-pem", string.Join( ' ', errors ) );
     }
 
     /// <summary>Verifies explicit JSON nulls are rejected as validation failures rather than dereferenced.</summary>

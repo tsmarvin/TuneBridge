@@ -34,6 +34,8 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
             this IServiceCollection services,
             string keyPath
         ) {
+            ArgumentException.ThrowIfNullOrWhiteSpace( keyPath );
+
             _ = services.AddDataProtection( )
                 .SetApplicationName( "BridgeBeats" )
                 .PersistKeysToFileSystem( new DirectoryInfo( keyPath ) );

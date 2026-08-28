@@ -2,6 +2,7 @@ using BridgeBeats.Core.Infrastructure.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace BridgeBeats.Core.Infrastructure.Extensions {
 
@@ -69,7 +70,7 @@ namespace BridgeBeats.Core.Infrastructure.Extensions {
             .AddPersonalDataProtection<DataProtectionLookupProtector, DataProtectionKeyRing>( );
 
             // Register scoped ApplicationDbContext for Identity framework using the factory
-            _ = services.AddScoped( sp => {
+            services.TryAddScoped( sp => {
                 IDbContextFactory<ApplicationDbContext> factory = sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>( );
                 return factory.CreateDbContext( );
             } );

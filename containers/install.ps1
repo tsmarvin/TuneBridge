@@ -8,8 +8,8 @@
     Linux and macOS hosts must use install.sh instead — it sets the required file ownership
     and permissions that this Windows installer does not apply.
 
-    It validates dependencies, downloads configuration files, sets up secrets,
-    and prepares the environment for running BridgeBeats via Docker Compose.
+    It validates dependencies, downloads configuration files, and prepares the
+    environment for running BridgeBeats via Docker Compose.
 
 .PARAMETER Branch
     Git branch to download from (default: develop)
@@ -47,24 +47,10 @@ $Timestamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
 $UpgradeLog = 'upgrade.log'
 
 # Files to download from the repository
-$DownloadFiles = @('docker-compose.yml', 'Caddyfile', '.env.example')
+$DownloadFiles = @('docker-compose.yml', 'Caddyfile')
 
-# Files to backup during upgrades (excludes .env.example as it's just a template)
+# Files to backup during upgrades
 $BackupFiles = @('docker-compose.yml', 'Caddyfile')
-
-# Secret files configuration
-$SecretFiles = @(
-    @{ Name = 'apple_key.p8';              Description = 'Apple Music private key (.p8 file)';               AutoGenerate = $false }
-    @{ Name = 'spotify_client_secret.txt'; Description = 'Spotify API client secret';                        AutoGenerate = $false }
-    @{ Name = 'tidal_client_secret.txt';   Description = 'Tidal API client secret';                          AutoGenerate = $false }
-    @{ Name = 'discord_token.txt';         Description = 'Discord bot token';                                AutoGenerate = $false }
-    @{ Name = 'atproto_password.txt';      Description = 'ATProto app password';                             AutoGenerate = $false }
-    @{ Name = 'atproto_oauth_key.json';    Description = 'ATProto OAuth signing key (ES256 JWK)';            AutoGenerate = $true }
-    @{ Name = 'api_key_salt.txt';          Description = 'API key salt';                                     AutoGenerate = $true }
-    @{ Name = 'redis_password.txt';        Description = 'Redis password';                                   AutoGenerate = $true }
-    @{ Name = 'internal_service_key.txt';  Description = 'Internal service key (worker/API authentication)'; AutoGenerate = $true }
-    @{ Name = 'cloudflare_api_token.txt';  Description = 'Cloudflare API token (DNS)';                       AutoGenerate = $false }
-)
 
 # Construct base URL for raw file downloads
 $Domain = "https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/containers"
@@ -104,106 +90,6 @@ function Write-UpgradeLog {
     $logPath = Join-Path -Path $Directory -ChildPath $UpgradeLog
     $logEntry = "[$Timestamp] $Message"
     Add-Content -Path $logPath -Value $logEntry
-}
-
-function Test-SecretHasContent {
-    param([string]$FilePath)
-
-    if (-not (Test-Path $FilePath)) {
-        return $false
-    }
-
-    # Read content and check if it has non-placeholder content
-    # We check for patterns but don't store the actual secret value
-    $content = Get-Content -Path $FilePath -Raw -ErrorAction Ignore
-    if ([string]::IsNullOrWhiteSpace($content)) {
-        return $false
-    }
-
-    # Check for placeholder patterns
-    if ($content -match '^(your_|REPLACE_WITH_)') {
-        return $false
-    }
-
-    # Has non-whitespace, non-placeholder content
-    return ($content -match '\S')
-}
-
-function Get-RandomString {
-    param([int]$Length = 32)
-
-    # Try openssl first
-    $opensslPath = Get-Command openssl -ErrorAction Ignore
-    if ($opensslPath) {
-        try {
-            $result = & openssl rand -base64 $Length 2>$null
-            if ($LASTEXITCODE -eq 0 -and $result) {
-                return $result.Trim()
-            }
-        } catch {
-            # Fall through to .NET method
-        }
-    }
-
-    # Use .NET cryptography
-    $bytes = New-Object byte[] $Length
-    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    $rng.GetBytes($bytes)
-    $rng.Dispose()
-    return [Convert]::ToBase64String($bytes)
-}
-
-function Get-ES256SigningKeyJwk {
-    # Generate an ES256 (P-256) key pair and return it as a JWK JSON string
-    $ecdsa = [System.Security.Cryptography.ECDsa]::Create(
-        [System.Security.Cryptography.ECCurve]::CreateFromFriendlyName('nistP256')
-    )
-    try {
-        $params = $ecdsa.ExportParameters($true)
-
-        $b64url = {
-            param([byte[]]$bytes)
-            [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
-        }
-
-        return (@{
-            kty = 'EC'
-            crv = 'P-256'
-            x   = & $b64url $params.Q.X
-            y   = & $b64url $params.Q.Y
-            d   = & $b64url $params.D
-            kid = [Guid]::NewGuid().ToString('N')
-            alg = 'ES256'
-            use = 'sig'
-        } | ConvertTo-Json -Compress)
-    } finally {
-        $ecdsa.Dispose()
-    }
-}
-
-function Get-EnvVarNames {
-    param([string]$FilePath)
-    $names = @()
-
-    if (-not (Test-Path $FilePath)) {
-        return $names
-    }
-
-    Get-Content $FilePath | ForEach-Object {
-        if ($_ -match '^([A-Z_][A-Z0-9_]*)=') {
-            $names += $Matches[1]
-        }
-    }
-    return $names | Sort-Object -Unique
-}
-
-function Get-EnvVarLine {
-    param(
-        [string]$FilePath,
-        [string]$VarName
-    )
-
-    Get-Content -Path $FilePath | Where-Object { $_ -match "^$VarName=" } | Select-Object -First 1
 }
 
 # =============================================================================
@@ -253,14 +139,6 @@ try {
 
 if (-not $composeWorks -and $missingDeps.Count -eq 0) {
     $missingDeps += 'docker compose - Install Docker Compose plugin: https://docs.docker.com/compose/install/'
-}
-
-# Check for openssl (optional)
-$opensslCmd = Get-Command openssl -ErrorAction Ignore
-if ($opensslCmd) {
-    Write-Ok 'openssl: available (for generating secure random secrets)'
-} else {
-    $warnings += 'openssl not found - Will use .NET cryptography for generating random secrets'
 }
 
 # Report warnings
@@ -362,10 +240,8 @@ Write-Ok 'Data directories present: data\{app,dp-keys,redis,pds}, logs\caddy'
 # =============================================================================
 Write-Section 'Checking Existing Deployment'
 
-$secretsDir = Join-Path -Path $Directory -ChildPath 'secrets'
-
 # BridgeBeats container names from docker-compose.yml
-$BridgeBeatsContainers = @('bridgebeats', 'bridgebeats-redis', 'bridgebeats-pds', 'bridgebeats-caddy')
+$BridgeBeatsContainers = @('bridgebeats-bootstrap', 'bridgebeats', 'bridgebeats-redis', 'bridgebeats-pds', 'bridgebeats-caddy')
 
 # Check if any BridgeBeats containers exist
 $containersExist = $false
@@ -394,26 +270,6 @@ if ($containersExist) {
     Write-UpgradeLog ''
     Write-UpgradeLog "=== Upgrade: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ==="
     Write-UpgradeLog "Branch: $Branch"
-
-    # Back up secrets before any modifications
-    if (Test-Path $secretsDir) {
-        $backupTimestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-        $backupDir = Join-Path $Directory "secrets_backup_$backupTimestamp"
-        try {
-            Copy-Item -Path $secretsDir -Destination $backupDir -Recurse
-            Write-Ok "Backed up secrets to secrets_backup_$backupTimestamp/"
-            Write-UpgradeLog "Backed up secrets to secrets_backup_$backupTimestamp/"
-        } catch {
-            Write-Warn 'Failed to back up secrets directory'
-            Write-UpgradeLog 'WARN: Failed to back up secrets directory'
-        }
-
-        # Prune old backups, keep 3 most recent
-        Get-ChildItem -Path $Directory -Directory -Filter 'secrets_backup_*' |
-            Sort-Object Name -Descending |
-            Select-Object -Skip 3 |
-            Remove-Item -Recurse -Force
-    }
 
     # Log current container image information with RepoDigests
     Write-Host "`nCurrent container images:"
@@ -463,107 +319,11 @@ if ($containersExist) {
 }
 
 # =============================================================================
-# Setup Secrets Directory
+# Infrastructure Secrets
 # =============================================================================
-Write-Section 'Setting Up Secrets'
-
-# On Windows, the secrets directory inherits the current user's profile ACL.
-# Linux-style ownership and mode-700 permission hardening is handled by install.sh on Linux hosts.
-
-if (Test-Path $secretsDir) {
-    Write-Ok "Secrets directory already exists: $secretsDir"
-} else {
-    New-Item -Path $secretsDir -ItemType Directory -Force | Out-Null
-    Write-Ok "Created secrets directory: $secretsDir"
-}
-
-# Track secrets that need user attention
-$missingSecrets = @()
-
-foreach ($secret in $SecretFiles) {
-    $secretPath = Join-Path -Path $secretsDir -ChildPath $secret.Name
-
-    if (Test-Path $secretPath) {
-        if (Test-SecretHasContent $secretPath) {
-            Write-Ok "Secret exists and has content: $($secret.Name)"
-        } else {
-            Write-Warn "Secret exists but appears empty or contains placeholder content: $($secret.Name)"
-        }
-    } else {
-        if ($secret.AutoGenerate) {
-            # Auto-generate this secret
-            if ($secret.Name -eq 'atproto_oauth_key.json') {
-                $generatedValue = Get-ES256SigningKeyJwk
-            } else {
-                $generatedValue = Get-RandomString
-            }
-            Set-Content -Path $secretPath -Value $generatedValue -NoNewline
-            Write-Ok "Auto-generated: $($secret.Name)"
-        } else {
-            # Create placeholder
-            if ($secret.Name -eq 'apple_key.p8') {
-                $placeholder = @'
------BEGIN PRIVATE KEY-----
-REPLACE_WITH_YOUR_APPLE_MUSIC_PRIVATE_KEY
------END PRIVATE KEY-----
-'@
-            } else {
-                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($secret.Name)
-                $placeholder = "your_${baseName}_here"
-            }
-            Set-Content -Path $secretPath -Value $placeholder
-            $missingSecrets += $secret
-            Write-Warn "Created placeholder: $($secret.Name) (needs your input)"
-        }
-    }
-}
-
-# =============================================================================
-# Setup Environment File
-# =============================================================================
-Write-Section 'Configuring Environment'
-
-$envPath = Join-Path $Directory '.env'
-$envExamplePath = Join-Path $Directory '.env.example'
-
-if (Test-Path $envPath) {
-    Write-Ok 'Environment file exists: .env'
-
-    # Check for new variables in .env.example
-    if (Test-Path $envExamplePath) {
-        $existingVars = Get-EnvVarNames $envPath
-        $exampleVars = Get-EnvVarNames $envExamplePath
-
-        $newVars = @()
-        foreach ($var in $exampleVars) {
-            if ($var -notin $existingVars) {
-                $newVars += $var
-            }
-        }
-
-        if ($newVars.Count -gt 0) {
-            Write-Host ''
-            Write-Warn 'New environment variables found in .env.example:'
-            Write-Host '       Please add these to your .env file:'
-            Write-Host ''
-            foreach ($var in $newVars) {
-                $line = Get-EnvVarLine $envExamplePath $var
-                Write-Host "  $line"
-            }
-            Write-Host ''
-        }
-    }
-} else {
-    if (Test-Path $envExamplePath) {
-        Copy-Item $envExamplePath $envPath
-        Write-Ok 'Created .env from .env.example'
-        Write-Warn 'Please edit .env with your configuration values'
-    } else {
-        Write-Err 'No .env.example found to create .env from'
-        exit 1
-    }
-}
-
+Write-Section 'Configuring Infrastructure Secrets'
+Write-Ok 'Redis credentials will be generated in a Docker named volume on first start'
+Write-Ok 'Data Protection keys will persist in data\dp-keys'
 
 # =============================================================================
 # Summary and Next Steps
@@ -572,74 +332,13 @@ Write-Header 'Installation Complete'
 
 Write-Host "Installation directory: $Directory`n"
 
-# Report secrets that need attention
-if ($missingSecrets.Count -gt 0) {
-    Write-Host "[ACTION REQUIRED] The following secrets need your input:`n" -ForegroundColor Magenta
-    foreach ($secret in $missingSecrets) {
-        Write-Host "  - secrets\$($secret.Name)"
-        Write-Host "    $($secret.Description)`n"
-    }
-}
-
-# Check .env for empty required values
-Write-Host 'Checking environment configuration...'
-$envIssues = @()
-
-# Required environment variables to check
-$requiredEnvVars = @(
-    'DOMAIN'
-    'CADDY_ADMIN_EMAIL'
-    'PDS_HOSTNAME'
-    'PDS_JWT_SECRET'
-    'PDS_ADMIN_PASSWORD'
-)
-
-# At least one provider required
-$providerVars = @(
-    'APPLE_TEAM_ID'
-    'SPOTIFY_CLIENT_ID'
-    'TIDAL_CLIENT_ID'
-)
-
-$envContent = Get-Content -Path $envPath -ErrorAction Ignore
-
-foreach ($var in $requiredEnvVars) {
-    $line = $envContent | Where-Object { $_ -match "^$var=\s*$" }
-    if ($line) {
-        $envIssues += "$var - Required but empty"
-    }
-}
-
-$providerFound = $false
-foreach ($var in $providerVars) {
-    $line = $envContent | Where-Object { $_ -match "^$var=.+$" }
-    if ($line) {
-        # Check it's not empty
-        $emptyLine = $envContent | Where-Object { $_ -match "^$var=\s*$" }
-        if (-not $emptyLine) {
-            $providerFound = $true
-            break
-        }
-    }
-}
-
-if (-not $providerFound) {
-    $envIssues += 'At least one music provider required (APPLE_TEAM_ID, SPOTIFY_CLIENT_ID, or TIDAL_CLIENT_ID)'
-}
-
-if ($envIssues.Count -gt 0) {
-    Write-Host "`n[ACTION REQUIRED] Environment configuration issues:`n" -ForegroundColor Magenta
-    foreach ($issue in $envIssues) {
-        Write-Host "  - $issue"
-    }
-    Write-Host "`nEdit .env to configure these values."
-}
-
 Write-Host "`n==========================================" -ForegroundColor Cyan
 Write-Host 'Next Steps' -ForegroundColor Cyan
 Write-Host "==========================================`n" -ForegroundColor Cyan
-Write-Host "1. Edit secrets in: $Directory\secrets\"
-Write-Host "2. Edit environment in: $Directory\.env"
+Write-Host "1. Review the Caddy deployment values in: $Directory\docker-compose.yml"
+Write-Host '2. Optionally set REDIS_PASSWORD to 32-128 base64/base64url characters, then run:'
+Write-Host '   docker compose run --rm -e REDIS_PASSWORD bridgebeats-bootstrap'
+Write-Host '   If skipped, BridgeBeats generates a cryptographically random password.'
 Write-Host "3. Start BridgeBeats with:`n"
 Write-Host "   cd $Directory"
 Write-Host "   docker compose up -d`n"

@@ -14,7 +14,7 @@ namespace BridgeBeats.Tests.Integration;
 /// provider URL across Apple Music, Spotify, and Tidal, including cross-provider matching by ISRC and the
 /// no-result path for an invalid ISRC. Rate-limited calls are made inconclusive via
 /// <see cref="RateLimitTestHelper"/> rather than failed. These tests require valid API credentials in
-/// appsettings.json or user secrets and use direct provider mode (not queue-based) for fast API validation.
+/// user secrets or environment variables and use direct provider mode (not queue-based) for fast API validation.
 /// </summary>
 [TestClass]
 [DoNotParallelize] // Prevent parallel execution to avoid overwhelming external APIs with rate limits
@@ -38,12 +38,11 @@ public class MusicLookupServiceTests {
     [ClassInitialize]
     public static async Task ClassInitialize( TestContext _ ) {
         IConfigurationRoot configuration = new ConfigurationBuilder()
-                            .AddJsonFile( Path.Combine( "src", "BridgeBeats.Web", "appsettings.json" ), optional: true )
                                             .AddUserSecrets<Web.Program>( optional: true )
                                             .AddEnvironmentVariables()
                                             .Build();
 
-        // Use the same factory pattern as controller E2E tests, but feed it appsettings.json
+        // Use the same factory pattern as controller E2E tests with process-level credentials.
         Dictionary<string, string?> overrides = configuration
          .AsEnumerable()
          .Where(kv => kv.Value is not null) // filter nulls from section placeholders

@@ -18,52 +18,6 @@ namespace BridgeBeats.Core.Domain.Extensions {
     public static class ProviderServiceExtensions {
 
         /// <summary>
-        /// Registers all <b>direct</b> provider lookup services whose credentials are supplied,
-        /// delegating to <see cref="AddAppleMusicServices"/>, <see cref="AddSpotifyServices"/>, and
-        /// <see cref="AddTidalServices"/>. A provider is enabled only when its required settings are
-        /// present.
-        /// </summary>
-        /// <param name="services">The service collection to add registrations to.</param>
-        /// <param name="appleTeamId">Apple developer team id, or <see langword="null"/> to skip Apple Music.</param>
-        /// <param name="appleKeyId">Apple MusicKit key id.</param>
-        /// <param name="appleKeyPath">Path to the Apple <c>.p8</c> private key file.</param>
-        /// <param name="spotifyClientId">Spotify client id, or <see langword="null"/> to skip Spotify.</param>
-        /// <param name="spotifyClientSecret">Spotify client secret.</param>
-        /// <param name="tidalClientId">Tidal client id, or <see langword="null"/> to skip Tidal.</param>
-        /// <param name="tidalClientSecret">Tidal client secret.</param>
-        /// <param name="maxRetryAfterSeconds">
-        /// Threshold for the <c>RetryAfterLimitHandler</c>: a <c>Retry-After</c> beyond this many
-        /// seconds fails fast instead of waiting. Defaults to 120.
-        /// </param>
-        /// <returns>The set of providers that were enabled.</returns>
-        /// <exception cref="InvalidOperationException">
-        /// Thrown when no provider could be enabled because every provider's settings were missing.
-        /// </exception>
-        public static HashSet<SupportedProviders> AddMusicProviders(
-            this IServiceCollection services,
-            string? appleTeamId,
-            string? appleKeyId,
-            string? appleKeyPath,
-            string? spotifyClientId,
-            string? spotifyClientSecret,
-            string? tidalClientId,
-            string? tidalClientSecret,
-            int maxRetryAfterSeconds = 120
-        ) {
-            HashSet<SupportedProviders> enabledProviders = [ ];
-
-            _ = services.AddAppleMusicServices( appleTeamId, appleKeyId, appleKeyPath, enabledProviders, maxRetryAfterSeconds );
-            _ = services.AddSpotifyServices( spotifyClientId, spotifyClientSecret, enabledProviders, maxRetryAfterSeconds );
-            _ = services.AddTidalServices( tidalClientId, tidalClientSecret, enabledProviders, maxRetryAfterSeconds );
-
-            return enabledProviders.Count == 0
-                ? throw new InvalidOperationException(
-                    "Required settings are missing. Cannot add BridgeBeats services if no IMusicLookupService(s) are available."
-                )
-                : enabledProviders;
-        }
-
-        /// <summary>
         /// Builds a factory that creates a <c>RetryAfterLimitHandler</c> bound to the given threshold,
         /// resolving a typed logger from the service provider at creation time. Used when wiring a
         /// provider's named HTTP clients.
@@ -81,83 +35,54 @@ namespace BridgeBeats.Core.Domain.Extensions {
         #region Service Provider Registration
 
         /// <summary>
-        /// Registers the direct Apple Music lookup service and its JWT auth handler when the required
-        /// Apple credentials are present. Adds <see cref="SupportedProviders.AppleMusic"/> to
-        /// <paramref name="enabledProviders"/> on success.
+        /// Registers the direct Apple Music lookup service using private-key contents supplied by
+        /// the authoritative application-settings store.
         /// </summary>
         /// <param name="services">The service collection to add registrations to.</param>
         /// <param name="teamId">Apple developer team id.</param>
         /// <param name="keyId">Apple MusicKit key id.</param>
-        /// <param name="keyPath">Path to the Apple <c>.p8</c> private key file.</param>
+        /// <param name="privateKey">The Apple <c>.p8</c> private-key contents.</param>
         /// <param name="enabledProviders">The running set of enabled providers, mutated on success.</param>
-        /// <param name="maxRetryAfterSeconds">The <c>Retry-After</c> fail-fast threshold in seconds. Defaults to 120.</param>
-        /// <returns><see langword="true"/> when Apple Music was registered; <see langword="false"/> when its settings were missing.</returns>
-        /// <exception cref="FileNotFoundException">Thrown when <paramref name="keyPath"/> does not exist.</exception>
-        /// <exception cref="InvalidDataException">Thrown when the <c>.p8</c> file is empty.</exception>
-        public static bool AddAppleMusicServices(
+        /// <param name="maxRetryAfterSeconds">The <c>Retry-After</c> fail-fast threshold in seconds.</param>
+        /// <returns><see langword="true"/> when Apple Music was registered.</returns>
+        public static bool AddAppleMusicServicesFromPrivateKey(
             this IServiceCollection services,
             string? teamId,
             string? keyId,
-            string? keyPath,
+            string? privateKey,
             HashSet<SupportedProviders> enabledProviders,
             int maxRetryAfterSeconds = 120
         ) {
-            if (!services.AddAppleMusicJwtHandler( teamId, keyId, keyPath, maxRetryAfterSeconds )) {
+            if (!services.AddAppleMusicJwtHandlerFromPrivateKey( teamId, keyId, privateKey, maxRetryAfterSeconds )) {
                 return false;
             }
 
             _ = services.AddTransient<AppleMusicLookupService>( );
-
             _ = enabledProviders.Add( SupportedProviders.AppleMusic );
             return true;
         }
 
         /// <summary>
-        /// Loads the Apple <c>.p8</c> signing key, registers the <c>musickit-api</c> named HTTP client
-        /// (SSRF-hardened primary handler, <c>RetryAfterLimitHandler</c>, and
-        /// <c>ProviderMetricsHandler</c>), and registers a singleton <c>AppleJwtHandler</c> that signs
-        /// developer JWTs.
+        /// Registers the Apple Music JWT handler using private-key contents supplied directly by
+        /// the protected application-settings store.
         /// </summary>
         /// <param name="services">The service collection to add registrations to.</param>
         /// <param name="teamId">Apple developer team id.</param>
         /// <param name="keyId">Apple MusicKit key id.</param>
-        /// <param name="keyPath">Path to the Apple <c>.p8</c> private key file.</param>
-        /// <param name="maxRetryAfterSeconds">The <c>Retry-After</c> fail-fast threshold in seconds. Defaults to 120.</param>
-        /// <returns>
-        /// <see langword="true"/> when the handler and client were registered; <see langword="false"/>
-        /// when <paramref name="teamId"/>, <paramref name="keyId"/>, or <paramref name="keyPath"/> was
-        /// blank.
-        /// </returns>
-        /// <exception cref="FileNotFoundException">Thrown when the file at <paramref name="keyPath"/> does not exist.</exception>
-        /// <exception cref="InvalidDataException">Thrown when the <c>.p8</c> file exists but has no contents.</exception>
-        public static bool AddAppleMusicJwtHandler(
+        /// <param name="privateKey">The Apple <c>.p8</c> private-key contents.</param>
+        /// <param name="maxRetryAfterSeconds">The <c>Retry-After</c> fail-fast threshold in seconds.</param>
+        /// <returns><see langword="true"/> when the handler and client were registered.</returns>
+        public static bool AddAppleMusicJwtHandlerFromPrivateKey(
             this IServiceCollection services,
             string? teamId,
             string? keyId,
-            string? keyPath,
+            string? privateKey,
             int maxRetryAfterSeconds = 120
         ) {
-            // Check if Apple Music credentials are provided
             if (string.IsNullOrWhiteSpace( teamId ) ||
-                string.IsNullOrWhiteSpace( keyId )) {
+                string.IsNullOrWhiteSpace( keyId ) ||
+                string.IsNullOrWhiteSpace( privateKey )) {
                 return false;
-            }
-
-            // If Team ID and Key ID are provided, the key path must also be provided and valid
-            if (string.IsNullOrWhiteSpace( keyPath )) {
-                return false;
-            }
-
-            // Fail fast if missing required apple key file.
-            FileInfo keyFile = new( keyPath );
-            if (!keyFile.Exists) {
-                throw new FileNotFoundException( $"Missing .p8 file at: {keyFile.FullName}" );
-            }
-
-            // Fail fast if apple key file is empty.
-            string keyContents = File.ReadAllText( keyFile.FullName );
-            if (string.IsNullOrWhiteSpace( keyContents )) {
-                throw new InvalidDataException( $".p8 file missing contents at: {keyFile.FullName}" );
             }
 
             _ = services.AddHttpClient( "musickit-api", c => {
@@ -170,7 +95,7 @@ namespace BridgeBeats.Core.Domain.Extensions {
             .AddHttpMessageHandler( CreateRetryAfterLimitHandlerFactory( maxRetryAfterSeconds ) )
             .AddHttpMessageHandler( ( ) => new ProviderMetricsHandler( "applemusic" ) );
 
-            _ = services.AddSingleton( new AppleJwtHandler( teamId, keyId, keyContents ) );
+            _ = services.AddSingleton( new AppleJwtHandler( teamId, keyId, privateKey ) );
 
             return true;
         }

@@ -59,9 +59,11 @@ dotnet test --filter "FullyQualifiedName~EndToEnd"
 dotnet test --logger "console;verbosity=detailed"
 ```
 
-Unit tests need no API credentials or external services. Integration and
-end-to-end tests may need Docker running (see below) and, depending on the test,
-provider credentials in `src/BridgeBeats.Web/appsettings.json`.
+Unit tests need no API credentials or external services. Web-host integration and end-to-end tests
+load the shared `bridgebeats-apphost` user-secrets store, then seed an isolated encrypted SQLite
+settings database through the production startup-seeding path. Configure at least
+`BridgeBeats:ApiKeySalt` (32 or more characters) and one complete provider group. CI supplies the
+same keys through step-scoped environment variables. Redis-backed tests also need Docker running.
 
 ## Integration tests and Docker
 
@@ -86,9 +88,9 @@ step, in order, against a Release build:
 
 1. Restore dependencies (with lock-file validation) and build
    (`--configuration Release`).
-2. Write a test `appsettings.json` from `appsettings.transform.json`, injecting
-   provider credentials from CI secrets and leaving the Discord token empty so
-   the bot stays disabled during tests.
+2. Supply the seed flag, API-key salt, and provider credentials from GitHub Secrets as
+   step-scoped test-process environment variables. Test factories supply isolated database, key-ring,
+   and Redis settings and persist the startup values before constructing Web.
 3. Run unit tests (`--filter "FullyQualifiedName~Unit"`).
 4. Run integration tests (`--filter "FullyQualifiedName~Integration"`).
 5. Verify at least one integration test executed (the not-run guard above),
@@ -108,7 +110,8 @@ This section reflects the current workflow, not the target state.
   order.
 - Fails the build if the integration lane executed zero tests (the not-run
   guard).
-- Injects provider credentials from secrets so credentialed paths can run.
+- Injects the database seed inputs from GitHub Secrets only into the three test steps; build and
+  artifact-upload steps do not inherit credential values.
 
 **What CI does not do yet:**
 

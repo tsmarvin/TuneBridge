@@ -52,7 +52,7 @@ public class AppleJwtHandlerTests {
         _ = formattedKey.AppendLine( "-----END PRIVATE KEY-----" );
         _testKeyContents = formattedKey.ToString( );
 
-        _testKeyPath = Path.Combine( Path.GetTempPath( ), $"test_key_{Guid.NewGuid( )}.p8" );
+        _testKeyPath = TestArtifacts.CreateFilePath( "test-key", ".p8" );
         File.WriteAllText( _testKeyPath, _testKeyContents );
     }
 
